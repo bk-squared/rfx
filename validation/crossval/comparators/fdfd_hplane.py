@@ -53,6 +53,14 @@ silent). These are not footnotes:
     (measured headroom: 5e-14 at r=1), and unitarity on EVERY evaluation.
     `self_test` runs both and RAISES; callers doing sweeps must keep the
     per-evaluation unitarity check as well, as the case script does.
+    BUT `self_test`'s `unitarity` is a ROUNDOFF REALIZATION, not a property of
+    the method: on the gated configuration it moves 1.25 decades across the
+    four mathematically equivalent `permc_spec` orderings through `splu`, and
+    1.88 through `spsolve` (#884). Gate
+    `refined_unitarity` instead -- iterative refinement with an exactly
+    accumulated residual leaves ~5e-14, which is the discretization's own
+    unitarity and is build-independent. `self_test`'s number is still worth
+    recording; it is not worth comparing across builds.
  5. FORMULATION-INDEPENDENT, NOT TOTALLY INDEPENDENT. It shares one element with
     mode matching: the TE_n0 modal basis at the ports. But that is evaluated in
     uniform guide far from the discontinuities, where the expansion is exact
@@ -67,6 +75,8 @@ silent). These are not footnotes:
 Zero rfx dependency by design: numpy and scipy only.
 """
 from __future__ import annotations
+
+import math
 
 import numpy as np
 import scipy.sparse as sp
@@ -86,13 +96,14 @@ def discrete_gamma(lam, k, h):
     return g / h
 
 
-def solve(a, freq, base_cells, refinement, apertures_cells, cavities_cells,
-          thickness_cells, margin_cells, empty=False):
-    """One solve. Geometry is given in BASE cells; refinement is an integer.
+def _assemble(a, freq, base_cells, refinement, apertures_cells, cavities_cells,
+              thickness_cells, margin_cells, empty=False):
+    """Assemble (A, rhs) and the port context for one solve.
 
-    apertures_cells / cavities_cells / thickness_cells are ELECTRICAL, i.e. the
-    distance between bounding zeroed node planes, matching the convention the
-    rfx rasterizer realizes.
+    Split out of `solve` (unchanged, line for line) only so that the refined
+    unitarity witness can reuse the SAME matrix and the SAME factorization
+    rather than re-deriving either. `solve` remains the one entry point that
+    calls the linear solver, so nothing about the committed curves moves.
     """
     r = int(refinement)
     assert r >= 1 and r == refinement, ("refinement must be a positive integer "
@@ -158,11 +169,40 @@ def solve(a, freq, base_cells, refinement, apertures_cells, cavities_cells,
     rhs = rhs.reshape(-1)
     rhs[midx] = 0.0
 
-    E = spl.spsolve(A.tocsc(), rhs).reshape(nxi, nzi)
+    ctx = dict(phi=phi, gt=gt, nz=nz, nxi=nxi, nzi=nzi, h=h,
+               info=dict(nx=nx, nz=nz, unknowns=N, h=h, metal_nodes_z=tc))
+    return A.tocsc(), rhs, ctx
+
+
+def _ports(x, ctx):
+    """(S11, S21) from a solution vector, exactly as `solve` reads them off."""
+    E = x.reshape(ctx["nxi"], ctx["nzi"])
+    phi, gt, h, nz = ctx["phi"], ctx["gt"], ctx["h"], ctx["nz"]
     s11 = np.sum(phi[0] * E[:, 0]) * h - 1.0
     s21 = np.sum(phi[0] * E[:, -1]) * h * np.exp(gt[0] * nz * h)
-    return complex(s11), complex(s21), dict(nx=nx, nz=nz, unknowns=N, h=h,
-                                            metal_nodes_z=tc)
+    return complex(s11), complex(s21)
+
+
+def _unitarity(x, ctx):
+    """The lossless two-port power identity |S11|^2 + |S21|^2 - 1."""
+    s11, s21 = _ports(x, ctx)
+    return abs(abs(s11) ** 2 + abs(s21) ** 2 - 1.0)
+
+
+def solve(a, freq, base_cells, refinement, apertures_cells, cavities_cells,
+          thickness_cells, margin_cells, empty=False):
+    """One solve. Geometry is given in BASE cells; refinement is an integer.
+
+    apertures_cells / cavities_cells / thickness_cells are ELECTRICAL, i.e. the
+    distance between bounding zeroed node planes, matching the convention the
+    rfx rasterizer realizes.
+    """
+    A, rhs, ctx = _assemble(a, freq, base_cells, refinement, apertures_cells,
+                            cavities_cells, thickness_cells, margin_cells,
+                            empty=empty)
+    x = spl.spsolve(A, rhs)
+    s11, s21 = _ports(x, ctx)
+    return s11, s21, ctx["info"]
 
 
 def self_test(a, freq, base_cells, refinement, apertures_cells, cavities_cells,
@@ -185,6 +225,72 @@ def self_test(a, freq, base_cells, refinement, apertures_cells, cavities_cells,
     if u > unitary_tol:
         raise AssertionError(f"lossless unitarity violated by {u:.3e}")
     return dict(empty_s11=abs(e11), empty_s21=abs(e21), unitarity=u, **info)
+
+
+def _exact_residual(a_csr, x, b):
+    """r = b - A x, each row's inner product accumulated EXACTLY.
+
+    The products are rounded once (they are ordinary float64 multiplies); the
+    summation over a row is exact (`math.fsum`). That matters because the
+    residual of a cond ~ 1e12 system is five decades of cancellation: evaluated
+    in plain float64 the residual is itself dominated by roundoff, and
+    refinement then converges to the accumulation's floor rather than to the
+    solution. This is the standard requirement for iterative refinement to
+    recover more than backward stability (Wilkinson); here it is what makes the
+    refined unitarity a build-independent number instead of a second sample of
+    the factorization's luck.
+    """
+    ip = a_csr.indptr.tolist()
+    prod = a_csr.data * x[a_csr.indices]         # rounded products, vectorized
+    pr, pi = prod.real.tolist(), prod.imag.tolist()
+    fsum = math.fsum
+    ar = [fsum(pr[ip[i]:ip[i + 1]]) for i in range(len(ip) - 1)]
+    ai = [fsum(pi[ip[i]:ip[i + 1]]) for i in range(len(ip) - 1)]
+    return b - (np.asarray(ar) + 1j * np.asarray(ai))
+
+
+def refined_unitarity(a, freq, base_cells, refinement, apertures_cells,
+                      cavities_cells, thickness_cells, margin_cells, steps=2,
+                      permc_spec=None):
+    """The unitarity of the METHOD, separated from the factorization's roundoff.
+
+    Issue #884. `self_test`'s `unitarity` is the lossless power identity
+    evaluated on `spsolve`'s answer. On this problem (cond_1(A) ~ 1e12,
+    backward error ~ 3 eps) that number is dominated by LU roundoff, so it has
+    no build-independent value: the four `permc_spec` orderings -- which solve
+    the SAME system and are mathematically identical -- spread it over 1.25
+    decades on one machine through `splu` (1.88 through `spsolve`), wider than
+    the 1.03-decade Python 3.10 -> 3.11 gap that was reported as a regression.
+
+    Iterative refinement on the same LU factor with an exactly accumulated
+    residual removes that: what is left, ~5e-14, is the discretization's own
+    unitarity, at the arithmetic floor of the two length-(nx-1) modal inner
+    products the witness is built from, and it is stable across orderings,
+    library versions and platforms.
+
+    Returns `unitarity_raw` (the quantity `self_test` records),
+    `unitarity_refined` (min over the refinement steps -- refinement stagnates
+    at the residual-evaluation floor and then oscillates within it, so the
+    minimum is the converged value and the rule is fixed here rather than
+    chosen per run) and the per-step list. Cost is one `splu` plus `steps`
+    triangular solves and residuals; no second assembly and no second
+    factorization.
+    """
+    steps = int(steps)
+    assert steps >= 1, ("the refined witness needs at least one refinement "
+                        "step; there is nothing to take a minimum over", steps)
+    A, rhs, ctx = _assemble(a, freq, base_cells, refinement, apertures_cells,
+                            cavities_cells, thickness_cells, margin_cells)
+    lu = spl.splu(A, permc_spec=permc_spec)
+    x = lu.solve(rhs)
+    u_raw = _unitarity(x, ctx)
+    a_csr = A.tocsr()
+    per_step = []
+    for _ in range(steps):
+        x = x + lu.solve(_exact_residual(a_csr, x, rhs))
+        per_step.append(_unitarity(x, ctx))
+    return dict(unitarity_raw=u_raw, unitarity_refined=min(per_step),
+                unitarity_steps=tuple(per_step), **ctx["info"])
 
 
 def richardson_first_order(value_coarse, r_coarse, value_fine, r_fine):
