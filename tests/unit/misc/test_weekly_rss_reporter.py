@@ -174,6 +174,10 @@ def test_reporter_flags_nodeid_when_rss_high_water_crosses_threshold():
 # issue #545 step 3: the live sampler (background thread).
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="reads /proc/self/status, which only exists on Linux; the weekly RSS reporter is a Linux-only deployment (#876)",
+)
 def test_read_proc_vmhwm_mb_returns_a_positive_number_on_linux():
     """This test process itself has a nonzero VmHWM by the time it runs."""
     mb = conftest._read_proc_vmhwm_mb()
@@ -191,6 +195,10 @@ def test_read_proc_vmhwm_mb_returns_none_when_proc_is_unreadable(monkeypatch):
     assert conftest._read_proc_vmhwm_mb() is None
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="reads /proc/self/status, which only exists on Linux; the weekly RSS reporter is a Linux-only deployment (#876)",
+)
 def test_read_proc_vmhwm_mb_agrees_with_independent_ru_maxrss_band():
     """Cross-check against an INDEPENDENT measurement (resource.getrusage's
     ru_maxrss, KB on Linux -- the same call _RSSHighWaterReporter._maxrss_kb
@@ -363,6 +371,10 @@ def _run_sigkill_helper_subprocess(extra_pytest_args):
     )
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="asserts the /proc-derived '[rss-live] VmHWM' line, which the reporter only emits on Linux; the weekly RSS reporter is a Linux-only deployment (#876)",
+)
 def test_live_sampler_line_survives_sigkill_with_dash_s():
     """THE property (PR #592 review, CRITICAL fix): with -s (--capture=no),
     the live sampler's background-thread prints reach the real stdout fd, so
