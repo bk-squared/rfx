@@ -68,26 +68,41 @@ jobs:
   # workflow: a change to rfx/core/yee.py could merge green and only surface
   # on the weekly validation run, up to 7 days later. Sharded fresh processes
   # avoid the XLA-cache OOM that killed the unsharded full run (roadmap W2.1).
+  #
+  # Issue #876: this job also pins the JAX VERSION, silently. `pip install -e
+  # ".[dev]"` is unpinned, and jax 0.6.2 is the last release supporting Python
+  # 3.10 — so a 3.10-only lane freezes CI on a 2025 XLA while developers run
+  # jax >= 0.7. Two bit-identity tests (the CPML budget saturation gate and
+  # the order-2 stencil gate) failed ONLY on a developer Mac for exactly that
+  # reason: they are JAX/XLA-version effects, and they would have failed on
+  # Linux too under jax >= 0.7. The 3.11 entry runs the SAME fast suite so a
+  # version effect surfaces on the reference platform instead of on whoever
+  # upgrades first. The 3.10 entry stays: it is what the published floor and
+  # the weekly validation lane run.
   fast-suite:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
+        python-version: ["3.10", "3.11"]
         group: [1, 2, 3, 4]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install package with dev dependencies
         run: pip install -e ".[dev,cad]"   # cad = trimesh/rtree/cascadio for the MeshShape import tests (#358)
 
-      - name: Fast suite — shard ${{ matrix.group }} of 4
+      - name: Record the resolved JAX/numpy versions (the pin this lane really has)
+        run: python -c "import jax, jaxlib, numpy; print('jax', jax.__version__, 'jaxlib', jaxlib.__version__, 'numpy', numpy.__version__)"
+
+      - name: Fast suite — Python ${{ matrix.python-version }}, shard ${{ matrix.group }} of 4
         env:
           # issue #594 remedy (a): the same per-test RSS delta/peak reporter +
           # live VmHWM sampler the weekly lane got in PR #592 (issue #545).
