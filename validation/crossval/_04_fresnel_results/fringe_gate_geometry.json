@@ -199,7 +199,7 @@
     "max_position_window_hz": 234882954.5669086,
     "meep_abs_limit": 0.08,
     "meep_cross_limit": 0.16,
-    "non_entailment_meaning": "search half-width / widest gate window. The verdict cannot be entailed by the search window while this is >> 1 AND an extremum reaching the cell edge is a CONTAINMENT failure rather than a reported boundary; both halves are pinned in tests/test_crossval_gate_logic.py",
+    "non_entailment_meaning": "search half-width / widest gate window. The verdict cannot be entailed by the search window while this is >> 1 AND an extremum reaching the cell edge is a CONTAINMENT failure rather than a reported boundary; both halves are pinned in tests/crossval/test_crossval_gate_logic.py",
     "non_entailment_ratio": 7.977377513216886,
     "safety": 2.0,
     "value_limit": 0.04

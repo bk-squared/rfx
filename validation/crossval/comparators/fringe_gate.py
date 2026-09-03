@@ -78,7 +78,7 @@ PIN_MARGIN_BINS = 2
 # Meep leg (section 6). Pointwise |dR| induced by one position budget
 # W(f_top) (= windows.max_position_window_hz in the evidence artifact, 234.9 MHz
 # for the committed cv04 config, pinned by
-# tests/test_crossval_gate_logic.py::test_cv04_fringe_windows_match_the_predeclared_values)
+# tests/crossval/test_crossval_gate_logic.py::test_cv04_fringe_windows_match_the_predeclared_values)
 # at the maximum fringe slope |dR/df| = 0.151/GHz is 0.0355; plus the amplitude
 # budget 0.04 -> 0.08. Two independent solvers differing from each other get
 # twice that.
@@ -225,7 +225,7 @@ def position_window_hz(
     section 4. The per-fringe values for the committed cv04 config are in
     ``validation/crossval/_04_fresnel_results/fringe_gate_geometry.json``
     under ``windows.fringes[].position_window_hz``, regenerated on every run of
-    ``tests/test_crossval_gate_logic.py``.
+    ``tests/crossval/test_crossval_gate_logic.py``.
     """
     return safety * (
         0.5 * df_bin_hz

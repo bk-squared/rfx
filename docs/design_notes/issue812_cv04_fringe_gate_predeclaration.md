@@ -371,7 +371,7 @@ fringe gate (physical injection: 4.60x / 4.21x / 2.37x).
 
 ### Falsifiers pinned in the fast lane
 
-`tests/test_crossval_gate_logic.py` imports the same pure functions the crossval
+`tests/crossval/test_crossval_gate_logic.py` imports the same pure functions the crossval
 script calls (it does not replicate them, so it cannot drift) and pins: the three
 frozen windows, acceptance of an exact analytic slab, rejection of each of the
 three audit defects, rejection of a one-cell thickness error, the pinning
@@ -454,7 +454,7 @@ and at round 2, stripping module/class/function docstrings and comparing
 `validation/crossval/_04_fresnel_results/fringe_gate_geometry.json`, emitted by
 `validation/crossval/comparators/emit_cv04_fringe_gate_evidence.py`
 (closed-form, no FDTD), regenerated and compared field-by-field on every run of
-`tests/test_crossval_gate_logic.py::test_cv04_committed_evidence_json_is_reproducible`.
+`tests/crossval/test_crossval_gate_logic.py::test_cv04_committed_evidence_json_is_reproducible`.
 The comments and this note reference these keys instead of restating digits:
 
 | claim | key |

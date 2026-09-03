@@ -335,6 +335,11 @@ CLASSIFICATION: dict[str, Entry] = {
         "pure-math patch cavity mode identification (#812) -- closed-form "
         "TM_mn0 spectrum plus a frequency-list assignment; no rfx import at "
         "all"),
+    "validation/crossval/comparators/emit_cv04_fringe_gate_evidence.py": Entry(
+        "no_simulation",
+        "emits cv04's fringe-gate evidence JSON from the committed R(f) "
+        "artifact with numpy/scipy only (issue #812) -- no solver, no rfx "
+        "import at all"),
     "validation/crossval/comparators/fringe_gate.py": Entry(
         "no_simulation",
         "pure numpy/scipy fringe-extremum comparator for cv04's etalon R(f) "

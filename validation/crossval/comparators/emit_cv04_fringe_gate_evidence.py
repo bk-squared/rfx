@@ -326,7 +326,7 @@ def build_evidence() -> dict:
                 "entailed by the search window while this is >> 1 AND an "
                 "extremum reaching the cell edge is a CONTAINMENT failure "
                 "rather than a reported boundary; both halves are pinned in "
-                "tests/test_crossval_gate_logic.py"
+                "tests/crossval/test_crossval_gate_logic.py"
             ),
             "fringes": fringes,
             "meep_abs_limit": fg.MEEP_ABS_LIMIT,
