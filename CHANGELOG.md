@@ -48,7 +48,7 @@ precision knob that `normalize=False` and the non-uniform flux lane
 already honoured. The cast is gone: the result is complex64 by default
 and complex128 under `JAX_ENABLE_X64`. Values move at the complex64
 rounding level only — the sha-pinned float64 flux golden
-(`tests/unit/autodiff/test_waveguide_sparam_ad.py`) went from 3.3e-08 to 2.2e-08
+(`tests/test_waveguide_sparam_ad.py`) went from 3.3e-08 to 2.2e-08
 max|delta| against its 1e-6 gate, and the `False` / `True` goldens are
 bit-identical. Code that asserted `s_params.dtype == complex64` under
 x64 will now see complex128.
@@ -3345,7 +3345,7 @@ accumulated correctness, preflight, AD-tape, and validation-lane work since 1.6.
   `.omx/` outputs, so `scripts/diagnostics/check_port_external_references.py`
   reported the family `blocked` on a clean checkout while the manifest claimed
   `broad_e5_passed`; the auditor now reports `rectangular_waveguide_port` passed.
-  New gate `tests/crossval/test_waveguide_broad_e5.py` re-derives both
+  New gate `tests/test_waveguide_broad_e5_envelope_gates.py` re-derives both
   verdicts from the committed fixtures and mirrors the auditor's broad-E5/E4
   acceptance. R5 note: coarse Meep (res 3/4) gives a non-physical PEC-short
   |S11|>1, so the converged Palace high-order FEM reference is used for that
@@ -3380,7 +3380,7 @@ accumulated correctness, preflight, AD-tape, and validation-lane work since 1.6.
   angle of a zero modal ratio); primal values are preserved exactly.
 - Forward regression: S-matrix unchanged vs the numpy path within the
   float-reassociation envelope (measured max|diff| 1.1e-7 on the WR-90
-  fixture). New CI gates in `tests/unit/autodiff/test_waveguide_flux_ad.py`
+  fixture). New CI gates in `tests/test_waveguide_flux_ad.py`
   (composition-level grad finite + central-FD agreement ≤5% + forward
   no-op-override equivalence); support matrix `ad_evidence` updated.
 
@@ -3588,7 +3588,7 @@ accumulated correctness, preflight, AD-tape, and validation-lane work since 1.6.
   on most NumPy/JAX implementations and cascaded into NaN
   S-parameters on any multi-mode frequency sweep that straddled a
   higher-mode cutoff.  Regression-locked by
-  `tests/oracle/test_waveguide_port_validation_battery.py::test_below_cutoff_z_mode_no_nan`.
+  `tests/test_waveguide_port_validation_battery.py::test_below_cutoff_z_mode_no_nan`.
 - **`_compute_beta` Yee-discrete branch.**  Optional `dt, dx` kwargs;
   when both are positive the Yee 3-D dispersion relation is used
   instead of the analytic continuous form.  Now threaded through
@@ -3631,7 +3631,7 @@ accumulated correctness, preflight, AD-tape, and validation-lane work since 1.6.
   CPML absorbing region, and does not intersect a geometry box.
   Raises `ValueError` for out-of-domain; emits `UserWarning` for
   CPML or device overlap with an actionable remediation message.
-- **Validation battery** (`tests/oracle/test_waveguide_port_validation_battery.py`):
+- **Validation battery** (`tests/test_waveguide_port_validation_battery.py`):
   nine tests locking physical-correctness invariants with Meep-class
   gates where achievable and explicitly-ratcheted gates where the
   extractor still has a known residual.  Supersedes the older loose

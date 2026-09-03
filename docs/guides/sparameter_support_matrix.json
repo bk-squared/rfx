@@ -212,7 +212,7 @@
         "phase evidence covers only the single-dielectric-slab configuration across the five WR bands; PEC-short, T-junction, nonuniform, and multimode phase remain uncharacterized",
         "group delay is gated only on the WR-340 empty-guide near-cutoff oracle (f/fc 1.152-1.498); other bands, obstacles, and multimode group delay are not covered",
         "missing multimode and arbitrary-junction validation",
-        "chain closure: five families of pre-declared gates are red on the measured chain battery (issues #868 and #869 carry two of them), three dx ladders are not interpretable below rung a/72, and independent power closure is bounded at the float32 noise floor rather than resolved"
+        "chain closure: five families of pre-declared gates are red on the measured chain battery (issues #868 and #869 carry two of them), three dx ladders are not interpretable below rung a/72, and power closure is bounded at the float32 noise floor rather than resolved, by a witness independent in the plane index only"
       ],
       "evidence_artifacts": [
         "tests/oracle/test_waveguide_port_validation_battery.py",
