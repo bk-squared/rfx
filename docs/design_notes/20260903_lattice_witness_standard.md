@@ -62,7 +62,7 @@ asserted as tests; a genuine tightening (`3e-4`, §8.1) is still accepted.
 
 | case | in scope | why |
 |---|---|---|
-| `04_multilayer_fresnel` | **yes** | the rig every other slab case is a copy of; one slab, ε′ = 4, d = 10 mm, dx = 1 mm, normal incidence, 2-D TMz with periodic y. Its committed band-mean `|ΔR|` is the envelope cv22 and cv23 derive their windows from, so if that number is the lattice term the whole family's window derivation rests on a discretization artefact — which is exactly what §5.3 shows. |
+| `04_multilayer_fresnel` | **yes** | the rig every other slab case is a copy of; one slab, ε′ = 4, d = 10 mm, dx = 1 mm, normal incidence, 2-D TMz with periodic y. Its committed band-mean `|ΔR|` = 0.0066 and `|ΔT|` = 0.011 are the envelopes cv22 and cv23 derive `W_mean,R` and `W_mean,T` from, so if those numbers are the lattice term the family's window derivation rests on a discretization artefact. §5.3 shows that this holds for `|ΔR|` and **not** for `|ΔT|`: the lattice term is the same 0.00727 in both, but it is 1.10× cv04's R envelope and only 0.66× its T envelope, the rest of T being this record's own truncation. |
 | `22_dispersive_slab_fresnel` | **yes** | the SAME rig with a Debye / Lorentz / Drude pole in the slab (`validation/crossval/comparators/slab_rig.py`, "cv22's `run_rfx_arm` with the slab MATERIAL factored out"). §3 derives the exact lattice for the ADE. |
 | `23_lossy_slab_fresnel` | **yes** | the same rig with `materials.sigma`; the case that found the term. |
 | everything else in `validation/crossval/manifest.json` | no | not a normal-incidence homogeneous slab on this rig. |
@@ -450,16 +450,42 @@ material, the mesh and dt are identical, only the record length differs (1078
 steps against 719, tails 3.6e-3 / 1.2e-3 against 0.036 / 0.051). In T the same
 comparison is 1.34e-4 against 6.25e-3, a factor of 47.
 
-Read plainly: **cv04's committed band-mean `|ΔR|` — the number the whole slab
-family's windows are derived from
-(`tests/fixtures/golden_workflows/multilayer_fresnel.json::expected_metrics[0].observed_baseline = 0.0066`) — IS this slab's Yee-lattice second-order term, not solver error.**
-The lattice term over cv04's own masked band (3.032–11.867 GHz, 170 bins, of
-which 115 are gated) is 0.00727 in `|ΔR|`; over the gated 4–10 GHz it is
-0.00530. cv23 §12.2 said this in one
-sentence; here it is measured, against a committed artifact, with a derived
-window. Nothing about cv04's gates changes — the point is that the envelope those
-gates and cv22's and cv23's windows are built on is a discretization number, and
-anyone tightening it must refine the mesh, not the tolerance.
+Read plainly: **cv04's committed band-mean `|ΔR|`
+(`tests/fixtures/golden_workflows/multilayer_fresnel.json::expected_metrics[0].observed_baseline = 0.0066`),
+the number `W_mean,R = 0.010` is derived from, IS this slab's Yee-lattice
+second-order term, not solver error.** cv23 §12.2 said this in one sentence;
+here it is measured, against a committed artifact, with a derived window.
+
+**Scope of that claim: `|ΔR|` only. It does NOT extend to `|ΔT|`, and the
+2026-09-03 review was right to say so.** The lattice term itself is the SAME
+number in the two observables — 0.00727 over cv04's own mask (3.032–11.867 GHz,
+170 bins), 0.00530 over the 115 gated bins — because the slab is lossless, so
+`A ≡ 0` and `|R_lat − R_TMM| = |T_lat − T_TMM|` bin by bin. cv04's committed
+envelopes are not the same number:
+
+| observable | committed envelope | lattice term over the same mask | lattice / envelope | `\|rfx − lattice\|`, gated mean |
+|---|---|---|---|---|
+| `\|ΔR\|` | `tests/fixtures/golden_workflows/multilayer_fresnel.json::expected_metrics[0].observed_baseline = 0.0066` | 0.00727 | **1.10** | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_dR_lattice_gated = 0.00168` |
+| `\|ΔT\|` | `tests/fixtures/golden_workflows/multilayer_fresnel.json::expected_metrics[1].observed_baseline = 0.011` | 0.00727 | **0.66** | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_dT_lattice_gated = 0.00625` |
+
+In R the lattice accounts for the whole envelope (1.10×, i.e. the identification
+is complete to within the residual the last column measures). In T it accounts
+for two thirds, and the residual against the lattice at cv04's own rung is
+**0.00625** — **more than half of the 0.011 envelope is this record's TRUNCATION,
+not a discretisation term.** Over the full mask the same comparison is starker:
+`|rfx − lattice|` in T is 0.0106 of a 0.0110 envelope, because the un-gated band
+edges are where the un-settled tail lands.
+
+**Consequence for the family's windows, stated rather than implied.**
+`W_mean,R = 0.010 = gate_from_envelope(0.0066, quantum=1000)` is derived from a
+number this note shows to be a discretisation term. `W_mean,T = 0.017 =
+gate_from_envelope(0.011, quantum=1000)` is **not**: it is derived from a
+truncation-dominated number, and `W_MEAN_T` must not be described anywhere as a
+discretisation number. Nothing about cv04's gates changes and no window moves;
+what changes is what may be said about them. Anyone tightening `W_mean,R` must
+refine the mesh, not the tolerance; anyone tightening `W_mean,T` must first
+lengthen cv04's record, because most of what that window covers is a record
+length, not a mesh.
 
 ## 6. What is NOT changed
 
