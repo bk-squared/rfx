@@ -80,6 +80,14 @@ jobs:
   # upgrades first. The 3.10 entry stays: it is what the published floor and
   # the weekly validation lane run.
   fast-suite:
+    # The job NAME must stay `fast-suite (<group>)` on the 3.10 entry: those are
+    # the contexts main's branch protection requires, and a matrix that renames
+    # them to `fast-suite (3.10, 1)` leaves every required check permanently
+    # unreported, so no PR can merge. The 3.11 entry gets its own suffixed name.
+    name: >-
+      ${{ matrix.python-version == '3.10'
+          && format('fast-suite ({0})', matrix.group)
+          || format('fast-suite-py{0} ({1})', matrix.python-version, matrix.group) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
