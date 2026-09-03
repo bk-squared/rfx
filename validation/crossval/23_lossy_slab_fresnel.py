@@ -45,6 +45,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(SCRIPT_DIR, "comparators"))
 import cv22_dispersive_gates as G  # noqa: E402
 import cv23_lossy_gates as L  # noqa: E402
+import lattice_witness as LW  # noqa: E402
 import slab_rig as RIG  # noqa: E402
 
 RESULTS_DIR = os.path.join(SCRIPT_DIR, L.RESULTS_DIRNAME)
@@ -101,7 +102,7 @@ def build_materials(rig: dict, params: dict, path: str):
 
 
 def run_rfx_arm(params: dict, path: str, *, nx_interior: int, n_steps_cap: int, smoke: bool,
-                dx_div: int = 1, recipe: str = G.RECIPE_R3) -> dict:
+                dx_div: int = 1, recipe: str = G.RECIPE_R3, settling_bar: float | None = None) -> dict:
     from rfx.core.yee import update_e
     holder = {}
 
@@ -115,7 +116,7 @@ def run_rfx_arm(params: dict, path: str, *, nx_interior: int, n_steps_cap: int, 
         return materials, None, e_update
 
     run = RIG.run_slab_arm(L.MODEL, params, setup=setup, nx_interior=nx_interior, n_steps_cap=n_steps_cap,
-                           smoke=smoke, dx_div=dx_div, recipe=recipe)
+                           smoke=smoke, dx_div=dx_div, recipe=recipe, settling_bar=settling_bar)
     if not run.get("grow"):
         run["materials"] = holder["info"]
     return run
@@ -188,6 +189,14 @@ def main(argv=None) -> int:
     ap.add_argument("--meep-ladder-summary", action="store_true",
                     help="no FDTD: read rfx.json + meep_<arm>__res{10,20,40}.json in out-dir and write "
                          "meep_ladder_summary.json (measured Meep convergence order)")
+    ap.add_argument("--lattice-witness", action="store_true",
+                    help="no FDTD: read every committed rfx dx rung in out-dir and write "
+                         "lattice_witness.json -- the exact-lattice witness gate with its DERIVED "
+                         "W_witness at every rung (docs/design_notes/20260903_lattice_witness_standard.md)")
+    ap.add_argument("--settling-bar", type=float, default=None,
+                    help="override the -40 dB settling witness bar (default 1e-2). Tightening it "
+                         "lengthens the record and shrinks the lattice-witness truncation term; "
+                         "requires --tag (it is a new rung, never the committed baseline)")
     a = ap.parse_args(argv)
     if a.refit_tail_fits:
         import glob
@@ -212,6 +221,18 @@ def main(argv=None) -> int:
             with open(path, "w") as fh:
                 json.dump(doc, fh, indent=1)
         return 0
+    if a.lattice_witness:
+        od = a.out_dir or RESULTS_DIR
+        doc = LW.build_from_results(L.CASE_ID, od, commit=_git_commit())
+        with open(os.path.join(od, LW.witness_json_name()), "w") as fh:
+            json.dump(doc, fh, indent=1)
+        for name, r in doc["rungs"].items():
+            print(f"cv23-lattice-witness {name}: |rfx-lattice| mean R {r['mean_dR_lattice_gated']:.2e} "
+                  f"vs W {r['mean_W_witness_R_gated']:.2e} (ceiling {r['mean_W_ceiling_R_gated']:.2e}); "
+                  f"worst bin ratio R/T/A {r['worst_ratio_R']:.2f}/{r['worst_ratio_T']:.2f}/"
+                  f"{r['worst_ratio_A']:.2f}; ok={r['witness_ok']}")
+        print("wrote", os.path.join(od, LW.witness_json_name()))
+        return 0 if doc["verdict"]["all_rungs_ok"] else 1
     if a.meep_ladder_summary:
         od = a.out_dir or RESULTS_DIR
         with open(os.path.join(od, "rfx.json")) as fh:
@@ -226,6 +247,8 @@ def main(argv=None) -> int:
         return 0
     if (a.dx_div is not None or a.nx_interior not in (None, G.NX_INTERIOR_R3)) and not a.tag and not a.smoke:
         ap.error("--dx-div / --nx-interior arms are diagnostics and require --tag")
+    if a.settling_bar is not None and not a.tag and not a.smoke:
+        ap.error("--settling-bar arms are new rungs and require --tag")
 
     out_dir = a.out_dir or (tempfile.mkdtemp(prefix="cv23_smoke_") if a.smoke else RESULTS_DIR)
     os.makedirs(out_dir, exist_ok=True)
@@ -288,7 +311,7 @@ def main(argv=None) -> int:
         grows = []
         while True:
             run = run_rfx_arm(params_run, path, nx_interior=nx_arm, n_steps_cap=n_steps_cap, smoke=a.smoke,
-                              dx_div=dx_div, recipe=a.recipe)
+                              dx_div=dx_div, recipe=a.recipe, settling_bar=a.settling_bar)
             if not run.get("grow"):
                 break
             grows.append({"nx_interior": nx_arm, "t_safe": run["t_safe"],

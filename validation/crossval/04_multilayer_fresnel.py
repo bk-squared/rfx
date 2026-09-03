@@ -398,6 +398,63 @@ rfx_self_ok = bool(
     t_ok and r_ok and c_ok and cons_max_ok and tail_ok and fringe_ok
 )
 
+# -----------------------------------------------------------------------------
+# The exact-lattice witness (`--lattice-witness`; issue: lattice-witness
+# standardisation, docs/design_notes/20260903_lattice_witness_standard.md).
+#
+# The continuum gates above are UNCHANGED. This writes a second, pre-declared
+# record: |rfx - lattice(f; eps'=4, sigma=0, d, dx, dt)| against a W_witness
+# DERIVED from the lattice model's own error budget (record truncation, the
+# incident reference's truncation, float32), evaluated at the one dx rung this
+# case runs. Nothing here can change the exit code: the note derives, from
+# THIS config's committed tail levels (0.036 / 0.051 of the incident peak,
+# against cv22's -40 dB bar), that W_witness is 5.2e-2 in the gated mean here
+# -- looser than the case's own band-mean window -- so the cv04 lattice gate is
+# declared NON-DISCRIMINATING at the committed 719-step record and is REPORTED,
+# not gated (note section 5.3). The claims-bearing rung for this material is
+# the settled one, cv23's `sigma_zero` arm.
+# -----------------------------------------------------------------------------
+if "--lattice-witness" in sys.argv:
+    _cmp = os.path.join(SCRIPT_DIR, "comparators")
+    if _cmp not in sys.path:
+        sys.path.insert(0, _cmp)
+    import json as _json
+    import cv22_dispersive_gates as _G
+    import lattice_witness as _LW
+
+    _params = {"eps_inf": eps_slab, "sigma": 0.0}
+    _rates = _G.slab_ringdown_rates("conductive", _params)
+    _arm = {
+        "model": "conductive", "params": _params,
+        "freqs_hz": freqs[mask].tolist(),
+        "gated": _G.gated_mask(freqs[mask]).tolist(),
+        "R_rfx": R_rfx.tolist(), "T_rfx": T_rfx.tolist(), "dt_s": float(dt),
+        "inc_amp_rel": (inc_power[mask] / inc_power.max()).tolist(),
+        "tail": {"scat_refl_rel": float(tail_refl_rel),
+                 "total_trans_rel": float(tail_trans_rel),
+                 "purity_inc_rel": float(tail_inc_rel), "ok": bool(tail_ok)},
+        "run": {"n_steps": int(n_steps), "dx_m": float(dx), "dx_div": 1,
+                "record": {"rate_ring_1_s": _rates["rate_ring_1_s"],
+                           "t_safe_cpml_steps": int(n_steps_safe)}},
+    }
+    _doc = _LW.witness_document("04_multilayer_fresnel", {"slab_eps4": _arm},
+                                d_slab_m=d_slab)
+    _doc["gated_here"] = False
+    _doc["gated_here_reason"] = (
+        "the committed 719-step record does not settle to -40 dB (tails "
+        f"{tail_refl_rel:.3f} / {tail_trans_rel:.3f} of the incident peak), so the "
+        "derived W_witness exceeds this case's own band-mean window; REPORTED, "
+        "see docs/design_notes/20260903_lattice_witness_standard.md section 5.3")
+    _out04 = os.path.join(SCRIPT_DIR, "_04_fresnel_results")
+    os.makedirs(_out04, exist_ok=True)
+    with open(os.path.join(_out04, _LW.witness_json_name()), "w") as _fh:
+        _json.dump(_doc, _fh, indent=1)
+    _r = _doc["rungs"]["slab_eps4"]
+    print(f"  cv04-lattice-witness slab_eps4: |rfx-lattice| mean R "
+          f"{_r['mean_dR_lattice_gated']:.2e} vs W {_r['mean_W_witness_R_gated']:.2e} "
+          f"(ceiling {_r['mean_W_ceiling_R_gated']:.2e}); reported, not gated")
+    print(f"  wrote {os.path.join(_out04, _LW.witness_json_name())}")
+
 # =============================================================================
 # PART 3: Meep simulation (OPTIONAL secondary cross-validation reference)
 # =============================================================================
