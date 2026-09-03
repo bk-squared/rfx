@@ -39,7 +39,12 @@ measures, and only two of them are non-zero:
       the box so the CPML round trip exceeds the record
       (``run.record.t_safe_cpml_steps >= run.n_steps``), so any CPML echo
       arrives after the record ends and is already inside term (1). Asserted,
-      not modelled.
+      not modelled. THE SAME ASSERTION IS OWED BY THE AUXILIARY GRID, and
+      until #888 nobody made it: the TF/SF auxiliary grid has an absorber of
+      its own, it reflects 4-6 % in amplitude, and the record law never
+      mentioned it. ``precond_aux_echo_record`` asserts it now, from
+      ``G.slab_aux_echo`` -- geometry, not a measurement of the run it guards
+      (docs/design_notes/20260904_aux_echo_record_invariant.md).
   (4) the 2-D rig vs the 1-D model -- ZERO by construction: at normal
       incidence with periodic y and a y-uniform TFSF plane wave, d/dy = 0 and
       the 2-D TMz update IS the 1-D Ez/Hy lattice; the TFSF auxiliary grid
@@ -247,6 +252,38 @@ def _f(x):
     return float(x)
 
 
+def aux_echo_witness(arm_doc: dict) -> dict:
+    """The auxiliary-echo record invariant (#888) for one arm of the slab family.
+
+    ``echo_arrival_steps`` is computed from the RIG'S GEOMETRY -- the auxiliary
+    source position, the absorber's measured reflecting depth and the path back
+    to the probe (``G.slab_aux_echo``) -- never from the run it guards.
+    ``record_steps`` is the run's own record, and the ratio is the invariant
+    the cv04 decomposition found every committed rung to sit under
+    (docs/design_notes/20260904_aux_echo_record_invariant.md).
+
+    Cross-checked against the record's own cell bookkeeping where the run wrote
+    it, so a rig change that moved the probes without moving this helper is a
+    failure and not a silently stale number.
+    """
+    run = arm_doc["run"]
+    rec = run.get("record") or {}
+    K = int(run.get("dx_div", rec.get("dx_div", 1)))
+    nxi = rec.get("nx_interior", run.get("nx_interior"))
+    if nxi is None:
+        raise KeyError("the arm doc carries no nx_interior: the auxiliary-echo arrival (#888) "
+                       "cannot be derived from geometry, so the record is unguarded")
+    echo = G.slab_aux_echo(int(nxi) // K, float(arm_doc["dt_s"]), dx_div=K,
+                           n_steps=int(run["n_steps"]))
+    cells = G.rig_cells(int(nxi) // K, K)
+    for key in ("nx", "x_lo", "probe_refl", "probe_trans", "n_cpml"):
+        if key in rec and int(rec[key]) != int(cells[key]):
+            raise ValueError(
+                f"rig bookkeeping drift on {key}: the record says {rec[key]}, the auxiliary-echo "
+                f"geometry says {cells[key]}. The #888 arrival would be computed for a different rig.")
+    return echo
+
+
 def evaluate(arm_doc: dict, *, model: str | None = None, params: dict | None = None,
              d_slab_m: float = G.D_SLAB_M, tag: str | None = None) -> dict:
     """The lattice-witness gate for one arm at one dx rung.
@@ -288,13 +325,18 @@ def evaluate(arm_doc: dict, *, model: str | None = None, params: dict | None = N
     dT = np.abs(T_x - T_l)
     dA = np.abs(A_x - A_l)
 
-    # The two terms the budget declares ZERO are asserted, not modelled.
+    # The terms the budget declares ZERO are asserted, not modelled.
     cpml_gate_ok = bool(int(rec.get("t_safe_cpml_steps", 0)) >= n_steps)
     tail_ok = bool(tail.get("ok", False))
+    echo = aux_echo_witness(arm_doc)
 
     gates = {
         "precond_cpml_gate": cpml_gate_ok,
         "precond_tail_witness": tail_ok,
+        # #888: the auxiliary grid's own absorber echo must arrive AFTER the
+        # record ends. Same shape as precond_cpml_gate, for the absorber the
+        # record law never named.
+        "precond_aux_echo_record": bool(echo["ok"]),
         "GL1_R": bool(np.all(dR[g] <= wR[g])),
         "GL1_T": bool(np.all(dT[g] <= wT[g])),
         "GL1_A": bool(np.all(dA[g] <= wA[g])),
@@ -308,6 +350,7 @@ def evaluate(arm_doc: dict, *, model: str | None = None, params: dict | None = N
         "model": model, "params": dict(params),
         "dx_m": dx, "dt_s": dt, "n_steps": n_steps, "dx_div": int(run.get("dx_div", 1)),
         "n_bins_gated": int(g.sum()),
+        "aux_echo": echo,
         "R_lattice": R_l.tolist(), "T_lattice": T_l.tolist(), "A_lattice": A_l.tolist(),
         "dR_lattice": dR.tolist(), "dT_lattice": dT.tolist(), "dA_lattice": dA.tolist(),
         "W_witness_R": wR.tolist(), "W_witness_T": wT.tolist(), "W_witness_A": wA.tolist(),

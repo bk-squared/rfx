@@ -3137,6 +3137,7 @@
    "gates": {
     "precond_cpml_gate": true,
     "precond_tail_witness": true,
+    "precond_aux_echo_record": true,
     "GL1_R": true,
     "GL1_T": true,
     "GL1_A": true,
@@ -3246,6 +3247,32 @@
      "mean_dT_gated": 0.0008711915499062281,
      "mean_dA_gated": 0.0013237422094540612
     }
+   },
+   "aux_echo": {
+    "schema": "aux-echo-record-invariant/v1",
+    "issue": 888,
+    "nx_interior": 1000,
+    "dx_div": 1,
+    "aux_n_1d": 1052,
+    "aux_n_cpml": 20,
+    "aux_src_idx": 23,
+    "aux_reflector_depth_cells": 6.88,
+    "aux_reflector_index": 1038.88,
+    "v_cells": 0.7000357133746821,
+    "pulse_lead_steps": 81.79031557522546,
+    "echo_arrival_probe": "trans",
+    "echo_arrival_steps": 2053,
+    "echo_arrival_centre_steps": 2135,
+    "limit": 1.0,
+    "path_cells_refl": 1564.7600000000002,
+    "arrival_steps_refl": 2153,
+    "arrival_centre_steps_refl": 2235,
+    "path_cells_trans": 1494.7600000000002,
+    "arrival_steps_trans": 2053,
+    "arrival_centre_steps_trans": 2135,
+    "record_steps": 1108,
+    "record_over_echo_arrival": 0.5396980029225523,
+    "ok": true
    }
   },
   "lorentz": {
@@ -6382,6 +6409,7 @@
    "gates": {
     "precond_cpml_gate": true,
     "precond_tail_witness": true,
+    "precond_aux_echo_record": true,
     "GL1_R": true,
     "GL1_T": true,
     "GL1_A": true,
@@ -6491,6 +6519,32 @@
      "mean_dT_gated": 0.0008047127676062147,
      "mean_dA_gated": 0.0008027979886973573
     }
+   },
+   "aux_echo": {
+    "schema": "aux-echo-record-invariant/v1",
+    "issue": 888,
+    "nx_interior": 1000,
+    "dx_div": 1,
+    "aux_n_1d": 1052,
+    "aux_n_cpml": 20,
+    "aux_src_idx": 23,
+    "aux_reflector_depth_cells": 6.88,
+    "aux_reflector_index": 1038.88,
+    "v_cells": 0.7000357133746821,
+    "pulse_lead_steps": 81.79031557522546,
+    "echo_arrival_probe": "trans",
+    "echo_arrival_steps": 2053,
+    "echo_arrival_centre_steps": 2135,
+    "limit": 1.0,
+    "path_cells_refl": 1564.7600000000002,
+    "arrival_steps_refl": 2153,
+    "arrival_centre_steps_refl": 2235,
+    "path_cells_trans": 1494.7600000000002,
+    "arrival_steps_trans": 2053,
+    "arrival_centre_steps_trans": 2135,
+    "record_steps": 1228,
+    "record_over_echo_arrival": 0.5981490501704823,
+    "ok": true
    }
   },
   "drude": {
@@ -9626,6 +9680,7 @@
    "gates": {
     "precond_cpml_gate": true,
     "precond_tail_witness": true,
+    "precond_aux_echo_record": true,
     "GL1_R": true,
     "GL1_T": true,
     "GL1_A": true,
@@ -9735,6 +9790,32 @@
      "mean_dT_gated": 0.0007647620255931975,
      "mean_dA_gated": 0.001353820089628477
     }
+   },
+   "aux_echo": {
+    "schema": "aux-echo-record-invariant/v1",
+    "issue": 888,
+    "nx_interior": 1000,
+    "dx_div": 1,
+    "aux_n_1d": 1052,
+    "aux_n_cpml": 20,
+    "aux_src_idx": 23,
+    "aux_reflector_depth_cells": 6.88,
+    "aux_reflector_index": 1038.88,
+    "v_cells": 0.7000357133746821,
+    "pulse_lead_steps": 81.79031557522546,
+    "echo_arrival_probe": "trans",
+    "echo_arrival_steps": 2053,
+    "echo_arrival_centre_steps": 2135,
+    "limit": 1.0,
+    "path_cells_refl": 1564.7600000000002,
+    "arrival_steps_refl": 2153,
+    "arrival_centre_steps_refl": 2235,
+    "path_cells_trans": 1494.7600000000002,
+    "arrival_steps_trans": 2053,
+    "arrival_centre_steps_trans": 2135,
+    "record_steps": 1168,
+    "record_over_echo_arrival": 0.5689235265465173,
+    "ok": true
    }
   }
  },
