@@ -266,12 +266,19 @@ def check(root: Path, ref: Reference) -> None:
 
 MANIFEST = "validation/crossval/manifest.json"
 CV11_NOTE = "docs/design_notes/20260831_cv11_broad_e4_artifact_provenance.md"
+# 2026-09-03: the lattice-witness standard is an evidence document of exactly the
+# class this gate exists for -- it quotes ~30 measured numbers out of committed
+# artifacts, and its first draft carried several that were reconstructed rather
+# than read (see that note's section 5.3, "These are the run's numbers, not a
+# reconstruction"). Opting it in is what stops that recurring.
+LATTICE_NOTE = "docs/design_notes/20260903_lattice_witness_standard.md"
 
 # Markdown documents, with the regex that cuts them into named sites.
 MARKDOWN_SITES: dict[str, str] = {
     "validation/README.md": r"^\|\s*`(crossval/[^`]+)`",
     CV11_NOTE: r"^#+\s+(.*\S)\s*$",
     "docs/design_notes/20260901_numeric_provenance_gate.md": r"^#+\s+(.*\S)\s*$",
+    LATTICE_NOTE: r"^#+\s+(.*\S)\s*$",
 }
 
 DOCUMENTS = (MANIFEST, *MARKDOWN_SITES)
@@ -293,6 +300,12 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     ("validation/README.md", "crossval/18_wr90_iris_modematch.py"): 2,
     ("validation/README.md", "crossval/19_wr90_iris_filter_aghanim.py"): 6,
     (CV11_NOTE, "7. Numeric provenance (appended 2026-09-01, #812 round 2 \u2014 no finding changed)"): 6,
+    # 2026-09-03, the lattice-witness standard. Section 5.3 is the one the review
+    # found reconstructed numbers in; its floor is the point of opting the note in.
+    (LATTICE_NOTE, "5.1 cv23 \u2014 nine committed entries, eight distinct meshes, all green"): 4,
+    (LATTICE_NOTE, "5.2 cv22 \u2014 three rungs, all green; the pole lattice predicts the residual a priori"): 8,
+    (LATTICE_NOTE, "5.3 cv04 \u2014 the witness is REPORTED, not gated, and the derivation says why"): 16,
+    (LATTICE_NOTE, "8.1 cv22 Debye at a 3e-4 settling bar (the only rung a claim requires)"): 3,
 }
 
 # Anti-vacuity census. A green gate must mean the references are right, not that

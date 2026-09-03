@@ -5,14 +5,25 @@ Date: 2026-09-03 · Lane: `agent/lattice-witness-standard` · Cases:
 `validation/crossval/22_dispersive_slab_fresnel.py`,
 `validation/crossval/23_lossy_slab_fresnel.py`.
 
-**Append-only.** Corrections are added as new sections; nothing above a
-correction is edited. Every number here is ANALYTIC (closed-form ε(f), the
-transfer matrix, the exact time-harmonic solution of the Yee lattice, the
-z-transform of the updates) or READ from a committed artifact by
-`path.json::key = value`. No FDTD was run for this note: every measured number
-it quotes was already committed by cv22 round 4 or cv23 round 3, and the new
-artifacts (`lattice_witness.json`) are post-processing of those, the same class
-as `--meep-ladder-summary` and `--refit-tail-fits`.
+**Append-only from the moment it lands.** Corrections are added as new sections;
+nothing above a correction is edited. The one exception is this document's own
+pre-merge review: the corrections of the 2026-09-03 independent review, listed
+in §12, were applied IN PLACE, because a claim that was measured to be wrong
+should not survive into `main` merely to be contradicted three sections later.
+Every one of them is itemised in §12 with what it said, what the measurement
+says, and where. After the merge the append-only rule is absolute.
+
+Every number here is ANALYTIC (closed-form ε(f), the transfer matrix, the exact
+time-harmonic solution of the Yee lattice, the z-transform of the updates) or
+READ from a committed artifact by a `path.json` reference of the form
+path-double-colon-key-equals-value — and every such reference in this note is
+now resolved and value-checked by
+`tests/contracts/test_evidence_numeric_provenance.py`, which the note is opted
+into (33 references). No FDTD was run FOR this note: every measured number it
+quotes was already committed by cv22 round 4 or cv23 round 3, or is read from
+the `lattice_witness.json` files the VESSL run of 2026-09-03 wrote (§9.1), which
+are post-processing of those, the same class as `--meep-ladder-summary` and
+`--refit-tail-fits`.
 
 **PI decision this note implements (2026-09-03, verbatim):** "격자별로 테스트
 하고 다른 유사한 이슈들도 있으니 같은 엄밀성 기준을 쓰자" — test per lattice
@@ -77,7 +88,7 @@ rediscover it.
 
 ## 2. The lattice model — one function, four materials
 
-`validation/crossval/comparators/dispersive_eps.py::yee_lattice_slab_rt_eps` is
+`validation/crossval/comparators/dispersive_eps.py` `yee_lattice_slab_rt_eps` is
 the exact time-harmonic solution of the 1-D Yee lattice whose slab nodes realize
 a given DISCRETE-TIME permittivity `ε_num(ω)`. With `z = e^{jωdt}`,
 `ω̂ = 2 sin(ωdt/2)/dt`:
@@ -92,7 +103,7 @@ same recurrence, so the padding `n_vac` does not enter the answer — it only fi
 where the decomposition is read.
 
 **Why one `ε_num` covers everything this rig runs.** Whatever the E-update is —
-ordinary (`rfx/core/yee.py::update_e`), conductive (same, `σ ≠ 0`), Debye
+ordinary (`rfx/core/yee.py` `update_e`), conductive (same, `σ ≠ 0`), Debye
 (`rfx/materials/debye.py:229`), Lorentz/Drude (`rfx/materials/lorentz.py:262`) —
 it is algebraically
 
@@ -181,7 +192,7 @@ and the missing tail is bounded coherently,
 
 where `A_tail` is the case's OWN settling witness
 (`tail.scat_refl_rel` / `tail.total_trans_rel`, both defined relative to
-`inc_peak` in `slab_rig.py::_witness`) and Γ is the slowest amplitude decay rate.
+`inc_peak` in `slab_rig.py` `_witness`) and Γ is the slowest amplitude decay rate.
 
 **(T2) Incident-reference truncation** — "injection leakage" as this rig
 witnesses it. The 1-D auxiliary reference that forms the denominator is truncated
@@ -189,7 +200,7 @@ at the same step; its level is cv04's tail-purity witness `tail.purity_inc_rel`
 (bar 1e-3) and its envelope rate is the differentiated Gaussian's own,
 `Γ_inc = 2a/τ` with `2a e^{−a²} = purity`, `a > 1/√2`.
 
-**(T3) float32.** The fields are float32 (`rfx/core/yee.py::init_state`,
+**(T3) float32.** The fields are float32 (`rfx/core/yee.py` `init_state`,
 `field_dtype=jnp.float32`), `ε32 = 2^−24 = 5.96e-8`. Carried with the
 STATISTICAL (√-accumulation) size `N ε32/√2`; the fully coherent worst case
 `N² ε32/2` is computed and recorded as
@@ -270,7 +281,7 @@ Per arm, per rung, on the SAME gated bins the continuum gate uses
 
 A case passes when its continuum gates AND its lattice gates hold at every rung.
 The lattice gate is evaluated by
-`validation/crossval/comparators/lattice_witness.py::evaluate` and written to
+`validation/crossval/comparators/lattice_witness.py` `evaluate` and written to
 `lattice_witness.json` beside the case's other artifacts by
 `<case>.py --lattice-witness`; it returns the same gate-record shape as the other
 cv gates (per-bin arrays, gated scalars, a boolean `gates` dict, `witness_ok`).
@@ -759,7 +770,7 @@ to 3e-4 at the fitted rate
 `min(fitted_scat, fitted_trans, derived) = 8.05e9 s⁻¹`, giving
 `ln(7.17e-3/3e-4)/(8.05e9 · 2.335e-12) = 169` steps, i.e. **2 adaptive
 extensions of 100 → n_steps ≈ 1308**. The nx-1000 CPML gate is 1262
-(`…::arms.debye.run.record.t_safe_cpml_steps`), so the existing
+(`validation/crossval/_22_dispersive_results/rfx.json::arms.debye.run.record.t_safe_cpml_steps = 1262`), so the existing
 `NX_GROW_CELLS = 200` rule grows the box to nx 1200 (gate ≈ 1514) — that path is
 already in the script and needs no change. **Cost: ≈ 1.7× one cv22 arm, which
 is ~1 s on the pod.**
@@ -934,3 +945,75 @@ Recorded because the record is the point.
   → §3(T3)'s statistical estimate is the wrong one and the coherent term must be
   carried, which would loosen every window in §5 by ~3×. That is a finding, not a
   window move: it would be a correction to a DERIVED term, appended here.
+
+## 12. The 2026-09-03 independent review — every finding, and what was done
+
+The review's verdict was FIX-THEN-SHIP. Its findings are applied above rather
+than appended, per the amended append-only rule at the head of this note. Each
+one, with the measurement that settled it:
+
+**B1 — the tightness claim was wrong at both ends.** §5.1 said the lattice gate
+is "20–200× tighter than the continuum window it sits beside". Recomputed per
+observable over cv23's nine rungs: minimum **5.2×** (`tand0p1`, T), per-bin
+floor **7.1×**, maximum **8772×** (`tand3`, T), median **21×**, and six of the
+nine rungs are below 20× in at least one observable. §5.1 now reads
+"5–8800× (median ≈ 20×)" and carries the full R/T/A-per-rung table, plus the
+cv22 ratios, where the Debye arm's lattice window is 0.6× the continuum one —
+i.e. LOOSER.
+
+**B2 — claim (b) holds for R only.** §5.3 said cv04's committed band-mean
+envelope IS this slab's Yee-lattice second-order term. Measured: the lattice
+term is 0.00727 over cv04's mask in BOTH R and T (identical: the slab is
+lossless), against committed envelopes of 0.0066 in R (ratio 1.10) and 0.011 in
+T (0.66); and `|rfx − lattice|` at cv04's own rung is 0.00168 in R but 0.00625
+in T, so more than half the T envelope is record truncation. The claim is scoped
+to `|ΔR|` in §1, §5.3, the manifest's `04_multilayer_fresnel` claim_scope and
+cv04's README and benchmarks rows, and `W_MEAN_T` is no longer described as a
+discretisation number anywhere.
+
+**B3 — the settling-bar guard did not do what §0 said.** It compared the
+requested bar against the ACTIVE recipe's `tail_limit`, so `--recipe cv04` (a
+declared flag of both cv22 and cv23) accepted `5e-2`, five times looser than
+`SETTLING_LIMIT`, and `0.0` / `−1.0` passed under r3. The guard now bars the
+family constant and the sign, `0 < bar ≤ SETTLING_LIMIT`; the four probes and a
+legitimate tightening are asserted in
+`tests/crossval/test_lattice_witness_gates.py`. §0 and §8.1 are corrected.
+
+**M1 — the consequence, not just the premise.** §5.4, new. Seven of the twelve
+committed rungs pass their continuum band-mean R gate only because
+`W_mean,R = 0.010` carries cv04's lattice term, and every measured residual
+equals its own lattice term to two significant figures. Recorded, with the
+follow-up lane proposed and its cost; no window moved.
+
+**M2 — the one new ingredient had no falsifier.** §7 F4 (`eps_continuum`), new:
+the lattice built on the continuum ε. It fires on Drude only among cv22's arms
+(sep/W 0.003 debye, 0.149 lorentz, 0.447 drude), so the ADE term is NOT
+separately testable on the Debye and Lorentz arms at these rungs — said plainly
+there, with what would make it testable and what it would cost.
+
+**M3 — two reproduction tolerances were stated more strongly than measured.**
+"≤ 1e-15" (§2) against a measured 1.7e-15, and "reproduce to 1e-15" (§10(8))
+against a measured 6.9e-15. Both now carry the measurement. (The review's own
+run measured 1.39e-15 for the first; the value here is what this environment
+measures on the test's own grid, and the environment-stable statement — the one
+the test asserts — is the 1e-14 class.)
+
+**M4 — §5.3's and §7's cv04 rows were reconstructed.** They were 3–15 % off the
+real run. Every one is now a key of
+`validation/crossval/_04_fresnel_results/lattice_witness.json`, which this PR
+commits (§9.1), and the mask is 3.032–11.867 GHz / 170 bins / 115 gated, not
+"3.03–11.81 GHz, 169 bins".
+
+**M5 — the float32 term reads as a bound and is not one.** The qualifier is
+appended to the cv22 / cv23 manifest claim_scopes and to their README and
+benchmarks rows.
+
+**Artifacts.** The three `lattice_witness.json` files are the VESSL run's, cv04's
+committed for the first time; §9.1 records the provenance, the one leaf class
+that differs between the run and this lane's local copies (81 per-bin entries at
+≤ 9.1e-15), and that cv04's exit 2 is "Meep secondary reference unavailable"
+with the case's own gates passing.
+
+**Not done, and why.** No window is widened or tightened anywhere in this lane —
+including the one §5.4 shows is discretisation-limited. That is a PI decision
+with a compute cost, and it is proposed in §5.4 rather than taken here.
