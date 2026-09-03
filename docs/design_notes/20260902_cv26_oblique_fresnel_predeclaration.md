@@ -504,3 +504,264 @@ bookkeeping (`rig_cells(dx_div=K)`), never restated.
 No wide-rig oblique arm was run locally (te_60 at dx/2 is ~30 s on the pod, above the
 local budget); their predictions (§3.2, §6) stand untested until VESSL. The Meep leg was
 not executed anywhere (no Meep on this Mac); its k_point mapping is unit-tested only.
+
+---
+
+# ROUND 2 (2026-09-03) — the two round-1 defects, and what replaced them
+
+Round 1 ran on remilab-c0 for 21 h (`vessl-run-logs/369367257858_cv26-oblique-r1.log`,
+artifacts `runs/cv26-oblique-r1-20260902T162340Z/`). It did not produce evidence. It
+produced two defects, both real physics, both in this note's own §6 and §7. This section
+is append-only; nothing above it is edited, including the numbers it corrects.
+
+## 13. Defect 1 — the record law of §6 is wrong at oblique incidence
+
+### 13.1 What round 1 did
+
+`te_00`, `tm_00`, `te_30` and the three grazing arms completed. **Every arm at 45° and 60°
+(`te_45`, `te_60`, `tm_45`, `tm_60`, all at dx and at dx/2) died** with
+`RuntimeError: record never settled within 4x the declared box`. The baseline log shows
+`te_45` at dx/2 growing the interior 1500 → 1700 → … → 6100 cells, 24 grids, each one
+reaching its CPML gate with the −40 dB witness still unmet, before the guard fired.
+
+### 13.2 Why — the two halves of §6 that do not hold at fixed k_y
+
+**(a) The witness is broadband; §6's law was not.** `_witness` is a max over the trailing
+`TAIL_WINDOW` samples of the RAW probe series. §6 timed the record by the transit of the
+slowest **gated** component, `c cos θ_hi` with θ_hi the upper edge of the 10 %-amplitude
+band (44.6° / 58.3° / 69.7°). But the pulse contains everything down to the cutoff, and at
+fixed k_y the x group velocity of a component vanishes there (`yee_vgx`, the exact 2-D Yee
+lattice at fixed k_y: `v_gx = c K_x cos(k_x dx/2) / (εμ W cos(ω dt/2))`, which is `c cos θ`
+in the continuum limit and **zero at f_c**). What actually binds the record is content far
+outside the gated band: the realized angle whose group velocity the settled record implies
+is **64.6° on the 30° arm and 79.9–84.5° on the 45° and 60° arms** (`theta_eff_deg` below),
+against the 44.6–69.7° §6 assumed. In every failed arm the witness still unmet at the cap
+was the **purity** witness on the incident (bar 1e-3), not the −40 dB scattered/transmitted
+one: the aux grid's own near-cutoff content had not yet crossed the probes.
+
+That the record is finite at all is §2's bandwidth rule doing its job: the incident
+amplitude AT the cutoff is 9.97e-4 / 9.95e-4 / 9.80e-4 at 30° / 45° / 60°, at or under the
+1e-3 purity bar, so the content that literally never arrives is already below the bar and
+everything above it arrives at a finite time. **No arm needs a narrower bandwidth or a
+narrower gated mask, and none is dropped.**
+
+**(b) The CPML gate gated the wrong thing.** §6 capped the record at the ARRIVAL of the
+first absorber echo of the FASTEST gated component. That echo's amplitude is the CPML's
+reflection at 37–53°, which is ~1e-10 in this rig — it could never move a witness. Gating
+on its arrival is what cut every 45° / 60° arm off. And growing the box cannot repair it:
+the settle grows with the box as `1/v_slow` while the cap grows as `2.9/v_fast`, so a box
+helps only where `v_slow/v_fast > 1/2.9 = 0.345`. On `te_45` at dx/2 that ratio is
+`0.1224/0.5575 = 0.220`. Round 1's 24 grids were the guard discovering this the slow way.
+
+### 13.3 The round-2 record law — computed, not estimated
+
+The three witnesses are LINEAR functionals of the aux source, so each probe series is the
+inverse transform of (source spectrum) × (exact lattice transfer function at that probe),
+and that transfer function — absorber, aux grid and its own echoes included — is what
+`yee_lattice_full` already returns. `record_probe_series` builds the four series,
+`record_witnesses` evaluates `_witness` for every possible record end, and
+`predict_settling` returns the first step at which all three sit under their **unchanged**
+bars. No FDTD, no fitted constant, no widened window, no lowered bar. The per-arm results
+are pinned in `RECORD_DECLARED` and the case reads them; the run still extends in
+`RECORD_EXTEND_STEPS` increments (cap `RECORD_CAP_FACTOR` × the record) if the FDTD's own
+tail is marginally over, so a percent-level under-prediction costs steps, never a window.
+
+**The law reproduces every arm round 1 actually settled**, each inside one extension
+quantum of its bracket (the run extends from `n_steps_min`, so a measured record of N with
+E extensions of q means it settled in `(N − q, N]`):
+
+| arm | rung | round-1 record (ext) | it settled in | derived |
+|---|---|---|---|---|
+| `te_00` | dx | 1597 (0 × 100) | ≤ 1597 | **1512** |
+| `te_30` | dx | 3172 (10 × 100) | (3072, 3172] | **3094** |
+| `te_30` | dx/2 | 6496 (11 × 200) | (6296, 6496] | **6387** |
+| `graze_pec` | dx | 22001 (5 × 100) | (21901, 22001] | **22008** |
+
+### 13.4 Per arm and per rung — the derived record, and round 1's gate
+
+`n_closed_form` is §6's law; `r1 cap` is §6's CPML arrival gate; `θ_eff` is the realized
+angle whose x group velocity the derived record implies; `e_abs` is the largest probe-field
+difference over the record between the rig with its CPML and the same lattice with an
+outgoing-wave termination, relative to the incident peak — the echo AMPLITUDE the record
+actually contains. `W_abs` is that echo through the same coherent-addition bound the
+injection term uses, `2√X·e + e²`, on the arm's own gated band; it must sit inside the
+declared `W_bin = 0.074` (no window is widened — the arrival cap is replaced by the
+amplitude statement it was standing in for).
+
+| arm | rung | derived | §6 law | ×  | §6 cap | derived/cap | θ_gate,hi | θ_eff | e_abs | W_abs R/T | gate |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `te_00` | dx | 1512 | 1597 | 0.95 | 3141 | 0.48 | 0.0° | 14.1° | 1.5e-06 | 0.000/0.000 | pass |
+| `tm_00` | dx | 1512 | 1597 | 0.95 | 3141 | 0.48 | 0.0° | 14.1° | 1.5e-06 | 0.000/0.000 | pass |
+| `te_30` | dx | 3094 | 2172 | 1.42 | 3420 | 0.90 | 44.6° | 64.6° | 6.6e-06 | 0.000/0.000 | (rung) |
+| `te_30` | **dx/2** | **6387** | 4296 | 1.49 | 6807 | 0.94 | 44.6° | 66.0° | 4.8e-06 | 0.000/0.000 | **pass** |
+| `te_45` | dx | 7362 | 3041 | 2.42 | 3999 | **1.84** | 58.3° | 80.1° | 6.7e-02 | 0.098/0.138 | (rung, OVER) |
+| `te_45` | **dx/2** | **14283** | 6020 | 2.37 | 7959 | **1.79** | 58.3° | 79.9° | 3.0e-02 | 0.043/0.061 | **pass** |
+| `te_60` | dx | 12811 | 4998 | 2.56 | 5460 | **2.35** | 69.7° | 84.2° | 3.7e-02 | 0.057/0.063 | (rung) |
+| `te_60` | **dx/2** | **26438** | 9870 | 2.68 | 10867 | **2.43** | 69.6° | 84.5° | 1.8e-02 | 0.027/0.030 | **pass** |
+| `tm_45` | dx | 7362 | 2950 | 2.50 | 3999 | **1.84** | 58.3° | 80.1° | 4.8e-02 | 0.047/0.098 | (rung, OVER) |
+| `tm_45` | **dx/2** | **14283** | 5839 | 2.45 | 7959 | **1.79** | 58.3° | 79.9° | 2.2e-02 | 0.022/0.045 | **pass** |
+| `tm_60` | dx | 12811 | 4788 | 2.68 | 5460 | **2.35** | 69.7° | 84.2° | 5.6e-02 | 0.027/0.115 | (rung, OVER) |
+| `tm_60` | **dx/2** | **26438** | 9450 | 2.80 | 10867 | **2.43** | 69.6° | 84.5° | 2.7e-02 | 0.012/0.054 | **pass** |
+| `graze_*` | dx | 22008 | 21501–23306 | ~1.0 | 4776 | 4.61 | 84.7° | 87.2° | see §13.5 | — | not gated |
+
+Every 45° / 60° arm needs **1.8–2.4×** its round-1 cap: that is exactly the margin by which
+round 1 could not settle, at every box size, and it is why the box-growing loop never
+terminated. The 30° arm needed 0.90–0.94 of its cap — it fitted, barely, which is why it
+was the only oblique arm to complete.
+
+### 13.5 The absorber term is what picks dx/2 — a second, independent reason
+
+`e_abs` is not bookkeeping: at 45–60° the 20-cell CPML (κ_max = 1, no coordinate stretch)
+reflects the near-cutoff content the record now contains, and the term **halves with
+resolution** (dx → dx/2: 0.067 → 0.030 on `te_45`, 0.037 → 0.018 on `te_60`). At dx it puts
+`te_45`, `tm_45` and `tm_60` OUTSIDE `W_bin`; at dx/2 every arm is inside. §4.6 chose dx/2
+for the oblique arms from the lattice-dispersion margin; the absorber term reaches the same
+recipe from a completely different quantity. The dx rungs stay as declared diagnostics
+(`--dx-div 1 --tag`), and `G3_absorber` is gated on the primary recipe only — a diagnostic
+rung is not a claim, and this rung's number IS the evidence.
+
+The same quantity on the compact PEC box reproduces §3.3's depth ladder from the other
+direction: `e_abs` = 0.280 / 0.092 / 0.067 / 0.036 at 8 / 16 / 20 / 32 cells, i.e.
+`2|r|` = 0.56 / 0.18 / 0.13 / 0.071 against §3.3's declared 3-D term in `R − 1` of
+0.65 / 0.17 / 0.115 / 0.051. And on the vacuum arm it is **2.7e-14** — §12.2's dead end
+("the vacuum arm cannot see the absorber"), reproduced exactly by a construction written
+five weeks later for another purpose. On the compact box the echo is inside the record BY
+DESIGN (§4.5) and `G3_absorber` is not applied there at all.
+
+### 13.6 What §6 keeps
+
+`t_safe_cpml_steps` is still computed and still reported; it is no longer a cap.
+`n_closed_form` is still computed and reported as the diagnostic it now is. The box stays
+1500 cells and the box-growing loop is **gone**: a record that does not settle inside
+`RECORD_CAP_FACTOR` × the derived record now FAILS `G3_tail`, loudly, instead of doubling
+the grid twenty-four times.
+
+## 14. Defect 2 — the Meep leg wrote infinities
+
+### 14.1 What it was NOT
+
+`_26_oblique_results/meep_te_30.json` holds `R = -inf`, `T = +inf` for all 400 bins. The
+obvious reading is the known Bloch-`k_point`-against-PML divergence. **It is not that.**
+The evidence rules it out three ways:
+
+* `te_00` failed the same way, and its `k_point` is `(0, 0, 0)` — no Bloch phase at all;
+* `te_45`, `te_60`, `tm_45`, `tm_60`, all with non-zero `k_point`, ran to completion and
+  agree with Fresnel at the realized angle to `mean|ΔR| = 0.0011`, `mean|ΔT| = 0.0012` on
+  `te_45`'s 272 gated bins, with `R + T ≤ 1.0084`;
+* on their GATED bands all four are physical: `R + T ∈ [0.974, 1.033]`. The `T` up to 1.80
+  (`te_60`) and 2.09 (`tm_60`) that the raw arrays carry sit only in the flux band's
+  near-cutoff edges, OUTSIDE every bin the case reads, where both fluxes go to zero.
+
+The split is monotone in bandwidth: the two arms that died are the two WIDEST
+(`te_00` bw 0.25, `te_30` bw 0.1902), i.e. the two with the SHORTEST sources.
+
+### 14.2 What it was
+
+`stop_when_fields_decayed(50, …)` used unguarded. Its first decay window closes 50 Meep
+time units after the sources end. The source plane sits 78 a upstream of the transmission
+monitor (`NX_INTERIOR` = 1500 cells of empty box that exist only to time-gate rfx's own
+CPML echo — Meep does not need them). On the wide-bandwidth arms the source ends early, and
+at that first check **the monitored point had seen identically zero field**: the helper's
+test is `old_cur <= max_abs * decay_by`, which for a point that has only ever been zero
+reads `0 <= 0` and returns True. The reference run stopped at t = 50.0125 with nothing in
+its flux monitors (both logs show `run 0 finished at t = 50.0125` with no `field decay`
+line at all, against `te_45`'s five), `inc_flux` came out identically zero, and
+`-flux/0` gave `∓inf` in all 400 bins. The narrow-band arms survived only because their
+longer source pushed the first check past first arrival.
+
+A second, quieter defect in the same rig: the cell was `NX_INTERIOR` wide, so Meep's PML was
+carved OUT of the interior and the source plane (rfx node `x_lo`) sat 0.5 a INSIDE it. Much
+of that cancels in the two-pass normalisation, which is why `te_45` still matched Fresnel;
+it is still wrong.
+
+### 14.3 The fix, and how it is verified
+
+* **the cell** is now `NX_INTERIOR + 2 N_CPML` — the whole rfx grid — so Meep's PML sits
+  exactly where rfx's CPML sits and the source is `TFSF_MARGIN` = 5 cells clear of it;
+* **the stop condition** is the leg's own (`make_decay_stop`): a point that has only seen
+  zero is not "decayed", and the test may not fire before `meep_min_after_sources` — the
+  same physics as the rfx record, geometric transit from the source plane to the far
+  monitor at `c cos θ_hi` plus the slab etalon's ring-down. That is **86.4 / 119.6 / 161.1 /
+  244.5 / 154.8 / 229.8** Meep units on `te_00` / `te_30` / `te_45` / `te_60` / `tm_45` /
+  `tm_60`; round 1 was allowed to stop at 50 on every one of them.
+
+Verification. There is no Meep on this Mac (§12.6), so round 2 carries the verification as
+gates the run itself must pass, not as prose:
+
+* **the vacuum witness.** The two-pass rig cannot deliver "a vacuum arm returns R below the
+  leakage bar and T within it of 1" — with no scatterer the subtraction makes R ≡ 0 and
+  T ≡ 1 identically, which tests nothing (the same degeneracy §12.2 recorded for rfx). The
+  witness that the rig CAN deliver is the empty run's **cross-box flux identity**: with no
+  scatterer the x-power through the reflection and transmission planes must be equal. The
+  leg now records both, and `meep_accept` rejects the run if they differ by more than
+  `MEEP_ACCEPT_TOL` on any gated bin. A diverged run fails this immediately. The measured
+  deviation is round 2's to report; the bar is stated at cv04's passivity ceiling because
+  no committed number for it exists yet, and round 3 tightens it from round 2's measurement
+  rather than from a guess;
+* **the analytic arm.** `te_45`'s agreement with Fresnel at the realized angle
+  (`mean|ΔR| = 0.0011` on 272 gated bins, round 1) already is the known-analytic check, and
+  it is the E4 gate's job in the case script. It is deliberately **NOT** part of the leg's
+  acceptance: a producer that refuses to write whenever Meep disagrees with the oracle turns
+  an E4 disagreement into a silent SKIP. `meep_accept` tests VALIDITY only, and
+  `test_meep_acceptance_accepts_the_oracle_itself_and_is_not_an_agreement_test` pins that:
+  an artifact 0.30 wrong in R — far outside every E4 window — must still be ACCEPTED, so
+  that the E4 gate can fail on it.
+
+### 14.4 The leg may no longer write what it cannot vouch for
+
+`meep_accept` decides before anything is written: every R, T finite over the whole flux
+band; the flux normalisation finite, non-zero, and at least `MEEP_FLUX_FLOOR` of its band
+maximum on every gated bin; `0 ≤ R, T ≤ 1` and `|R + T − 1| ≤ MEEP_ACCEPT_TOL` on the gated
+band; the flux band covering the gated band; and the empty-run flux identity. A rejected run
+writes a **rejection record** — the reasons, the geometry, the pre-check, and **no R, T
+arrays at all** — and exits 1. Replayed against round 1's six artifacts the acceptance
+rejects `te_00` and `te_30`, naming "non-finite R/T in 400/400 of 400 flux bins" and "flux
+normalisation is identically zero", and accepts the other four.
+
+One carve-out, stated because it is a hole if it is not stated: a DECLARED falsifier
+(`MEEP_FALSIFIERS`, reachable only from `--falsifier k_2pi` on `te_45`) still writes its
+arrays and still exits 0, and `meep_unavailable_reason` still passes it through. A defect
+injection exists to be judged — F4 fails at the E4 gate on `precheck_passed` — and
+withholding its arrays would turn the falsifier into a SKIP, i.e. would stop the lane
+detecting the defect the falsifier is there to detect. Its acceptance verdict and reasons
+are recorded in the artifact either way
+(`test_a_declared_falsifier_still_reaches_the_e4_gate`).
+
+E4 arms in round 2:
+**`te_00`, `te_30`, `te_45`, `te_60`, `tm_45`, `tm_60`** — none dropped, none marked
+not-yet-available; the leg simply can no longer pretend.
+
+## 15. The sequencing that let a broken artifact decide
+
+Round 1's case script read `meep_te_00.json` / `meep_te_30.json`, interpolated `±inf` onto
+the rfx bins, and reported `E4 … gates {'G4_R': False, …} -> FAIL`. A FAIL on an E4 gate
+says *rfx disagrees with Meep*. It did not; there was no Meep number to disagree with.
+
+`meep_unavailable_reason` now decides first, and an ABSENT reference and a REJECTED one are
+the same verdict — **reference unavailable**:
+
+* no artifact → skip, reason "no Meep artifact at …";
+* `accepted: false` → skip, reason "the Meep leg REJECTED its own output — …" quoting the
+  leg's own reasons;
+* an artifact with no `R`/`T`/`freqs_hz`/`k_point`, or with a non-finite `R`/`T` and no
+  acceptance record (a round-1-schema file) → skip, so a stale artifact from before this
+  change cannot decide either.
+
+Only then does `evaluate_e4` run. The exit codes already distinguished the two cases and
+now mean it: **exit 2 = the reference is unavailable (inconclusive, not a pass and not a
+disagreement); exit 1 = a gate failed** — rfx against Fresnel, or rfx/Meep against each
+other on a reference we do vouch for. Exercised locally on the `te_00` arm against round 1's
+own rejected artifact: E2 passes on all 290 bins, `E4: [SKIP] reference unavailable —
+non-finite R/T in the artifact and no acceptance record`, verdict exit 2.
+
+## 16. What round 2 owes
+
+Unchanged from §10, plus: the derived record of §13.4 must be the record every arm settles
+in (`extensions` small, `cap_reached` false on every arm); `G3_absorber` must pass on every
+primary recipe and is expected to be OVER on the `te_45`, `tm_45`, `tm_60` **dx** rungs —
+that is the measurement, not a failure; every Meep leg must exit 0 with `accepted: true`,
+and any that does not must leave its case at exit 2 with a named reason rather than at
+exit 1. **No arm is dropped, no mask is narrowed, no window is widened and no bar is
+lowered.** What would refute §13: an arm whose FDTD tail does not meet its bars within
+`RECORD_CAP_FACTOR` × the derived record, or whose measured `|R − R_Fresnel|` on the
+primary recipe exceeds `W_bin` in the direction and by the size `W_abs` predicts.
