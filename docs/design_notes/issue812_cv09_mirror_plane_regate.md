@@ -37,7 +37,7 @@ signature of a one-cell error, so it is blind to both.
 
 `rfx/boundaries/pmc.py` zeros `H_tan` at array index `-2` on a `_hi` face,
 i.e. **0.5 dx inside the declared mesh line** (solver physics, pinned by
-`tests/test_boundary_pmc_hi_faces.py`; not touched here). With
+`tests/unit/boundaries/test_boundary_pmc_hi_faces.py`; not touched here). With
 `n = ceil(HALF_X/dx)` cells the mesh line is at `n*dx` and the realized mirror
 plane is therefore
 
@@ -238,5 +238,5 @@ that survives; the declaration term is decoration on a ceil-based grid.
   eigenvalue, not the continuum closed form) plus its own two-sided
   demonstration. Left for a separate lane rather than fitted here.
 - `rfx/boundaries/pmc.py`'s half-cell placement is solver physics pinned by
-  `tests/test_boundary_pmc_hi_faces.py` and is untouched.
+  `tests/unit/boundaries/test_boundary_pmc_hi_faces.py` and is untouched.
 - `HALF_X` keeps the `+ dx/2` form; see above.

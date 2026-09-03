@@ -196,7 +196,7 @@
       "gate_paths": [
         "validation/crossval/09_half_symmetric_waveguide.py",
         "tests/oracle/test_boundary_pmc_oracle.py",
-        "tests/test_crossval_cv09_mirror_plane_gate.py"
+        "tests/crossval/test_crossval_cv09_mirror_plane_gate.py"
       ],
       "artifact_paths": [],
       "cpu_runner": {"order": 4},

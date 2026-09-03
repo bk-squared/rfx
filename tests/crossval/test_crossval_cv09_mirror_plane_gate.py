@@ -37,7 +37,7 @@ import pytest
 
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 CV09_PATH = REPO_ROOT / "validation" / "crossval" / "09_half_symmetric_waveguide.py"
 
 
