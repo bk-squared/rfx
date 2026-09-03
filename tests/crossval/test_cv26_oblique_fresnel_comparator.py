@@ -246,19 +246,78 @@ def test_bandwidth_is_set_by_the_purity_bar_at_the_cutoff():
     assert O.GRAZE_BW == 0.0037 and O.GRAZE_THETA0_DEG == 82.0
 
 
-def test_records_are_derived_and_inside_the_cpml_gate_on_the_primary_rig():
-    """Section 6: n_steps = n_pulse_end + n_echo + n_ring + window at the primary recipe; the first
-    absorber echo of the FASTEST gated component arrives after the record on the wide box."""
-    expect = {"te_00": (1, 1597, 3141), "te_30": (2, 4296, 6807), "te_45": (2, 6020, 7959),
-              "te_60": (2, 9870, 10867), "tm_00": (1, 1597, 3141), "tm_45": (2, 5839, 7959), "tm_60": (2, 9450, 10867)}
-    for arm, (K, n_steps, gate) in expect.items():
-        assert O.ARM_DX_DIV[arm] == K
-        r = O.derive_record(O.arm_spec(arm), dx_div=K)
-        assert r["n_steps"] == n_steps and r["t_safe_cpml_steps"] == gate and r["cpml_gate_ok"], (arm, r["n_steps"], r["t_safe_cpml_steps"])
-        assert r["theta_gate_hi_deg"] <= O.THETA_GATE_MAX_DEG + 1e-9
-    for arm, n_steps in {"graze_vac": 22316, "graze_pec": 21501, "graze_te": 23306}.items():
+def test_records_are_the_declared_lattice_settling_steps():
+    """Section 13 (round 2). The record of every arm and rung is the DECLARED
+    settling step of the exact lattice, not round 1's closed form -- which
+    under-predicts by 1.42x at 30 deg and by 2.4-2.8x at 45 and 60 deg,
+    because the witness is broadband and what binds it lives near the cutoff,
+    not at the gated band edge (``theta_eff_deg``)."""
+    for arm in O.ARM_ORDER:
+        for K in sorted({1, O.ARM_DX_DIV[arm]}):
+            r = O.derive_record(O.arm_spec(arm), dx_div=K)
+            assert r["record_source"].startswith("declared"), (arm, K, r["record_source"])
+            assert r["n_steps"] == O.RECORD_DECLARED[(arm, K, O.N_CPML, O.NX_INTERIOR)]["n_settle"]
+            if O.ARM_THETA0_DEG[arm] > 0:
+                # the closed form is an UNDER-estimate at every oblique rung, and the
+                # record is set by content far outside the gated band
+                ratio = r["n_steps"] / r["n_closed_form"]
+                assert ratio > (2.3 if O.ARM_THETA0_DEG[arm] >= 45 else 1.4), (arm, K, ratio)
+                assert r["theta_eff_deg"] > r["theta_gate_hi_deg"] + 10.0, (arm, K, r["theta_eff_deg"])
+    for arm in O.GRAZE_ARMS:
         r = O.derive_record(O.arm_spec(arm))
-        assert r["n_steps"] == n_steps and r["n_echo"] > 0
+        assert r["record_source"].startswith("declared") and r["n_steps"] == 22008
+
+
+def test_the_record_of_round_1s_settled_arms_is_reproduced():
+    """The two arms round 1 actually settled bracket the declared record: each
+    settled inside one RECORD_EXTEND_STEPS quantum of it.  ``rfx_baseline.log``
+    of run cv26-oblique-r1-20260902T162340Z: te_00 1597 (0 ext), te_30 3172
+    (10 ext of 100) and 6496 (11 ext of 200), graze_pec 22001 (5 ext of 100)."""
+    for arm, K, measured, quantum in (("te_00", 1, 1597, 100), ("te_30", 1, 3172, 100),
+                                      ("te_30", 2, 6496, 200), ("graze_pec", 1, 22001, 100)):
+        n = O.derive_record(O.arm_spec(arm), dx_div=K)["n_steps"]
+        assert measured - 2 * quantum < n <= measured + quantum, (arm, K, n, measured)
+
+
+def test_the_absorber_echo_over_the_record_is_what_picks_dx_over_2():
+    """Section 13.4. The echo is gated by its AMPLITUDE inside the record, not
+    by its arrival: at dx the 20-cell CPML's grazing reflection puts the 45 deg
+    arms outside W_bin, and at dx/2 it does not."""
+    for arm in ("te_45", "te_60", "tm_45", "tm_60"):
+        r2 = O.derive_record(O.arm_spec(arm), dx_div=2)
+        r1 = O.derive_record(O.arm_spec(arm), dx_div=1)
+        assert r2["absorber_ok"], (arm, r2["W_absorber_R_max"], r2["W_absorber_T_max"])
+        assert r1["e_absorber"] > 1.6 * r2["e_absorber"], (arm, r1["e_absorber"], r2["e_absorber"])
+    for arm in ("te_45", "tm_45", "tm_60"):
+        assert not O.derive_record(O.arm_spec(arm), dx_div=1)["absorber_ok"], arm
+    for arm in ("te_00", "tm_00", "te_30"):
+        assert O.derive_record(O.arm_spec(arm), dx_div=O.ARM_DX_DIV[arm])["absorber_ok"], arm
+
+
+def test_yee_group_velocity_along_x_vanishes_at_the_cutoff():
+    """``yee_vgx``: the reason an oblique record is not the normal-incidence
+    record scaled by a constant."""
+    ky = O.ky_from(F0, 45.0)
+    fc = O.cutoff_hz(ky)
+    for K in (1, 2):
+        dx, dt = O.DX_M / K, O.DT_S / K
+        f = np.array([fc * 1.0001, 7.6e9, 10e9, 14e9])
+        v = O.yee_vgx(f, ky, 1.0, 1.0, dx, dt) / O.C0
+        cos_t = np.cos(O.realized_theta_rad(f, ky))
+        # the x group velocity collapses at the cutoff (the lattice sits slightly
+        # above the continuum there, which is the direction that does not flatter it)
+        assert cos_t[0] < 0.02 and v[0] < 0.05 and v[0] > cos_t[0]
+        assert np.all(np.abs(v[1:] - cos_t[1:]) < 0.01 / K ** 2)   # -> c cos(theta), second order
+    assert O.yee_vgx(np.array([10e9]), 0.0, 1.0, 1.0, O.DX_M, O.DT_S)[0] / O.C0 > 0.99
+
+
+@pytest.mark.slow
+def test_predict_settling_reproduces_a_declared_record():
+    """The declared table is not a pinned guess: re-derive one entry."""
+    got = O.predict_settling(O.arm_spec("te_00"), dx_div=1)
+    decl = O.RECORD_DECLARED[("te_00", 1, O.N_CPML, O.NX_INTERIOR)]
+    assert got["n_settle"] == decl["n_settle"]
+    assert abs(got["e_absorber"] - decl["e_absorber"]) <= 1e-3 * decl["e_absorber"]
 
 
 def test_primary_recipe_follows_the_margin_rule():
@@ -292,3 +351,95 @@ def test_rejected_falsifiers_were_coin_tosses():
     for name, ratio in O.FALSIFIERS_REJECTED.items():
         if isinstance(ratio, float):
             assert 0.8 < ratio < 1.5
+
+
+# ---------------------------------------------------------------------------
+# The Meep leg's acceptance (note section 14, round 2). Round 1's leg wrote
+# R = -inf / T = +inf for all 400 bins on te_00 and te_30 and the E4 gate read
+# them; nothing below touches Meep, only the contract the artifact must meet.
+# ---------------------------------------------------------------------------
+
+def _meep_arrays(arm, kind):
+    spec = O.arm_spec(arm)
+    f = np.linspace(spec["f0_hz"] * (1 - 1.2 * spec["bw"]), spec["f0_hz"] * (1 + 1.2 * spec["bw"]), 400)
+    R_an, T_an = O.oracle_RT(f, spec["ky"], spec["pol"])
+    R_an = np.nan_to_num(R_an); T_an = np.nan_to_num(T_an, nan=1.0)
+    inc = np.ones_like(f)
+    if kind == "good":
+        return spec, f, R_an, T_an, inc
+    if kind == "round1":                       # the exact shape of the two dead legs
+        return spec, f, np.full_like(f, -np.inf), np.full_like(f, np.inf), np.zeros_like(f)
+    if kind == "nonphysical":                  # finite, and still not a reference
+        return spec, f, R_an, T_an + 1.0, inc
+    raise ValueError(kind)
+
+
+def test_meep_acceptance_rejects_round_1s_artifact_by_name():
+    spec, f, R, T, inc = _meep_arrays("te_30", "round1")
+    acc = O.meep_accept(f, R, T, inc, spec)
+    assert not acc["accepted"]
+    assert any("non-finite" in r for r in acc["reasons"])
+    assert any("identically zero" in r for r in acc["reasons"])
+
+
+def test_meep_acceptance_rejects_a_finite_but_non_physical_leg():
+    spec, f, R, T, inc = _meep_arrays("te_45", "nonphysical")
+    acc = O.meep_accept(f, R, T, inc, spec)
+    assert not acc["accepted"]
+    assert any("T outside" in r for r in acc["reasons"]) or any("R + T - 1" in r for r in acc["reasons"])
+
+
+def test_meep_acceptance_accepts_the_oracle_itself_and_is_not_an_agreement_test():
+    """It must pass the analytic answer, and it must NOT reject a leg merely for
+    disagreeing with it -- that would turn an E4 disagreement into a SKIP."""
+    spec, f, R, T, inc = _meep_arrays("te_45", "good")
+    assert O.meep_accept(f, R, T, inc, spec, inc_flux_refl=inc)["accepted"]
+    off = np.clip(R + 0.30, 0.0, 1.0)          # 0.30 wrong in R: far outside every E4 window
+    assert O.meep_accept(f, off, np.clip(1.0 - off, 0.0, 1.0), inc, spec)["accepted"]
+
+
+def test_meep_acceptance_catches_a_degenerate_normalisation_and_a_broken_vacuum_identity():
+    spec, f, R, T, inc = _meep_arrays("te_45", "good")
+    g = O.gated_mask(f, spec)
+    bad = inc.copy(); bad[np.flatnonzero(g)[0]] = 1e-15
+    assert not O.meep_accept(f, R, T, bad, spec)["accepted"]
+    assert not O.meep_accept(f, R, T, inc, spec, inc_flux_refl=inc * 1.5)["accepted"]
+
+
+def test_meep_unavailable_distinguishes_absent_rejected_and_usable():
+    spec, f, R, T, inc = _meep_arrays("te_45", "good")
+    good = {"accepted": True, "R": R.tolist(), "T": T.tolist(), "freqs_hz": f.tolist(), "k_point": [0, 0.2, 0]}
+    assert O.meep_unavailable_reason(good, "x") is None
+    assert "no Meep artifact" in O.meep_unavailable_reason(None, "x")
+    rej = dict(good, accepted=False, rejection_reasons=["flux normalisation is identically zero"])
+    why = O.meep_unavailable_reason(rej, "x")
+    assert "REJECTED" in why and "identically zero" in why
+    v1 = {"R": [float("-inf")] * 3, "T": [float("inf")] * 3, "freqs_hz": [1.0, 2.0, 3.0], "k_point": [0, 0, 0]}
+    assert "non-finite" in O.meep_unavailable_reason(v1, "x")   # a pre-acceptance artifact still skips
+
+
+def test_meep_minimum_run_time_covers_first_arrival_on_every_arm():
+    """Round 1's stop condition could fire ``MEEP_STOP_DT`` = 50 after the
+    sources ended; on te_00 and te_30 the pulse had not crossed the box, the
+    monitored point was still identically zero, and the run stopped with an
+    empty flux monitor."""
+    src_x, trans_x = -74.5, 3.5                      # the leg's own geometry, in units of a
+    for arm in O.MEEP_ARMS:
+        t = O.meep_min_after_sources(O.arm_spec(arm), src_x, trans_x)
+        assert t >= abs(trans_x - src_x), (arm, t)   # never below the vacuum transit
+        assert t > O.MEEP_STOP_DT, (arm, t)          # ... which is exactly what round 1 violated
+
+
+def test_a_declared_falsifier_still_reaches_the_e4_gate():
+    """A defect injection exists to be judged: withholding its arrays would turn
+    the F4 falsifier into a SKIP and the lane would stop detecting the defect it
+    is there to detect.  The carve-out is keyed on the artifact's own
+    ``falsifier`` field, which only ``--falsifier <declared name>`` sets."""
+    spec, f, R, T, inc = _meep_arrays("te_45", "nonphysical")
+    assert not O.meep_accept(f, R, T, inc, spec)["accepted"]
+    doc = {"accepted": False, "rejection_reasons": ["T outside [0, 1] by more than 0.06 on a gated bin"],
+           "R": R.tolist(), "T": T.tolist(), "freqs_hz": f.tolist(), "k_point": [0, 0.2, 0],
+           "precheck": {"passed": False}}
+    assert "REJECTED" in O.meep_unavailable_reason(doc, "x")
+    assert O.meep_unavailable_reason(dict(doc, falsifier="k_2pi"), "x") is None
+    assert set(O.MEEP_FALSIFIERS) == {"k_2pi"}

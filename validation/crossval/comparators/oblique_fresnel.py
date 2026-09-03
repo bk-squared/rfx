@@ -91,7 +91,8 @@ GRAZE_THETA0_DEG = 82.0
 GRAZE_THETA_GATE_DEG = (80.0, 85.0)
 SETTLING_LIMIT = 1e-2       # -40 dB (cv22 section 13)
 RECORD_EXTEND_STEPS = 100
-NX_GROW_CELLS = 200
+# NX_GROW_CELLS is gone (round 2, note section 13.6): growing the box made the settle grow
+# FASTER than round 1's arrival cap, so the loop could not terminate at 45 or 60 degrees.
 CONS_MAX_LIMIT = 0.06       # cv04 passivity ceiling R + T <= 1.06
 LEAK_BAR = 1e-3             # vacuum-arm witness: |scat/inc| at the refl probe (-60 dB)
 PML_REL = 0.5               # grazing absorber gate: relative window on the a-priori 3-D absorber term |R_lat3D - 1|
@@ -124,6 +125,20 @@ MEEP_CENTER_OFFSET_CELLS = 0.5    # cv23 section 14.3: nominal block off-centre 
 MEEP_FALSIFIER_ARM = "te_45"
 MEEP_FALSIFIERS = {"k_2pi": "F4: k_point in rad/a instead of 2 pi/a (k_y x 2 pi)"}
 MEEP_FALSIFIER_CASE_NAMES = {f"meep_{MEEP_FALSIFIER_ARM}_{k}": k for k in MEEP_FALSIFIERS}
+
+# --- Meep leg acceptance (note section 14, round 2). A reference leg that
+# writes infinities and reports success is worse than no reference at all, so
+# the producer must REFUSE to hand the case R, T it cannot vouch for. These
+# are VALIDITY bounds, never agreement bounds: the leg never checks itself
+# against the Fresnel oracle (that would turn an E4 disagreement into a
+# silent SKIP). ---
+MEEP_ACCEPT_TOL = CONS_MAX_LIMIT          # 0.06, cv04's passivity ceiling, reused as the
+                                          # physicality bound on 0 <= R, T <= 1 and |R + T - 1|
+MEEP_FLUX_FLOOR = 1e-9                    # |inc_flux| on a gated bin, relative to its band max:
+                                          # below this the normalisation is degenerate and R, T
+                                          # are 0/0 (round 1: inc_flux was IDENTICALLY zero)
+MEEP_STOP_DT = 50.0                       # Meep time units between decay windows (Meep's own default use)
+MEEP_DECAY_BY = 1e-3                      # the decay ratio the leg runs to
 
 
 def theta_brewster_rad(eps_r: float) -> float:
@@ -276,6 +291,31 @@ def yee_kx(f_hz, ky: float, eps, mu, dx: float, dt: float):
     arg = (dx / 2.0) * np.sqrt((eps * mu) * (wh / C0) ** 2 - Ky ** 2 + 0j)
     kx = (2.0 / dx) * np.arcsin(arg)
     return np.where(kx.imag > 0, -kx, kx)
+
+
+def yee_vgx(f_hz, ky: float, eps, mu, dx: float, dt: float):
+    """d omega / d k_x on the 2-D Yee lattice at FIXED k_y (m/s).
+
+    Differentiating the lattice dispersion relation K_x^2 + K_y^2 = eps mu W^2
+    -- K_x = 2 sin(k_x dx/2)/dx, K_y = 2 sin(k_y dx/2)/dx,
+    W = 2 sin(w dt/2)/(c dt) -- at fixed k_y gives
+
+        v_gx = c K_x cos(k_x dx/2) / (eps mu W cos(w dt/2)).
+
+    In the continuum limit K_x -> k_x, W -> w/c and this is c cos(theta)/n:
+    the x group velocity VANISHES at the cutoff f_c = k_y c / 2 pi, which is
+    why an oblique record is not the normal-incidence record times a constant.
+    """
+    f = np.asarray(f_hz, dtype=float)
+    wh = yee_omega_hat(f, dt)          # = c W, with W = 2 sin(w dt/2)/(c dt)
+    W = wh / C0
+    Ky = yee_Ky(ky, dx)                # noqa: F841  (named for the relation quoted above)
+    kx = yee_kx(f, ky, eps, mu, dx, dt)
+    Kx = 2.0 * np.sin(kx * dx / 2.0) / dx
+    with np.errstate(divide="ignore", invalid="ignore"):
+        v = C0 * (Kx * np.cos(kx * dx / 2.0)) / ((eps * mu) * W * np.cos(TWO_PI * f * dt / 2.0))
+    v = np.asarray(v)
+    return np.where(np.abs(v.imag) <= 1e-9 * np.maximum(np.abs(v.real), 1e-300), v.real, np.nan)
 
 
 def slab_rt_with_k(k1, k2, eps_slab, mu_slab, d_m: float, pol: str):
@@ -625,6 +665,200 @@ def slab_ringdown_rate(f_hz, spec: dict):
         return -np.log(rho) / t_rt, t_rt, rho
 
 
+# ---------------------------------------------------------------------------
+# Record length -- DERIVED from the exact lattice (note section 13, round 2)
+#
+# Round 1 built the record from t_pulse + L / (c cos theta_hi) with theta_hi
+# the upper edge of the GATED band, and capped it at the arrival of the first
+# absorber echo of the FASTEST gated component.  Both halves are wrong at
+# oblique incidence:
+#
+#   * the witness is a broadband time-domain max over the raw probe samples,
+#     so it is not the gated band that has to have cleared the probes but
+#     every component above the WITNESS bar -- and at fixed k_y those live
+#     arbitrarily close to the cutoff, where v_gx -> 0 (``yee_vgx``).  The
+#     measured settling angle is ~65 deg on the 30 deg arm and ~80 deg on the
+#     45 deg arm, against the 44.6 / 58.3 deg the round-1 law assumed;
+#   * the echo the arrival cap gates out is the echo of the FASTEST gated
+#     component, whose CPML reflection at 37 deg is ~1e-10 and could never
+#     move a witness.  Gating on its ARRIVAL, not its AMPLITUDE, cut every
+#     45 / 60 deg arm off before it had settled, and growing the box does not
+#     help: the settle grows with the box at 1/v_slow while the cap grows at
+#     2.9/v_fast, and v_slow/v_fast < 1/2.9 on those arms.
+#
+# The round-2 law computes the record instead of estimating it.  The three
+# witnesses of the case (``_witness``) are LINEAR functionals of the aux
+# source, so each probe time series is the inverse transform of (source
+# spectrum) x (exact lattice transfer function at that probe) -- and the
+# lattice transfer function, absorber and aux grid included, is exactly what
+# ``yee_lattice_full`` returns.  No FDTD is involved; the bars are unchanged.
+# ---------------------------------------------------------------------------
+RECORD_NFFT = 1 << 17        # 131072 samples: > 4x the longest predicted record
+RECORD_AMP_FLOOR = 1e-9      # source bins kept (relative amplitude); 1e-9 is 6 decades
+                             # under the tightest witness bar (TAIL_PURITY_LIMIT = 1e-3)
+
+
+def record_probe_series(spec: dict, *, nx_interior: int | None = None, dx_div: int = 1,
+                        n_cpml: int = N_CPML, nfft: int = RECORD_NFFT,
+                        amp_floor: float = RECORD_AMP_FLOOR, ideal_absorber: bool = False) -> dict:
+    """The four probe time series the case records (total / incident at both
+    probes), computed EXACTLY from the lattice: ifft(S(f) H(f)) with S the aux
+    source spectrum and H the lattice transfer function at that probe.
+
+    The case DFTs ``conj(x)`` so that the carrier lands at +f0; everything
+    here is built in that conjugated domain, which is why the source is
+    ``exp(+j 2 pi f0 (t - t0))`` and only positive-frequency bins are kept."""
+    K = int(dx_div)
+    dt = DT_S / K
+    nx_int = int(spec["nx_interior"] if nx_interior is None else nx_interior)
+    cells = rig_cells(nx_int, n_cpml, dx_div=K)
+    eps_s, mu_s = rfx_slab_materials(spec["pol"]) if spec["slab"] else (1.0, 1.0)
+    tau = 1.0 / (math.pi * spec["f0_hz"] * spec["bw"])
+    t0 = SRC_T0_OVER_TAU * tau
+    t = np.arange(nfft) * dt
+    src = np.exp(1j * TWO_PI * spec["f0_hz"] * (t - t0)) * np.exp(-(((t - t0) / tau) ** 2))
+    S = np.fft.fft(src)
+    fr = np.fft.fftfreq(nfft, d=dt)
+    keep = (fr > 0) & (np.abs(S) > amp_floor * np.abs(S).max())
+    lat = yee_lattice_full(fr[keep], spec["ky"], cells, eps_slab=eps_s, mu_slab=mu_s,
+                           dx=cells["dx"], dt=dt, n_cpml=n_cpml, pec=bool(spec["pec"]),
+                           ideal_absorber=ideal_absorber)
+    out = {}
+    for name, H in (("tot_r", lat["E_probe_refl"]), ("tot_t", lat["E_probe_trans"]),
+                    ("inc_r", lat["E_inc_refl"]), ("inc_t", lat["E_inc_trans"])):
+        Y = np.zeros(nfft, complex)
+        Y[keep] = S[keep] * H
+        out[name] = np.fft.ifft(Y)
+    out.update(dt_s=dt, cells=cells, nfft=nfft, n_freq_bins=int(keep.sum()))
+    return out
+
+
+def _trailing_max(env: np.ndarray, tw: int) -> np.ndarray:
+    """out[n] = max(env[n - tw : n]) -- the case's tail window, as a function
+    of where the record ends (inf until a full window exists)."""
+    from numpy.lib.stride_tricks import sliding_window_view
+    out = np.full(env.size, np.inf)
+    out[tw - 1:] = sliding_window_view(env, tw).max(axis=1)
+    return out
+
+
+def record_witnesses(ser: dict, dx_div: int = 1) -> dict:
+    """``26_oblique_slab_fresnel.py::_witness`` evaluated on the exact series,
+    for every possible record end."""
+    tw = TAIL_WINDOW * int(dx_div)
+    inc_peak = max(np.abs(ser["inc_r"]).max(), np.abs(ser["inc_t"]).max())
+    scat = ser["tot_r"] - ser["inc_r"]
+    purity = np.maximum(np.abs(ser["inc_r"]), np.abs(ser["inc_t"])) / inc_peak
+    return {"inc_peak": float(inc_peak), "tail_window": tw,
+            "purity": _trailing_max(purity, tw),
+            "refl": _trailing_max(np.abs(scat) / inc_peak, tw),
+            "trans": _trailing_max(np.abs(ser["tot_t"]) / inc_peak, tw),
+            "peak_step": int(np.argmax(np.abs(ser["tot_t"])))}
+
+
+def absorber_window(spec: dict, e_absorber: float) -> dict:
+    """The a-priori R / T term of an absorber echo of relative amplitude
+    ``e_absorber`` carried inside the record, on the arm's own gated band: the
+    same coherent-addition bound the injection term uses,
+    |sqrt(X) + e|^2 - X = 2 sqrt(X) e + e^2, with X the DECLARED Fresnel R or
+    T of the bin.  Admissible only where it stays inside the declared bin
+    window W_BIN -- no window is widened."""
+    if not np.isfinite(e_absorber):
+        return {"W_absorber_R_max": float("nan"), "W_absorber_T_max": float("nan"), "absorber_ok": False}
+    nfft = 1 << 16
+    f = np.fft.rfftfreq(nfft, d=DT_S)
+    g = gated_mask(f, spec)
+    if not g.any():
+        return {"W_absorber_R_max": float("nan"), "W_absorber_T_max": float("nan"), "absorber_ok": False}
+    R_an, T_an = oracle_RT(f[g], spec["ky"], spec["pol"])
+    if not spec["slab"]:
+        R_an = np.ones_like(f[g]); T_an = np.ones_like(f[g])       # the PEC / vacuum arms: worst case
+    wR = float(np.nanmax(injection_term(R_an, leak_bar=e_absorber)))
+    wT = float(np.nanmax(injection_term(T_an, leak_bar=e_absorber)))
+    return {"W_absorber_R_max": wR, "W_absorber_T_max": wT,
+            "absorber_ok": bool(max(wR, wT) <= W_BIN)}
+
+
+def predict_settling(spec: dict, *, nx_interior: int | None = None, dx_div: int = 1,
+                     n_cpml: int = N_CPML, nfft: int = RECORD_NFFT,
+                     with_absorber_term: bool = True) -> dict:
+    """The DERIVED record of one arm at one rung: the first step at which all
+    three witnesses sit under their (unchanged) bars, plus the a-priori
+    absorber-echo term of that record.
+
+    ``e_absorber`` is the largest probe-field difference over the record
+    between the rig with its CPML and the same lattice with an outgoing-wave
+    termination, relative to the incident peak -- the echo AMPLITUDE the
+    record actually contains.  It enters R through the same coherent-addition
+    bound the injection term uses (``injection_term``), and the record is
+    admissible only where that term stays inside the declared bin window
+    W_BIN: no window is widened, the arrival cap is simply replaced by the
+    amplitude statement it was standing in for."""
+    K = int(dx_div)
+    ser = record_probe_series(spec, nx_interior=nx_interior, dx_div=K, n_cpml=n_cpml, nfft=nfft)
+    w = record_witnesses(ser, K)
+    ok = (w["purity"] < TAIL_PURITY_LIMIT) & (w["refl"] < SETTLING_LIMIT) & (w["trans"] < SETTLING_LIMIT)
+    ok[:w["peak_step"]] = False       # before the pulse arrives the probes are trivially quiet
+    idx = np.flatnonzero(ok)
+    n = int(idx[0]) + 1 if idx.size else None
+    out = {"arm": spec["arm"], "dx_div": K, "nx_interior": int(ser["cells"]["nx"]),
+           "n_settle": n, "nfft": nfft, "n_freq_bins": ser["n_freq_bins"],
+           "tail_window": w["tail_window"], "inc_peak": w["inc_peak"],
+           "purity_at_settle": (float(w["purity"][n - 1]) if n else None),
+           "refl_at_settle": (float(w["refl"][n - 1]) if n else None),
+           "trans_at_settle": (float(w["trans"][n - 1]) if n else None)}
+    if n is not None:
+        dt = ser["dt_s"]
+        cells = ser["cells"]
+        tau = 1.0 / (math.pi * spec["f0_hz"] * spec["bw"])
+        n_src_end = (SRC_T0_OVER_TAU * tau + PULSE_END_ARG_40DB * tau) / dt
+        L = cells["aux_src_to_x_lo"] + (cells["probe_trans"] - cells["x_lo"])
+        v_eff = L / max(n - n_src_end - w["tail_window"], 1.0)          # cells/step
+        v0 = C0 * dt / cells["dx"]
+        out["path_cells"] = int(L)
+        out["v_eff_cells_per_step"] = float(v_eff)
+        out["theta_eff_deg"] = float(np.degrees(np.arccos(np.clip(v_eff / v0, -1.0, 1.0))))
+    if with_absorber_term and n is not None:
+        ser_i = record_probe_series(spec, nx_interior=nx_interior, dx_div=K, n_cpml=n_cpml,
+                                    nfft=nfft, ideal_absorber=True)
+        e = max(float(np.abs(ser[k][:n] - ser_i[k][:n]).max()) / w["inc_peak"] for k in ("tot_r", "tot_t"))
+        out["e_absorber"] = e
+        out.update(absorber_window(spec, e))
+    return out
+
+
+# The DECLARED record of every arm and rung, keyed (arm, dx_div, n_cpml, nx_interior).
+# Each entry is ``predict_settling``'s output on that rig: ``n_settle`` is the first
+# step at which the case's three witnesses sit under their UNCHANGED bars
+# (TAIL_PURITY_LIMIT on the incident, SETTLING_LIMIT on the scattered and the
+# transmitted), and ``e_absorber`` is the largest probe-field difference over that
+# record between the rig with its CPML and the same lattice with an outgoing-wave
+# termination, relative to the incident peak.  ``theta_eff_deg`` is the realized
+# angle whose x group velocity the record implies -- the physics readout: the record
+# is set by content far outside the gated band, close to the cutoff.
+# Reproduced by tests/crossval/test_cv26_oblique_fresnel_comparator.py (slow marks).
+RECORD_DECLARED: dict[tuple[str, int, int, int], dict] = {
+    ("te_00", 1, 20, 1500): {"n_settle": 1512, "e_absorber": 1.4737376641852275e-06, "theta_eff_deg": 14.13},
+    ("tm_00", 1, 20, 1500): {"n_settle": 1512, "e_absorber": 1.5244516563353113e-06, "theta_eff_deg": 14.13},
+    ("te_30", 1, 20, 1500): {"n_settle": 3094, "e_absorber": 6.554616968592558e-06, "theta_eff_deg": 64.64},
+    ("te_30", 2, 20, 1500): {"n_settle": 6387, "e_absorber": 4.790797487325276e-06, "theta_eff_deg": 65.97},
+    ("te_45", 1, 20, 1500): {"n_settle": 7362, "e_absorber": 0.06663583135586092, "theta_eff_deg": 80.13},
+    ("te_45", 2, 20, 1500): {"n_settle": 14283, "e_absorber": 0.029841546179688764, "theta_eff_deg": 79.93},
+    ("te_60", 1, 20, 1500): {"n_settle": 12811, "e_absorber": 0.03690936622405856, "theta_eff_deg": 84.22},
+    ("te_60", 2, 20, 1500): {"n_settle": 26438, "e_absorber": 0.01788762793520409, "theta_eff_deg": 84.5},
+    ("tm_45", 1, 20, 1500): {"n_settle": 7362, "e_absorber": 0.047689691056383224, "theta_eff_deg": 80.13},
+    ("tm_45", 2, 20, 1500): {"n_settle": 14283, "e_absorber": 0.02246093995265182, "theta_eff_deg": 79.93},
+    ("tm_60", 1, 20, 1500): {"n_settle": 12811, "e_absorber": 0.056103069518629214, "theta_eff_deg": 84.22},
+    ("tm_60", 2, 20, 1500): {"n_settle": 26438, "e_absorber": 0.026598550957916182, "theta_eff_deg": 84.5},
+    ("graze_vac", 1, 20, 100): {"n_settle": 22008, "e_absorber": 2.743083609229469e-14, "theta_eff_deg": 87.22},
+    ("graze_pec", 1, 20, 100): {"n_settle": 22008, "e_absorber": 0.06697031182708263, "theta_eff_deg": 87.22},
+    ("graze_te", 1, 20, 100): {"n_settle": 22008, "e_absorber": 0.05644219130054219, "theta_eff_deg": 87.22},
+    ("graze_pec", 1, 8, 100): {"n_settle": 22008, "e_absorber": 0.2797267820174598, "theta_eff_deg": 87.22},
+    ("graze_pec", 1, 16, 100): {"n_settle": 22008, "e_absorber": 0.09216001043621881, "theta_eff_deg": 87.22},
+    ("graze_pec", 1, 32, 100): {"n_settle": 22008, "e_absorber": 0.03550201937209352, "theta_eff_deg": 87.22},
+}
+
+
 def derive_record(spec: dict, dt: float | None = None, *, n_cpml: int = N_CPML, nx_interior: int | None = None,
                   dx_div: int = 1) -> dict:
     """n_steps_min = n_pulse_end + n_ring + TAIL_WINDOW (cv22 section 13
@@ -680,17 +914,38 @@ def derive_record(spec: dict, dt: float | None = None, *, n_cpml: int = N_CPML, 
         path_lo = (cells["slab_lo"] - cells["n_cpml"]) + (cells["probe_refl"] - cells["n_cpml"])
         n_echo = int(math.ceil(max(path_hi if not spec["pec"] else 0, path_lo) / v_slow))
     tail_window = TAIL_WINDOW * K
-    n_steps = n_pulse_end + n_echo + n_ring + tail_window
+    n_closed_form = n_pulse_end + n_echo + n_ring + tail_window
     # cv04's CPML gate at the fastest gated component (first-arrival at the trans
     # probe + the round trip to the nearer absorber); irrelevant for the compact box
     n_arrive_fast = int(math.ceil((t0 - 2.0 * tau) / dt + src_to_trans / v_fast))
     t_safe = n_arrive_fast + int(2 * min(cells["dist_cpml_hi"], cells["dist_cpml_lo"]) / v_fast * 0.95)
+    # --- the DECLARED record (note section 13): the exact settling step of this
+    # lattice, from ``predict_settling``.  The closed form above is kept only as a
+    # diagnostic -- it under-predicts by 2.0x (30 deg) to 2.7x (60 deg) because the
+    # witness is broadband and the content that binds it sits near the cutoff, not
+    # at the gated band edge.  ``t_safe_cpml_steps`` likewise stays as a reported
+    # number; the absorber is gated by ``e_absorber``, its AMPLITUDE over the record. ---
+    # the declared record belongs to the DECLARED arm; --smoke re-aims the compact
+    # rig at SMOKE_THETA0_DEG and must fall back to the closed form
+    _canon = arm_spec(spec["arm"])
+    _same = (abs(spec["bw"] - _canon["bw"]) < 1e-12 and abs(spec["ky"] - _canon["ky"]) < 1e-9
+             and bool(spec["slab"]) == bool(_canon["slab"]))
+    decl = RECORD_DECLARED.get((spec["arm"], K, int(n_cpml), nx_int)) if _same else None
+    if decl is not None:
+        n_steps, source = int(decl["n_settle"]), "declared (predict_settling)"
+        e_abs = float(decl["e_absorber"])
+    else:
+        n_steps, source = n_closed_form, "closed-form fallback (NOT declared)"
+        e_abs = float("nan")
+    aw = absorber_window(spec, e_abs)
     return {"arm": spec["arm"], "nx_interior": nx_int, "n_cpml": n_cpml, "dt_s": dt, "bw": spec["bw"],
             "src_tau_s": tau, "src_t0_s": t0, "theta_gate_lo_deg": float(np.degrees(th_lo)),
             "theta_gate_hi_deg": float(np.degrees(th_hi)), "v_cells_slow": v_slow, "v_cells_fast": v_fast,
             "n_pulse_end": n_pulse_end, "n_ring": n_ring, "n_echo": n_echo, "tail_window": tail_window,
-            "n_steps": n_steps, "t_safe_cpml_steps": int(t_safe),
-            "cpml_gate_ok": bool(spec["compact"] or t_safe >= n_steps), "settling_limit": SETTLING_LIMIT,
+            "n_steps": n_steps, "n_closed_form": n_closed_form, "record_source": source,
+            "theta_eff_deg": (float(decl["theta_eff_deg"]) if decl else float("nan")),
+            "e_absorber": e_abs, **aw,
+            "t_safe_cpml_steps": int(t_safe), "settling_limit": SETTLING_LIMIT,
             "n_gated_bins_nfft65536": int(g.sum()), **ring, **cells}
 
 
@@ -978,6 +1233,143 @@ FALSIFIER_MUST_EXIT_1 = ("te_60_angle_m5", "te_45_swap_tm", "tm_60_swap_te", "te
 # 4.8x but puts the run's cutoff (9.06 GHz) inside the band with 3.4e-2 of incident there, so the purity
 # witness would fire too and the reading would be ambiguous; -5 deg (55 deg, cutoff content 3e-6) is 3.0x.
 FALSIFIERS_REJECTED = {"te_45_angle_p5": 0.94, "te_30_angle_p5": 1.07, "te_60_angle_p5": "purity-ambiguous"}
+
+
+# ---------------------------------------------------------------------------
+# Meep leg: minimum run time and artifact acceptance (note section 14, round 2)
+# ---------------------------------------------------------------------------
+
+def meep_unavailable_reason(meep_doc, path: str, rel_to: str | None = None) -> str | None:
+    """Why the E4 gate must SKIP instead of deciding, or ``None`` if the
+    reference may be used.  An ABSENT reference and one the leg REJECTED are
+    the same verdict -- "reference unavailable" -- and neither may be read as
+    a number.  Round 1 read R = -inf, T = +inf out of a rejected artifact and
+    reported E4 FAIL, which says "rfx disagrees with Meep"; it did not."""
+    rel = os.path.relpath(path, rel_to) if rel_to else path
+    if meep_doc is None:
+        return f"no Meep artifact at {rel}"
+    if meep_doc.get("accepted") is False:
+        if meep_doc.get("falsifier"):
+            # A DECLARED defect injection (MEEP_FALSIFIERS) exists to be judged: its whole
+            # point is that the E4 gate must FAIL on it, and it fails on `precheck_passed`.
+            # Withholding it would turn a falsifier into a SKIP and the lane would stop
+            # detecting the defect it is there to detect.  This carve-out is reachable only
+            # from --falsifier <declared name> on the declared arm.
+            return None
+        why = "; ".join(meep_doc.get("rejection_reasons") or ["(no reason recorded)"])
+        return f"{rel}: the Meep leg REJECTED its own output -- {why}"
+    for k in ("R", "T", "freqs_hz", "k_point"):
+        if k not in meep_doc:
+            return f"{rel}: the artifact carries no '{k}'"
+    R = np.asarray(meep_doc["R"], dtype=float); T = np.asarray(meep_doc["T"], dtype=float)
+    if not (np.all(np.isfinite(R)) and np.all(np.isfinite(T))) and not meep_doc.get("falsifier"):
+        # a pre-acceptance (v1) artifact, or one written by hand
+        return f"{rel}: non-finite R/T in the artifact and no acceptance record"
+    return None
+
+
+def meep_min_after_sources(spec: dict, src_x: float, trans_x: float, a_m: float = MEEP_A_M) -> float:
+    """Meep time units the leg must run AFTER its sources end before
+    ``stop_when_fields_decayed`` is allowed to fire.
+
+    Round 1 used Meep's helper unguarded.  Its first decay window closes
+    ``MEEP_STOP_DT`` after the sources end; on the two WIDE-bandwidth arms
+    (te_00 at bw 0.25, te_30 at 0.1902) the source is short, the transmission
+    monitor is 78 a downstream, and at that first check the monitored point
+    had seen IDENTICALLY zero field -- so ``old_cur <= max_abs * decay_by``
+    read ``0 <= 0``, the run stopped with nothing in the flux monitors, the
+    normalisation came out zero and the leg wrote R = -inf, T = +inf for all
+    400 bins.  The narrow-bandwidth arms survived only because their longer
+    source pushed the first check past first arrival.
+
+    The bound is the same physics as the rfx record: geometric transit from
+    the source plane to the far monitor at the x group velocity of the
+    SLOWEST gated component (c cos theta_hi; c = 1 in Meep units), plus the
+    slab etalon's ring-down at that angle."""
+    edges = band_edges(spec)
+    th_hi = math.radians(min(edges["theta_at_f_lo_deg"], spec["theta_gate_deg"][1]))
+    transit = abs(trans_x - src_x) / max(math.cos(th_hi), 1e-6)
+    t_ring = 0.0
+    if spec["slab"]:
+        nfft = 1 << 16
+        f = np.fft.rfftfreq(nfft, d=DT_S)
+        g = gated_mask(f, spec)
+        rate, _t_rt, _rho = slab_ringdown_rate(f[g], spec)
+        w = incident_amp_rel(f[g], spec["f0_hz"], spec["bw"])
+        with np.errstate(divide="ignore", invalid="ignore"):
+            t_ring = float(np.nanmax(np.where(rate > 0, np.log(100.0 * w) / rate, 0.0)))
+        t_ring = max(t_ring, 0.0) * C0 / a_m        # seconds -> Meep time units
+    return float(transit + t_ring)
+
+
+def meep_accept(freqs_hz, R, T, inc_flux, spec: dict, *,
+                inc_flux_refl=None, tol: float = MEEP_ACCEPT_TOL,
+                flux_floor: float = MEEP_FLUX_FLOOR) -> dict:
+    """Is this Meep output fit to be a reference at all?  VALIDITY only --
+    never agreement with the oracle, which would turn an E4 disagreement into
+    a silent SKIP.  Returns ``accepted`` and the named reasons it is not.
+
+    1. every R, T finite over the whole flux band (a diverged run is not a
+       reference for any bin);
+    2. the flux normalisation is finite, non-zero, and on every gated bin at
+       least ``flux_floor`` of its band maximum (round 1's failure);
+    3. on the gated band 0 - tol <= R, T <= 1 + tol and |R + T - 1| <= tol,
+       tol = MEEP_ACCEPT_TOL (cv04's passivity ceiling);
+    4. the flux band covers the gated band;
+    5. the EMPTY run's cross-box flux identity, when the leg reports it: with
+       no scatterer the x-power through the reflection and transmission
+       planes must agree to ``tol``.  This is the leg's vacuum witness -- the
+       one form of it the two-pass rig can deliver, since R and T of a
+       vacuum arm are 0 and 1 by construction of the subtraction."""
+    f = np.asarray(freqs_hz, dtype=float)
+    R = np.asarray(R, dtype=float); T = np.asarray(T, dtype=float)
+    inc = np.asarray(inc_flux, dtype=float)
+    g = gated_mask(f, spec)
+    reasons = []
+    if not g.any():
+        reasons.append("no gated bin lies in the Meep flux band")
+    if not (np.all(np.isfinite(R)) and np.all(np.isfinite(T))):
+        reasons.append(f"non-finite R/T in {int((~np.isfinite(R)).sum())}/{int((~np.isfinite(T)).sum())} "
+                       f"of {R.size} flux bins")
+    if not np.all(np.isfinite(inc)):
+        reasons.append("non-finite flux normalisation")
+    inc_max = float(np.nanmax(np.abs(inc))) if inc.size else 0.0
+    if not (inc_max > 0.0):
+        reasons.append("flux normalisation is identically zero (the reference run accumulated no flux)")
+    elif g.any():
+        rel = np.abs(inc[g]) / inc_max
+        if float(rel.min()) < flux_floor:
+            reasons.append(f"flux normalisation degenerate on a gated bin: min |inc|/max |inc| = "
+                           f"{float(rel.min()):.3e} < {flux_floor:g}")
+    stats = {}
+    if g.any() and np.all(np.isfinite(R[g])) and np.all(np.isfinite(T[g])):
+        Rg, Tg = R[g], T[g]
+        stats = {"R_min": float(Rg.min()), "R_max": float(Rg.max()), "T_min": float(Tg.min()),
+                 "T_max": float(Tg.max()), "closure_max": float(np.abs(Rg + Tg - 1.0).max())}
+        if stats["R_min"] < -tol or stats["R_max"] > 1.0 + tol:
+            reasons.append(f"R outside [0, 1] by more than {tol:g} on a gated bin "
+                           f"([{stats['R_min']:.4f}, {stats['R_max']:.4f}])")
+        if stats["T_min"] < -tol or stats["T_max"] > 1.0 + tol:
+            reasons.append(f"T outside [0, 1] by more than {tol:g} on a gated bin "
+                           f"([{stats['T_min']:.4f}, {stats['T_max']:.4f}])")
+        if stats["closure_max"] > tol:
+            reasons.append(f"|R + T - 1| = {stats['closure_max']:.4f} > {tol:g} on a gated bin")
+    if g.any() and not (f.min() <= f[g].min() and f.max() >= f[g].max()):
+        reasons.append("Meep flux band does not cover the gated band")
+    if inc_flux_refl is not None:
+        ir = np.asarray(inc_flux_refl, dtype=float)
+        if not np.all(np.isfinite(ir)):
+            reasons.append("non-finite reflection-plane flux in the empty run")
+        elif g.any() and inc_max > 0.0:
+            with np.errstate(divide="ignore", invalid="ignore"):
+                ratio = ir[g] / inc[g]
+            dev = float(np.nanmax(np.abs(ratio - 1.0)))
+            stats["vacuum_flux_ratio_dev"] = dev
+            if not np.isfinite(dev) or dev > tol:
+                reasons.append(f"empty-run cross-box flux identity fails: max |flux_refl/flux_trans - 1| = "
+                               f"{dev:.4f} > {tol:g}")
+    return {"accepted": not reasons, "reasons": reasons, "tol": tol, "flux_floor": flux_floor,
+            "n_gated": int(g.sum()), **stats}
 
 
 def falsifier_prediction(name: str, dt: float | None = None) -> dict:
