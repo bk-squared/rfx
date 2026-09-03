@@ -21,7 +21,7 @@ normal incidence. The solver has two oblique TFSF paths — `rfx/sources/tfsf_2d
 (`method="bloch"`, Bloch-periodic transverse axis, the #404 field-transformation) and
 `rfx/sources/tfsf_oblique_open.py` (`method="methodB"`, open-domain 2.5-D) — documented in
 `docs/public/guide/sources-ports.mdx` ("TFSF plane-wave source"), and neither is in
-crossval. The existing physics evidence is `tests/test_oblique_fresnel_magnitude.py` /
+crossval. The existing physics evidence is `tests/oracle/test_oblique_fresnel_magnitude.py` /
 `_phase.py` (slow / highmem, |Γ| vs half-space Fresnel R_TE at 30° / 45° within 10 % / 8 %,
 measured 7.2 % / 3.9 %; 60° "CPML-contaminated (memory)" and not gated) and the TFSF leakage
 tests (`tests/test_tfsf_oblique*.py`, SF/TF energy < 1 % at 30° / 45°). The CPML's
@@ -397,7 +397,7 @@ here so the run can refute it.
 Reading rules: an F1 exit 1 counts only with `G2_R = false`; a purity-only failure does
 not. F5 must fail G6 on ≥ 60 of 69 bins; F5b on ≥ 20 (a falsifier failing on fewer bins
 than predicted is a finding about the window, recorded). Unit-level (no FDTD,
-`tests/test_cv26_oblique_fresnel_comparator.py`): every declared margin above is recomputed
+`tests/crossval/test_cv26_oblique_fresnel_comparator.py`): every declared margin above is recomputed
 from the module and asserted ≥ 2.9× (E2) / ≥ 60 and ≥ 20 bins (F5, F5b); the rejected ones are
 asserted to be coin tosses.
 
