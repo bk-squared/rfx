@@ -151,15 +151,19 @@ def test_compute_msl_registers_sparse_regions():
 
 # ---------------------------------------------------------------------------
 # End-to-end: the cropped extractor arithmetic must reproduce the full-plane
-# S-matrix bit for bit. The three tests above never reach it — the uniform
+# S-matrix. The three tests above never reach it — the uniform
 # and nonuniform scans accumulate through their own hand-copies of the DFT
 # update (rfx/simulation.py, rfx/nonuniform.py), not update_dft_plane_probe,
 # and the registration test feeds the extractor full-plane fakes so it
 # takes the legacy fallback. This one runs the real thru on both lanes and
 # both port orientations (a_is_width True/False), once with the crop
-# engaged and once with the crop forced off, and compares complex S exactly.
+# engaged and once with the crop forced off, and compares complex S to a
+# derived two-shapes-one-program ulp budget (#876; the bitwise claim
+# lives in test_sparse_monitor_matches_full_plane).
 # Mutation twins: an off-by-one in the cropped j/k arithmetic, or a missing
-# -1/+1 contour margin, moves S here and nowhere else in the suite.
+# -1/+1 contour margin, moves S here and nowhere else in the suite — and
+# still does under the derived budget: the off-by-one twin moves S 3x above
+# it (measured, see the derivation).
 # ---------------------------------------------------------------------------
 
 from tests.unit.ports.test_msl_port_axis_generality import (  # noqa: E402
@@ -241,6 +245,15 @@ def _run_s(axis, lane, monkeypatch, *, crop: bool, seen: list):
 @pytest.mark.parametrize("lane,axis", [("uniform", "x"), ("uniform", "y"),
                                        ("nonuniform", "x")])
 def test_cropped_extractor_reproduces_full_plane_s_end_to_end(monkeypatch, lane, axis):
+    """The cropped extractor is the SAME COMPUTATION as the full-plane one.
+
+    A compiled-program identity check across two accumulator SHAPES, not a
+    physics tolerance: the tolerance below is derived from the ulp budget
+    two shapes of one program are allowed to differ by, and the exact
+    index-level claim is gated bitwise by
+    ``test_sparse_monitor_matches_full_plane``. See the derivation at the
+    assertion.
+    """
     seen_crop: list = []
     s_crop, z_crop = _run_s(axis, lane, monkeypatch, crop=True, seen=seen_crop)
     seen_full: list = []
@@ -255,6 +268,65 @@ def test_cropped_extractor_reproduces_full_plane_s_end_to_end(monkeypatch, lane,
     # ...and the second run reset every one of them (so it went full-plane)
 
     assert s_crop.shape == s_full.shape == (2, 2, 3)
-    np.testing.assert_array_equal(s_crop, s_full)
-    np.testing.assert_array_equal(z_crop, z_full)
+
+    # ---------------------------------------------------------------
+    # The bound is a COMPILED-PROGRAM IDENTITY budget, not a physics
+    # tolerance (#876). Both runs solve the same fields with the same
+    # extractor; the only difference is the SHAPE of the DFT accumulator
+    # — a cropped rectangle vs the full transverse plane — i.e. two
+    # compiled programs for one computation. The exact, index-level
+    # claim ("the crop retains exactly the requested samples") stays a
+    # BITWISE gate in test_sparse_monitor_matches_full_plane above; this
+    # test asks the weaker end-to-end question, so it may only spend the
+    # ulps that two shapes of one program can differ by.
+    #
+    # Where those ulps come from: update_dft_plane_probe is elementwise
+    # and V/I are Python-loop sums in identical order, so no reduction
+    # order changes. What changes is whether the XLA fusion emitter
+    # contracts the complex multiply-add of the accumulate, and on arm64
+    # it contracts one shape and not the other (measured on this
+    # fixture: 7-19 of 60 cropped Hy/Hz accumulator entries 1 ulp from
+    # the full-plane ones; the Ez accumulators and V bitwise identical
+    # in all 20 calls).
+    #
+    # Budget, in float32 ulps u = 2**-23:
+    #   * the accumulate: the DFT bin is driven at the source frequency,
+    #     so the sum is COHERENT (|acc| grows like N*|term| over the N
+    #     steps) and N steps of at-most-1-ulp-per-step disagreement stay
+    #     1 ulp RELATIVE, not N ulp. That is what the accumulators
+    #     measure: exactly 1 ulp after all N steps.
+    #   * V and I are each a fixed-order sum over at most n_cells
+    #     accumulator entries, so each inherits at most (n_cells + 1)*u
+    #     — the standard forward-error bound gamma_n = n*u/(1 - n*u) ~
+    #     n*u for a length-n summation.
+    #   * S is assembled from both, so the two contributions add:
+    #     (2*n_cells + 1)*u.
+    # The budget is spent ABSOLUTELY at the scale of the matrix: an S
+    # entry near zero is a difference of two O(1) wave amplitudes and
+    # carries no relative accuracy of its own, so rtol=0 and
+    # atol = ulps * u * max|S|. n_cells is read off the crop rectangles
+    # this run actually used, so the bound follows the fixture instead
+    # of being a written-in number.
+    #
+    # Measured (n_cells = 20 -> 41 u -> atol = 4.88e-06 at max|S| =
+    # 0.9985):
+    #   jax 0.10.2 / numpy 2.4.6, arm64: max |dS| = 1.49e-07 (uniform-x,
+    #     the number in the issue), 1.34e-07 (uniform-y), 1.20e-07
+    #     (nonuniform-x)
+    #   jax 0.6.2 / numpy 2.2.6 (CI's versions), arm64: 3.04e-07
+    #     (uniform-x), 2.39e-07 (uniform-y), 3.69e-07 (nonuniform-x)
+    # i.e. 13x to 41x inside the budget, on both JAX versions. And the
+    # mutation twin this test exists for still dies: shifting the crop
+    # rectangle by ONE index moves S by 1.56e-05 here, 3.2x ABOVE the
+    # budget.
+    # ---------------------------------------------------------------
+    n_cells = max((r[1] - r[0]) * (r[3] - r[2]) for r in regions)
+    ulps = 2 * n_cells + 1
+    u = float(np.finfo(np.float32).eps)
+    np.testing.assert_allclose(
+        s_crop, s_full, rtol=0.0,
+        atol=ulps * u * float(np.max(np.abs(s_full))))
+    np.testing.assert_allclose(
+        z_crop, z_full, rtol=0.0,
+        atol=ulps * u * float(np.max(np.abs(z_full))))
     assert np.all(np.isfinite(s_crop))
