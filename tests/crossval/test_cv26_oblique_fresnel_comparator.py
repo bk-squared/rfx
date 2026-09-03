@@ -22,7 +22,7 @@ import pytest
 
 from tests._gate_policy import gate_from_envelope
 
-_REPO = Path(__file__).resolve().parents[1]
+_REPO = Path(__file__).resolve().parents[2]
 
 
 def _load(name: str, rel: str):
