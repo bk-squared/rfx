@@ -34,6 +34,7 @@ import pytest
 _REPO = Path(__file__).resolve().parents[2]
 _R22 = _REPO / "validation/crossval/_22_dispersive_results"
 _R23 = _REPO / "validation/crossval/_23_lossy_results"
+_R22D = _REPO / "validation/crossval/_22_dispersive_diag"   # note section 8.1's remedy rung
 
 
 def _load(name: str, rel: str):
@@ -398,6 +399,86 @@ def test_falsifiers_fire_exactly_where_the_note_says_they_do(case, case_id, resu
             assert fired == should_fire, (
                 case, name, kind, "fired" if fired else "silent",
                 fr["separation_over_window_R"], fr["n_bins_R_over_window"])
+
+
+def test_the_section_8_1_remedy_rung_closes_the_debye_limitation():
+    """Note sections 5.2, 7 and 8.1. The Debye arm's lattice gate at its COMMITTED
+    rung is non-discriminating -- its record settles only to 7.2e-3, so the
+    truncation term of the window swamps its 2.2e-3 lattice term and F2 cannot
+    tell the lattice model from the continuum one. Section 8.1 pre-declared the
+    remedy (the same arm at ``--settling-bar 3e-4``) with a two-branch risky
+    prediction; the 2026-09-03 VESSL run took it.
+
+    This replays the committed rung and pins the branch that happened, so the
+    closure is a gate and not a sentence:
+
+    * the record is longer and the tail is under the tightened bar;
+    * ``W_witness`` fell by more than an order of magnitude and no longer exceeds
+      its own a-priori ceiling;
+    * ``|rfx - lattice|`` fell WITH it -- which is what "truncation-dominated"
+      predicts -- and the gate still passes;
+    * **F2 now fires**, on every gated bin, which is the limitation being closed;
+    * and the arm's residual against the CONTINUUM transfer matrix did NOT move,
+      which is the identification being confirmed rather than assumed.
+
+    The rung lives in its own results directory, so cv22's committed ladder,
+    verdict and windows cannot be touched by it -- asserted here too.
+    """
+    art = _R22D / LW.witness_json_name()
+    meas = _R22D / "rfx__debye_tail3e4.json"
+    if not (art.is_file() and meas.is_file()):
+        pytest.skip(f"section 8.1 rung absent: {art.relative_to(_REPO)}")
+
+    doc = json.loads(art.read_text())
+    assert doc["schema"] == LW.SCHEMA and doc["case_id"] == "22_dispersive_slab_fresnel"
+    assert set(doc["rungs"]) == {"debye_tail3e4"}, "the diag document carries the remedy rung only"
+    r = doc["rungs"]["debye_tail3e4"]
+    arm = json.loads(meas.read_text())["arms"]["debye"]
+
+    # the rung is isolated from cv22's committed ladder
+    assert set(LW.rungs_from_results(str(_R22))) == {"debye", "lorentz", "drude"}
+    assert "debye_tail3e4" not in LW.rungs_from_results(str(_R22))
+
+    committed = json.loads((_R22 / "rfx.json").read_text())["arms"]["debye"]
+
+    # (1) a longer record under a TIGHTER bar -- never a widened one
+    assert arm["tail"]["limit"] <= 3e-4 < G.SETTLING_LIMIT
+    assert r["n_steps"] > committed["run"]["n_steps"]
+    assert arm["tail"]["scat_refl_rel"] <= arm["tail"]["limit"]
+
+    # (2) the window fell and is back under its a-priori ceiling
+    assert r["mean_W_witness_R_gated"] < 0.1 * 1.71e-2
+    assert not r["W_exceeds_ceiling_R"]
+    assert r["mean_W_witness_R_gated"] < r["mean_W_ceiling_R_gated"]
+
+    # (3) the residual fell WITH the tail, and the gate passes
+    assert r["mean_dR_lattice_gated"] < 0.1 * 6.5e-4
+    assert all(r["gates"].values()), r["gates"]
+    assert max(r["worst_ratio_R"], r["worst_ratio_T"], r["worst_ratio_A"]) <= 1.0
+
+    # (4) F2 -- the limitation being closed. Silent at the committed rung, firing here.
+    f2_committed = LW.evaluate_falsifier(committed, "continuum")
+    assert f2_committed["witness_ok"], "the committed Debye rung is the non-discriminating one"
+    f2 = LW.evaluate_falsifier(arm, "continuum")
+    assert not f2["witness_ok"]
+    assert f2["separation_over_window_R"] > 3.0
+    assert f2["n_bins_R_over_window"] == f2["n_bins_gated"]
+
+    # (5) the identification confirmed: the CONTINUUM residual did not move with
+    #     the record, and it is still the a-priori lattice term
+    assert arm["mean_dR_gated"] == pytest.approx(committed["mean_dR_gated"], rel=0.10)
+    f = np.asarray(arm["freqs_hz"], dtype=float)
+    g = np.asarray(arm["gated"], dtype=bool)
+    R_lat, _T, _A = LW.lattice_rta(f, arm["model"], arm["params"],
+                                   float(arm["run"]["dx_m"]), float(arm["dt_s"]))
+    R_tmm, _ = de.tmm_slab_rt(f, de.eps_analytic(f, arm["model"], arm["params"]), G.D_SLAB_M)
+    lattice_term = float(np.abs(R_lat - R_tmm)[g].mean())
+    assert arm["mean_dR_gated"] == pytest.approx(lattice_term, rel=0.05)
+    print(f"lattice-witness-summary cv22 debye_tail3e4: {r['n_steps']} steps, "
+          f"|rfx-lattice| {r['mean_dR_lattice_gated']:.2e} vs W "
+          f"{r['mean_W_witness_R_gated']:.2e}; F2 fires at "
+          f"{f2['separation_over_window_R']:.2f} on {f2['n_bins_R_over_window']} bins; "
+          f"continuum residual {arm['mean_dR_gated']:.4f} vs lattice term {lattice_term:.4f}")
 
 
 @pytest.mark.parametrize("case,case_id,results", [

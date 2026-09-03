@@ -396,8 +396,34 @@ larger than its own lattice term of 2.2e-3, and larger than its a-priori ceiling
 rate). The gate passes, but F2 and F3 do not fire there (§7): at this record the
 lattice gate cannot tell the lattice model from the continuum one on the Debye
 arm. That is recorded as a limitation of the RUNG, not of the standard, and the
-remedy rung is pre-declared in §8.1 with its cost. **The Debye lattice gate is
-therefore reported as passing-but-non-discriminating, and no claim rests on it.**
+remedy rung is pre-declared in §8.1 with its cost. **The Debye lattice gate at
+THIS rung is therefore reported as passing-but-non-discriminating, and no claim
+rests on it.**
+
+**Closed by the §8.1 remedy rung, which the VESSL run did take.** The note first
+said §8.1 was pre-declared and not run; the run of 2026-09-03 ran it
+(`--arms debye --settling-bar 3e-4 --tag debye_tail3e4`, into its own results
+directory so it cannot touch the committed cv22 document — §9). The risky
+prediction's FIRST branch is what happened: the tail fell to
+`validation/crossval/_22_dispersive_diag/lattice_witness.json::rungs.debye_tail3e4.budget.scat_tail_rel = 1.42e-4` at
+`validation/crossval/_22_dispersive_diag/lattice_witness.json::rungs.debye_tail3e4.n_steps = 1451` steps, `W_witness,R` fell to
+`validation/crossval/_22_dispersive_diag/lattice_witness.json::rungs.debye_tail3e4.mean_W_witness_R_gated = 0.000332` (from 1.71e-2, a
+52× shrink), `|rfx − lattice|` fell with it to
+`validation/crossval/_22_dispersive_diag/lattice_witness.json::rungs.debye_tail3e4.mean_dR_lattice_gated = 1.06e-5` (from 6.5e-4), the
+gate passes with worst per-bin ratio
+`validation/crossval/_22_dispersive_diag/lattice_witness.json::rungs.debye_tail3e4.worst_ratio_R = 0.092`, the window no longer exceeds
+its a-priori ceiling (`validation/crossval/_22_dispersive_diag/lattice_witness.json::rungs.debye_tail3e4.W_exceeds_ceiling_R`, now
+false), and **F2 fires on the Debye arm at 6.68× on 229 of 229 gated bins in R**
+(F3 too, at 1.07×). §7's tables carry the rung.
+
+Two things worth reading off it. First, the arm's residual against the CONTINUUM
+transfer matrix did **not** move — `mean|ΔR|` is 0.00222 at 1451 steps against
+0.0023 at 1108 — which is exactly what §5.2 predicted a priori from the lattice
+model (0.00222) and is the strongest single confirmation in this note that the
+residual is the lattice term and not truncation. Second, the truncation
+identification of §5.2 is therefore CONFIRMED, not merely asserted: the part of
+`|rfx − lattice|` that fell by 61× with the record was truncation, and the part
+that stayed is the lattice.
 
 ### 5.3 cv04 — the witness is REPORTED, not gated, and the derivation says why
 
@@ -599,6 +625,7 @@ requires at least 40 bins over the window on R or T at each.
 | rung | sep/W (R) | sep/W (T) | bins over window R / T / A |
 |---|---|---|---|
 | cv22 debye | 1.23 | 1.08 | 110 / 165 / 127 |
+| cv22 debye @ 3e-4 (§8.1) | 63.6 | 98.5 | 228 / 229 / 229 |
 | cv22 lorentz | 6.62 | 7.85 | 197 / 227 / 229 |
 | cv22 drude | 179.4 | 71.1 | 229 / 229 / 229 |
 | cv23 tand0p1 | 47.0 | 13.0 | 229 / 226 / 196 |
@@ -640,6 +667,7 @@ separation falls at order 2.
 | cv22 lorentz | dx | 1.10 | **dx** (141 bins) | — |
 | cv22 drude | dx | 5.99 | **dx** (214 bins) | — |
 | cv22 debye | dx | **0.13** | **never** — see §5.2 | — |
+| cv22 debye @ 3e-4 (§8.1) | dx | **6.68** | **dx** (229 of 229 bins in R) | — |
 | cv04 material (settled) | dx | 0.96 | **dx** (91 bins) | — |
 | cv04 as committed | dx | 0.099 | **never** — see §5.3 | — |
 
@@ -647,11 +675,13 @@ separation falls at order 2.
 every ladder that runs one — dx for cv23's tand0p1 and tand1 and for cv22's
 Lorentz and Drude, dx/2 for cv23's tand3 (its coarsest committed rung) — and it
 goes silent at **dx/4 on tand0p1** (0 of 229 bins; on tand1 the T observable
-still catches it there). It never fires on cv22's Debye arm and on cv04's
+still catches it there). It never fires on cv22's Debye arm AT ITS COMMITTED RUNG, nor on cv04's
 committed configuration, in both cases because the truncation term of the window
 exceeds the lattice term at that record; both are §5.2/§5.3's declared
 non-discriminating rungs, and both are named in the manifest and the public rows
-rather than left to be discovered.
+rather than left to be discovered. **On the Debye arm that is now a statement
+about the RUNG and not about the arm: at §8.1's 3e-4 rung, which the VESSL run
+took, F2 fires at 6.68× on 229 of 229 gated bins in R** — the row above.
 
 ### F3 — a 1 % ε′ perturbation
 
@@ -661,6 +691,7 @@ cv04/cv23, ε∞ for cv22) 1 % high.
 | rung | sep/W R | bins R / T / A | fires |
 |---|---|---|---|
 | cv22 debye | 0.02 | 0 / 0 / 0 | **no** (§5.2) |
+| cv22 debye @ 3e-4 (§8.1) | 1.07 | 107 / 178 / 72 | yes |
 | cv22 lorentz | 0.50 | 12 / 0 / 0 | yes |
 | cv22 drude | 14.6 | 222 / 198 / 157 | yes |
 | cv23 tand0p1 / _dx2 / _dx4 | 2.67 / 2.93 / 3.03 | 209 / 212 / 212 in R | yes |
@@ -669,7 +700,9 @@ cv04/cv23, ε∞ for cv22) 1 % high.
 | cv04 material (settled) | 0.79 | 123 / 128 / 0 | yes |
 | cv04 as committed | 0.082 | 0 / 0 / 0 | **no** (§5.3) |
 
-F3 fires on every rung except the two declared non-discriminating ones. On
+F3 fires on every rung except the two declared non-discriminating ones — and on
+the Debye arm it fires as soon as the record is long enough (1.07× at §8.1's
+rung), so that "no" is the rung's, not the arm's. On
 several arms it is carried by the per-bin gate (GL1), not the band mean — the 1 %
 perturbation moves the fringe positions more than the fringe-averaged level, and
 GL1 is what sees that.
@@ -688,6 +721,7 @@ instead of `dispersive_eps.eps_numerical_ade`
 | rung | sep/W R | sep/W T | sep/W A | bins over window R / T / A | fires |
 |---|---|---|---|---|---|
 | cv22 debye | 0.003 | 0.003 | 0.001 | 0 / 0 / 0 | **no** |
+| cv22 debye @ 3e-4 (§8.1) | 0.160 | 0.279 | 0.046 | 0 / 0 / 0 | **no** |
 | cv22 lorentz | 0.149 | 0.263 | 0.066 | 0 / 0 / 0 | **no** |
 | cv22 drude | 0.447 | 0.280 | 0.268 | 33 / 57 / 28 | yes |
 | cv23 tand0p1 | 0.017 | 0.054 | 0.043 | 0 / 0 / 0 | no |
@@ -721,9 +755,10 @@ a silent pass.
 1. **A longer record on the Debye and Lorentz arms.** F4's separation is fixed
    by the material and (dx, dt) — 5.3e-5 in the gated mean on Debye — while the
    window is not: `W_witness,R` is 1.71e-2 there and truncation-dominated.
-   §8.1's `3e-4` settling bar shrinks it to a predicted 7.3e-4 (23×), which
-   takes Debye's F4 ratio from 0.003 to **0.073**: still short. Firing on the
-   band mean needs the tail below **1e-5** — 350 steps past the committed 1108,
+   §8.1's `3e-4` settling bar shrank it, MEASURED on the VESSL run, to 3.32e-4
+   (52×), which takes Debye's F4 ratio from 0.003 to **0.160**: still short.
+   Firing on the band mean needs the tail below **1e-5** — 350 steps past the
+   committed 1108,
    i.e. 181 past §8.1's rung, about 1.3× one cv22 arm — where the predicted
    window is 3.7e-5 and sep/W is 1.44. Even a perfectly settled record does not
    make it arbitrarily sharp: with the truncation term driven to zero the
@@ -746,11 +781,16 @@ properties (identically zero on the lossless slab, strictly positive on every
 material that has a correction) are asserted analytically in
 `test_f4_eps_continuum_isolates_the_one_ingredient_this_lane_adds`.
 
-## 8. New rungs — pre-declared, with cost, not run here
+## 8. New rungs — pre-declared with cost, then run
 
 The PI's rule is "add a rung only if a claim requires it, and say what it costs".
-Two claims require one; neither rung is run in this commit. Both are legs of
-`scripts/vessl_lattice_witness.yaml`, which I have NOT submitted.
+Two claims require one. **Both were pre-declared below BEFORE they ran, and both
+then ran, as legs of `scripts/vessl_lattice_witness.yaml` on the 2026-09-03
+VESSL run** (§9.1). The predictions are left exactly as they were written; the
+outcome is appended under each. The note's first draft said the YAML had not
+been submitted, which was true when the section was written and false by the
+time the lane shipped; the correction is recorded rather than the sentence
+quietly deleted.
 
 ### 8.1 cv22 Debye at a 3e-4 settling bar (the only rung a claim requires)
 
@@ -793,12 +833,57 @@ This is a risky prediction on purpose. The leg's rc is admissible either way in
 the YAML, and it runs into its own results directory so it cannot change cv22's
 committed witness document.
 
+**OUTCOME (VESSL run 2026-09-03, leg `cv22_debye_tail3e4`, rc 0). The first
+branch. Every predicted direction was right; two magnitudes were not, both in
+the conservative direction.**
+
+| quantity | predicted above | measured |
+|---|---|---|
+| `n_steps` | ≈ 1308 (2 extensions) | `validation/crossval/_22_dispersive_diag/lattice_witness.json::rungs.debye_tail3e4.n_steps = 1451` (2 extensions, and the box grew once as the rule provides) |
+| tail `scat_refl_rel` | ≤ 3e-4 (the bar) | `validation/crossval/_22_dispersive_diag/lattice_witness.json::rungs.debye_tail3e4.budget.scat_tail_rel = 1.42e-4` |
+| `W_witness,R` | 7.3e-4 | `validation/crossval/_22_dispersive_diag/lattice_witness.json::rungs.debye_tail3e4.mean_W_witness_R_gated = 0.000332` |
+| `\|rfx − lattice\|`, gated mean R | ≈ 2.7e-5 | `validation/crossval/_22_dispersive_diag/lattice_witness.json::rungs.debye_tail3e4.mean_dR_lattice_gated = 1.06e-5` |
+| gate | passes, ~27× margin | passes; worst per-bin ratio `validation/crossval/_22_dispersive_diag/lattice_witness.json::rungs.debye_tail3e4.worst_ratio_R = 0.092`, band-mean margin 31× |
+| F2 on Debye | **fires at 3.05×**, 229 of 229 bins in R | **fires at 6.68×**, 229 of 229 bins in R |
+| window vs a-priori ceiling | (not predicted) | `validation/crossval/_22_dispersive_diag/lattice_witness.json::rungs.debye_tail3e4.mean_W_ceiling_R_gated = 0.0164`; `W_exceeds_ceiling_R` now false |
+
+The two magnitude misses are the same miss twice: the record ran 143 steps
+longer than derived because the adaptive rule stops on the WITNESS, not on the
+derivation, so the tail landed at 1.42e-4 rather than at the 3e-4 bar — and the
+window and the residual both fell further than predicted in consequence. The
+derivation was conservative, which is the direction a bound is allowed to be
+wrong in.
+
+**What this closes.** §5.2's stated limitation and §7's two "never" rows for the
+Debye arm: at this rung the lattice gate DOES tell the lattice model from the
+continuum one, by 6.68× on every gated bin. And the arm's residual against the
+continuum transfer matrix is unchanged by the longer record —
+`validation/crossval/_22_dispersive_diag/rfx__debye_tail3e4.json::arms.debye.mean_dR_gated = 0.0022` at 1451 steps against 0.0023 at 1108,
+against the a-priori lattice prediction of 0.00222 — so the residual is the
+lattice term and the truncation identification of §5.2 is confirmed rather than
+assumed. **Cost, measured: 0.9 s of FDTD.**
+
+**What it does NOT close.** F4 (§7) still does not fire here: the ADE's own
+discrete-time separation is 0.160 of this window, up from 0.003 at the committed
+rung but still short of 1. Firing it needs the tail near 1e-5, not 1.4e-4.
+
+**Nothing in cv22's committed gate changes.** The leg wrote to
+`validation/crossval/_22_dispersive_diag/`, not to `_22_dispersive_results/`, so
+`rungs_from_results` does not see it and cv22's three committed rungs, its
+verdict and its windows are exactly as they were. This rung is carried as a
+committed DIAGNOSTIC with its own witness document.
+
 ### 8.2 cv04's slab on the settled rig (a re-run of a committed leg, for provenance)
 
 §5.3's claims-bearing cv04-material rung is cv23's `tand0p1_sigma_zero` artifact.
 The YAML re-runs that falsifier so the cv04 row rests on a leg of this lane too;
 it must exit 1 (it is a cv23 falsifier). **Cost: one cv23 arm, ~1 s.** No new
 recipe.
+
+**OUTCOME (VESSL run 2026-09-03, leg `cv23_sigma_zero`): rc 1, as pre-declared.**
+The leg re-ran the committed falsifier and it exited 1, which is what a cv23
+falsifier must do; §5.3's cv04-material numbers therefore rest on a leg of this
+lane as well as on the committed artifact.
 
 ### 8.3 Rungs deliberately NOT added
 
@@ -829,6 +914,12 @@ recipe.
   separation ratios; top-level `verdict.{all_rungs_ok, n_rungs}`.
 - `validation/crossval/_23_lossy_results/lattice_witness.json` — the same, nine
   rungs.
+- `validation/crossval/_22_dispersive_diag/rfx__debye_tail3e4.json` and
+  `validation/crossval/_22_dispersive_diag/lattice_witness.json` — §8.1's remedy
+  rung, in its OWN results directory. `rungs_from_results` globs
+  `_22_dispersive_results/`, so this rung is not part of cv22's committed ladder,
+  its verdict or its windows; it is a committed DIAGNOSTIC with its own witness
+  document, and it is what closes §5.2's stated limitation.
 - `validation/crossval/_04_fresnel_results/lattice_witness.json` — one rung,
   written by `python validation/crossval/04_multilayer_fresnel.py
   --lattice-witness`, with `gated_here = false` and `gated_here_reason`.
@@ -906,10 +997,14 @@ Recorded because the record is the point.
 3. **Γ needs a decay assumption.** §3. There is no way to bound the un-recorded
    tail without one. The passive-slab argument plus the fitted-rate witness is
    what stands behind it.
-4. **cv22's Debye and cv04's committed rungs do not discriminate.** §5.2, §5.3,
-   §7. Both are declared, both have a pre-declared remedy (§8.1 for Debye; a
-   settled record for cv04), and no claim in the manifest or the public rows
-   rests on either.
+4. **cv04's committed rung does not discriminate; cv22's Debye rung did not
+   either, and no longer is the last word.** §5.3 and §7 for cv04, which stands
+   open — its remedy is a settled record and cv23's `sigma_zero` arm supplies the
+   claims-bearing measurement meanwhile. For Debye, §8.1's remedy rung ran on the
+   VESSL run and F2 fires there at 6.68× on every gated bin, so the limitation is
+   a property of the committed RUNG and is closed by a committed diagnostic;
+   §5.2 records both. No claim in the manifest or the public rows rests on either
+   non-discriminating rung.
 5. **`docs/design_notes/20260903_e4_all_solver_classes_plan.md` is not on
    `origin/main`.** It lives on `origin/agent/e4-all-solvers-plan` at `eb78254`
    and was read from there (§1). Its lane L1 is the consumer of this rig; nothing
@@ -919,7 +1014,9 @@ Recorded because the record is the point.
    tree.
 7. **The lattice verdict is not wired into the cases' exit codes.** §6. It is a
    separate invocation with its own rc. Wiring it changes what a red case means
-   and should follow a green VESSL run, not precede it.
+   and should follow a green VESSL run, not precede it. The run has now happened
+   and is green on all 12 rungs (§9.1), so the precondition is met and the wiring
+   is a PI call, not a blocker — still NOT done in this lane.
 8. **The committed cv23 `arms.<arm>.lattice.R_lattice` arrays reproduce to
    7e-15 (measured maximum 6.9e-15, on `tand3`'s R), not bit-for-bit,** when
    recomputed today. The note first said "1e-15", which the measurement does not
@@ -939,6 +1036,8 @@ Recorded because the record is the point.
   fires → the convergence reading of the ladder is wrong.
 - The §8.1 Debye rung's residual NOT falling with its tail → the Debye arm's
   residual is not truncation-dominated and §5.2's explanation is withdrawn.
+  **Resolved: it fell, 6.5e-4 → 1.06e-5, while the arm's residual against the
+  continuum transfer matrix stayed at 0.0022. The explanation stands.**
 - `mean_W_witness_*` exceeding `mean_W_ceiling_*` on a rung whose fitted rate is
   NOT slower than its derived rate → a term in §3 is mis-signed.
 - A measured float64-vs-float32 difference above `budget.mean_delta_round_gated`
@@ -1013,6 +1112,21 @@ committed for the first time; §9.1 records the provenance, the one leaf class
 that differs between the run and this lane's local copies (81 per-bin entries at
 ≤ 9.1e-15), and that cv04's exit 2 is "Meep secondary reference unavailable"
 with the case's own gates passing.
+
+**A finding the review did not raise, found while applying it.** §8 said its two
+remedy rungs were pre-declared and NOT run, and that
+`scripts/vessl_lattice_witness.yaml` had not been submitted. Both were false by
+the time the lane shipped: the VESSL run took both legs. §8.1's Debye rung at a
+3e-4 settling bar came out on the FIRST branch of its own risky prediction —
+`W_witness,R` 1.71e-2 → 3.32e-4, `|rfx − lattice|` 6.5e-4 → 1.06e-5, F2 firing
+at 6.68× on 229 of 229 gated bins — while the arm's residual against the
+CONTINUUM transfer matrix did not move (0.0022 at 1451 steps against 0.0023 at
+1108, against an a-priori lattice prediction of 0.00222). §5.2's limitation is
+therefore closed and its explanation confirmed rather than assumed. §5.2, §7,
+§8, §9, §10(4) and §11 are corrected, and the rung's two artifacts are committed
+under `validation/crossval/_22_dispersive_diag/` — deliberately NOT under
+`_22_dispersive_results/`, so cv22's committed ladder, verdict and windows are
+untouched.
 
 **Not done, and why.** No window is widened or tightened anywhere in this lane —
 including the one §5.4 shows is discretisation-limited. That is a PI decision
