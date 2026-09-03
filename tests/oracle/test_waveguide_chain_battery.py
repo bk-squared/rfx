@@ -73,18 +73,33 @@ _RED_ROTATION = (
     "S21 phase fit); against the port's own beta the residual is 6e-5 deg. Mechanism, not "
     "tolerance — see PR body. The aperture is corrected in the branch that carries this "
     "note (issue #868); the FIXTURE stays frozen, so this replay stays red until a new "
-    "pre-declared battery run measures the corrected port")
+    "pre-declared battery run measures the corrected port"
+    " | RE-MEASURED, and this verdict stays red: the second pre-declared run (docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md, artifact tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json, VESSL 369367258205) measured the corrected port. This fixture is the record of the port that no longer exists and is neither re-pinned nor re-derived; "
+    "on the corrected port the same three gates read 0.032 deg (Yee), 0.041 deg (continuous) "
+    "and a wrong-sign witness of 64.05 deg, all green")
 _RED_IDENTITY_FLUX = (
     "measured max scaled diff 1.440 (slab) / 1.065 (PEC-short) against rtol 1e-5 / atol 1e-7 "
     "(abs 0.9-1.1e-5): the float32 reverse-mode primal of the flux lane differs from the "
     "untraced call by reassociation of a 2849-step Poynting DFT; the same call under x64 "
-    "agrees to 1.5e-15 - 2.2e-14 (fixture x64_witness). Gate stays as pre-declared — see PR body")
+    "agrees to 1.5e-15 - 2.2e-14 (fixture x64_witness). Gate stays as pre-declared — see PR body"
+    " | RE-MEASURED, and still red on the corrected port: the second pre-declared run "
+    "(docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md, artifact "
+    "tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json) reads 1.083 / 1.515 / "
+    "1.761 scaled on the three (dut, lane, theta-kind) groups with every x64 witness at "
+    "1.7e-10 - 1.1e-8. That note's section 6 declares this leg NOT closeable inside a "
+    "measurement run whichever way it comes back; it is a precision-declaration decision")
 _RED_AD_FD_ZERO_DERIVATIVE = (
     "measured g_ad = +2.68e-5 (float32) vs g_fd = -7.24e-7, rel 38, FD span 6.5e8 ULP: the "
     "objective's derivative is physically zero (|S11| = 1 for a lossless window in front of a "
     "PEC); float32 AD noise 2.7e-5 exceeds the O(1e-6) residual derivative, and the x64 AD "
     "(-9.8e-7) agrees with FD at that level. The pre-declared ULP-floor skip did not occur "
-    "because the float64 FD resolves the residual — see PR body")
+    "because the float64 FD resolves the residual — see PR body"
+    " | RE-MEASURED, and still red on the corrected port: the second pre-declared run "
+    "(docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md, artifact "
+    "tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json) reads g_ad "
+    "+2.79e-5 vs g_fd -5.15e-8, rel 542. Its x64 AD moved to -2.94e-7 — same sign and order, "
+    "but 3.34x below this fixture's -9.82e-7 and so just outside that note's declared "
+    "factor-3 band, which is a finding of the second run and not a fact about this one")
 KNOWN_RED: dict[str, dict[str, str]] = {
     # settling: RED on the committed fixture (0.0 dB on both PEC-short fine
     # drives, at 40 AND 80 periods) until the witness stopped scoring records
@@ -222,7 +237,15 @@ def test_fixture_constants_match_builder(fx):
     assert c["domain_x_m"] == F.DOMAIN_X_M
     assert c["port_planes_m"] == [F.PORT_LEFT_X_M, F.PORT_RIGHT_X_M]
     assert c["reference_planes_default_m"] == [F.REF_LEFT_DEFAULT_M, F.REF_RIGHT_DEFAULT_M]
-    assert c["reference_planes_shifted_m"] == [F.REF_LEFT_SHIFTED_M, F.REF_RIGHT_SHIFTED_M]
+    # Two artifacts, two declared shift pairs (re-measurement pre-declaration §7):
+    # the pair is resolved by the artifact's own ``shift_pair_name``, and an
+    # artifact without the key (schema_version 1) resolves to the first run's
+    # pair. The guard therefore keeps binding for both files and cannot silently
+    # accept a third pair.
+    pair_name = fx.get("shift_pair_name", G.DEFAULT_SHIFT_PAIR_NAME)
+    assert pair_name in F.SHIFT_PAIRS_M, (pair_name, sorted(F.SHIFT_PAIRS_M))
+    assert c["reference_planes_shifted_m"] == list(F.SHIFT_PAIRS_M[pair_name]), (
+        pair_name, c["reference_planes_shifted_m"], F.SHIFT_PAIRS_M[pair_name])
     assert c["probe_planes_m"] == [F.PROBE_LEFT_M, F.PROBE_RIGHT_M]
     assert c["pec_short_x_m"] == list(F.PEC_SHORT_X_M) and c["slab_x_m"] == list(F.SLAB_X_M)
     assert c["slab_eps_r"] == F.SLAB_EPS_R
@@ -431,7 +454,8 @@ def test_plane_shift_rotation_matches_yee_and_continuous_beta(key):
     p = _planes()[key]
     base = _cell(f"{p['dut']}-{p['rung']}-{p['lane']}")
     rot = G.plane_shift_rotation(G.s_from_json(base["s_params"]), G.s_from_json(p["s_params_shifted"]),
-                                 F.FREQS, base["dt_s"], base["dx_m"], fc_port_hz=p["fc_port_hz"])
+                                 F.FREQS, base["dt_s"], base["dx_m"], fc_port_hz=p["fc_port_hz"],
+                                 shift_left_m=p["shift_m"][0], shift_right_m=p["shift_m"][1])
     assert rot["resid_yee_max"] == pytest.approx(p["resid_yee_max"], abs=1e-9), "stored rotation block drifted"
     print(f"[{key}] fc_port={p['fc_port_hz']/1e9:.4f} GHz vs pre-declared {p['fc_predeclared_hz']/1e9:.4f} GHz; "
           f"residual against the extractor's own beta = {p.get('resid_port_beta_max', float('nan')):.3f}°; "
@@ -600,70 +624,22 @@ def _live_compare(fx, rung: str):
                 assert m["reciprocity_complex_max"] <= G.RECIPROCITY_COMPLEX_MAX, cid
 
 
-# The fixture was measured with the port aperture one cell wider than the guide
-# (issue #868: the transverse mode operator was built on the node span, N + 1
-# cells, instead of the N cells the walls enclose). The correction moves
-# ``WaveguidePortConfig.f_cutoff`` from 5.877 / 6.205 / 6.378 GHz to the
-# guide's own discrete cutoff 6.524 / 6.549 / 6.555 GHz at the three rungs, so
-# a live re-measure no longer reproduces the frozen numbers. Re-measured on
-# this box (CPU, jax 0.6.2) over the 12 coarse + mid cells:
-# max|S_live − S_fixture| = 1.0e-3 (thru-mid-flux) .. 1.6e-1
-# (pec_short-coarse-false), against LIVE_ABS_S_TOL = 1e-4.
+# The three live tests that compared against THIS fixture — the two
+# ``test_live_cells_reproduce_the_fixture_*`` and
+# ``test_live_plane_shift_rotation_coarse_rung`` — moved to
+# ``tests/oracle/test_waveguide_chain_battery_guide_cell_aperture.py`` and now read
+# the SECOND run's artifact, with their ``xfail(strict=True)`` marks off. They
+# could not stay here: this fixture was measured with the port aperture one cell
+# wider than the guide (the transverse mode operator was built on the node span,
+# N + 1 cells, instead of the N cells the walls enclose, PR #889), so a live
+# re-measure differs from it by up to 1.6e-1 against LIVE_ABS_S_TOL = 1e-4 and
+# always will. This artifact is not re-pinned and the live tolerance is not
+# weakened; the record of the old instrument simply stops being the thing a live
+# run is compared against. See
+# ``docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md`` §7.
 #
-# The fixture is NOT re-pinned and the live layer is NOT weakened: closing the
-# family needs a NEW pre-declared battery run (the pre-declaration is a
-# one-run artifact — §2, and repo rule R2), which this change deliberately does
-# not perform. Until that run lands these three carry the reason below.
-_LIVE_STALE_VS_FIXTURE = (
-    "the frozen fixture was measured with the (N+1)-cell port aperture (issue #868); "
-    "with the corrected N-cell aperture the live cells differ from it by up to 1.6e-1 "
-    "(thru-mid-flux 1.0e-3, pec_short-coarse-false 1.6e-1) against LIVE_ABS_S_TOL=1e-4. "
-    "Needs a NEW pre-declared battery run, not a re-pin — see the PR body")
-
-
-@pytest.mark.slow
-@pytest.mark.xfail(strict=True, reason=_LIVE_STALE_VS_FIXTURE)
-@pytest.mark.parametrize("rung", ["coarse", "mid"])
-def test_live_cells_reproduce_the_fixture_cpu(fx, rung):
-    _live_compare(fx, rung)
-
-
-@pytest.mark.slow
-@pytest.mark.gpu
-@pytest.mark.xfail(strict=True, reason=_LIVE_STALE_VS_FIXTURE)
-def test_live_cells_reproduce_the_fixture_fine_rung(fx):
-    _live_compare(fx, "fine")
-
-
-@pytest.mark.slow
-@pytest.mark.xfail(strict=True, reason=(
-    "the wrong-sign leg, not the rotation: with the corrected port cutoff the coarse "
-    "rung measures resid_yee 1.279 deg (gate 3) and resid_cont 1.671 deg (gate 6) — both "
-    "green, from 23.320 / 22.718 deg before — but wrong_sign_resid_min is 1.801 deg "
-    "against a 10 deg floor (0.542 deg before). The declared shifts put 2*beta*Delta "
-    "within a few degrees of 180, where +prediction and -prediction nearly coincide, so "
-    "the witness cannot separate them at ANY cutoff. Needs a re-declared shift distance "
-    "— see the PR body"))
-@pytest.mark.parametrize("lane", F.LANES, ids=lambda l: G.LANE_LABELS[l])
-def test_live_plane_shift_rotation_coarse_rung(lane):
-    """The §5(b) rotation gates hold at every rung; re-measured live at the
-    coarse rung against the analytic prediction, not against the fixture."""
-    sim, res, S_base, _ = _measure_cell("slab", "coarse", lane)
-    sim_s = F.build_simulation("slab", G.RUNG_DX["coarse"],
-                               reference_planes=(F.REF_LEFT_SHIFTED_M, F.REF_RIGHT_SHIFTED_M))
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        S_shift = np.asarray(sim_s.compute_waveguide_s_matrix(
-            num_periods=F.NUM_PERIODS, normalize=lane).s_params).astype(complex)
-    grid = sim._build_grid()
-    rot = G.plane_shift_rotation(S_base, S_shift, F.FREQS, float(grid.dt), G.RUNG_DX["coarse"])
-    print(f"[live plane-shift coarse {G.LANE_LABELS[lane]}] |S| max diff={rot['abs_s_max_diff']:.2e} "
-          f"resid_yee={rot['resid_yee_max']:.3f}° resid_cont={rot['resid_cont_max']:.3f}° "
-          f"wrong_sign_min={rot['wrong_sign_resid_min']:.1f}°")
-    assert rot["abs_s_allclose"]
-    assert rot["resid_yee_max"] <= G.ROTATION_TOL_YEE_DEG
-    assert rot["resid_cont_max"] <= G.ROTATION_TOL_CONTINUOUS_DEG
-    assert rot["wrong_sign_resid_min"] > G.WRONG_SIGN_MIN_DEG
+# What stays here is the leg below, which measures against physics rather than
+# against any fixture and is therefore unaffected by which instrument wrote one.
 
 
 @pytest.mark.slow
