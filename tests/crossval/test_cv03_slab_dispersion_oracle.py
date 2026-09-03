@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-_COMPARATORS = Path(__file__).resolve().parent.parent / "validation" / "crossval" / "comparators"
+_COMPARATORS = Path(__file__).resolve().parents[2] / "validation" / "crossval" / "comparators"
 sys.path.insert(0, str(_COMPARATORS))
 
 from slab_te_dispersion import (  # noqa: E402
@@ -157,7 +157,7 @@ def test_estimator_rejects_malformed_input():
 # artifact fail if it drifts from the code that produced it, and pin the two
 # facts the correction asserts.
 
-_ARTIFACT = (Path(__file__).resolve().parent.parent / "docs" / "design_notes"
+_ARTIFACT = (Path(__file__).resolve().parents[2] / "docs" / "design_notes"
              / "issue812_cv03_dispersion_matched_frequency.json")
 
 
@@ -165,7 +165,7 @@ def _built():
     import importlib.util
     spec = importlib.util.spec_from_file_location(
         "_cv03_mf",
-        Path(__file__).resolve().parent.parent / "scripts" / "diagnostics"
+        Path(__file__).resolve().parents[2] / "scripts" / "diagnostics"
         / "cv03_flux" / "build_cv03_matched_frequency.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

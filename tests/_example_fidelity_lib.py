@@ -326,6 +326,10 @@ CLASSIFICATION: dict[str, Entry] = {
         "no_simulation",
         "plain numpy/scipy mode-list comparator for cv02 (#812) -- compares "
         "two lists of extracted modes, no rfx import at all"),
+    "validation/crossval/comparators/slab_te_dispersion.py": Entry(
+        "no_simulation",
+        "plain-numpy closed-form slab TE0 oracle + two-wave n_eff estimator "
+        "for cv03 (#812) -- no rfx import at all"),
     "validation/crossval/comparators/spectral_features.py": Entry(
         "no_simulation",
         "pure-numpy sub-bin spectral-feature estimators shared by cv06b/cv07 "

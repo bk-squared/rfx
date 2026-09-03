@@ -61,7 +61,7 @@
       "claim_scope": "2-D straight-waveguide guided-mode dispersion against the closed-form slab TE0 oracle for the declared recipe (max |n_eff dev| <= 2.0% over fcen +/- 0.15*df, threshold derived and frozen in docs/design_notes/issue812_cv03_dispersion_regate_predeclaration.md), plus band-mean transmission and flux normalization within the script's measured window. The transmission leg is an E1 identity and carries no guide-dependent claim on its own. The guide is measured to carry a standing wave with |B/A| = 0.393-0.585 which the transmission ratio is blind to; that is an unresolved physics finding recorded in section 8 of the design note, not a validated property.",
       "external_dependencies": ["pymeep"],
       "expected_exit_codes": [0, 1, 2],
-      "gate_paths": ["validation/crossval/03_straight_waveguide_flux.py", "validation/crossval/comparators/slab_te_dispersion.py", "tests/test_cv03_slab_dispersion_oracle.py"],
+      "gate_paths": ["validation/crossval/03_straight_waveguide_flux.py", "validation/crossval/comparators/slab_te_dispersion.py", "tests/crossval/test_cv03_slab_dispersion_oracle.py"],
       "artifact_paths": [],
       "cpu_runner": {"order": 8},
       "scheduled_external_order": 3,

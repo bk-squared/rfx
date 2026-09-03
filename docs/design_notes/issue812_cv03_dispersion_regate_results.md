@@ -10,7 +10,7 @@ Reproduce:
 ```
 PYTHONPATH=<worktree> .venv/bin/python validation/crossval/03_straight_waveguide_flux.py
 PYTHONPATH=<worktree> .venv/bin/python scripts/diagnostics/cv03_flux/regate_falsifiers.py
-PYTHONPATH=<worktree> .venv/bin/python -m pytest tests/test_cv03_slab_dispersion_oracle.py \
+PYTHONPATH=<worktree> .venv/bin/python -m pytest tests/crossval/test_cv03_slab_dispersion_oracle.py \
     -o addopts="" -m "not gpu"
 ```
 
@@ -100,7 +100,7 @@ smoothing to do; G1 does not claim to catch this defect class and does not.
 
 ## Estimator self-checks
 
-`tests/test_cv03_slab_dispersion_oracle.py`, 12 tests, all passing:
+`tests/crossval/test_cv03_slab_dispersion_oracle.py`, 12 tests, all passing:
 
 - **S2**: the closed-form oracle vs an independent 1-D FD Helmholtz eigensolve
   that shares no code with it — agreement 1.35e-4 … 1.57e-4 relative across

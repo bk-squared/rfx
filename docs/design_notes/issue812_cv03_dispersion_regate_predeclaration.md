@@ -308,7 +308,7 @@ Append-only; §8.1 stands as written except for its item 2, corrected here. Ever
 quantity below is a key of the committed artifact
 `docs/design_notes/issue812_cv03_dispersion_matched_frequency.json`, emitted by
 `scripts/diagnostics/cv03_flux/build_cv03_matched_frequency.py` (no FDTD) and
-pinned by `tests/test_cv03_slab_dispersion_oracle.py`.
+pinned by `tests/crossval/test_cv03_slab_dispersion_oracle.py`.
 
 **What was wrong.** Item 2 divided a measured `n_eff` taken at the case's
 carrier DFT bin, `docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::grid.carrier_bin_f_c_over_a = 0.14898`,
@@ -328,7 +328,7 @@ frequency regenerates the published number
 vs `docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.reproduces_published_value = -0.0257`),
 and recomputing at the matched frequency flips its sign to
 `docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.corrected_dev_pct = +0.1588`.
-Both directions are tests in `tests/test_cv03_slab_dispersion_oracle.py`.
+Both directions are tests in `tests/crossval/test_cv03_slab_dispersion_oracle.py`.
 
 **The margin is withdrawn, not restated.** Item 2's factor
 `docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.published_margin_factor_vs_g1 = 77`
