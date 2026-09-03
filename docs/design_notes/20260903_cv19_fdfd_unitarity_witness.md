@@ -3,7 +3,10 @@
 Issue #884. Sections 0–3 are the diagnosis, recorded first and unchanged. Section 4 is
 the proposal that came out of it; **section 6 records what actually shipped**, including
 the two places where the implementation's measured numbers differ from section 4's draft
-and the one witness the derivation turned out NOT to support changing.
+and the one witness the derivation turned out NOT to support changing. **§6.5 is a
+correction to §4(b) and §6.4, forced by Linux CI**: the missing-`/h` falsifier's
+"caught by U2" claim was a macOS-only artifact of arithmetic dust, and `empty_s11` is
+that defect's only witness.
 
 Branch: `agent/issue-884-diagnosis`.
 
@@ -333,6 +336,12 @@ Falsifiers run on both venvs; results bit-identical. `u_ref` is the min-rule val
 | ε_r = 1 + 1e-06j | 1.6790e-04 | 1.6789e-04 | FAIL | caught |
 | missing `/h` in `discrete_gamma` (the historical bug) | 8.6597e-15 | 2.2204e-16 | pass | caught by U2 (ratio 39.0) **and** by `empty_s11` = 1.000000 |
 
+> **The last row's "caught by U2" is FALSE — see §6.5.** That ratio is an ulp count of a
+> quantity that is structurally zero (the defect makes the structure a total reflector,
+> which is perfectly lossless). It lands under 100 on macOS and is `u_raw / 0.0` on Linux
+> x86-64. `empty_s11` = 1.000000 is that defect's only witness. The rest of the table
+> stands.
+
 **Detection power, stated as a number.** The proposed U1 catches a lossy permittivity
 from **Im(ε_r) ≳ 1e-13**. The gate it replaces (`u_raw < 1e-6`) is blind until
 Im(ε_r) ≈ 1e-6 gives `u_raw = 1.68e-04`; at 1e-9j `u_raw` is 1.68e-07, still passing.
@@ -528,7 +537,7 @@ these in CI at ~0.25 s a piece. Bit-identical on both venvs.
 | Im(ε_r) = 1e-11 | 7.9409e-09 | 1.4223e-09 | 5.583e+00 | U1 and U2 |
 | Im(ε_r) = 1e-09 | 1.5338e-07 | 1.4223e-07 | 1.078e+00 | U1 and U2 |
 | Im(ε_r) = 1e-06 | 1.4222e-04 | 1.4222e-04 | 1.000e+00 | U1 and U2 |
-| **missing `/h`** (the historical bug) | 6.4393e-15 | 2.2204e-16 | **29.0** | **U2**, and `empty_s11` = 1.000000 |
+| **missing `/h`** (the historical bug) | 6.4393e-15 | 2.2204e-16 | 29.0 (macOS) / ∞ (Linux) | **`empty_s11` = 1.000000 only — §6.5** |
 | aperture 40 → 42 (lossless) | 3.2754e-08 | 1.9318e-14 | 1.696e+06 | **nothing — see below** |
 
 Loss is injected as a lossy fill by scaling the frequency by √ε_r, which is exactly what
@@ -540,8 +549,77 @@ Im(ε_r) ≈ 1e-6 — **four decades less sensitive to the one defect unitarity 
 catch.** The test asserts *both* directions: that U1 fires and that `u_raw` stays under
 1e-6, so the sensitivity claim cannot go stale silently.
 
-U1 does **not** fire on the missing-`/h` defect (that structure is still lossless), which
-is why U2 is carried alongside rather than dropped as redundant.
+U1 does **not** fire on the missing-`/h` defect (that structure is still lossless). U2 is
+carried alongside U1 because of the loss column — U1 fires at Im(ε_r) = 1e-13 where U2
+does not, and both fire at 1e-9 — **not** because of the missing-`/h` defect; §6.5 is the
+correction.
+
+### 6.5 Correction: `empty_s11` is the missing-`/h` defect's only witness
+
+**This section corrects §4(b), §6.4 as first written, and the PR body's first revision.**
+Linux CI (PR #887, run 33723124437, shard `fast-suite (1)`) failed with
+`ZeroDivisionError` in the falsifier: on x86-64 the missing-`/h` defect gives `u_refined`
+**exactly 0.0** with `u_raw` = 5.773159728050814e-15, where macOS arm64 gives 2.2204e-16
+and a ratio of 29.0. The guard is one line; the number underneath it was the finding.
+
+**The defect makes the structure a total reflector.** With `/h` dropped from
+`discrete_gamma`, `gt` is h times too small, the port DtN degenerates and the drive term
+`-(exp(gt·h) − exp(−gt·h))·phi_1/h²` nearly vanishes. Measured on the loaded structure,
+identical on both venvs:
+
+| | \|S11\| | \|S21\| | \|S11\|²+\|S21\|²−1 |
+|---|---|---|---|
+| missing `/h` | 9.99999802628010692e-01 | 6.28286505708663566e-04 | −6.43929354282590793e-15 |
+
+A total reflector is **perfectly lossless**. The power identity is satisfied by
+construction, so there is no signal for any unitarity witness to see. This is structural,
+not a threshold that could be tightened — the same reason the aperture off-by-one is
+invisible.
+
+What is left is cancellation dust, and dust is exactly what varies by build:
+
+| build | `u_raw` | `u_refined` | ratio | U2 fires? |
+|---|---|---|---|---|
+| macOS arm64, **both venvs**, COLAMD | 6.4393e-15 | 2.2204e-16 | **29.0** | yes |
+| macOS arm64, MMD_AT_PLUS_A | 1.3656e-14 | 2.2204e-16 | 61.5 | yes |
+| macOS arm64, MMD_ATA | 1.5543e-15 | 2.2204e-16 | 7.0 | yes |
+| macOS arm64, NATURAL | 3.9968e-15 | 2.2204e-16 | 18.0 | yes |
+| **Linux x86-64** (PR #887 CI) | 5.7732e-15 | **0.0** | **∞** | **no** |
+
+`u_refined` is **1 eps on every macOS ordering**, so the "ratio" is literally an ulp count
+of a structurally zero quantity — 29, 61.5, 7, 18 — and on Linux the count is of a zero
+denominator. **The ratio-29 evidence was a macOS-only artifact of arithmetic dust, not
+detection.** Both local venvs reproducing it is evidence about library *versions*, not
+about *platforms*; this is the case that shows the difference matters, and it is a
+caveat §Appendix already flagged coming true.
+
+**What the claim is now.** `empty_s11` = 1.000000 is the missing-`/h` defect's **only**
+witness, on every platform — a second, independent reason §6.3's decision to leave the
+empty-guide comparison alone was right. The test asserts `empty_s11`, plus the
+total-reflector structure and the dust magnitude (both residuals < 1e-13), which are the
+platform-independent *reasons* unitarity is blind. It asserts nothing about U1 or U2
+firing here, in either direction.
+
+**U2 keeps a falsifier**, moved to where the evidence is platform-independent: at
+Im(ε_r) = 1e-9 both residuals are absorbed-power-dominated and the ratio is 1.078
+(0.973 … 2.116 across the four orderings), firing with ≥47× margin under its threshold
+of 100.
+
+**U1's 1.47× margin at Im(ε_r) = 1e-13 was re-checked the same way**, since a thin margin
+is only safe if the quantity is stiff. Across four orderings × both venvs:
+1.46755940733100942e-11 / 1.47366563396644779e-11 / 1.46997969352469227e-11 /
+1.48057122117961626e-11 — **0.88 % total spread**, where `u_raw` at the same point spreads
+0.85 decades. It is absorbed power, not cancellation, so it cannot collapse to zero the
+way the dust above does, and no build moves a signal that stiff by the 32 % it would take
+to fall under the bound. At Im(ε_r) = 1e-9 the spread is 0.0002 % and the margin 14223×.
+
+Both comparisons against the U2 threshold are now written as **products**
+(`u_raw <= 100 · u_refined`) rather than quotients, so `u_refined == 0` reads as an
+infinite ratio — the strongest possible *pass* of U2 — instead of raising. Replaying
+Linux's reported `u_refined = 0.0` locally, through both the falsifier and the gate,
+passes on both venvs.
+
+---
 
 **The honest negative, now asserted rather than merely stated.** A lossless geometry
 off-by-one — first aperture 42 cells instead of 40 — leaves `u_refined` at 1.9318e-14 and

@@ -1305,18 +1305,29 @@ def test_fdfd_solver_gates_run_live_and_committed_curves_are_reproducible():
         of them by 8.1x. The upper side stays the solver's own acceptance
         tolerance.
 
-    DETECTION POWER, AND THE HONEST NEGATIVE. See
-    `test_the_unitarity_witness_fires_on_loss_and_on_the_historical_defect`:
-    U1 catches a lossy fill from Im(eps_r) ~ 7e-14 where the gate it replaces
-    is blind until Im(eps_r) ~ 1e-6, four decades less sensitive, and the
-    historical missing-/h defect fires U2 at ratio 29. But NO unitarity
-    witness — this one or any other — catches a lossless geometry off-by-one:
-    the first aperture at 42 cells instead of 40 is a different but still
-    perfectly lossless structure, and u_refined stays at 1.93e-14. What catches
-    that is the live r=2 anchor at the bottom of this test, at |delta| =
-    9.553e-03 against its 1e-5 gate, 955x over. The three witnesses are not
-    interchangeable: the anchor gates the geometry, unitarity gates
-    losslessness, empty_s11 gates port transparency.
+    DETECTION POWER, AND TWO HONEST NEGATIVES. See
+    `test_the_unitarity_witness_fires_on_loss_and_on_the_historical_defect`.
+    What U1 and U2 are demonstrated to catch is LOSS: U1 from Im(eps_r) ~
+    7e-14, where the gate it replaces is blind until Im(eps_r) ~ 1e-6 — four
+    decades less sensitive — and U2 from Im(eps_r) ~ 1e-9, where the absorbed
+    power dominates the roundoff in both residuals. What they do NOT catch:
+
+      * a LOSSLESS GEOMETRY off-by-one. The first aperture at 42 cells instead
+        of 40 is a different but still perfectly lossless structure, and
+        u_refined stays at 1.93e-14. No unitarity witness can see it. The live
+        r=2 anchor at the bottom of this test is what does, at |delta| =
+        9.553e-03 against its 1e-5 gate, 955x over.
+      * the historical MISSING-/h defect, for the same reason: it turns the
+        structure into a total reflector (|S11| = 0.99999980, |S21| = 6.28e-04),
+        which is also perfectly lossless. Both residuals collapse to
+        cancellation dust — 2.2204e-16 on macOS arm64, exactly 0.0 on Linux
+        x86-64 — so whether U2's ratio happens to land under 100 is a property
+        of the build, not of the defect. `empty_s11` = 1.0 is that defect's only
+        witness, which is why the empty-guide comparison below is load-bearing
+        and was not touched.
+
+    The three witnesses are not interchangeable: the anchor gates the geometry,
+    unitarity gates losslessness, empty_s11 gates port transparency.
     """
     fd_mod = _fdfd_module()
 
@@ -1332,7 +1343,11 @@ def test_fdfd_solver_gates_run_live_and_committed_curves_are_reproducible():
     assert u["unitarity_refined"] < _U_REFINED_BOUND, (
         "the discretization is no longer unitary at the arithmetic floor -- "
         "this is a physics regression, not roundoff", u)
-    assert u["unitarity_raw"] / u["unitarity_refined"] > _U_RATIO_FLOOR, (
+    # Written as a product, not a quotient: `u_refined` can be exactly 0.0 on
+    # some builds (it did come back 0.0 from Linux x86-64 CI on a degenerate
+    # structure), and an infinite ratio is the strongest possible pass of this
+    # check, not a crash.
+    assert u["unitarity_raw"] > _U_RATIO_FLOOR * u["unitarity_refined"], (
         "the raw and refined unitarity residuals have converged: the "
         "sweep-visible residual is no longer dominated by LU roundoff, so "
         "#884's reading of this witness has expired and needs re-deriving", u)
@@ -1398,23 +1413,64 @@ def test_the_unitarity_witness_fires_on_loss_and_on_the_historical_defect():
     the gated configuration (~0.25 s each), so it runs in CI rather than in a
     notebook nobody re-runs.
 
-    (a) LOSS. A lossy fill eps_r = 1 + i*Im is injected by scaling the
-        frequency by sqrt(eps_r), which is exactly what enters k, the interior
-        operator and the port DtN. u_refined tracks the absorbed power
-        linearly, 1.4223e+02 * Im, so U1's 1e-11 bound puts the detection
-        threshold at Im(eps_r) ~ 7.0e-14. At Im = 1e-13 u_refined = 1.4737e-11
-        and U1 fires with 1.47x margin, while u_raw = 2.0864e-08 is nowhere
-        near the 1e-6 gate this replaces -- that gate does not fire until
-        Im(eps_r) ~ 1e-6 (u_raw = 1.4222e-04); at 1e-9 it is still passing at
-        1.5338e-07. Four decades of sensitivity, against the one defect
-        unitarity exists to catch.
+    (a) LOSS -- the class both U1 and U2 are shown to catch. A lossy fill
+        eps_r = 1 + i*Im is injected by scaling the frequency by sqrt(eps_r),
+        which is exactly what enters k, the interior operator and the port DtN.
+        u_refined tracks the absorbed power linearly, 1.4223e+02 * Im, so U1's
+        1e-11 bound puts the detection threshold at Im(eps_r) ~ 7.0e-14.
 
-    (b) THE HISTORICAL DEFECT. The missing /h in `discrete_gamma` -- the solver's
-        one real bug, per condition 4 of its contract. It is caught twice: the
-        empty guide reflects |S11| = 1.0 instead of 5e-14, and U2 fires at
-        ratio 29.0 (u_raw 6.4393e-15, u_refined 2.2204e-16). Note that U1 does
-        NOT fire on it: the broken structure is still lossless, which is why
-        U2 is carried alongside U1 rather than dropped as redundant.
+        At Im = 1e-13, u_refined = 1.4737e-11 and U1 fires with 1.47x margin,
+        while u_raw = 2.0864e-08 is nowhere near the 1e-6 gate this replaces --
+        that gate does not fire until Im(eps_r) ~ 1e-6 (u_raw = 1.4222e-04); at
+        1e-9 it is still passing at 1.5338e-07. Four decades of sensitivity,
+        against the one defect unitarity exists to catch.
+
+        1.47x is thin, so it is worth being precise about what it is thin
+        against. u_refined here is absorbed power, not cancellation dust: over
+        the four `permc_spec` orderings it reads 1.4676e-11 / 1.4737e-11 /
+        1.4700e-11 / 1.4806e-11 -- 0.88% total spread, where u_raw at the same
+        point spreads 0.85 decades. A build cannot move a signal that stiff by
+        the 32% it would take to drop under the bound, and it cannot collapse
+        it to zero the way it can a structurally-zero residual (see (b)).
+        Im = 1e-9 is asserted as well, where u_refined = 1.4223e-07 clears the
+        bound by 14223x with 0.0002% spread and U2 fires too, at ratio 1.078
+        (0.97 to 2.12 across orderings) -- that is U2's falsifier.
+
+    (b) THE HISTORICAL DEFECT, AND THE CORRECTION THAT THIS TEST'S FIRST
+        REVISION GOT WRONG. The missing /h in `discrete_gamma` is the solver's
+        one real bug, per condition 4 of its contract. **`empty_s11` is its only
+        witness. The unitarity witness does not catch it on any platform, and
+        the first revision of this test claimed otherwise on the strength of a
+        Mac-only measurement.**
+
+        What the defect actually produces is a TOTAL REFLECTOR: the loaded
+        solve gives |S11| = 0.9999998026 and |S21| = 6.2829e-04. A total
+        reflector is perfectly lossless, so |S11|^2 + |S21|^2 - 1 = -6.44e-15
+        is satisfied by construction and BOTH residuals are cancellation dust
+        at the last bit. There is no signal for any unitarity witness to see --
+        this is structural, not a threshold that could be tightened.
+
+        The dust is then whatever the arithmetic leaves, which is exactly what
+        varies by build:
+
+            venv/build      u_raw        u_refined    ratio    U2?
+            macOS arm64     6.4393e-15   2.2204e-16   29.0     fires
+              (both venvs, COLAMD; other orderings 61.5 / 7.0 / 18.0 --
+               u_refined is 1 eps in all four, so the "ratio" is an ulp count)
+            Linux x86-64    5.7732e-15   0.0          inf      does NOT fire
+              (PR #887 CI, run 33723124437, shard fast-suite (1))
+
+        The Mac ratio of 29 was one ulp count landing under a threshold of 100;
+        MMD_AT_PLUS_A already gives 61.5 on the same machine, and Linux gives
+        exactly 0.0 for u_refined, i.e. an infinite ratio. So this test asserts
+        `empty_s11` = 1.0 -- which holds everywhere and is the real guard --
+        plus the total-reflector structure and the dust magnitude, which are
+        the platform-independent reasons the unitarity witness is blind. It
+        asserts NOTHING about U1/U2 firing here, in either direction, because
+        the answer is genuinely build-dependent noise.
+
+        U1 and U2 are still both carried: (a) shows U1 firing where U2 does not
+        (Im = 1e-13) and both firing at Im = 1e-9, so neither is redundant.
 
     (c) THE HONEST NEGATIVE, asserted so it cannot rot into a claim. A lossless
         geometry off-by-one -- the first aperture at 42 cells instead of 40 --
@@ -1427,14 +1483,21 @@ def test_the_unitarity_witness_fires_on_loss_and_on_the_historical_defect():
         gate; that assertion is this one's complement.
 
     All numbers here are bit-identical on jax 0.10.2 / numpy 2.4.6 /
-    scipy 1.17.1 and on jax 0.6.2 / numpy 2.2.6 / scipy 1.15.3.
+    scipy 1.17.1 and on jax 0.6.2 / numpy 2.2.6 / scipy 1.15.3 -- BUT both are
+    macOS arm64 / Accelerate. Two local venvs agreeing is evidence about
+    library versions, not about platforms, and (b) is the case that proves the
+    difference matters. Every assertion here is therefore written to hold on a
+    quantity that is a signal rather than on one that is arithmetic dust.
     """
     fd_mod = _fdfd_module()
     a, freq, base, r, aps, cav, t, marg = _GATED_SELF_TEST
 
     def fires(u):
+        # product form, never a quotient -- see (b): `u_refined` is exactly 0.0
+        # on Linux x86-64 for the missing-/h structure, and an infinite ratio
+        # means U2 does NOT fire rather than raising ZeroDivisionError.
         return (u["unitarity_refined"] >= _U_REFINED_BOUND
-                or u["unitarity_raw"] / u["unitarity_refined"] <= _U_RATIO_FLOOR)
+                or u["unitarity_raw"] <= _U_RATIO_FLOOR * u["unitarity_refined"])
 
     # (a) loss at Im(eps_r) = 1e-13 -- seven decades under where the replaced
     # gate would begin to move, and 1.4x over where this one does
@@ -1449,20 +1512,44 @@ def test_the_unitarity_witness_fires_on_loss_and_on_the_historical_defect():
         "fires, the four-decade sensitivity claim in the docstring is stale",
         lossy)
 
-    # (b) the historical missing-/h defect, on the module's own entry points
+    # (a2) loss at Im(eps_r) = 1e-9, where both quantities are signal-dominated
+    # and U2 fires too. This is U2's falsifier; see (b) for why the missing-/h
+    # defect is NOT.
+    loud = fd_mod.refined_unitarity(a, freq * cmath.sqrt(complex(1.0, 1e-9)),
+                                    base, r, aps, cav, t, marg)
+    assert loud["unitarity_refined"] >= _U_REFINED_BOUND, loud
+    assert loud["unitarity_raw"] <= _U_RATIO_FLOOR * loud["unitarity_refined"], (
+        "U2 no longer fires on a loss large enough that the absorbed power "
+        "dominates the LU roundoff in BOTH residuals; U2 has lost the only "
+        "detection power that is demonstrated for it", loud)
+
+    # (b) the historical missing-/h defect. `empty_s11` is its ONLY witness --
+    # see the docstring. The unitarity witness is asserted BLIND here, in the
+    # form that is true on every platform: the defective structure is a total
+    # reflector, so the power identity holds by construction and both residuals
+    # are cancellation dust.
     original = fd_mod.discrete_gamma
     try:
         fd_mod.discrete_gamma = lambda lam, k, h: original(lam, k, h) * h
         e11, _, _ = fd_mod.solve(a, freq, base, r, aps, cav, t, marg, empty=True)
+        s11, s21, _ = fd_mod.solve(a, freq, base, r, aps, cav, t, marg)
         broken = fd_mod.refined_unitarity(a, freq, base, r, aps, cav, t, marg)
     finally:
         fd_mod.discrete_gamma = original
     assert abs(e11) == pytest.approx(1.0, abs=1e-6), (
         "the missing-/h defect no longer reflects a full wave off the empty "
-        "guide; the falsifier has stopped exercising the historical bug", e11)
-    assert fires(broken), (broken,)
-    assert broken["unitarity_raw"] / broken["unitarity_refined"] <= _U_RATIO_FLOOR, (
-        "it is U2 that catches the missing /h", broken)
+        "guide. empty_s11 is the ONLY witness this defect has, so if this "
+        "assertion stops holding the defect has become undetectable", e11)
+    # why unitarity cannot see it, asserted rather than argued
+    assert abs(s11) == pytest.approx(1.0, abs=1e-5) and abs(s21) < 1e-3, (
+        "the missing-/h structure is no longer a total reflector, so the "
+        "reasoning below about why the unitarity witness is blind to it no "
+        "longer applies and the falsifier needs re-deriving", s11, s21)
+    assert broken["unitarity_raw"] < 1e-13 and broken["unitarity_refined"] < 1e-13, (
+        "the missing-/h defect now produces a unitarity residual above "
+        "cancellation dust -- if that is real, U1/U2 may cover this class "
+        "after all and the docstring's claim that empty_s11 is its only "
+        "witness must be re-derived", broken)
 
     # (c) the negative: lossless geometry error, invisible to unitarity by
     # construction and caught by the r=2 anchor instead
