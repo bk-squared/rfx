@@ -24,8 +24,35 @@ it holds N).
 
 This script never imports rfx; it needs numpy + meep + the comparator.
 
-Exit codes: 0 JSON written; 1 pre-check failed (non-falsifier) or non-finite
-output; 2 Meep not importable.
+ROUND 2 (see the note, section 14). Two defects of the round-1 leg are fixed
+here:
+
+  * the cell was ``NX_INTERIOR`` wide, so Meep's PML was carved OUT of the
+    interior and the source plane (rfx node ``x_lo``) sat 0.5 a INSIDE it.
+    The cell now spans ``NX_INTERIOR + 2 N_CPML`` -- the whole rfx grid --
+    so the PML sits exactly where rfx's CPML sits and the source is 5 cells
+    clear of it;
+  * ``stop_when_fields_decayed`` was used unguarded.  Its first window closes
+    50 time units after the sources end; on the wide-bandwidth arms (te_00,
+    te_30) the pulse had not yet crossed the 78 a to the transmission
+    monitor, the monitored point was still IDENTICALLY zero, and the helper's
+    ``old_cur <= max_abs * decay_by`` read ``0 <= 0``.  The run stopped with
+    nothing in the flux monitors, ``inc_flux`` came out zero, and the leg
+    wrote R = -inf / T = +inf for all 400 bins.  The stop condition is now
+    the leg's own, and cannot fire before ``O.meep_min_after_sources``.
+
+And the artifact is no longer written unconditionally: ``O.meep_accept``
+(finiteness, a non-zero and non-degenerate flux normalisation, 0 <= R, T <= 1
+and |R + T - 1| within MEEP_ACCEPT_TOL on the GATED band, band coverage, and
+the empty run's cross-box flux identity) decides.  A rejected run writes a
+REJECTION RECORD carrying the reasons and NO R, T arrays -- the case then
+SKIPs its E4 gate with that reason instead of reading infinities.  The
+acceptance never compares Meep to the Fresnel oracle: that would turn an E4
+disagreement into a silent SKIP.
+
+Exit codes: 0 JSON written and accepted; 1 pre-check failed (non-falsifier)
+or the output was REJECTED (a rejection record is written; no R, T arrays);
+2 Meep not importable.
 
 Run (conda-forge pymeep env):
   python scripts/crossval/meep_cv26_oblique_slab.py --arm te_45 --out-dir <dir>
@@ -51,6 +78,7 @@ sys.path.insert(0, os.path.join(_REPO, "validation", "crossval", "comparators"))
 import oblique_fresnel as O  # noqa: E402
 
 C0 = O.C0
+NAN = float("nan")
 PRECHECK_TOL = 1e-9
 
 
@@ -66,10 +94,36 @@ def precheck(k_point, a_m: float, theta0_deg: float, f0_hz: float) -> dict:
             "tol": PRECHECK_TOL, "passed": ok}
 
 
-def run_two_pass(mp, *, arm: str, k_point, a_m: float, resolution: int, courant: float, nfreq: int,
+def make_decay_stop(mp, comp, pt, decay_by: float, t_min: float, dT: float = O.MEEP_STOP_DT):
+    """``stop_when_fields_decayed``, with the two round-1 failures removed:
+    it may not fire before ``t_min`` after the sources end, and a monitored
+    point that has seen only zero is NOT "decayed" (Meep's helper reads
+    ``0 <= 0 * decay_by`` as True and stops the run instantly)."""
+    st = {"max_abs": 0.0, "cur": 0.0, "t_ref": None, "t_win": 0.0}
+
+    def _stop(sim):
+        t = sim.round_time()
+        st["cur"] = max(st["cur"], abs(sim.get_field_point(comp, pt)) ** 2)
+        if st["t_ref"] is None:
+            st["t_ref"] = t
+            st["t_win"] = t
+        if t < st["t_ref"] + t_min or t <= st["t_win"] + dT:
+            return False
+        old, st["cur"], st["t_win"] = st["cur"], 0.0, t
+        st["max_abs"] = max(st["max_abs"], old)
+        if st["max_abs"] <= 0.0:
+            return False                       # nothing has arrived; not decayed
+        return bool(old <= st["max_abs"] * decay_by)
+
+    return _stop
+
+
+def run_two_pass(mp, *, arm: str, spec: dict, k_point, a_m: float, resolution: int, courant: float, nfreq: int,
                  fcen: float, fwidth: float, decay: float, center_offset_cells: float, pol: str) -> dict:
     cells = O.rig_cells(O.NX_INTERIOR)
-    sx = O.NX_INTERIOR * O.DX_M / a_m
+    # the WHOLE rfx grid, absorber included: Meep's PML then sits exactly where
+    # rfx's CPML sits and the source plane is TFSF_MARGIN cells clear of it
+    sx = (O.NX_INTERIOR + 2 * O.N_CPML) * O.DX_M / a_m
     sy = O.NY_CELLS * O.DX_M / a_m
     dpml = O.N_CPML * O.DX_M / a_m
     d_slab = O.D_SLAB_M / a_m
@@ -89,7 +143,8 @@ def run_two_pass(mp, *, arm: str, k_point, a_m: float, resolution: int, courant:
     cell = mp.Vector3(sx, sy, 0)
     refl_fr = mp.FluxRegion(center=mp.Vector3(refl_x, 0), size=mp.Vector3(0, sy))
     trans_fr = mp.FluxRegion(center=mp.Vector3(trans_x, 0), size=mp.Vector3(0, sy))
-    stop = mp.stop_when_fields_decayed(50, comp, mp.Vector3(trans_x, 0), decay)
+    t_min = O.meep_min_after_sources(spec, src_x, trans_x, a_m)
+    stop = make_decay_stop(mp, comp, mp.Vector3(trans_x, 0), decay, t_min)
 
     t0 = time.time()
     sim = mp.Simulation(cell_size=cell, boundary_layers=pml, sources=src, resolution=resolution,
@@ -99,6 +154,7 @@ def run_two_pass(mp, *, arm: str, k_point, a_m: float, resolution: int, courant:
     sim.run(until_after_sources=stop)
     refl_data = sim.get_flux_data(refl)
     inc_flux = np.array(mp.get_fluxes(trans))
+    inc_flux_refl = np.array(mp.get_fluxes(refl))    # empty run: must equal inc_flux (vacuum witness)
     freqs = np.array(mp.get_flux_freqs(refl))
     t_ref = time.time() - t0
     dt_meep_s = courant * (a_m / resolution) / C0
@@ -113,10 +169,13 @@ def run_two_pass(mp, *, arm: str, k_point, a_m: float, resolution: int, courant:
     trans = sim.add_flux(fcen, fwidth, nfreq, trans_fr)
     sim.load_minus_flux_data(refl, refl_data)
     sim.run(until_after_sources=stop)
-    R = -np.array(mp.get_fluxes(refl)) / inc_flux
-    T = np.array(mp.get_fluxes(trans)) / inc_flux
+    den = np.where(inc_flux == 0.0, np.nan, inc_flux)     # a zero normalisation is NaN, not +-inf
+    with np.errstate(divide="ignore", invalid="ignore"):
+        R = -np.array(mp.get_fluxes(refl)) / den
+        T = np.array(mp.get_fluxes(trans)) / den
     t_slab = time.time() - t0
-    return {"R": R, "T": T, "freqs_hz": freqs * C0 / a_m, "t_ref_s": t_ref, "t_slab_s": t_slab,
+    return {"R": R, "T": T, "inc_flux": inc_flux, "inc_flux_refl": inc_flux_refl, "t_min_after_sources": t_min,
+            "freqs_hz": freqs * C0 / a_m, "t_ref_s": t_ref, "t_slab_s": t_slab,
             "dt_meep_s": dt_meep_s, "fcen": fcen, "fwidth": fwidth, "sx": sx, "sy": sy, "dpml": dpml,
             "refl_x": refl_x, "trans_x": trans_x, "src_x": src_x, "d_slab": d_slab}
 
@@ -158,20 +217,33 @@ def main(argv=None) -> int:
         return 1
     fcen = f0 * a_m / C0
     fwidth = O.meep_fwidth_for(spec["bw"], f0) * a_m / C0
-    res = run_two_pass(mp, arm=a.arm, k_point=k_point, a_m=a_m, resolution=a.resolution, courant=a.courant,
+    res = run_two_pass(mp, arm=a.arm, spec=spec, k_point=k_point, a_m=a_m, resolution=a.resolution, courant=a.courant,
                        nfreq=a.nfreq, fcen=fcen, fwidth=fwidth, decay=a.decay,
                        center_offset_cells=a.center_offset_cells, pol=spec["pol"])
     R, T, freqs_hz = res["R"], res["T"], res["freqs_hz"]
-    finite = bool(np.all(np.isfinite(R)) and np.all(np.isfinite(T)))
     g = O.gated_mask(freqs_hz, spec)
     R_an, T_an = O.oracle_RT(freqs_hz, spec["ky"], spec["pol"])
-    if finite and g.any():
+
+    # --- acceptance: is this fit to be a reference at all? (validity, never agreement) ---
+    acc = O.meep_accept(freqs_hz, R, T, res["inc_flux"], spec, inc_flux_refl=res["inc_flux_refl"])
+    if g.any() and np.all(np.isfinite(R[g])) and np.all(np.isfinite(T[g])):
         print(f"  band {freqs_hz.min()/1e9:.2f}-{freqs_hz.max()/1e9:.2f} GHz, gated bins {int(g.sum())}; "
               f"Meep vs Fresnel(theta(f)) mean|dR|={float(np.nanmean(np.abs(R-R_an)[g])):.4f} "
               f"mean|dT|={float(np.nanmean(np.abs(T-T_an)[g])):.4f} max R+T {float((R+T)[g].max()):.4f} "
               f"(diagnostic on Meep's own bins; the verdict is the case script's)")
+    inc_abs = np.abs(res["inc_flux"])
+    inc_top = float(np.nanmax(inc_abs)) if inc_abs.size else 0.0
+    inc_rel_min = float(inc_abs[g].min() / inc_top) if (g.any() and inc_top > 0) else 0.0
+    print(f"  acceptance ({'ACCEPTED' if acc['accepted'] else 'REJECTED'}): gated R "
+          f"[{acc.get('R_min', NAN):.4f}, {acc.get('R_max', NAN):.4f}] "
+          f"T [{acc.get('T_min', NAN):.4f}, {acc.get('T_max', NAN):.4f}] "
+          f"max|R+T-1| {acc.get('closure_max', NAN):.4f} (tol {acc['tol']:g}); "
+          f"vacuum cross-box flux dev {acc.get('vacuum_flux_ratio_dev', NAN):.4f}; "
+          f"min|inc|/max|inc| on gated bins {inc_rel_min:.3e} (floor {acc['flux_floor']:g})")
+
     doc = {
-        "schema": "cv26-meep-leg/v1", "case_id": O.CASE_ID, "arm": a.arm, "pol": spec["pol"],
+        "schema": "cv26-meep-leg/v2", "case_id": O.CASE_ID, "arm": a.arm, "pol": spec["pol"],
+        "accepted": bool(acc["accepted"]), "rejection_reasons": list(acc["reasons"]), "acceptance": acc,
         "falsifier": a.falsifier, "tag": a.tag, "meep_version": getattr(mp, "__version__", "unknown"),
         "date_utc": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
         "a_m": a_m, "resolution": a.resolution, "courant": a.courant, "dt_meep_s": res["dt_meep_s"],
@@ -181,14 +253,32 @@ def main(argv=None) -> int:
         "k_point": list(k_point), "source_component": "Ez" if spec["pol"] == "te" else "Hz",
         "geometry": {k: res[k] for k in ("sx", "sy", "dpml", "refl_x", "trans_x", "src_x", "d_slab")},
         "precheck": pre,
-        "freqs_hz": freqs_hz.tolist(), "R": R.tolist(), "T": T.tolist(),
-        "run": {"t_ref_s": res["t_ref_s"], "t_slab_s": res["t_slab_s"], "finite": finite},
+        "run": {"t_ref_s": res["t_ref_s"], "t_slab_s": res["t_slab_s"],
+                "t_min_after_sources": res["t_min_after_sources"]},
     }
+    # A DECLARED falsifier is a defect injection: its arrays MUST reach the E4 gate, which
+    # is where it fails (on `precheck_passed`).  Withholding them would turn the falsifier
+    # into a SKIP.  The acceptance verdict and its reasons are recorded either way.
+    if acc["accepted"] or a.falsifier:
+        doc.update({"freqs_hz": freqs_hz.tolist(), "R": R.tolist(), "T": T.tolist(),
+                    "inc_flux": res["inc_flux"].tolist(), "inc_flux_refl": res["inc_flux_refl"].tolist()})
+    if not acc["accepted"]:
+        # a REJECTION RECORD: the reasons and the geometry, and NO R, T arrays --
+        # nothing downstream can read a number out of a run we do not vouch for
+        doc["freqs_band_hz"] = [float(freqs_hz.min()), float(freqs_hz.max())]
     out = os.path.join(a.out_dir, O.meep_json_name(a.arm, a.falsifier, a.tag))
     with open(out, "w") as fh:
         json.dump(doc, fh, indent=1)
     print(f"  wrote {out}")
-    return 0 if finite else 1
+    if not acc["accepted"]:
+        for r in acc["reasons"]:
+            print(f"  REJECTED: {r}")
+        if a.falsifier:
+            print(f"  (falsifier {a.falsifier}: arrays WRITTEN so the E4 gate can fail on them; exit 0)")
+            return 0
+        print("ABORT: the Meep output is not fit to be a reference; no R, T written (exit 1)")
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

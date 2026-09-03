@@ -162,12 +162,15 @@ def run_rfx_arm(spec: dict, *, n_cpml: int = O.N_CPML, cpml_kwargs: dict | None 
     if theta0_run_deg is not None:
         rec["theta0_run_deg"] = th_run
     n_steps = rec["n_steps"]
-    if spec["compact"]:
-        t_cap = int(RECORD_CAP_FACTOR * n_steps)
-    else:
-        t_cap = rec["t_safe_cpml_steps"]
-        if not smoke and n_steps > t_cap:
-            return {"grow": True, "record": rec}
+    # Round 2 (note section 13): the record is the DERIVED settling step of the
+    # exact lattice and the cap is RECORD_CAP_FACTOR x it for every arm.  Round 1
+    # capped the wide rig at the ARRIVAL of the first absorber echo
+    # (``t_safe_cpml_steps``, still reported) and grew the box when the witness
+    # had not settled by then; that echo is the echo of the FASTEST gated
+    # component, whose CPML reflection is ~1e-10, and growing the box makes the
+    # settle grow faster than the cap.  The echo is now gated by its AMPLITUDE
+    # over the record (``rec['e_absorber']``), not by its arrival time.
+    t_cap = int(RECORD_CAP_FACTOR * n_steps)
     extend = O.RECORD_EXTEND_STEPS * K
     if smoke and not spec["compact"]:
         n_steps = min(n_steps, 1200)
@@ -204,29 +207,27 @@ def run_rfx_arm(spec: dict, *, n_cpml: int = O.N_CPML, cpml_kwargs: dict | None 
     _advance(n_steps)
     purity, refl_rel, trans_rel, inc_peak, scat = _witness(n_steps)
     extensions = 0
-    grow = False
+    cap_hit = False
     if not smoke:
         while max(refl_rel, trans_rel) >= O.SETTLING_LIMIT or purity >= O.TAIL_PURITY_LIMIT:
             if n_steps + extend > t_cap:
-                grow = True
+                cap_hit = True
                 break
             n_steps += extend
             extensions += 1
             _advance(n_steps)
             purity, refl_rel, trans_rel, inc_peak, scat = _witness(n_steps)
-        if grow and not spec["compact"]:
-            return {"grow": True, "record": rec, "n_steps_reached": n_steps, "tail_at_gate": [refl_rel, trans_rel]}
     elapsed = time.time() - t0_wall
     ts = ts[:, :n_steps]
     if not np.all(np.isfinite(ts)):
         raise RuntimeError("non-finite probe samples")
     tot_r, tot_t, inc_r, inc_t = ts
     rec = dict(rec, n_steps_min=rec["n_steps"], n_steps=int(n_steps), extensions=int(extensions),
-               extend_steps=extend, cap_steps=int(t_cap), cap_reached=bool(grow))
+               extend_steps=extend, cap_steps=int(t_cap), cap_reached=bool(cap_hit))
     tail = {"window_steps": tw, "purity_inc_rel": purity, "scat_refl_rel": refl_rel, "total_trans_rel": trans_rel,
             "purity_limit": O.TAIL_PURITY_LIMIT, "limit": O.SETTLING_LIMIT,
             "ok": bool(purity < O.TAIL_PURITY_LIMIT and refl_rel < O.SETTLING_LIMIT and trans_rel < O.SETTLING_LIMIT
-                       and not grow)}
+                       and not cap_hit)}
 
     # --- spectra: the envelope carries exp(-j 2 pi f0 t); the +j kernel puts
     # the carrier at +f0, so DFT the conjugate and read the positive bins ---
@@ -391,20 +392,7 @@ def main(argv=None) -> int:
         print(f"\n[{arm}] theta0 {spec['theta0_deg']:g} deg, pol {spec['pol']}, bw {spec['bw']}, "
               f"f_cutoff {spec['f_cutoff_hz']/1e9:.3f} GHz, k_y {spec['ky']:.3f} rad/m, box {spec['nx_interior']}, "
               f"recipe dx/{dx_div}")
-        nx_arm = spec["nx_interior"]
-        grows = []
-        while True:
-            run = run_rfx_arm(spec, smoke=a.smoke, nx_interior=nx_arm, dx_div=dx_div, **run_kw)
-            if not run.get("grow"):
-                break
-            grows.append({"nx_interior": nx_arm, "record": run["record"], "n_steps_reached": run.get("n_steps_reached"),
-                          "tail_at_gate": run.get("tail_at_gate")})
-            print(f"  record: CPML gate {run['record']['t_safe_cpml_steps']} reached before the -40 dB witness; "
-                  f"growing the box {nx_arm} -> {nx_arm + O.NX_GROW_CELLS}")
-            nx_arm += O.NX_GROW_CELLS
-            if nx_arm > 4 * O.NX_INTERIOR:
-                raise RuntimeError("record never settled within 4x the declared box")
-        run["record"]["nx_grows"] = grows
+        run = run_rfx_arm(spec, smoke=a.smoke, nx_interior=spec["nx_interior"], dx_div=dx_div, **run_kw)
         cells = run["cells"]
         e2 = O.evaluate_e2(run["freqs_hz"], run["R_rfx"], run["T_rfx"], spec, run["dt_s"], tail=run["tail"],
                            cells=cells, n_cpml=run["n_cpml"], **or_kw)
@@ -414,8 +402,21 @@ def main(argv=None) -> int:
         e2["inc_amp_rel"] = np.asarray(run["inc_amp_rel"]).tolist()
         e2["falsifier"] = rfx_fals if (rfx_fals and O.FALSIFIERS[rfx_fals][0] == arm) else None
         r_ = run["record"]
-        print(f"  record: n_steps_min {r_['n_steps_min']} -> {r_['n_steps']} ({r_['extensions']} ext, cap {r_['cap_steps']}, "
-              f"box grows {len(grows)}); tail scat/trans {run['tail']['scat_refl_rel']:.2e}/{run['tail']['total_trans_rel']:.2e} "
+        # the absorber term is GATED on the arm's declared primary recipe only; on a
+        # diagnostic rung (a different dx or absorber depth) it is a measurement, and
+        # the measurement is exactly why the oblique arms run at dx/2 (note section 13.4)
+        # ... and never on the COMPACT box, where the echo is INSIDE the record by
+        # design (note section 4.5) and the arm is read against the lattice WITH the
+        # absorber, not against Fresnel.
+        primary = ((dx_div == O.ARM_DX_DIV.get(arm, 1)) and (a.n_cpml is None)
+                   and not a.smoke and not spec["compact"])
+        print(f"  record: derived {r_['n_steps_min']} -> {r_['n_steps']} ({r_['extensions']} ext, cap {r_['cap_steps']}, "
+              f"source {r_['record_source']}, closed form {r_['n_closed_form']}, theta_eff {r_['theta_eff_deg']:.1f} deg); "
+              f"absorber echo over the record {r_['e_absorber']:.2e} -> W_abs R/T "
+              f"{r_['W_absorber_R_max']:.3f}/{r_['W_absorber_T_max']:.3f} vs W_bin {O.W_BIN:g} -> "
+              f"{'ok' if r_['absorber_ok'] else ('n/a' if not np.isfinite(r_['e_absorber']) else 'OVER')}"
+              f"{'' if primary else ' (reported, not gated: diagnostic rung)'}; "
+              f"tail scat/trans {run['tail']['scat_refl_rel']:.2e}/{run['tail']['total_trans_rel']:.2e} "
               f"vs {O.SETTLING_LIMIT:g} -> {'ok' if run['tail']['ok'] else 'FAIL'}")
         print(f"  E2 ({e2['n_bins_gated']} bins, theta {e2['theta_gated_deg'][0]:.1f}-{e2['theta_gated_deg'][1]:.1f} deg): "
               f"max|dR|={e2['max_dR_gated']:.4f} max|dT|={e2['max_dT_gated']:.4f} | mean|dR|={e2['mean_dR_gated']:.4f}/"
@@ -426,8 +427,8 @@ def main(argv=None) -> int:
               f"{lat['mean_dT_lattice_gated']:.2e} (max R {lat['max_dR_lattice_gated']:.2e}); W_lat mean R/T "
               f"{lat['mean_W_lat_R_gated']:.4f}/{lat['mean_W_lat_T_gated']:.4f}; absorber term max R "
               f"{lat['absorber_term_R_gated_max']:.2e}")
-        arm_ok = e2["e2_ok"]
-        gates_line = dict(e2["gates"])
+        arm_ok = e2["e2_ok"] and (bool(r_["absorber_ok"]) or not primary)
+        gates_line = dict(e2["gates"], G3_absorber=(bool(r_["absorber_ok"]) if primary else "reported"))
         if spec["slab"] and not spec["compact"]:
             th_ = np.asarray(e2["theta_deg"]); g_ = np.asarray(e2["gated"], bool)
             for tq in (0.0, 30.0, 45.0, 55.0, 60.0, 63.43, 65.0, 70.0):
@@ -487,18 +488,27 @@ def main(argv=None) -> int:
             fk = meep_fals_key if (meep_fals_key and arm == O.MEEP_FALSIFIER_ARM) else None
             meep_name = O.meep_json_name(arm, fk)
             meep_path = os.path.join(meep_dir, meep_name)
+            mdoc = None
             if os.path.isfile(meep_path):
                 with open(meep_path) as fh:
                     mdoc = json.load(fh)
                 mdoc["_source"] = os.path.relpath(meep_path, SCRIPT_DIR)
+            # Round 2 (note section 14): an ABSENT reference and a REJECTED one are the
+            # same verdict -- "reference unavailable" -- and neither may be read as a
+            # number.  Round 1's leg wrote R = -inf / T = +inf and the E4 gate FAILED
+            # on infinities, which reads as "rfx disagrees with Meep"; it does not.
+            unavailable = O.meep_unavailable_reason(mdoc, meep_path, SCRIPT_DIR)
+            if unavailable is None:
                 e4 = O.evaluate_e4(e2, mdoc)
                 print(f"  E4 ({meep_name}, {e4['resolution']} px/cm, k_point {e4['k_point']}): Meep-vs-Fresnel mean R/T "
                       f"{e4['mean_dR_meep_tmm_gated']:.4f}/{e4['mean_dT_meep_tmm_gated']:.4f} (max {e4['max_dR_meep_tmm_gated']:.4f}/"
                       f"{e4['max_dT_meep_tmm_gated']:.4f}); rfx-vs-Meep mean {e4['mean_dR_rfx_meep_gated']:.4f}/"
                       f"{e4['mean_dT_rfx_meep_gated']:.4f}; gates {e4['gates']} -> {'PASS' if e4['e4_ok'] else 'FAIL'}")
             else:
-                e4 = {"present": False, "expected_path": os.path.relpath(meep_path, SCRIPT_DIR)}
-                print(f"  E4: [SKIP] Meep reference missing: {meep_path}")
+                e4 = {"present": False, "expected_path": os.path.relpath(meep_path, SCRIPT_DIR),
+                      "unavailable_reason": unavailable,
+                      "rejection_reasons": list((mdoc or {}).get("rejection_reasons", []))}
+                print(f"  E4: [SKIP] reference unavailable -- {unavailable}")
         e2["meep"] = e4
         doc["arms"][arm] = _serial(e2)
 
@@ -517,7 +527,8 @@ def main(argv=None) -> int:
     elif any_fail:
         rc, summary = 1, "rfx accuracy: FAIL -- a gate failed on at least one arm (exit 1)"
     elif any_meep_missing:
-        rc, summary = 2, "[SKIP] Meep reference missing for at least one Meep arm -- inconclusive (exit 2)"
+        rc, summary = 2, ("[SKIP] the Meep reference is UNAVAILABLE (absent, or written and rejected by the leg's "
+                          "own acceptance) for at least one Meep arm -- inconclusive, NOT a disagreement (exit 2)")
     else:
         rc, summary = 0, "ALL CHECKS PASSED -- E2 (Fresnel at the realized angle), lattice-gated grazing arms and E4 (Meep) (exit 0)"
     if a.falsifier is not None and not a.smoke:
