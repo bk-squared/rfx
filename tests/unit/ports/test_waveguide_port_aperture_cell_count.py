@@ -131,3 +131,63 @@ def test_explicit_full_width_range_gives_the_same_cell_count():
     _, explicit = _cfg(_sim(dx, y_range=(0.0, A_WR90), z_range=(0.0, B_WR90)))
     assert (explicit.u_hi - explicit.u_lo) == n_cells
     assert float(explicit.f_cutoff) == pytest.approx(float(default.f_cutoff), rel=1e-12)
+
+
+def _two_ports_on_one_face(dx: float, ranges):
+    """Two ports on the same ``+x`` face with the given ``y_range`` pair."""
+    sim = Simulation(
+        freq_max=11.6e9,
+        domain=(0.12192, A_WR90, B_WR90),
+        dx=dx,
+        boundary=BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"),
+                              z=Boundary(lo="pec", hi="pec")),
+        cpml_layers=10,
+    )
+    for i, y_range in enumerate(ranges):
+        sim.add_waveguide_port(0.0127, direction="+x", mode=(1, 0), mode_type="TE",
+                               freqs=FREQS, f0=10e9, bandwidth=0.5, name=f"p{i}",
+                               y_range=y_range, z_range=(0.0, B_WR90))
+    grid = sim._build_grid()
+    n_steps = int(grid.num_timesteps(4.0))
+    return [sim._build_waveguide_port_config(e, grid, FREQS, n_steps)
+            for e in sim._waveguide_ports]
+
+
+def test_abutting_apertures_on_one_face_share_no_cell():
+    """Ports that meet at a shared wall node abut; they do not overlap.
+
+    ``compute_waveguide_s_matrix``'s same-face disjointness guard
+    (``rfx/api/_sparams.py::_slices_overlap``) compares ``cfg.u_lo/u_hi``, i.e.
+    the entries ``_plane_indexer`` slices. Handing it node spans made every
+    abutting pair look like a one-entry overlap and rejected it. The spans now
+    say what the field arrays say, so the convention is pinned here rather than
+    left to be rediscovered: abutting is ``hi_a == lo_b`` exactly, and the node
+    spans it came from would have collided.
+    """
+    dx = 0.00127
+    y_mid = A_WR90 / 2  # 11.43 mm = cell 9 of 18, an exact node
+    lo_cfg, hi_cfg = _two_ports_on_one_face(dx, [(0.0, y_mid), (y_mid, A_WR90)])
+
+    # Each half solves on its own 9 cells; together they tile the guide's 18.
+    assert (lo_cfg.u_hi - lo_cfg.u_lo) == 9, (lo_cfg.u_lo, lo_cfg.u_hi)
+    assert (hi_cfg.u_hi - hi_cfg.u_lo) == 9, (hi_cfg.u_lo, hi_cfg.u_hi)
+    assert (hi_cfg.u_hi - lo_cfg.u_lo) == int(round(A_WR90 / dx))
+
+    # Abutting: no shared entry, and no gap either.
+    assert lo_cfg.u_hi == hi_cfg.u_lo
+    assert not (max(lo_cfg.u_lo, hi_cfg.u_lo) < min(lo_cfg.u_hi, hi_cfg.u_hi))
+    # The node spans these came from overlap by exactly one entry, which is the
+    # false positive the guard used to raise on.
+    assert max(lo_cfg.u_lo, hi_cfg.u_lo) < min(lo_cfg.u_hi + 1, hi_cfg.u_hi + 1)
+
+
+def test_genuinely_overlapping_apertures_still_overlap_as_cell_spans():
+    """A real overlap stays a real overlap: the guard is narrowed by one entry,
+    not disarmed. Companion to
+    ``tests/unit/api/test_api.py::test_waveguide_same_boundary_overlapping_apertures_reject``,
+    which asserts the raise itself."""
+    dx = 0.00127
+    lo_cfg, hi_cfg = _two_ports_on_one_face(
+        dx, [(0.0, 12 * dx), (8 * dx, A_WR90)])
+    overlap = min(lo_cfg.u_hi, hi_cfg.u_hi) - max(lo_cfg.u_lo, hi_cfg.u_lo)
+    assert overlap == 4, (lo_cfg.u_lo, lo_cfg.u_hi, hi_cfg.u_lo, hi_cfg.u_hi)
