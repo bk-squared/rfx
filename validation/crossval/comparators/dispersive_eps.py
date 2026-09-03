@@ -383,36 +383,34 @@ def tmm_layers_rt(f_hz, layers) -> tuple[np.ndarray, np.ndarray]:
     return np.abs(r) ** 2, np.abs(t) ** 2
 
 
-def yee_lattice_slab_rt(f_hz, eps_r: float, sigma: float, d_m: float, dx: float, dt: float,
-                        *, n_vac: int = 20) -> tuple[np.ndarray, np.ndarray]:
-    """EXACT time-harmonic R, T of the 1-D Yee lattice for a staircase slab
-    (cv23 note section 12): ``round(d/dx)`` E-nodes carry (eps', sigma) with
-    the semi-implicit sigma average, vacuum nodes either side; the normal-
-    incidence TMz rig with periodic y IS this lattice. With z = e^{j w dt},
-    w_hat = 2 sin(w dt/2)/dt, x = w dt/2, the update equations reduce to
-        H_{i+1/2} - H_{i-1/2} = dx (j w_hat eps_i + sigma_i cos x) E_i
-        E_{i+1}   - E_i       = dx (j w_hat mu0) H_{i+1/2}
-    which are marched from a unit transmitted lattice plane wave (vacuum
-    lattice wavenumber k = (2/dx) asin(w_hat dx/2c)) back to the incidence
-    side, where two nodes are decomposed into incident + reflected. Contains
-    the bulk numerical dispersion of the slab, the node interface and the
-    sigma warp at once; converges to ``tmm_slab_rt`` as dx -> 0 (second order).
+def _yee_lattice_march(f_hz, y_nodes, d_m: float, dx: float, dt: float, n_vac: int):
+    """The 1-D Yee lattice march shared by every slab lattice solution.
+
+    ``y_nodes[m]`` is the per-NODE shunt admittance density at bin ``m``: the
+    array the E-update contributes to ``H_{i+1/2} - H_{i-1/2} = dx * y_i E_i``.
+    With ``z = e^{j w dt}``, ``w_hat = 2 sin(w dt/2)/dt``, the two update
+    equations of the lattice are
+
+        H_{i+1/2} - H_{i-1/2} = dx * y_i(w) * E_i
+        E_{i+1}   - E_i       = dx * (j w_hat mu0) * H_{i+1/2}
+
+    marched from a unit transmitted lattice plane wave (vacuum lattice
+    wavenumber ``k = (2/dx) asin(w_hat dx/2c)``) back to the incidence side,
+    where two nodes are decomposed into incident + reflected. The vacuum
+    nodes are exact solutions of the same recurrence, so ``n_vac`` does not
+    enter the answer; it only fixes where the decomposition is read.
     """
     mu0 = 1.0 / (C0 ** 2 * EPS_0)
     f = np.asarray(f_hz, dtype=float)
     w = TWO_PI * f
     x = w * dt / 2.0
     w_hat = 2.0 * np.sin(x) / dt
-    cx = np.cos(x)
     n_slab = int(round(d_m / dx))
     N = 2 * n_vac + n_slab + 1
-    eps = np.full(N, EPS_0); sig = np.zeros(N)
-    eps[n_vac:n_vac + n_slab] = EPS_0 * eps_r
-    sig[n_vac:n_vac + n_slab] = sigma
     k = (2.0 / dx) * np.arcsin(w_hat * dx / (2.0 * C0))
     R = np.empty(f.size); T = np.empty(f.size)
     for m in range(f.size):
-        y = 1j * w_hat[m] * eps + sig * cx[m]
+        y = y_nodes[m]
         zm = 1j * w_hat[m] * mu0
         E = np.zeros(N, complex); H = np.zeros(N - 1, complex)
         E[N - 1] = 1.0
@@ -427,3 +425,83 @@ def yee_lattice_slab_rt(f_hz, eps_r: float, sigma: float, d_m: float, dx: float,
         T[m] = abs(1.0 / a) ** 2
     return R, T
 
+
+def yee_lattice_slab_rt(f_hz, eps_r: float, sigma: float, d_m: float, dx: float, dt: float,
+                        *, n_vac: int = 20) -> tuple[np.ndarray, np.ndarray]:
+    """EXACT time-harmonic R, T of the 1-D Yee lattice for a staircase slab
+    (cv23 note section 12): ``round(d/dx)`` E-nodes carry (eps\', sigma) with
+    the semi-implicit sigma average, vacuum nodes either side; the normal-
+    incidence TMz rig with periodic y IS this lattice. The node admittance is
+
+        y_i = j w_hat eps_i + sigma_i cos x,   x = w dt/2, w_hat = 2 sin x/dt
+
+    which contains the bulk numerical dispersion of the slab, the node
+    interface and the sigma warp at once; converges to ``tmm_slab_rt`` as
+    dx -> 0 (second order). This is the ``model="conductive"`` special case of
+    ``yee_lattice_slab_rt_model`` and is kept as the literal expression cv23
+    measured against, so its committed numbers replay bit-for-bit.
+    """
+    f = np.asarray(f_hz, dtype=float)
+    w = TWO_PI * f
+    x = w * dt / 2.0
+    w_hat = 2.0 * np.sin(x) / dt
+    cx = np.cos(x)
+    n_slab = int(round(d_m / dx))
+    N = 2 * n_vac + n_slab + 1
+    eps = np.full(N, EPS_0); sig = np.zeros(N)
+    eps[n_vac:n_vac + n_slab] = EPS_0 * eps_r
+    sig[n_vac:n_vac + n_slab] = sigma
+    y_nodes = [1j * w_hat[m] * eps + sig * cx[m] for m in range(f.size)]
+    return _yee_lattice_march(f, y_nodes, d_m, dx, dt, n_vac)
+
+
+def yee_lattice_slab_rt_eps(f_hz, eps_num_slab, d_m: float, dx: float, dt: float,
+                            *, n_vac: int = 20) -> tuple[np.ndarray, np.ndarray]:
+    """EXACT time-harmonic R, T of the 1-D Yee lattice whose slab nodes realize
+    the DISCRETE-TIME permittivity ``eps_num_slab`` (per bin, complex, rfx
+    convention), vacuum nodes either side.
+
+    Why one function covers every material this rig runs: whatever the E-update
+    is (ordinary, conductive, Debye CN, Lorentz/Drude ADE), it is algebraically
+
+        eps0 eps_inf (E^{n+1} - E^n)/dt + sum_p (P^{n+1} - P^n)/dt
+                                       + sigma (E^{n+1} + E^n)/2 = curl H^{n+1/2}
+
+    (``debye.py:229``, ``lorentz.py:262``, ``yee.py:388-393``). z-transforming
+    with ``z = e^{j w dt}`` factors out the ordinary Yee temporal factor
+    ``(z-1)/dt * z^{-1/2} = 2j sin(w dt/2)/dt = j w_hat`` common to vacuum, and
+    what is left multiplying it is exactly ``eps0 * eps_num(w)`` -- the same
+    ``eps_num`` that ``eps_numerical_ade`` returns and that cv22 section 3 /
+    cv23 section 3 already carry as the W_ADE / W_sigma window terms. So the
+    node admittance is ``y_i = j w_hat eps0 eps_num,i`` and the whole material
+    zoo enters through one complex number per bin.
+
+    (Check: conductive, eps_num = eps' - j sigma (x/tan x)/(w eps0), gives
+    ``j w_hat eps0 eps' + w_hat sigma (x/tan x)/w = j w_hat eps0 eps' +
+    sigma cos x`` because ``w_hat/w = sin x / x`` -- the literal expression in
+    ``yee_lattice_slab_rt``.)
+    """
+    f = np.asarray(f_hz, dtype=float)
+    w = TWO_PI * f
+    w_hat = 2.0 * np.sin(w * dt / 2.0) / dt
+    en = np.asarray(eps_num_slab, dtype=complex) * np.ones(f.size)
+    n_slab = int(round(d_m / dx))
+    N = 2 * n_vac + n_slab + 1
+    y_nodes = []
+    for m in range(f.size):
+        y = np.full(N, 1j * w_hat[m] * EPS_0, dtype=complex)
+        y[n_vac:n_vac + n_slab] = 1j * w_hat[m] * EPS_0 * en[m]
+        y_nodes.append(y)
+    return _yee_lattice_march(f, y_nodes, d_m, dx, dt, n_vac)
+
+
+def yee_lattice_slab_rt_model(f_hz, model: str, params: dict, d_m: float, dx: float, dt: float,
+                              *, n_vac: int = 20) -> tuple[np.ndarray, np.ndarray]:
+    """``yee_lattice_slab_rt_eps`` with the slab's discrete-time permittivity
+    taken from ``eps_numerical_ade(f, model, params, dt)``: the exact lattice
+    solution for any of the four models this module speaks (debye, lorentz,
+    drude, conductive). For ``model="conductive"`` it agrees with
+    ``yee_lattice_slab_rt`` to floating-point round-off (1e-15 class) and
+    exactly at sigma = 0."""
+    eps_num = eps_numerical_ade(f_hz, model, params, dt)
+    return yee_lattice_slab_rt_eps(f_hz, eps_num, d_m, dx, dt, n_vac=n_vac)

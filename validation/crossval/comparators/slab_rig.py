@@ -49,7 +49,7 @@ def staged_commit(repo_root: str, cwd: str | None = None) -> str:
 
 def run_slab_arm(model: str, params: dict, *, setup, nx_interior: int, n_steps_cap: int,
                  smoke: bool, verbose: bool = True, dx_div: int = 1,
-                 recipe: str = G.RECIPE_R3) -> dict:
+                 recipe: str = G.RECIPE_R3, settling_bar: float | None = None) -> dict:
     """One arm on the cv04 rig. ``dx_div = K`` refines the SAME rig in cells:
     dx/K with nx_interior, CPML layers, TFSF margin, probe offsets and tail
     window all x K (geometry identical; cv22 note section 11.2(a))."""
@@ -119,6 +119,15 @@ def run_slab_arm(model: str, params: dict, *, setup, nx_interior: int, n_steps_c
     else:
         n_steps = min(t_safe, n_steps_cap * K)
     tail_limit = G.SETTLING_LIMIT if recipe == G.RECIPE_R3 else G.TAIL_LIMIT
+    # A tighter settling bar is a NEW RUNG, not a widened window: it only makes
+    # the record longer, which shrinks the lattice witness's truncation term
+    # (docs/design_notes/20260903_lattice_witness_standard.md section 6). It is
+    # refused if it would loosen the declared bar.
+    if settling_bar is not None:
+        if float(settling_bar) > tail_limit:
+            raise ValueError(f"settling_bar {settling_bar} is looser than the declared bar {tail_limit}; "
+                             "the witness bar is never widened")
+        tail_limit = float(settling_bar)
     n_alloc = t_safe if (rec is not None) else n_steps
 
     if verbose:

@@ -318,6 +318,11 @@ CLASSIFICATION: dict[str, Entry] = {
         "no_simulation",
         "pure-numpy windows, falsifiers and TMM evaluation for cv23 (R, T and "
         "absorption A) -- no rfx Simulation"),
+    "validation/crossval/comparators/lattice_witness.py": Entry(
+        "no_simulation",
+        "pure-numpy exact-lattice witness gate for the slab family (cv04 / cv22 "
+        "/ cv23): the 1-D Yee-lattice prediction, the derived W_witness error "
+        "budget and the analytic falsifiers -- no rfx Simulation"),
     "validation/crossval/comparators/slab_rig.py": Entry(
         "no_simulation",
         "shared quasi-1-D TFSF slab rig helpers (record-length derivation, "
