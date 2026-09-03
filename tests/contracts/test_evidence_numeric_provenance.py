@@ -61,7 +61,7 @@ from pathlib import Path
 
 import pytest
 
-_REPO = Path(__file__).resolve().parents[1]
+_REPO = Path(__file__).resolve().parents[2]
 
 # --------------------------------------------------------------------------
 # Reference syntax
@@ -285,9 +285,12 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     (MANIFEST, "18_wr90_iris_modematch"): 4,
     (MANIFEST, "19_wr90_iris_filter_aghanim"): 4,
     ("validation/README.md", "crossval/11_waveguide_port_wr90.py"): 4,
-    ("validation/README.md", "crossval/15_patch_antenna_rt5880.py"): 4,
+    # 2026-09-03: floors for the cv15/cv18 README rows re-based to the rows that
+    # #847 / #846 rewrote after this gate was drafted (see the note, "Re-basing
+    # two floors"); those rows cite in the value-checked form and carry 2 each.
+    ("validation/README.md", "crossval/15_patch_antenna_rt5880.py"): 2,
     ("validation/README.md", "crossval/17_dielectric_sphere_mie.py"): 3,
-    ("validation/README.md", "crossval/18_wr90_iris_modematch.py"): 3,
+    ("validation/README.md", "crossval/18_wr90_iris_modematch.py"): 2,
     ("validation/README.md", "crossval/19_wr90_iris_filter_aghanim.py"): 6,
     (CV11_NOTE, "7. Numeric provenance (appended 2026-09-01, #812 round 2 \u2014 no finding changed)"): 6,
 }

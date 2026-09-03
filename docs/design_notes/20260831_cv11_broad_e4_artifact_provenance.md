@@ -256,7 +256,7 @@ artifact (§5).
 ## 7. Numeric provenance (appended 2026-09-01, #812 round 2 — no finding changed)
 
 The four load-bearing quantities of §1.2 are now bound to their artifact keys and checked
-by `tests/test_evidence_numeric_provenance.py`, so a refresh of the artifact that does not
+by `tests/contracts/test_evidence_numeric_provenance.py`, so a refresh of the artifact that does not
 also update this note fails the default fast lane:
 
 - this artifact's slab `S11` max: `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].max_mag_abs_diff = 0.0707`

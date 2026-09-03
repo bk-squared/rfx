@@ -17,7 +17,7 @@ A document cites a quantity by writing, inside a single-backtick code span,
     `<repo-relative .json path>::<key path>`
     `<repo-relative .json path>::<key path> = <literal>[ <unit>]`
 
-`tests/test_evidence_numeric_provenance.py` resolves every such span in the opted-in
+`tests/contracts/test_evidence_numeric_provenance.py` resolves every such span in the opted-in
 documents and asserts the artifact holds that value **to the precision written** —
 tolerance is half a unit in the last decimal place of the literal as typed, times an exact
 tabulated unit multiplier. More digits is a tighter assertion; a written sign is a signed
@@ -71,3 +71,18 @@ in the same commit as its reason.
 Opted in this round: `validation/crossval/manifest.json` (cases 11, 15, 17, 18, 19),
 `validation/README.md` (the same five rows), the cv11 provenance note, and this note.
 Repo-wide coverage is deliberately not attempted in one step.
+
+
+## Re-basing two floors at merge time (2026-09-03)
+
+This gate was drafted on 2026-09-01 against the README rows of that day. Before
+it merged, #846 (cv17/cv18) and #847 (cv05/cv15) rewrote the cv15 and cv18 rows
+with their own value-checked citations (2 each, resolved by the same
+value-checked citation rule this gate enforces; #843, #842 and the cv22/cv23/cv24
+lanes cited in that form from the start). The rebase keeps those newer rows —
+they carry the reviewed physics (cv15's honest STOP, cv18's per-configuration
+gate) — and re-registers their floors from 4 → 2 (cv15) and 3 → 2 (cv18) in
+`REQUIRED_SITES`, in this same commit, which is exactly the deliberate act the
+floor comment demands. The cv11 and cv19 manifest `claim_scope` texts, which no
+later PR touched, keep this branch's citation-form rewrite (4 references each).
+The gate test itself moved to `tests/contracts/` with the test reorg.
