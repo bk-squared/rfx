@@ -1,0 +1,190 @@
+name: rfx-lattice-witness-standard
+description: "Lattice-witness standardisation (PI decision 2026-09-03: test per lattice, same rigor for the other slab cases) -- pre-declared in docs/design_notes/20260903_lattice_witness_standard.md before this run. Replays the EXISTING rungs of the three slab-family cases and evaluates the second, pre-declared gate |rfx - exact 1-D Yee lattice| <= W_witness(f) at every one: cv23 nine rungs (tand0p1/tand1/tand3 x dx, dx/2, dx/4), cv22 three rungs (debye/lorentz/drude at dx) with the pole ADE carried exactly through eps_num, cv04 one rung (its committed 719-step record, where the witness is REPORTED not gated and the note derives why). No continuum window is touched anywhere; W_witness is derived from the lattice model's own error budget (record truncation, incident-reference truncation, float32) and never fitted. Two NEW rungs are pre-declared here with their predictions: cv22 debye at a 3e-4 settling bar (note section 8.1; predicted n_steps 1308 at nx 1200, W_witness_R 7.3e-4 -- the gate then either passes with the residual falling ~24x with the tail, confirming truncation, or fires and the mechanism is not truncation; both are results) and cv04 at the same nx-1000 settled recipe as a reported cross-check. Exit 0 iff every replay leg exits 0, the committed-artifact witness rebuild is byte-stable and the gate test is green. No Meep, no conda: this lane is FDTD + numpy only. Submit: vessl run create -f scripts/vessl_lattice_witness.yaml"
+tags: [rfx, crossval, cv04, cv22, cv23, lattice-witness, slab-family]
+resources:
+  cluster: remilab-c0
+  cpu: 16
+  memory: 24Gi
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: cpu
+  MPLBACKEND: Agg
+  RFX_CHECKOUT_NFS: /root/workspace/claude-workspace/rfx/checkouts/lattice-witness-standard
+  RFX_RUNS_ROOT: /root/workspace/claude-workspace/rfx/runs
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eux
+  echo "=== rfx lattice-witness standard: cv04 + cv22 + cv23, every existing dx rung ==="
+  date
+  STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+  OUT="$RFX_RUNS_ROOT/lattice-witness-$STAMP"
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RFX_RUNS_ROOT/lattice-witness-LATEST"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+
+  # -- 1. stage the checkout (NFS is read-only for the pod) --
+  test -d "$RFX_CHECKOUT_NFS" || { echo "ERROR: checkout missing at $RFX_CHECKOUT_NFS"; exit 3; }
+  WORK=/tmp/rfx-lattice-witness
+  rm -rf "$WORK"; mkdir -p "$WORK"
+  cp -a "$RFX_CHECKOUT_NFS/." "$WORK/"
+  cd "$WORK"
+  git config --global --add safe.directory "$WORK" || true
+  # Provenance (cv22 review finding 6): the NFS checkout is an rsync without
+  # .git; the orchestrator writes the source commit to .staged_commit at
+  # staging time and the case scripts read it first.
+  if [ -s "$WORK/.staged_commit" ]; then
+    cat "$WORK/.staged_commit" > "$OUT/commit.txt"
+  else
+    git rev-parse HEAD > "$OUT/commit.txt" 2>/dev/null || echo unknown > "$OUT/commit.txt"
+  fi
+  echo "commit: $(cat "$OUT/commit.txt")"
+  RES22="$WORK/validation/crossval/_22_dispersive_results"
+  RES23="$WORK/validation/crossval/_23_lossy_results"
+  RES04="$WORK/validation/crossval/_04_fresnel_results"
+  # The new pre-declared cv22 rung lands in its OWN directory so the case's
+  # witness document keeps exactly the rungs the case declares; its verdict is
+  # read separately (both branches of its prediction are results, section 8.1).
+  RES22D="$WORK/validation/crossval/_22_dispersive_diag"
+  mkdir -p "$RES22" "$RES23" "$RES04" "$RES22D"
+
+  # -- 2. rfx environment (no Meep: the lattice witness is an E2-side gate) --
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" "pytest>=7"
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  "$PY" -c "import jax, rfx; print('rfx probe ok', jax.__version__)"
+
+  run_case() {  # name, script, then args
+    NAME=$1; SCRIPT=$2; shift 2
+    set +e
+    "$PY" "$SCRIPT" "$@" > "$OUT/$NAME.log" 2>&1
+    rc=$?
+    set -e
+    echo "$rc" > "$OUT/$NAME.rc"
+    grep -E "^\[|  record|  E2|  E4|FDTD|lattice-witness|artifact|wrote|PASS|FAIL|SKIP" "$OUT/$NAME.log" | tail -n 20 || true
+    echo "${NAME}_rc=$rc"
+  }
+
+  # -- 3. cv23: the nine EXISTING rungs (baseline at the per-arm primary recipe --
+  #       tand3 at dx/2 -- plus the committed dx ladder). Recipes unchanged; the
+  #       only new thing is the witness evaluated on each. --
+  run_case cv23_baseline validation/crossval/23_lossy_slab_fresnel.py --out-dir "$RES23" --no-plots
+  cv23_rc=$(cat "$OUT/cv23_baseline.rc")
+  ladder_fail=0
+  for ARM in tand3 tand1 tand0p1; do
+    for K in 2 4; do
+      run_case cv23_${ARM}_dx$K validation/crossval/23_lossy_slab_fresnel.py \
+        --arms "$ARM" --dx-div $K --tag ${ARM}_dx$K --no-plots --out-dir "$RES23"
+      rc=$(cat "$OUT/cv23_${ARM}_dx$K.rc")
+      case "$rc" in 0|1|2) ;; *) echo "ERROR: cv23 rung ${ARM}_dx$K exited $rc"; ladder_fail=1;; esac
+    done
+  done
+
+  # -- 4. cv22: the three EXISTING rungs at dx, unchanged recipes --
+  run_case cv22_baseline validation/crossval/22_dispersive_slab_fresnel.py --out-dir "$RES22" --no-plots
+  cv22_rc=$(cat "$OUT/cv22_baseline.rc")
+
+  # -- 5. The two NEW rungs, pre-declared in note section 8.1 with their predictions.
+  #       (a) cv22 debye at a 3e-4 settling bar: the record grows (predicted 1308 steps,
+  #           2 adaptive extensions, box grown to nx 1200 by the existing rule), the
+  #           truncation term of W_witness_R falls 7.17e-3 -> 3e-4 and W_witness_R to
+  #           7.3e-4. Prediction: |rfx - lattice| falls with the tail to ~2.7e-5 and the
+  #           gate passes with F2 then firing at 3.0x; if instead the residual stays at
+  #           6.5e-4 the gate FIRES and the mechanism is not truncation. Either is a
+  #           result; neither moves a window. Diagnostic rung: rc 0/1/2 admissible.
+  #       (b) cv04's slab on the settled nx-1000 rig: the same material as cv04
+  #           (eps' = 4, sigma = 0) at the derived record, already committed as cv23's
+  #           sigma_zero falsifier -- re-run here so the cv04 row rests on a leg of this
+  #           lane too. It is a cv23 FALSIFIER and must exit 1. --
+  run_case cv22_debye_tail3e4 validation/crossval/22_dispersive_slab_fresnel.py \
+    --arms debye --settling-bar 3e-4 --tag debye_tail3e4 --no-plots --out-dir "$RES22D" --meep-dir "$RES22"
+  case "$(cat "$OUT/cv22_debye_tail3e4.rc")" in 0|1|2) ;; *) echo "ERROR: debye_tail3e4 exited $(cat "$OUT/cv22_debye_tail3e4.rc")"; ladder_fail=1;; esac
+  set +e
+  "$PY" validation/crossval/22_dispersive_slab_fresnel.py --lattice-witness --out-dir "$RES22D" > "$OUT/cv22_debye_tail3e4_witness.log" 2>&1
+  witdiag_rc=$?
+  set -e
+  echo "$witdiag_rc" > "$OUT/cv22_debye_tail3e4_witness.rc"
+  cat "$OUT/cv22_debye_tail3e4_witness.log" || true
+  echo "PRE-DECLARED READING (note section 8.1): rc 0 = the residual fell with the tail, truncation confirmed and F2 now fires on the Debye arm; rc 1 = it did not, and the Debye arm's residual is NOT truncation-dominated. Neither moves a window; both are recorded."
+  echo "cv22_debye_tail3e4_witness_rc=$witdiag_rc"
+  run_case cv23_sigma_zero validation/crossval/23_lossy_slab_fresnel.py \
+    --falsifier tand0p1_sigma_zero --no-plots --out-dir "$RES23"
+  [ "$(cat "$OUT/cv23_sigma_zero.rc")" -eq 1 ] || { echo "ERROR: sigma_zero falsifier did not exit 1"; ladder_fail=1; }
+
+  # -- 6. cv04: its own committed 719-step rung, with the witness written beside it.
+  #       cv04 exits 2 without Meep (reference unavailable) and this lane installs no
+  #       Meep, so 0 or 2 is admissible; what this leg owes is _04_fresnel_results/
+  #       lattice_witness.json and the REPORTED (not gated) numbers the note derives. --
+  set +e
+  "$PY" validation/crossval/04_multilayer_fresnel.py --lattice-witness > "$OUT/cv04.log" 2>&1
+  cv04_rc=$?
+  set -e
+  echo "$cv04_rc" > "$OUT/cv04.rc"
+  grep -E "cv04-lattice-witness|Tail witness|wrote|mean err|rfx accuracy" "$OUT/cv04.log" | tail -n 12 || true
+  echo "cv04_rc=$cv04_rc"
+  case "$cv04_rc" in 0|2) ;; *) echo "ERROR: cv04 exited $cv04_rc"; ladder_fail=1;; esac
+
+  # -- 7. The witness gate itself (no FDTD: post-processing of the rungs above,
+  #       the same class as --meep-ladder-summary). Non-zero rc means a rung failed
+  #       the lattice gate. --
+  set +e
+  "$PY" validation/crossval/23_lossy_slab_fresnel.py --lattice-witness --out-dir "$RES23" > "$OUT/cv23_lattice_witness.log" 2>&1
+  wit23_rc=$?
+  "$PY" validation/crossval/22_dispersive_slab_fresnel.py --lattice-witness --out-dir "$RES22" > "$OUT/cv22_lattice_witness.log" 2>&1
+  wit22_rc=$?
+  set -e
+  cat "$OUT/cv23_lattice_witness.log" "$OUT/cv22_lattice_witness.log"
+  echo "$wit23_rc" > "$OUT/cv23_lattice_witness.rc"; echo "$wit22_rc" > "$OUT/cv22_lattice_witness.rc"
+  echo "lattice_witness_rc cv22=$wit22_rc cv23=$wit23_rc"
+
+  # -- 8. gate tests: the new standard plus the two cases' own gate tests, which must
+  #       stay green (no continuum window moved) --
+  set +e
+  "$PY" -m pytest -q tests/crossval/test_lattice_witness_gates.py -rs -s > "$OUT/pytest_lattice_witness.log" 2>&1
+  gate_rc=$?
+  "$PY" -m pytest -q tests/crossval/test_cv22_dispersive_slab_gates.py tests/crossval/test_cv23_lossy_slab_gates.py \
+    tests/crossval/test_cv22_dispersive_eps_mapping.py tests/crossval/test_cv23_lossy_eps_mapping.py -rs \
+    > "$OUT/pytest_cv2223.log" 2>&1
+  cv_rc=$?
+  "$PY" -m pytest -q tests/contracts/test_crossval_manifest_contract.py tests/contracts/test_example_fidelity_contract.py -q \
+    > "$OUT/pytest_contracts.log" 2>&1
+  contracts_rc=$?
+  set -e
+  echo "$gate_rc" > "$OUT/pytest_lattice_witness.rc"
+  echo "$cv_rc" > "$OUT/pytest_cv2223.rc"
+  echo "$contracts_rc" > "$OUT/pytest_contracts.rc"
+  grep -E "lattice-witness-summary|passed|failed|SKIPPED|Error" "$OUT/pytest_lattice_witness.log" | tail -n 40 || true
+  echo "gate_test_rc=$gate_rc cv2223_rc=$cv_rc contracts_rc=$contracts_rc"
+
+  # -- 9. hand back, readable --
+  cp -r --no-preserve=ownership,mode "$RES23" "$OUT/_23_lossy_results"
+  cp -r --no-preserve=ownership,mode "$RES22" "$OUT/_22_dispersive_results"
+  cp -r --no-preserve=ownership,mode "$RES04" "$OUT/_04_fresnel_results"
+  cp -r --no-preserve=ownership,mode "$RES22D" "$OUT/_22_dispersive_diag"
+  cp "$OUT/commit.txt" "$OUT/_23_lossy_results/lattice_witness_commit.txt" || true
+  cp "$OUT/commit.txt" "$OUT/_22_dispersive_results/lattice_witness_commit.txt" || true
+  cp "$OUT/commit.txt" "$OUT/_04_fresnel_results/lattice_witness_commit.txt" || true
+  cp "$OUT/cv23_lattice_witness.log" "$OUT/_23_lossy_results/lattice_witness_run.log" || true
+  cp "$OUT/cv22_lattice_witness.log" "$OUT/_22_dispersive_results/lattice_witness_run.log" || true
+  cp "$OUT/cv04.log" "$OUT/_04_fresnel_results/lattice_witness_run.log" || true
+  chmod -R a+rX "$OUT"
+  echo "=== verdict ==="
+  echo "cv23_baseline_rc=$cv23_rc cv22_baseline_rc=$cv22_rc cv04_rc=$cv04_rc rungs_ok=$([ "$ladder_fail" -eq 0 ] && echo yes || echo NO) witness_rc=(22:$wit22_rc 23:$wit23_rc) gate_test_rc=$gate_rc cv2223_rc=$cv_rc contracts_rc=$contracts_rc"
+  echo "artifacts: $OUT  (commit lattice_witness.json into validation/crossval/_2{2,3}_*_results/ and _04_fresnel_results/, then fill artifact_paths)"
+  fail=0
+  [ "$cv23_rc" -eq 0 ] || { echo "ERROR: cv23 baseline exit $cv23_rc"; fail=1; }
+  [ "$cv22_rc" -eq 0 ] || { echo "ERROR: cv22 baseline exit $cv22_rc"; fail=1; }
+  [ "$ladder_fail" -eq 0 ] || fail=1
+  [ "$wit22_rc" -eq 0 ] || { echo "ERROR: cv22 lattice witness exit $wit22_rc (a rung failed the lattice gate)"; fail=1; }
+  [ "$wit23_rc" -eq 0 ] || { echo "ERROR: cv23 lattice witness exit $wit23_rc (a rung failed the lattice gate)"; fail=1; }
+  [ "$gate_rc" -eq 0 ] || { echo "ERROR: lattice-witness gate test exit $gate_rc"; fail=1; }
+  [ "$cv_rc" -eq 0 ] || { echo "ERROR: cv22/cv23 gate tests exit $cv_rc"; fail=1; }
+  [ "$contracts_rc" -eq 0 ] || { echo "ERROR: contract tests exit $contracts_rc"; fail=1; }
+  exit "$fail"
