@@ -1,6 +1,6 @@
 name: rfx-cv26-oblique-fresnel
-description: "cv26 oblique slab Fresnel, ROUND 1 -- pre-declared in docs/design_notes/20260902_cv26_oblique_fresnel_predeclaration.md before this run. rfx Bloch TFSF (fixed k_y, realized angle per bin) on cv04's slab: seven primary arms (te_00/30/45/60, tm_00/45/60 -- TM through the exact eps<->mu duality; oblique arms at dx/2 by the section 4.6 rule), three grazing compact-box arms at 82 deg (vacuum leakage witness, PEC absorber gate vs the exact Yee-lattice CPML model, slab), the 8/16/32 absorber depth ladder, the dx rungs of the oblique arms as evidence, six rfx falsifiers (each must exit 1), Meep legs at 40 px/cm on six arms + the wrong-2pi k_point falsifier, the gate test (must be green). CPU only: every arm is a 2-D grid (<= 3081 x 85 complex64). Exit 0 iff baseline 0 / falsifiers 1 / gate test 0 / Meep legs 0. Submit: vessl run create -f scripts/vessl_cv26_oblique_fresnel.yaml"
-tags: [rfx, crossval, cv26, oblique, fresnel, cpml, meep, gap-lane-4, round-1]
+description: "cv26 oblique slab Fresnel, ROUND 2 -- round-1 defects and their fixes are pre-declared in sections 13-16 of docs/design_notes/20260902_cv26_oblique_fresnel_predeclaration.md before this run. Round 1 (cv26-oblique-r1-20260902T162340Z, 21 h) failed on two: the record law of section 6 under-predicted the oblique settling time by 2.4-2.8x and its CPML ARRIVAL cap cut every 45/60 deg arm off before it settled (fixed: the record is now computed from the exact lattice, RECORD_DECLARED, and the absorber is gated by the echo AMPLITUDE inside the record); and the Meep leg's unguarded stop_when_fields_decayed stopped the wide-bandwidth arms before first arrival, so inc_flux was zero and the leg wrote R=-inf/T=+inf yet the E4 gate read them (fixed: the leg's own stop condition with a minimum run time, the PML moved out of the interior, and meep_accept refuses to write R, T it cannot vouch for -- a rejected reference makes E4 SKIP at exit 2, never FAIL at exit 1). rfx Bloch TFSF (fixed k_y, realized angle per bin) on cv04's slab: seven primary arms (te_00/30/45/60, tm_00/45/60 -- TM through the exact eps<->mu duality; oblique arms at dx/2 by the section 4.6 rule), three grazing compact-box arms at 82 deg (vacuum leakage witness, PEC absorber gate vs the exact Yee-lattice CPML model, slab), the 8/16/32 absorber depth ladder, the dx rungs of the oblique arms as evidence, six rfx falsifiers (each must exit 1), Meep legs at 40 px/cm on six arms + the wrong-2pi k_point falsifier, the gate test (must be green). CPU only: every arm is a 2-D grid (<= 3081 x 85 complex64). Exit 0 iff baseline 0 / falsifiers 1 / gate test 0 / Meep legs 0. Submit: vessl run create -f scripts/vessl_cv26_oblique_fresnel.yaml"
+tags: [rfx, crossval, cv26, oblique, fresnel, cpml, meep, gap-lane-4, round-2]
 resources:
   cluster: remilab-c0
   cpu: 16
@@ -19,12 +19,12 @@ mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
   set -eux
-  echo "=== rfx cv26 oblique slab Fresnel ROUND 1 ==="
+  echo "=== rfx cv26 oblique slab Fresnel ROUND 2 ==="
   date
   STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-  OUT="$RFX_RUNS_ROOT/cv26-oblique-r1-$STAMP"
+  OUT="$RFX_RUNS_ROOT/cv26-oblique-r2-$STAMP"
   mkdir -p "$OUT"
-  echo "$OUT" > "$RFX_RUNS_ROOT/cv26-oblique-r1-LATEST"
+  echo "$OUT" > "$RFX_RUNS_ROOT/cv26-oblique-r2-LATEST"
   trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
 
   # -- 1. stage the checkout (NFS is read-only for the pod); provenance from .staged_commit --
@@ -84,7 +84,11 @@ run: |-
   }
 
   # -- 4. Meep legs: six primary arms at 40 px/cm (k_point from the declared theta0, pre-checked to 1e-9),
-  #       and the F4 wrong-2pi k_point falsifier on te_45 (pre-check recorded failed, run proceeds) --
+  #       and the F4 wrong-2pi k_point falsifier on te_45 (pre-check recorded failed, run proceeds).
+  #       Round 2 (note section 14): the cell now spans the WHOLE rfx grid so the PML sits where rfx's
+  #       CPML sits and the source is clear of it; the stop condition is the leg's own and cannot fire
+  #       before meep_min_after_sources; and meep_accept refuses to write R, T it cannot vouch for --
+  #       a rejected leg writes a rejection record with NO arrays and exits 1. --
   for ARM in te_00 te_30 te_45 te_60 tm_45 tm_60; do
     run_meep $ARM --arm "$ARM"
   done
@@ -104,7 +108,9 @@ run: |-
   done
 
   # -- 7. evidence rungs (diagnostic arms, rc 0/1/2 admissible): the absorber depth ladder on the PEC
-  #       compact box, and the dx rungs of the oblique arms (the lattice term at dx, second order) --
+  #       compact box, and the dx rungs of the oblique arms.  Round 2 (note section 13.5): the dx rungs
+  #       carry the absorber-echo measurement that picks dx/2 -- G3_absorber is REPORTED there, not
+  #       gated (te_45, tm_45, tm_60 at dx are pre-declared OVER W_bin), so their rc is evidence. --
   ladder_fail=0
   for D in 8 16 32; do
     run_rfx graze_pec_d$D --arm graze_pec --n-cpml $D --tag graze_pec_d$D
@@ -127,8 +133,11 @@ run: |-
 
   # -- 9. hand back, readable --
   cp -r --no-preserve=ownership,mode "$RES" "$OUT/_26_oblique_results"
-  cp "$OUT/rfx_baseline.log" "$OUT/_26_oblique_results/r1_rfx_baseline.log" || true
-  cp "$OUT/commit.txt" "$OUT/_26_oblique_results/r1_commit.txt" || true
+  cp "$OUT/rfx_baseline.log" "$OUT/_26_oblique_results/r2_rfx_baseline.log" || true
+  cp "$OUT/commit.txt" "$OUT/_26_oblique_results/r2_commit.txt" || true
+  for ARM in te_00 te_30 te_45 te_60 tm_45 tm_60; do
+    cp "$OUT/meep_$ARM.log" "$OUT/_26_oblique_results/r2_meep_$ARM.log" || true
+  done
   chmod -R a+rX "$OUT"
   echo "=== verdict ==="
   echo "baseline_rc=$base_rc falsifiers_all_exit_1=$([ "$fals_fail" -eq 0 ] && echo yes || echo NO) ladders_ok=$([ "$ladder_fail" -eq 0 ] && echo yes || echo NO) gate_test_rc=$gate_rc"
@@ -139,6 +148,6 @@ run: |-
   [ "$ladder_fail" -eq 0 ] || fail=1
   [ "$gate_rc" -eq 0 ] || { echo "ERROR: gate test exit $gate_rc"; fail=1; }
   for ARM in te_00 te_30 te_45 te_60 tm_45 tm_60; do
-    [ "$(cat "$OUT/meep_$ARM.rc")" -eq 0 ] || { echo "ERROR: Meep leg $ARM failed"; fail=1; }
+    [ "$(cat "$OUT/meep_$ARM.rc")" -eq 0 ] || { echo "ERROR: Meep leg $ARM exited non-zero (pre-check failed, or meep_accept REJECTED its output -- see meep_$ARM.log)"; fail=1; }
   done
   exit "$fail"
