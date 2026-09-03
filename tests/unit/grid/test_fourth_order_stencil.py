@@ -52,41 +52,76 @@ def _rand_state_mats(shape=(8, 7, 6)):
 
 
 def test_update_order2_state_byte_identical():
-    """BIT-IDENTITY GATE: stencil_order=2 update == explicit 2nd-order curl."""
+    """BIT-IDENTITY GATE: stencil_order=2 update == explicit 2nd-order curl.
+
+    The reference is built in NUMPY float32, not in JAX (#876). The claim
+    is that the kernel does exactly the IEEE float32 arithmetic the Yee
+    update is written as, and only numpy evaluates that arithmetic
+    literally: each ufunc is one correctly-rounded float32 operation, with
+    no reassociation and no contraction. A jnp reference is instead
+    whatever XLA compiles the same expression into on the host at hand —
+    on jax 0.10.2/arm64 the eager ``arr / dx`` is rewritten to
+    ``arr * (1/dx)`` (the lowered HLO carries a ``multiply``), which moves
+    49/336 ``ex`` and 60/336 ``ey`` elements by 1-3 ulp (max 24) against
+    the same kernel that matches numpy on 0/336. So the pre-#876 form of
+    this test compared the kernel against a second compiled program and
+    called the disagreement a kernel defect; the kernel was the IEEE-
+    faithful side of it. ``np.array_equal`` is unchanged: this is still a
+    BYTE gate, now against arithmetic that cannot drift with the compiler.
+    """
     st, mats = _rand_state_mats()
     dt, dx, per = 1e-13, 1e-3, (False, True, False)
 
+    def npf32(a):
+        return np.asarray(a, dtype=np.float32)
+
     def bwd(a, ax):
-        return jnp.roll(a, 1, ax) if per[ax] else _shift_bwd(a, ax)
+        """a[i-1], the numpy twin of _shift_bwd / roll — indexing only."""
+        if per[ax]:
+            return np.roll(a, 1, ax)
+        out = np.zeros_like(a)
+        out[(slice(None),) * ax + (slice(1, None),)] = \
+            a[(slice(None),) * ax + (slice(0, -1),)]
+        return out
 
     def fwd(a, ax):
-        return jnp.roll(a, -1, ax) if per[ax] else _shift_fwd(a, ax)
+        """a[i+1], the numpy twin of _shift_fwd / roll — indexing only."""
+        if per[ax]:
+            return np.roll(a, -1, ax)
+        out = np.zeros_like(a)
+        out[(slice(None),) * ax + (slice(0, -1),)] = \
+            a[(slice(None),) * ax + (slice(1, None),)]
+        return out
 
     e2 = update_e(st, mats, dt, dx, per, stencil_order=2)
     h2 = update_h(st, mats, dt, dx, per, stencil_order=2)
 
+    dx32 = np.float32(dx)
     # E update reference (sigma=0 -> ca=1, cb=dt/eps). ey's curl_y spans AXIS 0
     # (via bwd(hz, 0)), so asserting .ex AND .ey covers all three diff axes.
-    hx, hy, hz = (st.hx.astype(jnp.float32), st.hy.astype(jnp.float32),
-                  st.hz.astype(jnp.float32))
-    cb = dt / (mats.eps_r * EPS_0)
-    ex_ref = (st.ex.astype(jnp.float32)
-              + cb * ((hz - bwd(hz, 1)) / dx - (hy - bwd(hy, 2)) / dx)).astype(st.ex.dtype)
-    ey_ref = (st.ey.astype(jnp.float32)
-              + cb * ((hx - bwd(hx, 2)) / dx - (hz - bwd(hz, 0)) / dx)).astype(st.ey.dtype)
-    assert jnp.array_equal(e2.ex, ex_ref)
-    assert jnp.array_equal(e2.ey, ey_ref)
+    hx, hy, hz = npf32(st.hx), npf32(st.hy), npf32(st.hz)
+    # the kernel's own coefficient expression, in numpy: eps_r is float32
+    # and dt/EPS_0 are weak Python floats, so every step here is float32,
+    # exactly as ``update_e`` computes it (sigma=0 -> ca=1, cb=dt/eps).
+    cb = dt / (npf32(mats.eps_r) * EPS_0)
+    assert cb.dtype == np.float32
+    ex_ref = (npf32(st.ex)
+              + cb * ((hz - bwd(hz, 1)) / dx32 - (hy - bwd(hy, 2)) / dx32))
+    ey_ref = (npf32(st.ey)
+              + cb * ((hx - bwd(hx, 2)) / dx32 - (hz - bwd(hz, 0)) / dx32))
+    assert np.array_equal(np.asarray(e2.ex), ex_ref.astype(st.ex.dtype))
+    assert np.array_equal(np.asarray(e2.ey), ey_ref.astype(st.ey.dtype))
 
     # H update reference; hy's curl_y spans AXIS 0 (via fwd(ez, 0)).
-    ex, ey, ez = (st.ex.astype(jnp.float32), st.ey.astype(jnp.float32),
-                  st.ez.astype(jnp.float32))
-    cm = dt / (mats.mu_r * MU_0)
-    hx_ref = (st.hx.astype(jnp.float32)
-              - cm * ((fwd(ez, 1) - ez) / dx - (fwd(ey, 2) - ey) / dx)).astype(st.hx.dtype)
-    hy_ref = (st.hy.astype(jnp.float32)
-              - cm * ((fwd(ex, 2) - ex) / dx - (fwd(ez, 0) - ez) / dx)).astype(st.hy.dtype)
-    assert jnp.array_equal(h2.hx, hx_ref)
-    assert jnp.array_equal(h2.hy, hy_ref)
+    ex, ey, ez = npf32(st.ex), npf32(st.ey), npf32(st.ez)
+    cm = dt / (npf32(mats.mu_r) * MU_0)
+    assert cm.dtype == np.float32
+    hx_ref = (npf32(st.hx)
+              - cm * ((fwd(ez, 1) - ez) / dx32 - (fwd(ey, 2) - ey) / dx32))
+    hy_ref = (npf32(st.hy)
+              - cm * ((fwd(ex, 2) - ex) / dx32 - (fwd(ez, 0) - ez) / dx32))
+    assert np.array_equal(np.asarray(h2.hx), hx_ref.astype(st.hx.dtype))
+    assert np.array_equal(np.asarray(h2.hy), hy_ref.astype(st.hy.dtype))
 
 
 def test_stencil_convergence_order():
