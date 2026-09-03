@@ -537,7 +537,14 @@ before the first run, and no gate was moved afterwards.
   phase at an rms of `0.004 degrees`). Tracked as issue #868. No fix is applied
   here, and the two candidate fixes — narrow the cutoff aperture to the guide's
   N cells, or re-declare the gate against the port's own beta — are a pending
-  decision, not a tolerance question.
+  decision, not a tolerance question. The family is **12 verdict keys**: the Yee
+  and continuous bars on four `(dut, lane)` cases, plus the wrong-sign
+  discriminator, which reads `0.734 degrees` and also fails. That third one is a
+  witness degeneracy rather than a separate defect — at `9.8 GHz` the predicted
+  rotation crosses `+/-180 degrees`, where both sign hypotheses coincide modulo
+  360, so the minimum over bins collapses and the discriminator cannot fire. The
+  binding sign check is the cheap refute, red by `119.49 degrees`. Anyone porting
+  this battery to another port family inherits that blind spot.
 - **Criterion 3(c) (mesh refinement) — 7 of 10 ladders pass, 3 not
   interpretable.** The non-increase gate passes on all ten observables, but the
   pre-declared interpretability guard rejects three of them
