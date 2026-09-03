@@ -40,7 +40,7 @@ import pytest
 
 import jax
 
-from rfx import Simulation
+from rfx import Grid, Simulation
 from rfx.boundaries.cpml import (
     _assert_absorber_fits, _axis_buffer_depths, apply_cpml_e, apply_cpml_h,
     init_cpml,
@@ -280,6 +280,74 @@ def test_a_grid_that_does_not_state_its_face_pads_keeps_the_full_buffer():
         pad_x_hi = 4
 
     assert _axis_buffer_depths(_OneFaceStated(), 10) == (4, 10, 10)
+
+
+def test_an_axis_outside_cpml_axes_keeps_its_pre_876_applied_depth():
+    """The licensing guard is two-sided: pads of 0 is not "no absorber".
+
+    ``Grid`` gives every axis outside ``cpml_axes`` per-face pads of 0
+    (``Grid._face_pad``), so those pads ARE stated and the first half of the
+    guard lets them through. But ``init_cpml`` never reads ``cpml_axes``:
+    unless the face is PEC/PMC it builds a REAL absorbing profile of length
+    ``cpml_layers`` for it, and ``rfx.simulation.run`` applies it whenever
+    its own ``cpml_axes`` argument — a separate knob defaulting to ``"xyz"``
+    — names the axis. Clamping there read "no padding cells" as "no
+    absorber" and cut a real 8-layer absorber to 1.
+
+    Measured on this fixture through ``rfx.run`` for 200 steps: field digest
+    ``d5ffa08245a4cb82`` and residual E energy 1.6400655163e+01 with the
+    absorber intact, against ``4da793698805a454`` / 8.3652918424e+00 (-49%)
+    while the clamp applied to x and y. The first pair is also what
+    ``origin/main`` produces, i.e. this axis's answer is unchanged by #876.
+
+    The three assertions below are the applied depth at the three places it
+    is observable: the clamp's own return, the psi buffers those slices are
+    cut from, and the profile that proves the absorber was real.
+    """
+    grid = Grid(freq_max=10e9, domain=(0.02, 0.02, 0.02),
+                cpml_axes="z", cpml_layers=8)
+    assert grid.cpml_axes == "z"
+    assert (grid.pad_x_lo, grid.pad_x_hi) == (0, 0)
+    assert (grid.pad_y_lo, grid.pad_y_hi) == (0, 0)
+
+    # 1. the pre-#876 depth: min(cpml_layers, extent), NOT max(pad_lo, pad_hi)
+    assert _axis_buffer_depths(grid, 8) == (8, 8, 8)
+
+    params, state = init_cpml(grid)
+
+    # 2. the buffers the apply_cpml_e/h face slices are cut from
+    assert state.psi_ey_xlo.shape[0] == 8
+    assert state.psi_ez_xhi.shape[0] == 8
+    assert state.psi_ex_ylo.shape[0] == 8
+    assert state.psi_ez_yhi.shape[0] == 8
+
+    # 3. and the profile on those faces really absorbs — this is what makes
+    #    the depth matter at all. A no-op layer is exactly (b=1, c=0); the
+    #    innermost layer of a CPML profile has sigma=0 by construction, so a
+    #    full-budget profile carries 7 active layers out of the 8 allocated
+    #    — seven times what the one-sided clamp left standing.
+    for face in ("x_lo", "x_hi", "y_lo", "y_hi"):
+        prof = getattr(params, face)
+        b = np.asarray(prof.b).ravel()
+        c = np.asarray(prof.c).ravel()
+        assert b.size == 8 and c.size == 8
+        assert np.count_nonzero(b != 1.0) == 8, f"{face} b is no-op padding"
+        # the innermost layer has sigma=0 by construction, so its c is -0.0;
+        # the other 7 drive a real recursive convolution.
+        assert np.count_nonzero(c != 0.0) == 7, f"{face} c is no-op padding"
+
+    # The guard is not a blanket disable: an axis that IS in cpml_axes but
+    # allocates nothing because both its faces are PEC still clamps to the
+    # single no-op layer — and there "pad 0" really does mean "no absorber",
+    # because ``init_cpml`` gives a PEC face ``_cpml_noop_profile``. That is
+    # the #876 behaviour this file exists for.
+    pec_closed = _cube_sim(16, hi_thickness=4)._build_grid()
+    assert pec_closed.cpml_axes == "xyz"
+    assert {"x_lo", "x_hi", "y_lo", "y_hi"} <= set(pec_closed.pec_faces)
+    pec_params, _ = init_cpml(pec_closed)
+    assert np.all(np.asarray(pec_params.x_lo.b) == 1.0)
+    assert np.all(np.asarray(pec_params.x_lo.c) == 0.0)
+    assert _axis_buffer_depths(pec_closed, 16) == (1, 1, 4)
 
 
 def test_thinning_the_active_absorber_is_a_different_answer():

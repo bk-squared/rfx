@@ -356,14 +356,36 @@ def _axis_buffer_depths(grid, n_alloc: int) -> tuple[int, int, int]:
     went from < 1e-4 to 1.3e-2). So an axis whose per-face pads are not
     stated keeps the pre-#876 ``min(n_alloc, extent)`` clamp: nothing is
     known to be no-op there, so nothing is dropped.
+
+    The same reasoning applies to an axis the GRID excludes from
+    ``cpml_axes``, and that half was missing when this landed. ``Grid``
+    gives such an axis ``pad_lo = pad_hi = 0`` (``Grid._face_pad`` returns
+    0 for ``axis not in self.cpml_axes``), but ``init_cpml`` does not read
+    ``cpml_axes`` at all: unless the face is PEC/PMC it still builds a
+    REAL absorbing profile of length ``n_alloc`` there, and
+    ``rfx.simulation.run`` applies it whenever its own ``cpml_axes``
+    argument — a separate knob, defaulting to ``"xyz"`` — names the axis.
+    So "pads of 0" on such an axis means "the grid allocates no padding
+    cells", not "there is no absorber", and clamping on it thinned a real
+    8-layer absorber to 1. Measured on
+    ``rfx.run(Grid(freq_max=10e9, domain=(0.02,)*3, cpml_axes="z"), …)``
+    for 200 steps: field digest ``d5ffa08245a4cb82`` before this guard's
+    second clause and ``4da793698805a454`` with the one-sided guard, with
+    residual E energy dropping 1.6401e+01 -> 8.3653e+00 (-49%). Both
+    clauses are therefore the same rule: clamp only where the grid
+    positively states that the face allocated nothing AND that the axis is
+    one this grid absorbs on.
     """
     extents = _grid_extents(grid)
     depths = []
     for axis_idx, axis in enumerate("xyz"):
         pad_lo = getattr(grid, f"pad_{axis}_lo", None)
         pad_hi = getattr(grid, f"pad_{axis}_hi", None)
-        if pad_lo is None and pad_hi is None:
-            # the grid does not describe this axis's faces — no clamp
+        if (pad_lo is None and pad_hi is None) or \
+                axis not in getattr(grid, "cpml_axes", "xyz"):
+            # the grid does not describe this axis's faces, or it declares
+            # the axis non-CPML while ``init_cpml`` still builds a real
+            # absorbing profile for its faces — no clamp
             depths.append(min(int(n_alloc), extents[axis_idx]))
             continue
         active = max(int(pad_lo or 0), int(pad_hi or 0))
