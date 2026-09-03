@@ -34,7 +34,7 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 CV10_PATH = REPO_ROOT / "validation" / "crossval" / "10_pmc_cpml_half_symmetric.py"
 
 

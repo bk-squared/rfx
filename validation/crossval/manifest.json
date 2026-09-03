@@ -221,7 +221,7 @@
       "gate_paths": [
         "validation/crossval/10_pmc_cpml_half_symmetric.py",
         "tests/unit/boundaries/test_boundary_pmc_composition.py",
-        "tests/test_crossval10_pmc_regate.py"
+        "tests/crossval/test_crossval10_pmc_regate.py"
       ],
       "artifact_paths": [],
       "cpu_runner": {"order": 5},

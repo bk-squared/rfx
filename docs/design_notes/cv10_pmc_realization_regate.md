@@ -254,17 +254,17 @@ written: G3 because the face is no longer a magnetic wall, G4 because the image
 sign flipped and the absolute amplitude halved. Gate 1 is confirmed still
 passing under the defect — that contrast is the point, and it is asserted
 explicitly (not merely observed) in
-`tests/test_crossval10_pmc_regate.py::test_noop_pmc_defeats_the_old_relative_gate_and_is_caught_by_the_new_ones`,
+`tests/crossval/test_crossval10_pmc_regate.py::test_noop_pmc_defeats_the_old_relative_gate_and_is_caught_by_the_new_ones`,
 so a future refactor cannot silently return cv10 to a state where deleting the
 wall is undetectable.
 
 ### 7.3 Test suites
 
 `pytest -o addopts="" -m "not gpu"`:
-`tests/test_crossval10_pmc_regate.py`, `tests/test_boundary_pmc_composition.py`,
-`tests/test_pmc_plane_convention.py`, `tests/test_crossval_manifest_contract.py`,
-`tests/test_boundary_pmc_hi_faces.py` → **28 passed**;
-`tests/test_example_fidelity_contract.py` → **143 passed**;
+`tests/crossval/test_crossval10_pmc_regate.py`, `tests/unit/boundaries/test_boundary_pmc_composition.py`,
+`tests/unit/boundaries/test_pmc_plane_convention.py`, `tests/contracts/test_crossval_manifest_contract.py`,
+`tests/unit/boundaries/test_boundary_pmc_hi_faces.py` → **28 passed**;
+`tests/contracts/test_example_fidelity_contract.py` → **143 passed**;
 `-k "crossval or benchmark or docs"` → **89 passed, 2 skipped**;
 public-carrier and crossval gate-logic suites → **41 passed**.
 
