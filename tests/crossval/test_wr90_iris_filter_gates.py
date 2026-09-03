@@ -72,6 +72,7 @@ re-tuned to look tighter than the recorded physics.
 from __future__ import annotations
 
 import ast
+import cmath
 import hashlib
 import importlib.util
 import json
@@ -1219,6 +1220,24 @@ def test_fdfd_witness_is_recomputed_from_its_committed_levels(fixture):
     assert fd["self_test"]["unitarity"] < 1e-6
 
 
+def _fdfd_module():
+    spec = importlib.util.spec_from_file_location(
+        "fdfd_hplane", _REPO_ROOT / "validation/crossval/comparators/fdfd_hplane.py")
+    fd_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fd_mod)
+    return fd_mod
+
+
+# The gated configuration, in one place: the falsifiers below must perturb the
+# SAME call the gate makes, or they falsify a different solve than the one CI
+# runs.
+_GATED_SELF_TEST = (A, 11.0e9, 90, 1,
+                    [40, 26, 24, 26, 40], [56, 62, 62, 56], 8, 45)
+_U_REFINED_BOUND = 1e-11          # U1, derived below
+_U_RATIO_FLOOR = 100.0            # U2
+_U_POLISH_FLOOR = 1000.0          # U3
+
+
 def test_fdfd_solver_gates_run_live_and_committed_curves_are_reproducible():
     """Condition 4 of the solver's contract, executed in CI, plus one live anchor.
 
@@ -1227,28 +1246,131 @@ def test_fdfd_solver_gates_run_live_and_committed_curves_are_reproducible():
     it runs here on every CI pass, not only at generation time. One live r=2
     solve at one frequency then ties the committed curves to the live solver —
     a regeneration-stable anchor that catches curve edits without any digest.
-    """
-    spec = importlib.util.spec_from_file_location(
-        "fdfd_hplane", _REPO_ROOT / "validation/crossval/comparators/fdfd_hplane.py")
-    fd_mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(fd_mod)
 
-    w = fd_mod.self_test(A, 11.0e9, 90, 1,
-                         [40, 26, 24, 26, 40], [56, 62, 62, 56], 8, 45)
+    THE UNITARITY WITNESS IS NOT A RECORDED NUMBER (#884).
+    ------------------------------------------------------
+    `self_test`'s `unitarity` is |S11|^2 + |S21|^2 - 1 evaluated on `spsolve`'s
+    answer. cond_1(A) ~ 9.85e11 with a backward error of ~3 eps, so that number
+    is five decades of LU roundoff sitting on top of the physics. It has no
+    build-independent value: the four `permc_spec` orderings — which solve the
+    same system and are mathematically identical — give 2.5759e-09 (COLAMD, the
+    default and the committed path), 5.9404e-09, 1.7857e-08 and 4.5878e-08 on
+    one machine in one process, a 1.25-decade band. Earlier out-of-tree runs
+    through `spsolve(permc_spec=NATURAL)` reached 1.9689e-07, widening it to
+    1.883 decades. Either way it is wider than the 1.0328-decade Python
+    3.10 -> 3.11 gap that #884 was filed for, and CI-3.11's 1.5806898456816043e-08
+    sits inside the band. A recorded 17-digit sample of that distribution,
+    gated to one decade against a re-run, is a category error; it was faithful
+    when it was written and it was never reproducible.
+
+    Three checks replace it, none of which records a roundoff realization.
+
+    U1 — the method's own unitarity, against a DERIVED bound.
+        `refined_unitarity` refines on the same LU factor with an exactly
+        accumulated residual (`math.fsum` per row); what survives is the
+        discretization's unitarity, ~6e-14. The bound is derived, not fitted:
+        S11 and S21 are inner products of nx - 1 = 89 O(1) terms, so their
+        evaluation floor is sqrt(89) * eps ~ 2.09e-15, and u = ||S11|^2 +
+        |S21|^2 - 1| inherits 2(|S11| + |S21|) = 2.408 times that, ~5.0e-15.
+        The gate is 1e-11: ~2000x that analytic floor, and 159x the worst
+        value measured over 4 `permc_spec` orderings x 2 refinement steps x
+        2 venvs (worst by the min rule 6.2950e-14, NATURAL; worst single step
+        3.3595e-13, 30x). All eight measurements are bit-identical between
+        jax 0.10.2 / numpy 2.4.6 / scipy 1.17.1 and jax 0.6.2 / numpy 2.2.6 /
+        scipy 1.15.3, which is the point: this quantity does not move with the
+        build, and the one it replaces moves 1.25 decades (1.88 through
+        `spsolve`) without anything changing at all. It is also 3.6 decades TIGHTER than the 1e-6 gate on
+        the raw residual — this is not a widening.
+
+    U2 — the diagnosis itself, as a same-run ratio.
+        `u_raw / u_refined > 100` asserts that the sweep-visible residual IS
+        conditioning noise. If the discretization ever stops being unitary,
+        u_refined rises with u_raw, the ratio collapses, and this reading is
+        flagged as expired rather than silently carried. Measured 4.15e+04
+        (COLAMD) to 9.14e+05 (MMD_ATA), i.e. 415x margin at worst; taking the
+        ensemble's worst numerator against its worst denominator still leaves
+        min(u_raw)/max(u_refined) = 4.09e+04. It is the weakest of the three —
+        no hard lower bound on u_raw is derivable — so it is set two decades
+        under the worst observation and used as a corroborator.
+
+    U3 — anti-polishing, one-sided.
+        The two-sided decade test existed because an independently designed
+        mutation set empty_s11 to 1e-16 and unitarity to 1e-12 and the whole
+        suite stayed green. That job survives without a two-sided comparison:
+        a committed LU realization of a cond ~ 1e12 solve cannot be a
+        machine-eps number, so `committed > 1000 * u_refined`. Measured floor
+        6.2061e-11 on the default ordering (8.1046e-12 to 6.2950e-11 across
+        the four); the committed 1.4655321400880439e-09 clears the WORST of
+        those by 23.3x, and the 1e-12 polishing attack fails even the lowest
+        of them by 8.1x. The upper side stays the solver's own acceptance
+        tolerance.
+
+    DETECTION POWER, AND THE HONEST NEGATIVE. See
+    `test_the_unitarity_witness_fires_on_loss_and_on_the_historical_defect`:
+    U1 catches a lossy fill from Im(eps_r) ~ 7e-14 where the gate it replaces
+    is blind until Im(eps_r) ~ 1e-6, four decades less sensitive, and the
+    historical missing-/h defect fires U2 at ratio 29. But NO unitarity
+    witness — this one or any other — catches a lossless geometry off-by-one:
+    the first aperture at 42 cells instead of 40 is a different but still
+    perfectly lossless structure, and u_refined stays at 1.93e-14. What catches
+    that is the live r=2 anchor at the bottom of this test, at |delta| =
+    9.553e-03 against its 1e-5 gate, 955x over. The three witnesses are not
+    interchangeable: the anchor gates the geometry, unitarity gates
+    losslessness, empty_s11 gates port transparency.
+    """
+    fd_mod = _fdfd_module()
+
+    w = fd_mod.self_test(*_GATED_SELF_TEST)
     assert w["empty_s11"] < 1e-10, w
     assert abs(w["empty_s21"] - 1.0) < 1e-10, w
     assert w["unitarity"] < 1e-6, w
 
-    # The COMMITTED witness scalars must match this live re-run to an order of
-    # magnitude. One-sided bounds alone let a record's evidence be POLISHED --
-    # an independently designed mutation set empty_s11 to 1e-16 and unitarity
-    # to 1e-12 and the whole suite stayed green, because nothing compared the
-    # committed values to anything. Polishing is a different attack from
-    # moving numbers, and it survived every other guard.
+    # U1/U2: the method's unitarity, and the assertion that the raw residual is
+    # conditioning noise. One extra splu + 2 triangular solves on the already
+    # assembled matrix.
+    u = fd_mod.refined_unitarity(*_GATED_SELF_TEST)
+    assert u["unitarity_refined"] < _U_REFINED_BOUND, (
+        "the discretization is no longer unitary at the arithmetic floor -- "
+        "this is a physics regression, not roundoff", u)
+    assert u["unitarity_raw"] / u["unitarity_refined"] > _U_RATIO_FLOOR, (
+        "the raw and refined unitarity residuals have converged: the "
+        "sweep-visible residual is no longer dominated by LU roundoff, so "
+        "#884's reading of this witness has expired and needs re-deriving", u)
+
+    # The COMMITTED witness scalars must not be POLISHED -- an independently
+    # designed mutation set empty_s11 to 1e-16 and unitarity to 1e-12 and the
+    # whole suite stayed green, because nothing compared the committed values
+    # to anything. Polishing is a different attack from moving numbers, and it
+    # survived every other guard.
     with open(_FIXTURE) as f:
         st = json.load(f)["fdfd_formulation_independent"]["self_test"]
-    for key, live in (("empty_s11", w["empty_s11"]),
-                      ("unitarity", w["unitarity"])):
+
+    # U3: one-sided. `unitarity` is a roundoff realization (see the docstring),
+    # so it is gated as a realization -- above the floor a refined solve sets,
+    # below the solver's own acceptance tolerance -- and NOT compared decade-
+    # wise against a re-run, which is what #884's red actually was.
+    committed_u = st["unitarity"]
+    assert committed_u > _U_POLISH_FLOOR * u["unitarity_refined"], (
+        "the committed unitarity witness is too close to machine epsilon to be "
+        "a realization of a cond ~ 1e12 factorization -- polished evidence",
+        committed_u, u["unitarity_refined"])
+    assert committed_u < 1e-6, ("the committed unitarity witness is outside the "
+                                "solver's own acceptance tolerance", committed_u)
+
+    # `empty_s11` KEEPS the two-sided decade test. #884's derivation covers the
+    # unitarity witness only: it supplies a refined quantity, a derived bound
+    # and two falsifiers for that one, and none of the three for this one. So
+    # this comparison is left exactly as it was -- but it is on notice. The
+    # empty-guide residual is the same class of quantity, and it spreads 0.8585
+    # decades across the same four orderings (4.6699e-14 COLAMD, 7.1550e-14,
+    # 1.2905e-13, 3.3711e-13 NATURAL) against this 1.0-decade gate. Committed
+    # vs live here is 0.0295 decades, so the margin left is 0.03 decades on a
+    # gate whose quantity legitimately moves 0.86. It has not fired only because
+    # cond_1(A_empty) ~ 4.01e4 is four decades better conditioned than the
+    # loaded problem. If it goes red on a new wheel, that is this latent defect
+    # and not a physics change; the fix is a derivation of its own, not a wider
+    # window.
+    for key, live in (("empty_s11", w["empty_s11"]),):
         committed = st[key]
         assert committed > 0 and live > 0, (key, committed, live)
         decades = abs(math.log10(committed) - math.log10(live))
@@ -1266,6 +1388,91 @@ def test_fdfd_solver_gates_run_live_and_committed_curves_are_reproducible():
     assert fd["levels"]["2"]["s11"][i] == pytest.approx(abs(s11), abs=1e-5), (
         "the committed r=2 curve does not reproduce from the live solver at a "
         "spot frequency", freqs[i], fd["levels"]["2"]["s11"][i], abs(s11))
+
+
+def test_the_unitarity_witness_fires_on_loss_and_on_the_historical_defect():
+    """The #884 witness's detection power, measured rather than asserted.
+
+    A gate that has never been shown to fire is a decoration. Each falsifier
+    below perturbs the SAME call the gate makes and costs one extra solve of
+    the gated configuration (~0.25 s each), so it runs in CI rather than in a
+    notebook nobody re-runs.
+
+    (a) LOSS. A lossy fill eps_r = 1 + i*Im is injected by scaling the
+        frequency by sqrt(eps_r), which is exactly what enters k, the interior
+        operator and the port DtN. u_refined tracks the absorbed power
+        linearly, 1.4223e+02 * Im, so U1's 1e-11 bound puts the detection
+        threshold at Im(eps_r) ~ 7.0e-14. At Im = 1e-13 u_refined = 1.4737e-11
+        and U1 fires with 1.47x margin, while u_raw = 2.0864e-08 is nowhere
+        near the 1e-6 gate this replaces -- that gate does not fire until
+        Im(eps_r) ~ 1e-6 (u_raw = 1.4222e-04); at 1e-9 it is still passing at
+        1.5338e-07. Four decades of sensitivity, against the one defect
+        unitarity exists to catch.
+
+    (b) THE HISTORICAL DEFECT. The missing /h in `discrete_gamma` -- the solver's
+        one real bug, per condition 4 of its contract. It is caught twice: the
+        empty guide reflects |S11| = 1.0 instead of 5e-14, and U2 fires at
+        ratio 29.0 (u_raw 6.4393e-15, u_refined 2.2204e-16). Note that U1 does
+        NOT fire on it: the broken structure is still lossless, which is why
+        U2 is carried alongside U1 rather than dropped as redundant.
+
+    (c) THE HONEST NEGATIVE, asserted so it cannot rot into a claim. A lossless
+        geometry off-by-one -- the first aperture at 42 cells instead of 40 --
+        moves u_raw by a decade but leaves u_refined at 1.9318e-14, and BOTH
+        U1 and U2 pass. They should: the perturbed filter is a different but
+        perfectly lossless two-port, so |S11|^2 + |S21|^2 = 1 still holds. No
+        unitarity witness can catch this, and anyone reading the committed
+        1.4655e-09 as evidence that the geometry is right has misread it. The
+        live r=2 anchor in the test above is what catches it, 955x over its
+        gate; that assertion is this one's complement.
+
+    All numbers here are bit-identical on jax 0.10.2 / numpy 2.4.6 /
+    scipy 1.17.1 and on jax 0.6.2 / numpy 2.2.6 / scipy 1.15.3.
+    """
+    fd_mod = _fdfd_module()
+    a, freq, base, r, aps, cav, t, marg = _GATED_SELF_TEST
+
+    def fires(u):
+        return (u["unitarity_refined"] >= _U_REFINED_BOUND
+                or u["unitarity_raw"] / u["unitarity_refined"] <= _U_RATIO_FLOOR)
+
+    # (a) loss at Im(eps_r) = 1e-13 -- seven decades under where the replaced
+    # gate would begin to move, and 1.4x over where this one does
+    lossy = fd_mod.refined_unitarity(a, freq * cmath.sqrt(complex(1.0, 1e-13)),
+                                     base, r, aps, cav, t, marg)
+    assert fires(lossy), (
+        "a lossy fill at Im(eps_r) = 1e-13 does not fire the unitarity "
+        "witness; the losslessness gate has lost its detection power", lossy)
+    assert lossy["unitarity_refined"] >= _U_REFINED_BOUND, lossy   # it is U1 that fires
+    assert lossy["unitarity_raw"] < 1e-6, (
+        "the gate this replaced is supposed to be blind here -- if it now "
+        "fires, the four-decade sensitivity claim in the docstring is stale",
+        lossy)
+
+    # (b) the historical missing-/h defect, on the module's own entry points
+    original = fd_mod.discrete_gamma
+    try:
+        fd_mod.discrete_gamma = lambda lam, k, h: original(lam, k, h) * h
+        e11, _, _ = fd_mod.solve(a, freq, base, r, aps, cav, t, marg, empty=True)
+        broken = fd_mod.refined_unitarity(a, freq, base, r, aps, cav, t, marg)
+    finally:
+        fd_mod.discrete_gamma = original
+    assert abs(e11) == pytest.approx(1.0, abs=1e-6), (
+        "the missing-/h defect no longer reflects a full wave off the empty "
+        "guide; the falsifier has stopped exercising the historical bug", e11)
+    assert fires(broken), (broken,)
+    assert broken["unitarity_raw"] / broken["unitarity_refined"] <= _U_RATIO_FLOOR, (
+        "it is U2 that catches the missing /h", broken)
+
+    # (c) the negative: lossless geometry error, invisible to unitarity by
+    # construction and caught by the r=2 anchor instead
+    off_by_one = fd_mod.refined_unitarity(a, freq, base, r, [42, 26, 24, 26, 40],
+                                          cav, t, marg)
+    assert not fires(off_by_one), (
+        "a LOSSLESS geometry perturbation now fires the unitarity witness. "
+        "That is not an improvement -- it means the witness is responding to "
+        "something other than loss, and the docstring's claim about what each "
+        "of the three gates covers needs re-deriving", off_by_one)
 
 
 def test_residual_is_reported_as_mesh_normalised_but_not_gated(fixture):
