@@ -43,7 +43,7 @@ guard. An absent warning therefore cannot be compared across port families.
 | Wire `add_port(..., extent=...)` | `run(compute_s_params=True, s_param_freqs=...)` | `Result.s_params`, `Result.freqs` | **limited** — multi-cell discrete feed across `extent`; magnitude evidence is stronger than absolute calibration evidence; nonuniform use is experimental |
 | Wire `add_port(..., extent=...)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited** — uniform, single-device AD path |
 | `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable` | **limited** — E5-narrow / eigenmode-blocked; external notch agreement is characterized, not tight; `eps_override` AD checked against an f64 referee on the band-mean `\|S21\|^2` objective (rel_err 0.0026 at the gate's num_periods=20 fixture, threshold 0.03; issue #530, superseding the pre-#530 `sum\|S_ij\|^2` objective and its 0.0331/0.10 figures); nonuniform mode is experimental |
-| `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | **limited** — broad magnitude evidence for documented uniform single-mode rectangular guides; phase and junction evidence are narrower; nonuniform configurations outside the passed Palace `normalize=flux` WR-90 cases remain experimental; the v1.8 chain battery is measured with five families of gates red, so this family is not chain-closed |
+| `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | **limited** — broad magnitude evidence for documented uniform single-mode rectangular guides; phase and junction evidence are narrower; nonuniform configurations outside the passed Palace `normalize=flux` WR-90 cases remain experimental; the v1.8 chain battery is measured with four families of gates red, so this family is not chain-closed |
 | `add_waveguide_port(...)` | `run(...)` | `Result.waveguide_sparams[name]` | **limited diagnostic** — per-port output, not the full multi-port matrix API |
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | **limited** — exactly one `face="top"` port; broad-E5 analytic and broad-E4 MEEP evidence for the documented TEM-line result |
 | `add_coaxial_port(...)` | `compute_coaxial_s_matrix(...)` | `CoaxialSMatrixResult` | **experimental and deprecated** — older single-plane V/I path; can produce non-physical `\|S11\| > 1` for a lossless short |
@@ -485,10 +485,12 @@ the family is not chain-closed. One pre-declared WR-90 measurement
 `JAX_ENABLE_X64=0`) evaluated every one of them on the dx rungs `a/9`, `a/18`
 and `a/36` across the `normalize=False` and `normalize="flux"` lanes, with the
 DUT set thru (non-vacuity control only), PEC short and `eps_r = 4` slab. Of the
-185 stored verdicts, **26 are red — 23 failures plus 3 dx ladders that the
-pre-declared guard reports as *not interpretable*** — grouped in five families
-that account for all 26: forward identity 8, settling witness 2, AD-vs-FD 1,
-reference-plane rotation 12, dx ladders 3. Every tolerance, position and drive
+185 stored verdicts, **24 are red — 21 failures plus 3 dx ladders that the
+pre-declared guard reports as *not interpretable*** — grouped in four families
+that account for all 24: forward identity 8, AD-vs-FD 1, reference-plane
+rotation 12, dx ladders 3. The settling witness was a fifth red family at
+measurement time and is now green; its two verdict keys were re-derived from
+the same stored records after the witness itself was fixed (see criterion 2). Every tolerance, position and drive
 setting was fixed in
 [`waveguide_chain_battery_predeclaration.md`](../design_notes/waveguide_chain_battery_predeclaration.md)
 before the first run, and no gate was moved afterwards.
@@ -501,18 +503,26 @@ before the first run, and no gate was moved afterwards.
   reassociation of the flux lane's 2849-step Poynting DFT under the
   reverse-mode tape, not the override channel: the same traced call under a
   scoped x64 context agrees with the untraced call to `1.5e-15`.
-- **Criterion 2 (physics gates) — red on the settling witness only, 2 verdict
-  keys.** Column
+- **Criterion 2 (physics gates) — green; the settling witness was red at
+  measurement time and the witness, not the run, was the defect.** Column
   power (max `1.000975` against `1.02`), magnitude reciprocity and complex
   reciprocity all pass at the claims rung. The energy-based ring-down witness
-  reads `settling_db = 0.00 dB` on both drives of the PEC-short fine-rung cells
+  read `settling_db = 0.00 dB` on both drives of the PEC-short fine-rung cells
   at 40 and again at 80 periods, because the four far-port records behind the
-  short underflowed float32 to exactly zero and the witness evaluates
-  `10*log10((end+tiny)/(peak+tiny))` on them. This is a witness degeneracy, not
-  truncation: the records that stay in the float32 normal range ring down to
-  `-99.98 dB`, and the 80-period rerun moves S by at most `7.3e-6`. Tracked as
-  issue #869; the same issue records the mid-rung pass that is carried by
-  subnormal noise.
+  short had underflowed float32 to exactly zero (`peak = 0.0`,
+  `n_nonzero = 0`) and `10*log10((end+tiny)/(peak+tiny))` evaluates to `0 dB`
+  on such a record. Witness degeneracy, not truncation: the records that stay
+  in the float32 normal range ring down to `-99.98 dB`, and the 80-period
+  rerun moves S by at most `7.3e-6`. The witness now skips a record whose peak
+  amplitude is below the storage format's smallest normal scaled so the
+  `-40 dB` decision is itself representable (`1.1754944e-36` for float32) and
+  names the records it skipped; the mirror failure it also removes is the
+  mid-rung `-40.85 dB` *pass* carried by float32 subnormals, where the
+  signal-carrying records read `-94.62 dB` (issue #869). Re-derived from the
+  same stored per-record peaks — no re-run, and the `-40 dB` bar unchanged —
+  the PEC-short fine cell reads `-113.91` / `-114.48 dB` per drive on the
+  claims-bearing 80-period record on `normalize=False` and `-106.14` /
+  `-106.03 dB` on `normalize="flux"`, so both verdict keys are green.
 - **Criterion 3(a) (AD vs central FD) — red on 1 of 16 legs.** The PEC-short
   `|S11|^2` objective under `eps_override` on the flux lane is a zero-derivative
   objective (`|S11| = 1` in front of a PEC), pre-declared as an expected

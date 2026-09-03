@@ -21624,8 +21624,8 @@
  "verdicts": {
   "settling|pec_short|coarse|false": "pass",
   "settling|pec_short|coarse|flux": "pass",
-  "settling|pec_short|fine|false": "fail",
-  "settling|pec_short|fine|flux": "fail",
+  "settling|pec_short|fine|false": "pass",
+  "settling|pec_short|fine|flux": "pass",
   "settling|pec_short|mid|false": "pass",
   "settling|pec_short|mid|flux": "pass",
   "settling|slab|coarse|false": "pass",

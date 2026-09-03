@@ -6,6 +6,56 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Fixed — the waveguide settling witness no longer scores port records that underflowed float32
+
+`settling_db` is the mandated ring-down witness for every claims-bearing
+open-domain S number, and `settling_db_from_port_records`
+(`rfx/sources/waveguide_port.py`) took its worst `10*log10((end+tiny)/(peak+tiny))`
+over every port record — including records that had fallen off the bottom of
+float32. Behind a PEC short it then failed in both directions, measured by the
+WR-90 chain battery (VESSL run 369367257823,
+`tests/fixtures/waveguide_chain_battery/fixture.json`, key
+`cells[].settling_records`):
+
+- **false alarm.** At the fine rung (`dx = 0.635 mm`, 8-cell short) the four
+  far-port records are exactly zero (`peak = 0.0`, `n_nonzero = 0` of 2849
+  steps), so the ratio evaluated to 1 and the witness reported **`0.00 dB`** —
+  a hard fail — at 40 **and** at 80 periods, on a run whose signal-carrying
+  records ring down to `-99.98` / `-101.20 dB` (40 periods) and `-113.91` /
+  `-114.48 dB` (80), and whose S moves by at most `7.3e-6` between the two
+  record lengths.
+- **pass carried by noise.** At the mid rung (`dx = 1.27 mm`) the same records
+  are float32 subnormals (peak amplitudes `1.58e-37` … `2.97e-40`) and the
+  witness *passed* at `-40.85` / `-40.91 dB`, `0.9 dB` inside the bar, while
+  the signal-carrying records read `-94.62` / `-94.55 dB`.
+
+A record whose peak amplitude is below
+`np.finfo(dtype).tiny * 10**(|bar|/20)` — `1.1754944e-36` for float32 — is now
+skipped instead of scored, the worst is taken over the rest, and the skipped
+records are reported by name (`settling_db_from_port_records(...,
+return_detail=True)`). The floor is derived rather than chosen: at the floor a
+record sitting exactly at the `-40 dB` bar has a tail whose rms amplitude is
+the format's smallest normal, so below it the bar decision would be made on
+subnormal arithmetic. Over all 18 battery cells and both record lengths it
+skips exactly the records whose tail mean is subnormal and keeps every record
+whose tail mean is normal. A run in which **every** record is below the floor
+returns NaN **and warns**: NaN cannot pass a `<= -40 dB` gate, but the
+aggregate warner skips NaN by design, so a silent NaN there would be the same
+defect. The arithmetic on a record above the floor is unchanged, so no run
+whose records all clear the floor moves by a single bit. The `-40 dB` bar was
+not moved and the battery was not re-run.
+
+Consequence for the chain battery: its two settling verdict keys
+(`settling|pec_short|fine|{false,flux}`) are re-derived from the same stored
+per-record peaks — `-113.91` / `-114.48 dB` per drive on `normalize=False`,
+`-106.14` / `-106.03 dB` on `normalize="flux"`, on the claims-bearing
+80-period record — and are green, so the family census is now **24 of 185 red
+in four families** — this supersedes the "26 red in five families" count in the
+WP7 entry below. The rectangular-waveguide family is still **not**
+chain-closed (criteria 1, 3(a), 3(b) and 3(c) remain red). Regression cover:
+`tests/unit/sparams/test_settling_witness.py` section 4 replays the stored
+records through the corrected witness — no FDTD. Addresses issue #869.
+
 ### Changed — the rectangular-waveguide support rows now carry the chain-battery verdict: measured, gates red, family NOT chain-closed (v1.8 WP7)
 
 `docs/guides/support_matrix.md`, `docs/guides/sparameter_support_matrix.md`

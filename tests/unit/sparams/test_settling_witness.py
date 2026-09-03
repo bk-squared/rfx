@@ -500,3 +500,261 @@ def test_witness_flag_does_not_perturb_s_extractor_level():
         "return_settling=True perturbed S at the extractor level")
     assert settling.shape == (2,) and np.all(np.isfinite(settling))
     assert np.all(settling < 0.0)
+
+
+# ===========================================================================
+# 4. Underflowed / subnormal port records (#869)
+# ===========================================================================
+#
+# The witness took its worst end/peak ratio over every port record, including
+# records that had fallen off the bottom of float32. Behind a PEC short that
+# broke it in BOTH directions, measured by the WR-90 chain battery (VESSL run
+# 369367257823, tests/fixtures/waveguide_chain_battery/fixture.json):
+#
+#   * fine rung (dx = 0.635 mm, 8-cell short): the four far-port records are
+#     exactly zero (peak = 0.0, n_nonzero = 0 of 2849), (end+tiny)/(peak+tiny)
+#     = 1, and the witness reported 0.00 dB -- a hard fail -- at 40 AND at 80
+#     periods, on a run whose signal-carrying records read -99.98 / -101.20 dB
+#     and whose S moves by <= 7.3e-6 between the two record lengths.
+#   * mid rung (dx = 1.27 mm, 4-cell short): the same records are float32
+#     subnormals (peak amplitudes 1.58e-37 .. 2.97e-40) and the witness PASSED
+#     at -40.85 / -40.91 dB on the worst of them, 0.9 dB inside the bar, while
+#     the signal-carrying records read -94.62 / -94.55 dB.
+#   * coarse rung (dx = 2.54 mm): the far-port records are normal float32
+#     (peak amplitudes 3.15e-20 / 5.5e-23, tails 5.5e-25 rms). Nothing is
+#     skipped and the cell's number must not move.
+#
+# These tests replay the STORED per-record peak/end pairs through the
+# production witness. No FDTD runs here; the battery is a one-run
+# pre-declared artifact and is never re-measured.
+
+import json  # noqa: E402
+
+from rfx.sources.waveguide_port import (  # noqa: E402
+    _settling_db_for_record,
+    _settling_record_floor_amplitude,
+    settling_db_from_port_records,
+)
+
+_BATTERY_FIXTURE = (pathlib.Path(__file__).resolve().parents[3]
+                    / "tests" / "fixtures" / "waveguide_chain_battery"
+                    / "fixture.json")
+
+
+def _battery_cells():
+    if not _BATTERY_FIXTURE.exists():  # pragma: no cover - fixture is committed
+        pytest.skip(f"{_BATTERY_FIXTURE} not present")
+    return json.loads(_BATTERY_FIXTURE.read_text())["cells"]
+
+
+def _pec_short_cell(rung: str, lane: str) -> dict:
+    for c in _battery_cells():
+        if c["dut"] == "pec_short" and c["rung"] == rung and c["lane"] == lane:
+            return c
+    raise AssertionError(f"no pec_short|{rung}|{lane} cell in the fixture")
+
+
+class _Records:
+    """A stand-in for a final ``WaveguidePortConfig``: the witness only reads
+    the four record attributes off it."""
+
+    def __init__(self, per_record):
+        for name, arr in per_record.items():
+            setattr(self, name, arr)
+
+
+def _rebuild_record(peak_power, end_power, n_steps, dtype=np.float32):
+    """A float32 record with the stored peak power and tail-mean power.
+
+    One sample at the peak amplitude, the last tenth (the window the witness
+    averages) at the tail rms amplitude, zeros in between -- enough for
+    ``p.max()`` and ``p[-tail:].mean()`` to reproduce the stored pair, and it
+    round-trips through the same float32 storage the run used, so subnormal
+    peaks stay subnormal.
+    """
+    a = np.zeros(int(n_steps), dtype=dtype)
+    if peak_power > 0.0:
+        a[0] = dtype(np.sqrt(peak_power))
+    tail = max(1, int(n_steps) // 10)
+    if end_power > 0.0:
+        a[-tail:] = dtype(np.sqrt(end_power))
+    return a
+
+
+def _rebuild_solve(call):
+    """Every stored record carries its own ``n_steps``, so the rebuilt arrays
+    are the length the run actually recorded (40- and 80-period blocks alike)."""
+    by_port: dict[int, dict] = {}
+    for r in call:
+        by_port.setdefault(r["port_index"], {})[r["record"]] = _rebuild_record(
+            r["peak"], r["end"], r["n_steps"])
+    return [_Records(by_port[k]) for k in sorted(by_port)]
+
+
+def _legacy_worst(cfgs):
+    """The pre-fix arithmetic, verbatim, for the bit-identity check below."""
+    worst = -np.inf
+    for cfg in cfgs:
+        for ts in (cfg.v_probe_t, cfg.v_ref_t, cfg.i_probe_t, cfg.i_ref_t):
+            ts_np = np.abs(np.asarray(ts, dtype=np.float64))
+            p = ts_np ** 2
+            tail = max(1, p.shape[0] // 10)
+            end = float(p[-tail:].mean())
+            peak = float(p.max())
+            tiny = float(np.finfo(float).tiny)
+            worst = max(worst, 10.0 * np.log10((end + tiny) / (peak + tiny)))
+    return float(worst)
+
+
+def test_floor_is_the_smallest_peak_on_which_the_bar_decision_is_normal():
+    """The floor is derived, not chosen: a record sitting exactly at the
+    -40 dB bar has a tail whose rms amplitude is 1e-2 of its peak amplitude,
+    so requiring that rms to be a NORMAL number puts the peak at
+    ``100 * tiny``. Tighten the bar and the floor rises with it."""
+    tiny32 = float(np.finfo(np.float32).tiny)
+    floor = _settling_record_floor_amplitude(tiny32)
+    assert floor == pytest.approx(tiny32 * 10.0 ** (abs(_SETTLING_WITNESS_DB) / 20.0),
+                                  rel=0, abs=0)
+    assert floor == pytest.approx(1.1754943508222875e-36, rel=1e-15)
+    # a record AT the floor, sitting exactly at the bar: tail rms == tiny
+    tail_rms = floor * 10.0 ** (_SETTLING_WITNESS_DB / 20.0)
+    assert tail_rms == pytest.approx(tiny32, rel=1e-12)
+    # and the floor follows the format, not a hard-coded float32 constant:
+    # float64 reaches far further down, so under x64 the guard sits far lower
+    # and a record that is subnormal in float32 stays witnessable
+    assert _settling_record_floor_amplitude(float(np.finfo(np.float64).tiny)) < floor
+
+
+def test_the_floor_separates_exactly_the_records_whose_tail_is_subnormal():
+    """The measured justification, pinned. Over every cell and both record
+    lengths of the battery, the floor skips exactly the records whose tail
+    mean is subnormal in the format the run stored them in, and keeps every
+    record whose tail mean is normal -- no misclassification either way."""
+    misfiled = []
+    for c in _battery_cells():
+        for block in (c, c.get("settling_rerun")):
+            if not block:
+                continue
+            tiny = block["float32_normal_min"]
+            floor = _settling_record_floor_amplitude(tiny)
+            for ci, call in enumerate(block["settling_records"]):
+                for r in call:
+                    kept = _settling_db_for_record(r["peak"], r["end"], floor) is not None
+                    tail_rms = np.sqrt(r["end"]) if r["end"] > 0 else 0.0
+                    tail_normal = tail_rms >= tiny
+                    if kept != tail_normal:
+                        misfiled.append((c["dut"], c["rung"], c["lane"], ci,
+                                         r["record"], r["peak"], r["end"]))
+    assert not misfiled, misfiled
+
+
+def test_underflowed_far_port_records_are_no_longer_scored_as_zero_db():
+    """Fine rung, both lanes, both record lengths: the far-port records are
+    exactly zero and used to make the witness read 0.00 dB. Skipped now, and
+    the run reads what its signal-carrying records say (~ -100 dB at 40
+    periods, ~ -114 dB at 80)."""
+    for lane in ("false", "flux"):
+        c = _pec_short_cell("fine", lane)
+        for block in (c, c["settling_rerun"]):
+            assert set(block["settling_db"].values()) == {0.0}, (
+                "fixture no longer carries the 0 dB reading this guards")
+            worst_over_solves = -np.inf
+            for call in block["settling_records"]:
+                db, detail = settling_db_from_port_records(
+                    _rebuild_solve(call), return_detail=True)
+                assert db < -90.0, (lane, db, detail)
+                assert db != 0.0
+                worst_over_solves = max(worst_over_solves, db)
+            # the driver wrote this number independently at measurement time,
+            # from the same records, before any fix existed
+            assert worst_over_solves == pytest.approx(
+                block["settling_db_over_normal_records"], rel=1e-6), lane
+
+
+def test_the_zeroed_records_are_reported_by_name_so_the_caller_sees_the_gap():
+    """Skipping silently would trade one blind spot for another: the witness
+    must say which records it stopped covering."""
+    c = _pec_short_cell("fine", "false")
+    db, detail = settling_db_from_port_records(
+        _rebuild_solve(c["settling_records"][0]), return_detail=True)
+    assert detail["skipped_records"] == [
+        "port1/v_probe_t", "port1/v_ref_t", "port1/i_probe_t", "port1/i_ref_t"]
+    assert detail["n_witnessed"] == 4
+    assert detail["floor_amplitude"] == pytest.approx(
+        _settling_record_floor_amplitude(c["float32_normal_min"]), rel=0, abs=0)
+    assert db < -90.0
+
+
+def test_a_subnormal_record_no_longer_carries_the_pass():
+    """Mid rung: the witness passed at -40.85 dB on a record whose peak
+    amplitude is 2.97e-40 and whose tail mean is a few hundred subnormal
+    quanta. That record is out; the number now comes from the driven port's
+    own records at -94.6 dB."""
+    c = _pec_short_cell("mid", "false")
+    assert min(c["settling_db"].values()) == pytest.approx(-40.91, abs=0.01)
+    floor = _settling_record_floor_amplitude(c["float32_normal_min"])
+    for call, expected in zip(c["settling_records"], (-94.621, -94.553)):
+        db, detail = settling_db_from_port_records(_rebuild_solve(call),
+                                                   return_detail=True)
+        assert db == pytest.approx(expected, abs=0.01), detail
+        assert len(detail["skipped_records"]) == 4 and detail["n_witnessed"] == 4
+        # the record that used to carry the pass is one of the skipped four
+        worst_rec = max(call, key=lambda r: r["db"])
+        assert worst_rec["db"] == pytest.approx(-40.9, abs=0.1), worst_rec
+        assert _settling_db_for_record(worst_rec["peak"], worst_rec["end"],
+                                       floor) is None
+        assert (f"port{worst_rec['port_index']}/{worst_rec['record']}"
+                in detail["skipped_records"])
+
+
+def test_normal_range_far_port_records_are_kept_and_the_cell_does_not_move():
+    """Control, and the reason the floor is not simply "the far port": at the
+    coarse rung the same far-port records are ordinary float32 (peak
+    amplitudes 3.15e-20 / 5.5e-23). Nothing is skipped, and the arithmetic on
+    a kept record is bit-identical to the pre-fix formula."""
+    c = _pec_short_cell("coarse", "false")
+    for call, port in zip(c["settling_records"], ("left", "right")):
+        cfgs = _rebuild_solve(call)
+        db, detail = settling_db_from_port_records(cfgs, return_detail=True)
+        assert detail["skipped_records"] == [] and detail["n_witnessed"] == 8
+        assert db == _legacy_worst(cfgs), "kept-record arithmetic changed"
+        assert db == pytest.approx(c["settling_db"][port], abs=0.01)
+
+
+def test_a_run_with_no_witnessable_record_is_nan_and_loud_not_a_pass():
+    """The all-skipped case, on real records: the mid rung's four far-port
+    records alone. NaN is the "no witness value" state, and NaN <= -40 dB is
+    False, so it cannot pass a gate -- but the aggregate warner skips NaN by
+    design, so the witness itself has to say the coverage is gone."""
+    c = _pec_short_cell("mid", "false")
+    far = [r for r in c["settling_records"][0] if r["port_index"] == 1]
+    assert len(far) == 4
+    cfgs = [_Records({r["record"]: _rebuild_record(r["peak"], r["end"], r["n_steps"])
+                      for r in far})]
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        db, detail = settling_db_from_port_records(cfgs, return_detail=True)
+    assert np.isnan(db)
+    assert not bool(db <= _SETTLING_WITNESS_DB), "NaN must not read as a pass"
+    assert detail["n_witnessed"] == 0 and len(detail["skipped_records"]) == 4
+    hot = [w for w in caught if "NO COVERAGE" in str(w.message)]
+    assert len(hot) == 1, [str(w.message) for w in caught]
+    msg = str(hot[0].message)
+    assert "must NOT be read as a pass" in msg and "port0/i_probe_t" in msg, msg
+
+
+def test_synthetic_all_subnormal_record_set_is_refused():
+    """The same decision without the fixture: every record a subnormal ramp."""
+    tiny32 = float(np.finfo(np.float32).tiny)
+    n = 200
+    per = {}
+    for k, name in enumerate(("v_probe_t", "v_ref_t", "i_probe_t", "i_ref_t")):
+        a = np.zeros(n, dtype=np.float32)
+        a[0] = np.float32(tiny32 / (10.0 ** (k + 1)))
+        a[-20:] = np.float32(tiny32 / (10.0 ** (k + 4)))
+        per[name] = a
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        db = settling_db_from_port_records([_Records(per)])
+    assert np.isnan(db) and not bool(db <= _SETTLING_WITNESS_DB)
+    assert [w for w in caught if "NO COVERAGE" in str(w.message)]

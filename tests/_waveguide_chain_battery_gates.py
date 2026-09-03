@@ -53,7 +53,12 @@ from build_waveguide_band_broad_e5_phase_envelope import (  # type: ignore  # no
 )
 
 from rfx.api._sparams import _SETTLING_WITNESS_DB  # noqa: E402
-from rfx.sources.waveguide_port import C0_LOCAL, _compute_beta  # noqa: E402
+from rfx.sources.waveguide_port import (  # noqa: E402
+    C0_LOCAL,
+    _compute_beta,
+    _settling_db_for_record,
+    _settling_record_floor_amplitude,
+)
 
 from tests import _waveguide_chain_battery_fixture as F  # noqa: E402
 from tests._gate_policy import gate_from_envelope  # noqa: E402
@@ -581,12 +586,54 @@ def rung_label(dx_m: float) -> str:
     raise ValueError(dx_m)
 
 
+def settling_db_per_drive(block: dict) -> dict[str, float]:
+    """Per-drive ring-down witness recomputed from a block's stored records.
+
+    The fixture stores BOTH the witness output of the run
+    (``settling_db``) and the per-record ``peak``/``end`` pairs it was
+    computed from (``settling_records``, one list per solve). The scalar is a
+    DERIVATION; the records are the measurement. The scalar committed with
+    the battery was produced by the pre-#869 witness, which scored records
+    that had underflowed float32 -- 0.00 dB on an exactly-zero record, and a
+    -40.85 dB "pass" carried by subnormal noise -- so the replay re-derives
+    it here from the same stored records through the corrected arithmetic
+    (``rfx.sources.waveguide_port``: one copy of the floor and one copy of
+    the dB formula, not a hand copy of either). No FDTD is re-run and no
+    measured quantity changes.
+
+    Solve-to-drive mapping: the solves are stored drive-major and every drive
+    contributes the same number of them -- one for ``normalize=False``, two
+    (device + empty-guide reference) for ``normalize="flux"``, matching the
+    ``max(_sd_dev, _sd_ref)`` composition in
+    ``rfx/sources/waveguide_port.py``. A drive whose records are ALL below
+    the floor gets NaN, which fails the gate rather than passing it.
+    """
+    recs = block["settling_records"]
+    n_drives = len(F.PORT_NAMES)
+    if len(recs) % n_drives:
+        raise ValueError(f"{len(recs)} stored solves do not split over "
+                         f"{n_drives} drives")
+    per_drive = len(recs) // n_drives
+    floor = _settling_record_floor_amplitude(block["float32_normal_min"])
+    out: dict[str, float] = {}
+    for d, port in enumerate(F.PORT_NAMES):
+        worst = -math.inf
+        for call in recs[d * per_drive:(d + 1) * per_drive]:
+            for r in call:
+                db = _settling_db_for_record(r["peak"], r["end"], floor)
+                if db is not None:
+                    worst = max(worst, db)
+        out[port] = worst if math.isfinite(worst) else float("nan")
+    return out
+
+
 def cell_settling_effective(c: dict) -> dict[str, float]:
     """The settling numbers that are claims-bearing for a cell: the doubled
     record where one exists (§2.5), the 40-period record otherwise."""
-    if c.get("settling_rerun"):
-        return {k: float(v) for k, v in c["settling_rerun"]["settling_db"].items()}
-    return {k: float(v) for k, v in c["settling_db"].items()}
+    block = c["settling_rerun"] if c.get("settling_rerun") else c
+    if block.get("settling_records"):
+        return settling_db_per_drive(block)
+    return {k: float(v) for k, v in block["settling_db"].items()}
 
 
 def recompute_verdicts(fx: dict) -> dict:

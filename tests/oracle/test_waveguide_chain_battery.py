@@ -66,12 +66,6 @@ LIVE_ABS_S_TOL: float | None = gate_from_envelope(LIVE_ABS_S_ENVELOPE, quantum=1
 # body). They stay red in the live layer and are xfail(strict=True) here —
 # never loosened. Filled in the measurement commit; an empty family means
 # every case of that family passed.
-_RED_SETTLING = (
-    "measured 0.0 dB on both drives at 40 AND 80 periods (VESSL 369367257823): behind the "
-    "4/8-cell short the far-port records are exactly zero at this rung and "
-    "settling_db_from_port_records reads (end+tiny)/(peak+tiny) = 0 dB on them; the records "
-    "in the float32 normal range ring down to -100 / -98 dB (fixture "
-    "settling_db_over_normal_records). Witness degeneracy, not truncation — see PR body")
 _RED_ROTATION = (
     "measured resid 6.602 deg (Yee), 6.565 deg (continuous), wrong-sign witness 0.73 deg at the "
     "fine rung: the port config de-embeds with f_cutoff = 6.378 GHz (discrete cutoff of an "
@@ -90,7 +84,11 @@ _RED_AD_FD_ZERO_DERIVATIVE = (
     "(-9.8e-7) agrees with FD at that level. The pre-declared ULP-floor skip did not occur "
     "because the float64 FD resolves the residual — see PR body")
 KNOWN_RED: dict[str, dict[str, str]] = {
-    "settling": {"pec_short-fine-false": _RED_SETTLING, "pec_short-fine-flux": _RED_SETTLING},
+    # settling: RED on the committed fixture (0.0 dB on both PEC-short fine
+    # drives, at 40 AND 80 periods) until the witness stopped scoring records
+    # that had underflowed float32 (issue #869). Green now, re-derived from
+    # the SAME stored records — no re-run, and the -40 dB bar is untouched.
+    "settling": {},
     "ad_vs_fd": {"pec_short-flux-eps-s11_mag2": _RED_AD_FD_ZERO_DERIVATIVE},
     "forward_identity": {
         f"{d}-flux-{k}-{o}": _RED_IDENTITY_FLUX
@@ -292,16 +290,27 @@ def test_preflight_findings_are_recorded_verbatim_and_match_the_predeclaration(c
 @pytest.mark.parametrize("cid", _params_cells(family="settling"))
 def test_settling_witness_per_drive(cid):
     """§2.5: every drive ≤ −40 dB on the claims-bearing record (the doubled
-    record where the 40-period one read above the line)."""
+    record where the 40-period one read above the line).
+
+    The number is re-derived from the cell's stored ``settling_records``
+    through the production witness arithmetic
+    (``G.settling_db_per_drive``), not read from the ``settling_db`` scalar
+    the run wrote: that scalar came from the pre-#869 witness, which scored
+    float32-underflowed records and reported 0.00 dB on the PEC-short fine
+    cells. The printout keeps both so the change is visible."""
     c = _cell(cid)
+    # the replay's record floor is the run's own storage format: the driver
+    # recorded that constant, and the run was float32 (test_schema_and_provenance)
+    assert c["float32_normal_min"] == float(np.finfo(np.float32).tiny), cid
     eff = G.cell_settling_effective(c)
     rerun = c.get("settling_rerun")
-    print(f"[{cid}] settling_db(40)={c['settling_db']}"
-          + (f" rerun(80)={rerun['settling_db']}" if rerun else ""))
+    print(f"[{cid}] as-run settling_db(40)={c['settling_db']}"
+          + (f" rerun(80)={rerun['settling_db']}" if rerun else "")
+          + f" | re-derived from records: {eff}")
     for port, val in eff.items():
         assert val <= G.SETTLING_DB_MAX, (
             f"{cid} drive {port}: settling {val:.1f} dB above {G.SETTLING_DB_MAX} dB "
-            f"(40-period {c['settling_db'][port]:.1f} dB"
+            f"(as-run 40-period {c['settling_db'][port]:.1f} dB"
             + (f", 80-period {rerun['settling_db'][port]:.1f} dB" if rerun else "") + ")")
 
 

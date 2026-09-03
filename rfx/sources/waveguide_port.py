@@ -1791,50 +1791,180 @@ def extract_waveguide_port_waves(
     return _shift_modal_waves(a_ref, b_ref, beta, ref_shift, step_sign)
 
 
-def settling_db_from_port_records(final_cfgs) -> float:
+_SETTLING_RECORD_NAMES = ("v_probe_t", "v_ref_t", "i_probe_t", "i_ref_t")
+
+
+def _settling_record_floor_amplitude(tiny_normal: float) -> float:
+    """Smallest record peak amplitude on which the settling decision is still
+    made in the storage format's NORMAL range.
+
+    ``floor = tiny_normal * 10 ** (|bar| / 20)``, with ``bar`` the one shared
+    ring-down threshold (``rfx.api._sparams._SETTLING_WITNESS_DB``, -40 dB)
+    and ``tiny_normal`` the smallest normal of the format the records were
+    stored in (``np.finfo(dtype).tiny``): 1.1754944e-38 for float32, so the
+    float32 floor is 1.1754944e-36.
+
+    Derivation, not taste. The witness compares a tail mean POWER against a
+    peak POWER, so a record sitting exactly at the bar has
+    ``end = 1e-4 * peak``, i.e. a tail whose rms AMPLITUDE is
+    ``1e-2 * peak_amplitude``. Setting that rms equal to ``tiny_normal``
+    gives ``peak_amplitude = 100 * tiny_normal``. Above the floor the bar
+    decision is arithmetic on normal-range numbers; below it the tail the
+    decision reads is subnormal (progressively fewer mantissa bits, and
+    exactly zero once the format flushes).
+
+    The coupling to the bar is deliberate: the floor exists so that the
+    comparison the witness actually makes is representable. Tighten the bar
+    and the floor rises with it.
+    """
+    from rfx.api._sparams import _SETTLING_WITNESS_DB
+    return float(tiny_normal) * 10.0 ** (abs(float(_SETTLING_WITNESS_DB)) / 20.0)
+
+
+def _settling_db_for_record(peak_power: float,
+                            end_power: float,
+                            floor_amplitude: float) -> float | None:
+    """End/peak tail ratio of ONE record in dB, or ``None`` when the record
+    carries no witnessable ring-down.
+
+    ``None`` means the record's peak amplitude is below ``floor_amplitude``
+    (see :func:`_settling_record_floor_amplitude`) -- including a record that
+    underflowed to exactly zero. The caller drops such a record from the
+    worst-over-records and reports it by name; it must never be scored.
+
+    On a record that clears the floor the arithmetic is the original
+    ``10*log10((end + tiny)/(peak + tiny))``, unchanged, so a run whose
+    records all clear the floor returns the same number it always did.
+    """
+    if not (peak_power > 0.0):
+        return None
+    if float(np.sqrt(peak_power)) < floor_amplitude:
+        return None
+    tiny = float(np.finfo(float).tiny)
+    return float(10.0 * np.log10((end_power + tiny) / (peak_power + tiny)))
+
+
+def settling_db_from_port_records(final_cfgs, *, return_detail: bool = False):
     """Energy ring-down witness for ONE driven waveguide run (issue #538).
 
     Worst end/peak tail ratio, in dB, over ALL FOUR recorded per-port time
-    series — ``v_probe_t``, ``v_ref_t``, ``i_probe_t``, ``i_ref_t`` — for
-    every port of the run. The review of the first implementation measured
-    why one series is not enough: the plain/normalized extraction DFTs the
-    REF-plane records, and on an iris-resonator fixture the ``v_probe_t``-
-    only witness read 8.3 dB more settled than the worst record the
-    extraction actually consumes (a V-node/I-antinode standing wave at one
-    plane makes a single-quantity witness a false pass at the −40 dB
-    line). End/peak is self-normalized per series, so V and I mix
+    series -- ``v_probe_t``, ``v_ref_t``, ``i_probe_t``, ``i_ref_t`` -- for
+    every port of the run, restricted to the records that carry a
+    witnessable signal (see below). The review of the first implementation
+    measured why one series is not enough: the plain/normalized extraction
+    DFTs the REF-plane records, and on an iris-resonator fixture the
+    ``v_probe_t``-only witness read 8.3 dB more settled than the worst
+    record the extraction actually consumes (a V-node/I-antinode standing
+    wave at one plane makes a single-quantity witness a false pass at the
+    -40 dB line). End/peak is self-normalized per series, so V and I mix
     unit-free; the same end/peak arithmetic as the lumped/MSL witness
     (``rfx/api/_sparams.py``), which takes its worst over multiple planes
-    for the same reason. NO run-side change: pure host-side
-    post-processing of arrays the extractors already return, so it cannot
-    perturb S. Returns NaN when the records are tracers (eps_override AD
-    path) — skipped rather than concretised, mirroring MSL.
+    for the same reason. NO run-side change: pure host-side post-processing
+    of arrays the extractors already return, so it cannot perturb S.
+    Returns NaN when the records are tracers (eps_override AD path) --
+    skipped rather than concretised, mirroring MSL.
+
+    Underflowed and subnormal records (issue #869)
+    ----------------------------------------------
+    A record whose peak amplitude is below
+    :func:`_settling_record_floor_amplitude` is SKIPPED, not scored, and is
+    named in the detail dict. Behind a PEC short the far-port records fall
+    off the bottom of float32 and the unrestricted worst-over-records failed
+    in BOTH directions. Measured by the WR-90 chain battery (VESSL run
+    369367257823, ``tests/fixtures/waveguide_chain_battery/fixture.json``,
+    key ``cells[].settling_records``):
+
+    * fine rung, dx = 0.635 mm, 8-cell PEC short: the four far-port records
+      are exactly zero (``peak = 0.0``, ``n_nonzero = 0`` of 2849 steps), so
+      ``(end + tiny)/(peak + tiny)`` evaluated to exactly 1 and the witness
+      reported **0.00 dB** -- a hard fail -- for a run whose signal-carrying
+      records ring down to -99.98 / -101.20 dB at 40 periods and -113.91 /
+      -114.48 dB at 80, and whose S moves by at most 7.3e-6 between the two
+      record lengths (``settling_rerun.max_abs_s_shift_vs_40_periods``).
+    * mid rung, dx = 1.27 mm, 4-cell PEC short: the same four records are
+      float32 subnormals (peak amplitudes 1.58e-37 ... 2.97e-40) and the
+      witness **passed at -40.85 / -40.91 dB**, 0.9 dB inside the bar, on
+      the worst of them, while the records that carry signal read -94.62 /
+      -94.55 dB. Their tail means -- the quantity the -40 dB decision reads
+      -- have rms amplitudes 5.8e-41 ... 2.7e-42, i.e. tens to thousands of
+      subnormal quanta. A margin quoted from those is noise.
+    * coarse rung, dx = 2.54 mm: the far-port records sit at peak
+      amplitudes 3.15e-20 / 5.5e-23 with tails at 5.5e-25 rms -- normal
+      float32 throughout. They are KEPT and the cell's number does not
+      move (-84.44 / -81.25 dB).
+
+    Over all 18 battery cells and both record lengths this floor skips
+    exactly the records whose tail rms is subnormal and keeps every record
+    whose tail rms is normal: no record is misclassified in either
+    direction. The two rungs above are replayed from the stored records in
+    ``tests/unit/sparams/test_settling_witness.py``.
+
+    When EVERY record of the run is below the floor the witness has no
+    coverage at all. It then returns NaN **and warns**: NaN is the "no
+    witness value" state the differentiable lanes already use, and the
+    aggregate warner skips NaN by design, so a silent NaN here would be the
+    same silent-pass defect this guard removes.
+
+    ``return_detail=True`` returns ``(worst_db, detail)`` with ``detail``
+    carrying ``skipped_records`` (``"port<i>/<record>"`` names),
+    ``n_witnessed`` and ``floor_amplitude`` so a caller can see where the
+    witness lost coverage. Default ``False`` keeps the float-only return.
 
     Scope: the witness covers the MODAL port records; non-modal power
     ringing through the port/flux planes is orthogonal-projected out of
     these series and is not witnessed. The peak includes the incident
     pulse (global record max), so a weakly-port-coupled high-Q interior
     resonance can pass the witness while its narrowband S feature is
-    still under-resolved — the witness bounds truncation of the port
+    still under-resolved -- the witness bounds truncation of the port
     records, not interior stored energy (same limitation as the MSL
     implementation it mirrors).
     """
     from rfx.core.jax_utils import is_tracer
+
+    def _out(value, skipped, n_witnessed, floor):
+        if not return_detail:
+            return value
+        return value, {"skipped_records": skipped,
+                       "n_witnessed": n_witnessed,
+                       "floor_amplitude": floor}
+
     worst = -np.inf
-    for cfg in final_cfgs:
-        for ts in (cfg.v_probe_t, cfg.v_ref_t, cfg.i_probe_t, cfg.i_ref_t):
+    skipped: list[str] = []
+    n_witnessed = 0
+    floor = float("nan")
+    for port_index, cfg in enumerate(final_cfgs):
+        for name in _SETTLING_RECORD_NAMES:
+            ts = getattr(cfg, name)
             if is_tracer(ts):
-                return float("nan")
-            ts_np = np.abs(np.asarray(ts, dtype=np.float64))
-            if ts_np.shape[0] < 10:
-                return float("nan")
-            p = ts_np ** 2
+                return _out(float("nan"), skipped, n_witnessed, floor)
+            raw = np.asarray(ts)
+            if raw.shape[0] < 10:
+                return _out(float("nan"), skipped, n_witnessed, floor)
+            floor = _settling_record_floor_amplitude(np.finfo(raw.dtype).tiny)
+            amp = np.abs(raw.astype(np.float64))
+            p = amp ** 2
             tail = max(1, p.shape[0] // 10)
-            end = float(p[-tail:].mean())
-            peak = float(p.max())
-            tiny = float(np.finfo(float).tiny)
-            worst = max(worst, 10.0 * np.log10((end + tiny) / (peak + tiny)))
-    return float(worst)
+            db = _settling_db_for_record(float(p.max()),
+                                         float(p[-tail:].mean()), floor)
+            if db is None:
+                skipped.append(f"port{port_index}/{name}")
+                continue
+            n_witnessed += 1
+            worst = max(worst, db)
+
+    if n_witnessed == 0:
+        import warnings
+        warnings.warn(
+            f"ring-down settling witness has NO COVERAGE on this run: 0 of "
+            f"{len(skipped)} port records clear the {floor:.4g} peak-amplitude "
+            "floor (the storage format's smallest normal, scaled so the -40 dB "
+            "decision itself is representable), so no ring-down ratio can be "
+            "established. settling_db is NaN and must NOT be read as a pass. "
+            "Records: " + (", ".join(skipped) or "(none recorded)"),
+            stacklevel=2,
+        )
+        return _out(float("nan"), skipped, n_witnessed, floor)
+    return _out(float(worst), skipped, n_witnessed, floor)
 
 
 def extract_waveguide_s_matrix(
