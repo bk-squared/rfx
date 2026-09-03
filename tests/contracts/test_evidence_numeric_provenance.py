@@ -272,6 +272,7 @@ CV11_NOTE = "docs/design_notes/20260831_cv11_broad_e4_artifact_provenance.md"
 # than read (see that note's section 5.3, "These are the run's numbers, not a
 # reconstruction"). Opting it in is what stops that recurring.
 LATTICE_NOTE = "docs/design_notes/20260903_lattice_witness_standard.md"
+CV19_WITNESS_NOTE = "docs/design_notes/20260903_cv19_fdfd_unitarity_witness.md"
 
 # Markdown documents, with the regex that cuts them into named sites.
 MARKDOWN_SITES: dict[str, str] = {
@@ -279,6 +280,10 @@ MARKDOWN_SITES: dict[str, str] = {
     CV11_NOTE: r"^#+\s+(.*\S)\s*$",
     "docs/design_notes/20260901_numeric_provenance_gate.md": r"^#+\s+(.*\S)\s*$",
     LATTICE_NOTE: r"^#+\s+(.*\S)\s*$",
+    # 2026-09-03 (#884): the cv19 unitarity-witness note argues *from* the
+    # committed self-test scalars, so the committed scalars it quotes are
+    # opted in here rather than retyped and trusted.
+    CV19_WITNESS_NOTE: r"^#+\s+(.*\S)\s*$",
 }
 
 DOCUMENTS = (MANIFEST, *MARKDOWN_SITES)
@@ -306,12 +311,21 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     (LATTICE_NOTE, "5.2 cv22 \u2014 three rungs, all green; the pole lattice predicts the residual a priori"): 8,
     (LATTICE_NOTE, "5.3 cv04 \u2014 the witness is REPORTED, not gated, and the derivation says why"): 16,
     (LATTICE_NOTE, "8.1 cv22 Debye at a 3e-4 settling bar (the only rung a claim requires)"): 3,
+    # 2026-09-03 (#884): the cv19 witness note's two load-bearing sections. §6.2
+    # cites the committed unitarity that U3's floor is compared against; §6.3
+    # cites the empty_s11 and r=2 anchor values it says were deliberately NOT
+    # changed. A "we changed nothing" claim is worth exactly as much as its
+    # numbers still resolving.
+    (CV19_WITNESS_NOTE, "6.2 The three checks, with the shipped measurements"): 1,
+    (CV19_WITNESS_NOTE, "6.3 What did NOT change"): 2,
 }
 
 # Anti-vacuity census. A green gate must mean the references are right, not that
 # somebody deleted them.
-MIN_REFERENCES = 44
-MIN_VALUE_CHECKED = 44
+# 2026-09-03 (#884): +8, the cv19 unitarity-witness note's citations. Raised in
+# the same commit that adds them, so the census tracks the opted-in surface.
+MIN_REFERENCES = 52
+MIN_VALUE_CHECKED = 52
 MIN_DISTINCT_ARTIFACTS = 6
 
 

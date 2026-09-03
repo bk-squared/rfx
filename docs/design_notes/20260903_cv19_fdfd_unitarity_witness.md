@@ -1,10 +1,22 @@
 # cv19 FDFD unitarity witness: what 1.4655e-09 actually is, and what the gate should be
 
-Issue #884. Diagnosis only — **no test or fixture change is proposed for merge here.**
-This note records the measurements, the verdict, and a proposal with its falsifier so
-the change can be reviewed on the evidence rather than on the red mark.
+Issue #884. Sections 0–3 are the diagnosis, recorded first and unchanged. Section 4 is
+the proposal that came out of it; **section 6 records what actually shipped**, including
+the two places where the implementation's measured numbers differ from section 4's draft
+and the one witness the derivation turned out NOT to support changing.
 
 Branch: `agent/issue-884-diagnosis`.
+
+Committed values this note cites, machine-checked against the record by
+`tests/contracts/test_evidence_numeric_provenance.py`:
+`tests/fixtures/wr90_iris_filter/fixture.json::fdfd_formulation_independent.self_test.unitarity = 1.4655321400880439e-09`,
+`tests/fixtures/wr90_iris_filter/fixture.json::fdfd_formulation_independent.self_test.empty_s11 = 4.998689747642886e-14`,
+and the same two on the artifact side,
+`validation/crossval/_19_iris_filter_results/rfx.json::fdfd_formulation_independent.self_test.unitarity = 1.4655321400880439e-09`
+and
+`validation/crossval/_19_iris_filter_results/rfx.json::fdfd_formulation_independent.self_test.empty_s11 = 4.998689747642886e-14`.
+The live r=2 anchor's committed sample is
+`tests/fixtures/wr90_iris_filter/fixture.json::fdfd_formulation_independent.levels.2.s11[65] = 0.153281`.
 
 ---
 
@@ -210,7 +222,7 @@ recorded measurement can be meaningful. It must be replaced.
 
 ---
 
-## 4. Proposal
+## 4. Proposal (as drafted — see §6 for what shipped)
 
 Replace the single recorded scalar with **three assertions, none of which records a
 roundoff realization**. Notation: `u_raw` = unitarity of `spsolve`'s answer;
@@ -281,6 +293,16 @@ current margin is 0.0295 decades against an 0.859-decade intrinsic spread.
 The fixture should record `unitarity_lu_realization` (renamed, with a note that it is
 ordering-, BLAS- and platform-dependent with a measured 1.88-decade spread) and
 `unitarity_refined`, and gate only the latter.
+
+> **Superseded by §6.3.** The shipped change records nothing new in the fixture and
+> renames nothing. `u_refined` is computed live, in the test, from the same matrix; the
+> committed `unitarity` keeps its name and its value and is used as U3's left-hand side.
+> Renaming it would have edited a committed artifact number to fix a test, which is the
+> move this whole note argues against.
+
+*The measured numbers in §4(a)/(b) below are from the draft's plain-float64 refinement.
+The shipped witness uses an exactly accumulated residual, which changes them; §6 carries
+the shipped set. Neither the thresholds nor any conclusion moved.*
 
 ### (a) The proposal passes on both venvs
 
@@ -370,14 +392,173 @@ roundoff distribution — and then not gated as an equality at all.
   different resolved dependency set. The latent defect — a roundoff realization committed
   as a constant — has been in the fixture since cv19 was generated.
 
-**Recommendation.** #883's own six fixes are verified and orthogonal; blocking it on a
-pre-existing latent defect it merely revealed is the wrong trade, since the 3.11 lane is
-exactly the instrument that found it. Merge #883 with the 3.11 job present, and either
-(a) land the §4 witness first as a small dependent PR, or (b) mark this one test
-`xfail(strict=False)` on 3.11 with a link to #884 for the days between. **Do not
+**Recommendation, and what was taken.** #883's own six fixes are verified and
+orthogonal; blocking it on a pre-existing latent defect it merely revealed is the wrong
+trade, since the 3.11 lane is exactly the instrument that found it. Of the two options
+originally offered — (a) land the §4 witness first as a small dependent PR, or (b) mark
+the test `xfail(strict=False)` on 3.11 for the days between — **(a) was taken**: §6 is
+that PR, and it unblocks the Python 3.11 job with no xfail and nothing hidden. **Do not
 re-record `1.4655321400880439e-09` as `1.5806898456816043e-08`** — that swaps one
 sample of a 1.88-decade distribution for another and re-arms the same failure on the
 next wheel.
+
+---
+
+## 6. What shipped
+
+Landed on this branch, as the note's §4 proposal reduced to the smallest change that
+carries it.
+
+### 6.1 The witness, and how `u_refined` is actually defined
+
+`validation/crossval/comparators/fdfd_hplane.py` gains three things and changes nothing
+that produces a committed number:
+
+* `_assemble` / `_ports` / `_unitarity` — `solve`'s body, split so the refined witness
+  can reuse the SAME matrix and the SAME factorization instead of re-deriving either.
+  `solve` still calls `spsolve` and still returns bit-identical values: verified against
+  `git show HEAD:...fdfd_hplane.py` at r=1 loaded, r=1 empty and r=2, and `self_test`'s
+  whole return dict compares equal.
+* `_exact_residual(A_csr, x, b)` — `r = b - Ax` with each row's sum accumulated exactly
+  (`math.fsum`; the products are ordinary rounded float64 multiplies). This is the part
+  §2.3 called "exactly accumulated". It matters: the residual of a cond ≈ 10¹² system is
+  five decades of cancellation, and refined in plain float64 the iteration converges to
+  the *residual evaluation's* floor rather than the solution's.
+* `refined_unitarity(...)` — one `splu` on the assembled matrix, `steps=2` triangular
+  solves with exact residuals, and
+
+      u_raw      = unitarity of the unrefined solve
+      u_refined  = min over refinement steps 1 and 2
+
+  The `min` rule is the note's, fixed in code rather than chosen per run: refinement
+  reaches the residual-evaluation floor at step 1 and then oscillates inside it (COLAMD:
+  6.2061e-14 then 1.0991e-13; NATURAL: 3.3595e-13 then 6.2950e-14), so neither step alone
+  is "the" converged value and the minimum is the honest one. It is stated in the
+  function's docstring so nobody has to infer it.
+
+**`u_raw` is `spsolve`'s number.** `splu(A).solve(rhs)` is bit-identical to
+`spsolve(A, rhs)` here (checked), so U2's numerator is the same quantity the fixture
+records — not a second, differently-obtained residual.
+
+Cost: 0.22 s for the whole witness against the 0.12 s solve it rides on, of which the two
+exact residuals are ~0.1 s. The §4 draft's "+4 ms" was the plain-float64 residual; exact
+accumulation is a Python-level loop over 32663 rows and is 25× that. Still 4 % of the
+test file's 68 s.
+
+### 6.2 The three checks, with the shipped measurements
+
+Ordering ensemble run through the shipped code, both venvs, **bit-identical**:
+
+| `permc_spec` | `u_raw` | steps 1, 2 | `u_refined` | ratio | U1 margin | U3 floor |
+|---|---|---|---|---|---|---|
+| COLAMD (default, the committed path) | 2.57592525088057300e-09 | 6.2061e-14, 1.0991e-13 | 6.20614670765462506e-14 | 4.1506e+04 | 161× | 6.2061e-11 |
+| MMD_AT_PLUS_A | 5.94043947366174052e-09 | 4.0856e-14, 8.1046e-15 | 8.10462807976364275e-15 | 7.3297e+05 | 1234× | 8.1046e-12 |
+| MMD_ATA | 1.78573380527069503e-08 | 1.8496e-13, 1.9540e-14 | 1.95399252334027551e-14 | 9.1389e+05 | 512× | 1.9540e-11 |
+| NATURAL | 4.58784666923506279e-08 | 3.3595e-13, 6.2950e-14 | 6.29496454962463758e-14 | 7.2881e+05 | 159× | 6.2950e-11 |
+
+`u_raw` spans **1.2507 decades** through `splu`; §2.4a's 1.883 decades used
+`spsolve(permc_spec=NATURAL)`, which reaches 1.9689e-07. Both are larger than the
+1.0329-decade CI gap, which is the only claim that has to hold. `u_refined` spans 0.8903
+decades **at the 1e-14 level**, i.e. the whole band is 160× or more under the bound.
+
+* **U1 `u_refined < 1e-11`.** Analytic floor √89·eps·2(|S11|+|S21|) = 2.09e-15 × 2.408 ≈
+  5.0e-15, so the bound carries ~2000× headroom over the floor and **158.9×** over the
+  worst of the eight measurements by the min rule (6.2950e-14, NATURAL, both venvs).
+  Against the worst *single* step (3.3595e-13) it is still 30×.
+* **U2 `u_raw / u_refined > 100`.** Worst same-run ratio 4.1506e+04 — a **415× margin**;
+  worst-case across the ensemble, `min(u_raw)/max(u_refined)` = 4.0920e+04.
+* **U3 `committed > 1000 · u_refined`.** Floor 6.2061e-11 on the default ordering,
+  8.1046e-12 … 6.2950e-11 across the four. The committed
+  `tests/fixtures/wr90_iris_filter/fixture.json::fdfd_formulation_independent.self_test.unitarity = 1.4655321400880439e-09`
+  clears the *worst* of those by 23.3×; the 1e-12 polishing attack fails even the lowest
+  of them by 8.1×. The upper side is kept as `committed < 1e-6`, the solver's own
+  acceptance tolerance.
+
+**All four orderings pass both tests** (run, not asserted). And the whole point:
+handed CI-3.11's `1.5806898456816043e-08` as `u_raw`, the new gate **passes** — U1 is
+untouched (it is a different quantity), U2 reads 2.5470e+05, U3 reads 23.6×. The old
+gate on the same input computes `decades = 1.0328513161589736` and fails, which is
+exactly the traceback in #884.
+
+### 6.3 What did NOT change
+
+* **No fixture or artifact number moved, and no field was added.** `u_refined` is a
+  live quantity; committing a locally measured value into a record whose provenance is
+  "the generation run on CI-3.10/x86-64" would have been a new instance of the same
+  defect. `self_test`'s return dict is also unchanged, so the generator writes the same
+  keys it always did.
+* **`empty_s11` keeps its two-sided decade test.** §2.5 and §4 said it "should get the
+  same treatment", and on re-reading, **the derivation does not support that** — so it
+  was not done. §4 supplies, for the unitarity witness only: a refined quantity that is
+  build-independent, a bound derived from an arithmetic floor, and two falsifiers that
+  fire. It supplies **none of the three** for the empty-guide residual. There is no
+  measured refined analogue of `empty_s11` in this note, no floor derived for it, and no
+  falsifier showing what a replacement would still catch. Changing it on the strength of
+  "it is the same class of quantity" would be exactly the unevidenced move this note
+  objects to, and it would also delete the only guard that caught the missing-`/h`
+  defect. What shipped instead is a comment in the test recording the measurement, so
+  the next person meets it as a known state rather than a surprise:
+
+  | | value |
+  |---|---|
+  | committed `tests/fixtures/wr90_iris_filter/fixture.json::fdfd_formulation_independent.self_test.empty_s11 = 4.998689747642886e-14` | 5.00e-14 |
+  | live (both venvs, COLAMD) | 4.66988620937557925e-14 |
+  | **margin against the 1.0-decade gate** | **0.0295 decades** |
+  | spread across the four orderings (4.6699e-14 / 7.1550e-14 / 1.2905e-13 / 3.3711e-13) | 0.8585 decades |
+
+  It has not fired because cond₁(A_empty) ≈ 4.01e+04 is four decades better conditioned
+  than the loaded problem. If it goes red on a new wheel, **that is this latent defect,
+  not a physics change**, and the fix is a derivation of its own — not a wider window.
+* **No other gate, window or committed number was touched.** The live r=2 anchor
+  (`tests/fixtures/wr90_iris_filter/fixture.json::fdfd_formulation_independent.levels.2.s11[65] = 0.153281`
+  against `abs=1e-5`) is kept verbatim; it is load-bearing, see §6.4.
+
+### 6.4 Falsifiers, shipped as tests
+
+`test_the_unitarity_witness_fires_on_loss_and_on_the_historical_defect` runs each of
+these in CI at ~0.25 s a piece. Bit-identical on both venvs.
+
+| defect | `u_raw` | `u_refined` | ratio | fires |
+|---|---|---|---|---|
+| *(reference)* | 2.5759e-09 | 6.2061e-14 | 4.151e+04 | — |
+| Im(ε_r) = 1e-15 | 4.1648e-09 | 5.7510e-14 | 7.242e+04 | no (below threshold) |
+| Im(ε_r) = 1e-14 | 2.0526e-08 | 8.3267e-13 | 2.465e+04 | no (below threshold) |
+| **Im(ε_r) = 1e-13** | 2.0864e-08 | **1.4737e-11** | 1.416e+03 | **U1** |
+| Im(ε_r) = 1e-12 | 8.0465e-09 | 1.6801e-10 | 4.789e+01 | U1 and U2 |
+| Im(ε_r) = 1e-11 | 7.9409e-09 | 1.4223e-09 | 5.583e+00 | U1 and U2 |
+| Im(ε_r) = 1e-09 | 1.5338e-07 | 1.4223e-07 | 1.078e+00 | U1 and U2 |
+| Im(ε_r) = 1e-06 | 1.4222e-04 | 1.4222e-04 | 1.000e+00 | U1 and U2 |
+| **missing `/h`** (the historical bug) | 6.4393e-15 | 2.2204e-16 | **29.0** | **U2**, and `empty_s11` = 1.000000 |
+| aperture 40 → 42 (lossless) | 3.2754e-08 | 1.9318e-14 | 1.696e+06 | **nothing — see below** |
+
+Loss is injected as a lossy fill by scaling the frequency by √ε_r, which is exactly what
+enters `k`, the interior operator and the port DtN. `u_refined` tracks the absorbed power
+linearly at 1.4223e+02 · Im(ε_r), so U1's bound puts the **detection threshold at
+Im(ε_r) ≈ 7.0e-14**; at 1e-13 it fires with 1.47× margin. The gate this replaces
+(`u_raw < 1e-6`) is blind across that entire column and does not move until
+Im(ε_r) ≈ 1e-6 — **four decades less sensitive to the one defect unitarity exists to
+catch.** The test asserts *both* directions: that U1 fires and that `u_raw` stays under
+1e-6, so the sensitivity claim cannot go stale silently.
+
+U1 does **not** fire on the missing-`/h` defect (that structure is still lossless), which
+is why U2 is carried alongside rather than dropped as redundant.
+
+**The honest negative, now asserted rather than merely stated.** A lossless geometry
+off-by-one — first aperture 42 cells instead of 40 — leaves `u_refined` at 1.9318e-14 and
+**neither U1 nor U2 fires. Neither should**: the perturbed filter is a different but
+perfectly lossless two-port, so |S11|²+|S21|²=1 continues to hold. The test asserts the
+non-firing, so if a future edit made unitarity respond to geometry that would be a red
+flag about the witness, not a win. What catches the off-by-one is the **live r=2 anchor
+in the same test**:
+
+| | committed | live | \|Δ\| | gate |
+|---|---|---|---|---|
+| reference | 0.1532810000 | 0.1532810941 | 9.409e-08 | `abs=1e-5` ✔ |
+| aperture 40→42 | 0.1532810000 | 0.1628341537 | **9.553e-03** | **955× over — CAUGHT** |
+
+The three witnesses are not interchangeable: the anchor gates the **geometry**, unitarity
+gates **losslessness**, `empty_s11` gates **port transparency**. The decade comparison
+that was deleted was doing none of the three.
 
 ---
 
