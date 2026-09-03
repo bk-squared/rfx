@@ -487,6 +487,75 @@ refine the mesh, not the tolerance; anyone tightening `W_mean,T` must first
 lengthen cv04's record, because most of what that window covers is a record
 length, not a mesh.
 
+### 5.4 The consequence §5.3 states the premise of, and does not draw (added after the 2026-09-03 review)
+
+§5.3 says cv04's committed `|ΔR|` envelope IS a discretisation term. §5.2 and
+§5.1 say every arm's residual against the transfer matrix IS that arm's own
+lattice term. **Put together, those two say something about the family's
+CONTINUUM gate that the note stated the premise of and never the consequence.**
+The review asked the question directly — "does anything pass only because its
+window carries the lattice term?" — and the answer is yes.
+
+The experiment is a re-derivation, not a re-run. `W_mean,R = 0.010` is
+`gate_from_envelope(0.0066, quantum=1000)` — cv04's envelope, which §5.3 shows
+is 1.10× this slab's lattice term. Re-derive it from the NON-lattice part of the
+same measurement instead: at the settled rung of the same slab (cv23's
+`sigma_zero` arm) `|rfx − lattice|` is 1.69e-4, and
+`gate_from_envelope(1.69e-4, quantum=1000)` = **0.001**. Judged against that,
+of the twelve committed rungs:
+
+| rung | measured `\|rfx − TMM\|`, gated mean R | that rung's OWN lattice term | ≤ 0.001? |
+|---|---|---|---|
+| cv22 `debye` | 0.0023 | 0.0022 | **no** |
+| cv22 `lorentz` | 0.0028 | 0.0028 | **no** |
+| cv22 `drude` | 0.00049 | 0.00049 | yes |
+| cv23 `tand0p1` | 0.0039 | 0.0039 | **no** |
+| cv23 `tand0p1_dx2` | 0.00096 | 0.00096 | yes |
+| cv23 `tand0p1_dx4` | 0.00024 | 0.00024 | yes |
+| cv23 `tand1` | 0.0051 | 0.0051 | **no** |
+| cv23 `tand1_dx2` | 0.0013 | 0.0013 | **no** |
+| cv23 `tand1_dx4` | 0.00031 | 0.00031 | yes |
+| cv23 `tand3` = `tand3_dx2` | 0.0031 | 0.0031 | **no** (both) |
+| cv23 `tand3_dx4` | 0.00078 | 0.00078 | yes |
+
+**Seven of the twelve committed rungs pass their continuum band-mean R gate only
+because `W_mean,R = 0.010` carries cv04's lattice term.** And the middle column
+equals the right-hand column to two significant figures at every single rung —
+which is this lane's whole result, read the other way round: what the continuum
+gate measures at these meshes IS the discretisation.
+
+Said in one sentence, and it belongs on the public rows as well as here: **the
+slab family's continuum gate is one slab's discretisation error measured inside
+a window derived from another slab's discretisation error.** The five rungs that
+survive the re-derivation are the refined ones (`dx/2`, `dx/4`) plus Drude,
+i.e. exactly the rungs where the lattice term has fallen far enough that the
+solver's own residual is what is left.
+
+**Nothing is changed here, deliberately.** No window is widened, none is
+tightened, no gate moves, and `W_mean,R` stays 0.010. Two reasons, both stated
+so that the non-change is a decision and not an omission:
+
+1. Tightening `W_mean,R` to 0.001 would turn seven green cases red for a reason
+   that is not a defect — the mesh, not the solver. The remedy for a
+   discretisation-limited gate is resolution, and choosing which rungs to refine
+   (and paying for them) is a PI decision, not a review action.
+2. The re-derived 0.001 is itself only as good as the settled rung it comes
+   from; it inherits that rung's own truncation and float32 terms (§3), and
+   §7's F4 shows the record length, not the mesh, is what limits several arms.
+
+**Follow-up lane, proposed here and not taken: `slab-family continuum window
+re-derivation`.** Its content: (a) re-derive `W_mean,R` and `W_mean,T` from
+`|rfx − lattice|` at a SETTLED rung of each material rather than from cv04's
+un-settled envelope, with the lattice term carried as a separate, per-rung,
+per-mesh term instead of being folded into a constant; (b) run the refined rungs
+each arm then needs — from the table above that is the dx rungs of cv22 Debye
+and Lorentz and of cv23 `tand0p1`, `tand1` and `tand3`; (c) re-run cv04 itself on
+a settled record so its envelope stops being the family's datum while being the
+one measurement in the family that does not settle. Cost: five to seven arms
+plus one cv04 leg, order a minute of pod time; the expensive part is the
+decision in (a), not the compute. Nothing in THIS lane depends on it, and this
+lane's gates are unaffected either way.
+
 ## 6. What is NOT changed
 
 - No continuum window, per-bin or band-mean, on any case.
