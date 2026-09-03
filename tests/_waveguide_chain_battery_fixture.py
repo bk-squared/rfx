@@ -85,8 +85,22 @@ _K_REF = 3               # default reference plane, cells inward of each port
 _K_PROBE = 10            # probe plane, cells inward of each port
 _K_PEC_LO, _K_PEC_HI = 23, 25     # PEC-short: 2 coarse cells = 5.08 mm thick
 _K_SLAB_LO, _K_SLAB_HI = 22, 26   # eps_r=4 slab: 4 coarse cells = 10.16 mm
-_K_SHIFT_LEFT = 12       # shifted reference plane, left port (WP2(b))
-_K_SHIFT_RIGHT = 35      # shifted reference plane, right port (WP2(b))
+# Shifted reference planes, one integer pair per named shift pair. Both pairs
+# live here so each artifact can name the one it was measured with; the builder
+# realizes exactly one of them at a time (SHIFT_PAIR_NAME below).
+_K_SHIFT_PAIRS = {
+    # Run 1 (fixture.json). 2*beta*Delta passes through a half turn inside the
+    # band on all three entries, which makes the wrong-sign discriminator
+    # degenerate by arithmetic -- it measured 0.734 deg against a 10 deg floor.
+    "half_turn_pair": (12, 35),
+    # Run 2 (fixture_guide_cell_aperture.json). The largest admissible unequal
+    # pair on the coarse lattice: Delta_L = +5.08 mm (2 cells),
+    # Delta_R = -2.54 mm (1 cell); 2*beta*Delta stays clear of 0 and 180 deg
+    # across the band, so the discriminator's binding margin is 64.05 deg.
+    "sign_discriminating_pair": (10, 39),
+}
+SHIFT_PAIR_NAME = "sign_discriminating_pair"
+_K_SHIFT_LEFT, _K_SHIFT_RIGHT = _K_SHIFT_PAIRS[SHIFT_PAIR_NAME]
 
 DOMAIN_X_M = _NX_DOMAIN * DX_COARSE            # 0.12192
 PORT_LEFT_X_M = _K_PORT_LEFT * DX_COARSE       # 0.01270
@@ -102,12 +116,14 @@ REF_RIGHT_DEFAULT_M = PORT_RIGHT_X_M - D_REF_M   # 0.10160
 # Probe (sampling) planes = port plane + D_PROBE inward.
 PROBE_LEFT_M = PORT_LEFT_X_M + D_PROBE_M         # 0.03810
 PROBE_RIGHT_M = PORT_RIGHT_X_M - D_PROBE_M       # 0.08382
-# WP2(b) shifted pair — asymmetric on purpose (4 vs 5 coarse cells inward),
-# the same reason the source pair at
-# tests/unit/sparams/test_waveguide_twoport_contract_v1.py:257 is asymmetric: a sign
-# error on one port must not be cancelled by the other.
-REF_LEFT_SHIFTED_M = _K_SHIFT_LEFT * DX_COARSE   # 0.03048 (+10.16 mm)
-REF_RIGHT_SHIFTED_M = _K_SHIFT_RIGHT * DX_COARSE  # 0.08890 (-12.70 mm)
+# WP2(b) shifted pair — asymmetric on purpose, the same reason the source pair
+# at tests/unit/sparams/test_waveguide_twoport_contract_v1.py:257 is asymmetric:
+# a sign error on one port must not be cancelled by the other. The active pair
+# is sign_discriminating_pair: +5.08 mm on the left, -2.54 mm on the right.
+REF_LEFT_SHIFTED_M = _K_SHIFT_LEFT * DX_COARSE   # 0.02540 (+5.08 mm)
+REF_RIGHT_SHIFTED_M = _K_SHIFT_RIGHT * DX_COARSE  # 0.09906 (-2.54 mm)
+SHIFT_PAIRS_M = {name: (kl * DX_COARSE, kr * DX_COARSE)
+                 for name, (kl, kr) in _K_SHIFT_PAIRS.items()}
 
 # --- band and drive ---------------------------------------------------------
 # 17 bins, 0.2 GHz apart, centre bin (index 8) exactly 10.0 GHz. The top
