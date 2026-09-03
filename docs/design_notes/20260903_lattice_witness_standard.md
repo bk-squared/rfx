@@ -265,7 +265,7 @@ round 2 ran and round 3 committed; cv22 runs one rung per arm; cv04 runs one.
 
 ### 5.1 cv23 — nine committed entries, eight distinct meshes, all green
 
-`validation/crossval/_23_lossy_results/lattice_witness.json::verdict.all_rungs_ok = true`,
+`validation/crossval/_23_lossy_results/lattice_witness.json::verdict.all_rungs_ok`,
 `validation/crossval/_23_lossy_results/lattice_witness.json::verdict.n_rungs = 9`.
 (`tand3` and `tand3_dx2` are the same mesh: tand3's declared primary recipe IS
 dx/2, so its ladder is {dx/2, dx/4} and it has no committed dx rung — cv23
@@ -304,7 +304,7 @@ Two readings worth stating:
 
 ### 5.2 cv22 — three rungs, all green; the pole lattice predicts the residual a priori
 
-`validation/crossval/_22_dispersive_results/lattice_witness.json::verdict.all_rungs_ok = true`.
+`validation/crossval/_22_dispersive_results/lattice_witness.json::verdict.all_rungs_ok`, `validation/crossval/_22_dispersive_results/lattice_witness.json::verdict.n_rungs = 3`.
 
 | rung | tails scat / purity | Γ (source) | W_witness R / T | \|rfx − lattice\| R / T | worst ratio R / T / A |
 |---|---|---|---|---|---|
