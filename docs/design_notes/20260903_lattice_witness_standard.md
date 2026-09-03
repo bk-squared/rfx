@@ -42,8 +42,21 @@ rigorous rung by rung instead of only at the end of the ladder.
 `W_mean,R = 0.010`, `W_mean,T = 0.017`, `W_bin,A = 0.148`, `W_mean,A = 0.027`,
 the −40 dB settling bar `SETTLING_LIMIT = 1e-2`, cv04's `TAIL_PURITY_LIMIT =
 1e-3` and `CONS_MAX_LIMIT = 0.06` are untouched, and
-`validation/crossval/comparators/slab_rig.py` REFUSES a settling bar looser than
-the declared one (`test_settling_bar_can_only_be_tightened`).
+`validation/crossval/comparators/slab_rig.py` REFUSES any `--settling-bar`
+outside `(0, SETTLING_LIMIT]` — the comparison is against the FAMILY constant
+`SETTLING_LIMIT = 1e-2`, not against whatever bar the active recipe carries
+(`test_settling_bar_outside_the_declared_interval_is_refused`,
+`test_settling_bar_can_only_be_tightened`).
+
+**Correction (2026-09-03 review, applied here).** As first written the guard
+compared the requested bar against the ACTIVE recipe's `tail_limit`, so it was
+not the sentence above. `--recipe cv04` is a declared flag of both
+`22_dispersive_slab_fresnel.py` and `23_lossy_slab_fresnel.py`, and under it the
+bar was checked against cv04's `TAIL_LIMIT = 0.10`: a `--settling-bar 5e-2` —
+five times LOOSER than the declared −40 dB witness — was accepted. A
+non-positive bar (`0.0`, `-1.0`) also passed the `<=` test under r3 and switched
+the witness off entirely. All four probes are now refused and all four are
+asserted as tests; a genuine tightening (`3e-4`, §8.1) is still accepted.
 
 ## 1. Scope — which cases are slab family, and why
 
@@ -509,8 +522,9 @@ Two claims require one; neither rung is run in this commit. Both are legs of
 The claim that needs it: "F2 fires at the coarsest rung of every arm". It does
 not, on Debye, and §5.2 says why. The remedy is resolution in TIME, not
 tolerance: run the same arm with `--settling-bar 3e-4 --tag debye_tail3e4`. The
-bar can only be tightened (`slab_rig.py` raises otherwise), so this is not a
-window move.
+bar can only be tightened — `slab_rig.py` raises on anything outside
+`(0, SETTLING_LIMIT]`, measured against the family constant and not against the
+active recipe (§0's correction) — so this is not a window move.
 
 Derivation of the cost and the prediction, from the committed artifact:
 the tail must fall from

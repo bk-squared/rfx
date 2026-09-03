@@ -174,12 +174,51 @@ def test_the_window_is_monotone_in_every_witness_it_reads():
         assert np.any(t1[which] > t0[which]), key
 
 
-def test_settling_bar_can_only_be_tightened():
-    """A new rung may make the record LONGER (a tighter settling bar); the rig
-    refuses a looser one, so the -40 dB witness is never widened."""
+class _ReachedSetup(Exception):
+    """Raised from the ``setup`` hook to prove the guard let the call through."""
+
+
+def _bar_probe(bar, *, recipe=None):
+    """``run_slab_arm`` with one settling bar, stopped at the material hook.
+
+    No FDTD: ``setup`` is the first thing the rig calls after the settling-bar
+    guard, so raising there separates "the guard refused" from "the guard let
+    it through".
+    """
+    def setup(rig):
+        raise _ReachedSetup
+
+    kw = {} if recipe is None else {"recipe": recipe}
+    RIG.run_slab_arm("conductive", {"eps_inf": 4.0, "sigma": 0.0}, setup=setup,
+                     nx_interior=200, n_steps_cap=10, smoke=True, settling_bar=bar, **kw)
+
+
+@pytest.mark.parametrize("bar,recipe", [
+    # The four probes the 2026-09-03 review ran against the pre-fix guard.
+    (1.0, None),        # grossly looser than the -40 dB bar
+    (2e-2, "r3"),       # 2x looser, refused before and after
+    (5e-2, G.RECIPE_CV04),  # 5x looser -- ACCEPTED before the fix, because the
+                            # guard compared against the ACTIVE recipe's bar and
+                            # cv04's TAIL_LIMIT is 0.10, not SETTLING_LIMIT
+    (0.0, "r3"),        # disables the witness -- accepted before the fix
+    (-1.0, "r3"),       # ditto, and negative
+])
+def test_settling_bar_outside_the_declared_interval_is_refused(bar, recipe):
+    """The bar may only TIGHTEN the family's -40 dB witness. The comparison is
+    against the family constant ``SETTLING_LIMIT``, not against whatever bar the
+    active recipe happens to carry, and a non-positive bar is not a tightening
+    at all -- it switches the witness off."""
     with pytest.raises(ValueError, match="never widened"):
-        RIG.run_slab_arm("conductive", {"eps_inf": 4.0, "sigma": 0.0}, setup=lambda rig: None,
-                         nx_interior=200, n_steps_cap=10, smoke=True, settling_bar=1.0)
+        _bar_probe(bar, recipe=recipe)
+
+
+def test_settling_bar_can_only_be_tightened():
+    """The other half of the same contract: a genuine tightening (the section
+    8.1 Debye rung's 3e-4, and the bar itself) is let through -- the guard is
+    not simply refusing every bar."""
+    for bar in (G.SETTLING_LIMIT, 3e-4, 1e-6):
+        with pytest.raises(_ReachedSetup):
+            _bar_probe(bar)
 
 
 def test_f1_one_cell_thickness_separation_is_computed_a_priori_at_every_rung():

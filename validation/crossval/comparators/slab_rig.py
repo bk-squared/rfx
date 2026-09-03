@@ -121,12 +121,22 @@ def run_slab_arm(model: str, params: dict, *, setup, nx_interior: int, n_steps_c
     tail_limit = G.SETTLING_LIMIT if recipe == G.RECIPE_R3 else G.TAIL_LIMIT
     # A tighter settling bar is a NEW RUNG, not a widened window: it only makes
     # the record longer, which shrinks the lattice witness's truncation term
-    # (docs/design_notes/20260903_lattice_witness_standard.md section 6). It is
-    # refused if it would loosen the declared bar.
+    # (docs/design_notes/20260903_lattice_witness_standard.md section 6).
+    #
+    # The bar it is compared against is the FAMILY constant G.SETTLING_LIMIT
+    # (1e-2, the -40 dB witness), NOT the active recipe's tail_limit. Comparing
+    # against the recipe let `--recipe cv04` -- a declared flag of both
+    # 22_dispersive_slab_fresnel.py and 23_lossy_slab_fresnel.py -- accept
+    # 5e-2, five times looser than the declared witness, because cv04's own
+    # TAIL_LIMIT is 0.10; and a non-positive bar (0.0, -1.0) passed a
+    # "<= limit" test under r3 while disabling the witness entirely. Both are
+    # refused here: the admissible interval is (0, SETTLING_LIMIT].
     if settling_bar is not None:
-        if float(settling_bar) > tail_limit:
-            raise ValueError(f"settling_bar {settling_bar} is looser than the declared bar {tail_limit}; "
-                             "the witness bar is never widened")
+        if not (0.0 < float(settling_bar) <= G.SETTLING_LIMIT):
+            raise ValueError(
+                f"settling_bar {settling_bar} is outside (0, {G.SETTLING_LIMIT}]: a settling bar "
+                f"may only TIGHTEN the declared -40 dB witness, and must be positive; "
+                "the witness bar is never widened")
         tail_limit = float(settling_bar)
     n_alloc = t_safe if (rec is not None) else n_steps
 
