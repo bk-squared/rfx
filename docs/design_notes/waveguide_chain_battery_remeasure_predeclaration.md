@@ -124,9 +124,17 @@ code cannot drift apart: the port's Ez profile on an M-entry aperture is that ap
 sampled TE10, `sin(π(i+½)/M)`. Scoring the pre-fix `M = N+1` profile over the guide's own N
 entries against the exact `sin(π(i+½)/N)` gives a normalized inner product of
 **0.985643 / 0.995573 / 0.998771** at coarse / mid / fine. Built on main `0141f39e` in this
-worktree (build only, no solve), `cfg.ez_profile[:, 0]` now agrees with `sin(π(i+½)/N)` to
-**4.7e-8 / 3.0e-8 / 1.5e-8** in max normalized deviation — 1.0000 to float32 rounding, at every
-rung. The deficits 1.44e-2 / 4.43e-3 / 1.23e-3 fall by 3.24 and 3.60 per halving, approaching
+worktree (build only, no solve, CPU), `cfg.ez_profile[:, 0]` now agrees with `sin(π(i+½)/N)`
+at every rung. That agreement is quoted as a **bound with its normalization named**, not as a
+triple, because the residue is float32 rounding on a float32 eigenvector and does not
+reproduce to two digits between builds: normalizing both vectors by their largest entry, the
+worst elementwise deviation is **below 1e-7 — under one float32 ULP at unit scale — at all
+three rungs** (3.9e-8 / 5.3e-8 / 6.9e-8 here; an independent reviewer's CPU build of the same
+head read 6.5e-8 / 7.3e-8 / 7.2e-8, the same bound with different rounding). The quantity that
+IS stable is the normalized inner product: `1 − corr ≤ 4e-16` at every rung, i.e. 1.0000 to
+double-precision rounding once the float32 profile is normalized. An earlier draft of this
+note quoted 4.7e-8 / 3.0e-8 / 1.5e-8 as if it were a reproducible measurement; it is not, and
+the bound above is what a reader can check. The deficits 1.44e-2 / 4.43e-3 / 1.23e-3 fall by 3.24 and 3.60 per halving, approaching
 the factor 4 that a quadratic form in a first-order profile error must give; the width error
 itself is the first-order one.
 
@@ -291,8 +299,9 @@ cases, identically — no port correction rescues it, and none was ever going to
 Shift distances stay integer multiples of the coarse cell (2.54 mm) so that all three rungs
 realize them identically and the parent note's legibility rule survives. Requirement: the
 doubled rotation `2·(2βΔ)` must stay clear of every multiple of 360° across the whole band by
-more than the committed 10° floor, and the rotation itself must stay clear of 0° (where the
-shift would be indistinguishable from no shift at all). Computed with continuous β at
+more than the committed 10° floor, and the rotation itself must stay clear of 0° **by that
+same 10° floor** (a rotation that approaches 0° modulo a full turn is indistinguishable from
+no shift at all, and the floor is stated here because the k = 6 rejection below turns on it). Computed with continuous β at
 c/2a over the 17 declared bins:
 
 | Δ / coarse cells | Δ (mm) | 2βΔ over the band | wrong-sign margin `min\|wrap(2·2βΔ)\|` | verdict |
@@ -302,7 +311,7 @@ c/2a over the 17 declared bins:
 | 3 | 7.62 | 96.08° … 175.12° | 9.77° | **fails the 10° floor** |
 | 4 | 10.16 | 128.11° … 233.49° | 4.57° | fails (the first run's Δ_L) |
 | 5 | 12.70 | 160.13° … 291.86° | 1.98° | fails (the first run's Δ_R) |
-| 6 | 15.24 | 192.16° … 350.23° | 19.53° | rejected: 2βΔ comes within 9.8° of a full turn at 11.6 GHz, where the shift is nearly a no-op |
+| 6 | 15.24 | 192.16° … 350.23° | 19.53° | rejected: 2βΔ comes within **9.77°** of a full turn at 11.6 GHz — inside the 10° zero-clearance floor above, so the shift is nearly a no-op there |
 
 **The search is bounded above at k = 6, so the table is exhaustive.** A shifted plane has to
 stay strictly inside its own port-to-probe interval — that is what makes the de-embedding span
@@ -324,10 +333,17 @@ one would move under any re-sampling of the band. For k ≤ 6 the doubled sweep 
 property of the pair rather than of the sampling.
 
 Only k = 1 and k = 2 are admissible, so **the largest admissible unequal pair on this lattice
-is {2, 1} coarse cells**, and it is unique. The pair stays unequal for the reason the parent
-note gives at §5(b): a sign error on one port must not be cancellable by the other. With
-Δ_L = 2Δ_R, a swap of the two ports' shifts is also caught — it would move each entry by
-2β·2.54 mm = 32°…58°, ten to twenty times the 3° gate.
+is {2, 1} coarse cells**, and it is unique — unique as an *unordered* pair. Which port takes
+the 2 is a free choice, and §4.3 declares it (left) rather than deriving it; the two
+assignments are equally admissible and swapping them is caught by the check below, so nothing
+downstream turns on the choice. The pair stays unequal for the reason the parent note gives at
+§5(b): a sign error on one port must not be cancellable by the other.
+
+A swap of the two ports' shifts is caught, but **not on every entry**. ∠S21 and ∠S12 are
+*invariant* under the swap: their lever is Δ_L + |Δ_R| = 7.62 mm either way. What moves is
+∠S11 and ∠S22, which exchange levers — each shifts by 2β·2.54 mm = 32.03°…58.37° across the
+band, ten to twenty times the 3° gate. One entry-level check, not a whole-matrix one, is what
+detects the swap.
 
 ### 4.3 Declared values
 
@@ -376,8 +392,11 @@ both the 3° and the 6° gate are reachable at every rung by a wide margin.
 (64.1–116.7° and 32.0–58.4°) and the proposed 64.0° margin are confirmed. The proposed
 126.6° margin for Δ_L is **not** what the arithmetic gives: it is 126.51° with continuous β
 and 125.46 / 126.25 / 126.45° with the Yee β at coarse / mid / fine. The computed value is
-used below. The difference is immaterial to the decision (both are 12× the floor) and is
-recorded so the note and the fixture cannot disagree later.
+used below. The difference is immaterial to the decision — for the ∠S11 entry both are 12.5×
+the 10° floor — and is recorded so the note and the fixture cannot disagree later. **The
+number the gate actually scores is not that one.** `wrong_sign_resid_min` is the minimum over
+entries, so it is set by ∠S22 at **64.05°, 6.4× the floor**. Ample, but it is the binding
+margin and it is the one to quote.
 
 ### 4.5 Model validation — the prediction machinery reproduces the first run exactly
 
@@ -386,14 +405,22 @@ The predictions in §5 come from an analytic model of the shift algebra: measure
 the gate module uses. Run against the FIRST run's inputs (Δ_L = 10.16 mm, Δ_R = −12.70 mm,
 the old port's fine-rung `f_cutoff` = 6.378004 GHz) it returns:
 
-| quantity | model | frozen fixture |
-|---|---|---|
-| `resid_yee_max` | 6.6020° | **6.602°** |
-| `resid_cont_max` | 5.9083 / 6.5648° (max) | **6.5648°** |
-| `wrong_sign_resid_min` | 0.7343° | **0.7343°** |
+| quantity | entry | model | frozen fixture (`pec_short\|false`) |
+|---|---|---|---|
+| `resid_yee_max` | ∠S11 | 5.2816° | **5.281624°** |
+| `resid_yee_max` | ∠S22 (max) | 6.6020° | **6.602022°** |
+| `resid_cont_max` | ∠S11 | 5.2518° | **5.251855°** |
+| `resid_cont_max` | ∠S22 (max) | 6.5648° | **6.564811°** |
+| `wrong_sign_resid_min` | ∠S11 (min) | 0.7343° | **0.734325°** |
+| `wrong_sign_resid_min` | ∠S22 | 3.8864° | **3.886379°** |
 
-Three digits on all three, so the model is not being fitted to the answer it is about to
-predict. The same model, run against the corrected `f_cutoff` and the FIRST run's shifts,
+Five digits on every entry the artifact carries, so the model is not being fitted to the
+answer it is about to predict. The table is written per entry on purpose: the cell-level
+`resid_*_max` is a max over entries and the `wrong_sign_resid_min` a min, so a model that
+matched only the aggregate could still be wrong entry by entry. ∠S21 and ∠S12 do not appear
+because behind a PEC short their band peak is under `ROTATION_NOISE_FLOOR` and the artifact
+records them as not measurable; the model's ∠S21 numbers (5.9418° / 5.9083°) have no
+counterpart in the fixture and are not evidence of anything. The same model, run against the corrected `f_cutoff` and the FIRST run's shifts,
 gives `resid_yee_max` = 1.279° (coarse) and 0.318° (mid) — the two numbers PR #889 measured
 live and wrote into the replay's `xfail` reason. That is a second, independent confirmation.
 
@@ -416,6 +443,13 @@ the predicted value with where the prediction comes from, and what each outcome 
 prediction with only a pass branch is not a pre-declaration, so every leg has at least two
 branches and the "much better than predicted" branch is written wherever it is informative.
 
+**Coverage.** The frozen artifact carries 185 verdicts. §5.1–§5.7 and §5.6(iii) read 137 of
+them; the remaining 48 are read by §5.8 (`plane_shift_abs_s`, 4), §5.9 (`gradient_invariance`,
+12) and §5.10 (`non_vacuity` 12, `power_closure` 12, `ladder_richardson` 8). The first two of
+those are direct functions of the one new declaration this note makes and are written out in
+full for that reason; the third group is not, but it is re-measured all the same. No verdict in
+the artifact is left to §3's "inherited unchanged" without a leg here.
+
 ### 5.1 ∠S rotation against the Yee-discrete and continuous β
 
 Gate: `resid_yee_max ≤ 3°` (`tests/unit/sparams/test_waveguide_phase_gate.py:259`) and
@@ -428,6 +462,17 @@ Predicted, from §4.4/§4.5 with the corrected `f_cutoff` and the new shifts:
 | coarse | **0.512°** | **0.669°** |
 | mid | **0.127°** | **0.164°** |
 | fine (claims / legs rung) | **0.032°** | **0.041°** |
+
+**Which of these three rows the new artifact will actually carry.** `stage_plane_shift` runs at
+`args.legs_rung` (`scripts/diagnostics/waveguide_chain_battery_measure.py:867`), and every
+`plane_shift` block in the frozen artifact reads `"rung": "fine"`. So the **fine** row is the
+artifact-backed one; the **coarse** row is measured by the live test
+`test_live_plane_shift_rotation_coarse_rung` (§5.11) and not written into the fixture; and the
+**mid** row is measured by nothing under the declared plan. It is predicted here because the
+same model produces all three and a reader should be able to check the middle of the sequence
+if the stage is ever run there — not because this run will produce it. The same applies to
+§5.2's table and to §5.9, whose stage is the same one. Nothing in §5.8 or §5.11 depends on the
+mid row.
 
 The parent's first run measured 6.602° / 6.565° at the fine rung. The predicted 0.032° is a
 factor 206 improvement, and it is not a tuning claim: it is what remains once the de-embedding
@@ -521,9 +566,8 @@ Branches, covering the whole line:
   in −40 … −78 dB is the case that matters most: it is 23 dB or more above the whole first
   run's worst cell on a geometry and absorber that did not change, so the ring-down itself
   changed and the first thing to check is whether the record being scored is the one the drive
-  wrote (`settling_degenerate_records` should be the same 8 far-port records on the PEC-short
-  cells and empty elsewhere, exactly as in the frozen artifact). Nothing else in §5 is quoted
-  from a cell in this state until that is settled.
+  wrote (`settling_degenerate_records`, which has its own branch below). Nothing else in §5 is
+  quoted from a cell in this state until that is settled.
 - **A drive between −40 and 0 dB** — the declared rerun path fires: repeat that cell at
   `num_periods = 80` at the same absorber, write both numbers, and the 40-period number of
   that cell stops being claims-bearing. `num_periods` is never tuned per cell silently.
@@ -560,9 +604,32 @@ extractor's own mismatch, and therefore the leg that most directly tests §2.2.
 | mid | 0.0653 (max) | — | 0.010 (if O(dx²)) / 0.020 (if O(dx)) |
 | fine | 0.0320 (max) | — | **0.0026 (if O(dx²))** / 0.010 (if O(dx)) |
 
+**Where the `measured by #889` column comes from, since it is not in any committed file.**
+Those live-CPU numbers — the empty guide's 0.007 … 0.041 and 1.006, and §5.5's 1.004715 /
+1.001162 — are quoted from the **merged commit message of `0141f39e`**. That is the right
+level of evidence for a live measurement that wrote no artifact, and it is named here so a
+reader of the measurement PR does not go looking for a fixture key that does not exist. The
+frozen columns beside them ARE artifact-backed
+(`tests/fixtures/waveguide_chain_battery/fixture.json`, `cells[].non_vacuity_max_s11` and
+`cells[].column_power_max` on the `thru` cells).
+
 Column power `max_f Σ_i |S_i1|²` on the empty guide, `normalize=False`: first run 1.018253 /
-1.004082 / 1.000983; #889 measured 1.006 at coarse. Predicted fine **≈ 1.0004**, from the
-first run's own ~4× per halving (#873) applied to the corrected coarse excess.
+1.004082 / 1.000983; #889 measured 1.006 at coarse, and nothing at mid or fine.
+
+**The basis for the fine-rung prediction, stated honestly, because the obvious basis does not
+survive checking.** The tempting argument is "run 1's excess fell ~4× per halving, so apply
+that to the corrected coarse excess". It does not hold. In the frozen artifact the empty
+guide's column-power excess **is** `max_f|S11|²` to within 4.4 % at every rung (0.018253 vs
+0.018329, 0.004082 vs 0.004261, 0.000983 vs 0.001025), so run 1's 4× is nothing but the square
+of a first-order `|S11|` (2.07² ≈ 4.3) — and that `|S11|` term is precisely what #889 removes.
+Carried through, the same relation with the predicted `|S11|` ratios of ≈ 4 would give **16×**
+per halving and a fine excess near 7e-6, not 4e-4. What breaks the relation is #889's own
+corrected coarse rung: excess 6e-3 against `|S11|²` = 1.7e-3, so after the fix the excess no
+longer tracks `|S11|` and a `|S21|`-side term dominates the sum. **The declared prediction
+therefore rests on the only measured post-fix falloff there is: the 4.06× between #889's
+corrected coarse and mid rungs on the PEC-short (§5.5), transferred to the empty guide.** That
+is a transfer between DUTs, not a measurement of this one, and the branches below treat a
+ratio away from 4 as a finding rather than as an error in the run.
 
 This leg is **not gated**, so these branches are the only rule that reads it — and it is the
 leg that most directly tests §2.2's mechanism claim, so the reading is decided by the RATIO
@@ -595,7 +662,11 @@ observable from `|S11|` and the first run's excess ratios (4.47 and 4.15) were a
 second-order while `|S11|` was first-order, so the two do not have to move together:
 
 Predicted excess (value − 1): **6e-3 coarse, 1.5e-3 mid, 4e-4 fine**, i.e. coarse 1.006 and
-fine ≈ 1.0004, falling ~4× per halving. The branches partition on the excess, in factors of 2:
+fine ≈ 1.0004, falling ~4× per halving. The branches partition on the excess, in factors of 2.
+**Precedence, so no number is read two ways**: a value that is both more than 2× the prediction
+and worse than that rung's frozen value (a fine excess of 1.5e-3, say) is read by the
+worse-than-frozen branch, which is the stronger statement, with the factor-2 miss reported
+alongside it. The same precedence applies to §5.5.
 
 - **Every rung's excess within a factor 2 of its prediction, sequence still ~4× per halving** —
   as predicted; the residual is the second-order term §5.4's first branch describes.
@@ -616,6 +687,16 @@ fine ≈ 1.0004, falling ~4× per halving. The branches partition on the excess,
   leg is ungated and §5.5 predicts exactly this for a different DUT, but it contradicts the
   prediction and is reported next to §5.5's PEC-short worsening so the two are not read as one
   effect.
+- **Anything else below the frozen value at every rung** — the case the four branches above do
+  not name: every rung inside a factor 2 of its prediction but the ratio sequence away from 4
+  (say 4.7e-3 / 1.6e-3 / 5.2e-4, ratios ≈ 3), or a mixed sequence where one rung is inside the
+  factor 2 and another is not. This is a case in its own right and is not sorted into whichever
+  branch it is nearest. It means the post-fix excess is not a clean power of dx over this
+  ladder, so no order can be attributed and the DUT transfer above (4.06× from the PEC-short)
+  did not hold. Report the three per-rung excesses, the two ratios, the per-bin column-power
+  curve at each rung, and `|S11|` and `|S21|` separately at the worst bin, and state that the
+  ratio was transferred from a different DUT and is not confirmed. Nothing is tuned to move a
+  value into a named branch.
 - **Any rung ≥ 1.02** — the committed passivity gate would be red on an empty guide. Blocking,
   handled as in §5.5.
 
@@ -644,7 +725,12 @@ partition on the excess in factors of 2, and they apply at EVERY rung, not only 
 - **Any rung green (< 1.02) with its excess more than 2× the prediction** — e.g. fine at 1.0007,
   or coarse at 1.012 (2.5× the value #889 measured on the same rung). Green against the
   committed gate, a missed prediction, reported as a miss rather than as a pass: quote the
-  per-bin column power at that rung and the full three-rung ratio sequence. A first-order
+  per-bin column power at that rung and the full three-rung ratio sequence. **The band is split
+  at 10× the prediction**, because 1.0006 and 1.019 do not deserve one reading: up to 10× is a
+  miss on the extrapolation and the run's other legs stay quotable; above 10× (fine ≥ 1.003,
+  coarse ≥ 1.047 — the latter already over the gate) the excess is the size of the effect §5.5
+  is describing, so nothing on that DUT and lane is quoted as claims-bearing until it is
+  root-caused, gate or no gate. A first-order
   sequence contradicts the cancellation mechanism above and is a finding; a second-order
   sequence that is simply larger than predicted says the removed cancellation was bigger than
   #889's two measured rungs implied, which corrects this note's extrapolation, not the code.
@@ -652,6 +738,12 @@ partition on the excess in factors of 2, and they apply at EVERY rung, not only 
   removed, which contradicts the mechanism as much as an over-shoot does. Check first that the
   artifact's `fc_port_hz` is the corrected value (§7 discriminator 1); a partially-corrected
   port would land here.
+- **Anything else below 1.02** — every rung inside a factor 2 of its prediction but the ratio
+  sequence away from 4 (ratios ≈ 3, say), or a mixed sequence with one rung inside the factor 2
+  and another outside. Its own case, not folded into a neighbour: the removed cancellation is
+  then not a clean second-order term and §5.5's mechanism is neither confirmed nor refuted.
+  Report the three excesses, the two ratios and the per-bin column power at each rung, and say
+  that #889's measured 4.06× did not extend to a third rung.
 - **Any rung ≥ 1.02** — the committed passivity gate is red on a passive structure. Blocking.
   Quote the offending bins with the preflight context verbatim, per the repo's passivity rule;
   do not attribute it to the extractor before checking the energy/instability witnesses.
@@ -662,35 +754,102 @@ Declaring these explicitly is the point: it turns an unexpected change into a fi
 of a relief.
 
 **(i) Forward identity on the `normalize="flux"` lane — 8 legs, expected to stay RED.**
-Gate `rtol=1e-5, atol=1e-7` (`test_waveguide_flux_ad.py:104`). First run: `max_scaled_diff`
-1.440 (slab) and 1.065 (PEC-short), i.e. absolute 0.9–1.1e-5, while the same traced call under
-a scoped x64 context agrees with the untraced one to 1.5e-15…2.2e-14. Mechanism: float32
-reassociation of a 2849-step Poynting DFT under the reverse-mode tape. The port aperture does
-not enter it, so predicted **unchanged at 1.0–1.5 scaled**.
-  **The declared discriminator, with its threshold, so this leg is not unfalsifiable.** The
-  mechanism claim is "float32 reassociation, not a broken tape". What refutes it is the x64
-  witness: in the first run `ad_vs_fd[].x64_witness.forward_identity_x64.max_scaled_diff` read
-  **1.5e-10 … 1.0e-8** (`max_abs_diff` 1.5e-15 … 2.2e-14) on the three legs that carry it —
-  the same traced call, the same geometry, passing by eight orders. **If that x64 number comes
-  back above 1e-6 on any leg, the reassociation story is falsified** and the flux lane has a
-  real forward-identity defect that no x64 declaration can paper over. That is a number this
-  run measures, and it is the one input §6's declaration decision is allowed to rest on.
-  - *Stays 1.0–1.5 scaled with the x64 witness ≤ 1e-6* — as predicted; the leg is a float32
-    reassociation and closing it needs the §6 declaration, not a run.
+Gate `rtol=1e-5, atol=1e-7` (`test_waveguide_flux_ad.py:104`). The metric is a property of the
+**traced forward pass**, so it takes one value per `(dut, lane, θ-kind)` group and not one per
+objective. First run, per group: `pec_short|flux|eps` **1.064779** (3 legs),
+`pec_short|flux|sigma` **1.439853** (1 leg), `slab|flux|eps` **1.439905** (4 legs) — i.e.
+absolute 0.9–1.1e-5 — while the same traced call under a scoped x64 context agrees with the
+untraced one to 1.5e-15…2.2e-14. (An earlier draft printed this as "1.440 (slab) and 1.065
+(PEC-short)"; the PEC-short carries both values, one per θ-kind.) The three `false`-lane groups
+read exactly 0.0. Mechanism: float32 reassociation of a 2849-step Poynting DFT under the
+reverse-mode tape. The port aperture does not enter it, so predicted **unchanged at 1.0–1.5
+scaled on the same three groups**, and exactly 0.0 on the three `false`-lane groups.
+  **The declared discriminator, with its threshold and its granularity, so this leg is not
+  unfalsifiable and the falsifier can actually be run.** The mechanism claim is "float32
+  reassociation, not a broken tape". What refutes it is the x64 witness: in the first run
+  `ad_vs_fd[].x64_witness.forward_identity_x64.max_scaled_diff` read **1.527e-10 (`pec_short |
+  flux | eps | s11_mag2`), 2.199e-10 (`pec_short | flux | sigma | s11_mag2`) and 1.031e-8
+  (`slab | flux | eps | s11_mag2`)** (`max_abs_diff` 1.5e-15 … 2.2e-14) — the same traced call,
+  the same geometry, passing by eight orders.
+
+  **The witness is declared at GROUP granularity, and the driver is NOT changed to widen it.**
+  The driver computes the x64 witness for `objectives[0]` of each `(dut, lane, kind)` group plus
+  any objective whose float32 gradient is non-finite
+  (`scripts/diagnostics/waveguide_chain_battery_measure.py:406-407`), so it lands on 6 of the 16
+  `ad_vs_fd` entries and on 3 of the 8 red forward-identity legs. Written per leg, the falsifier
+  below would be unevaluable on the other five (`pec_short|flux|eps|re_s11`, `…|im_s11`,
+  `slab|flux|eps|s21_mag2`, `…|re_s21`, `…|im_s21`). It is therefore declared per group, and the
+  three groups above **contain all eight red legs** (3 + 1 + 4), so every red leg is covered.
+  What licenses reading a group's witness for each of its legs is a fact about the metric, not a
+  hope: the objective enters only the backward pass, so the traced forward S — and every metric
+  computed from it — is identical across the objectives of a group. The frozen artifact shows
+  exactly that, bit for bit: within each of the six groups, `forward_identity.max_scaled_diff`
+  **and** `max_abs_diff` are the same number for every objective (0.0 / 0.0 / 1.064779 /
+  1.439853 / 0.0 / 1.439905, with `max_abs_diff` 0 / 0 / 1.075434e-5 / 1.090622e-5 / 0 /
+  8.949050e-6). *Cost of this choice, stated:* if the invariance ever broke, a per-leg
+  difference inside a group would carry no x64 witness. That is bought back by making the
+  invariance itself a pre-declared check — the branch below — rather than an assumption.
+  *Why not the alternative:* extending the witness to all 16 legs means editing the driver, and
+  the driver is part of the contract these two runs share. §3's whole argument is that the two
+  artifacts are comparable because the instrument was held fixed apart from the one named
+  correction; adding ten x64 build-and-solve legs (~20 s each in the frozen record's
+  `wall_time_s.x64_witness`) would change the instrument inside the run that is measuring an
+  instrument change, and buy nothing the group reading does not already give.
+
+  **A second witness, and this one IS per leg.** Seven of the eight red legs — every `eps`-kind
+  leg of the two `eps` groups — also carry
+  `forward_identity_concrete_override_vs_plain`, the same comparison with a *concrete* float32
+  override in place of a tracer. It reads **exactly 0.000000** on all seven in the frozen
+  artifact, including all five of the legs with no x64 witness. That separates the override
+  plumbing from the tracer: the override path is bit-exact, and the difference appears only when
+  the argument is a tracer, which is what "reassociation under the reverse-mode tape" predicts.
+  The eighth red leg (`pec_short|flux|sigma|s11_mag2`) does not carry it — the two `sigma`
+  groups have no concrete-override entry — and it is one of the three that carries the x64
+  witness directly.
+
+  **If that x64 number comes back above 1e-6 on any of the three groups, the reassociation
+  story is falsified** and the flux lane has a real forward-identity defect that no x64
+  declaration can paper over. That is a number this run measures, and it is the one input §6's
+  declaration decision is allowed to rest on.
+  - *`forward_identity.max_scaled_diff` is NOT identical across the objectives of a group* —
+    the group reading is void for that group and the branches below do not apply to it. This is
+    a pre-declared check, not a formality: it would mean the traced forward pass depends on
+    which objective is differentiated, which no reassociation argument predicts and which the
+    frozen artifact refutes for the old port. Report the per-leg values and the group they came
+    from; the affected legs are recorded as unwitnessed and §6's decision does not proceed on
+    them. Extending the x64 witness to every leg is then a declared driver change for a
+    *later* run, not a mid-run repair.
+  The float32 bands below are read on `forward_identity.max_scaled_diff`, whose gate is
+  `scaled ≤ 1.0` (`forward_identity_pass`, `tests/_waveguide_chain_battery_gates.py:463`), and
+  they partition `[0, ∞)` with no overlap: ≤ 1.0 (green), 1.0 < x ≤ 1.5, 1.5 < x ≤ 10, > 10.
+  - *Stays above 1.0 and at most 1.5, with its group's x64 witness ≤ 1e-6* — as predicted; the leg is a
+    float32 reassociation and closing it needs the §6 declaration, not a run.
   - *1.5 < scaled ≤ 10* — worse than "unchanged" and below the blocking bar, so it gets its own
     reading: the absolute difference has grown past the ~1.1e-5 the first run measured while
     the primal did not change scale, which a pure reassociation argument does not predict.
-    Report the worst entry, its `abs_s_at_worst`, and the x64 witness at the same leg. If the
-    x64 witness is still ≤ 1e-6 the leg stays a float32 story with a larger constant and §6
-    proceeds; if the x64 witness moved with it, this is the falsification above.
-  - *Flips green* — **this is not evidence of a fix**, and the threshold says why: the quantity
+    Report the worst entry, its `abs_s_at_worst`, its group's x64 witness, and the per-leg
+    `forward_identity_concrete_override_vs_plain` where the group carries one. If the x64
+    witness is still ≤ 1e-6 and the concrete-override witness is still 0, the leg stays a
+    float32 story with a larger constant and §6 proceeds; if either moved with it, this is the
+    falsification above.
+  - *Flips green (`max_scaled_diff` ≤ 1.0)* — **this is not evidence of a fix**, and the threshold says why: the quantity
     sits a few percent above its own gate, so a green is inside the run-to-run spread of the
     same defect. A green closes the leg only if the x64 witness is ≤ 1e-6 *and* the float32
     `max_scaled_diff` is below 0.1 — two orders inside the gate rather than a few percent. A
     green between 0.1 and 1.0 is recorded as unresolved and still routes to §6.
-  - *Above 10 scaled, or the x64 witness above 1e-6 at any float32 value* — a real
-    forward-identity break. Blocking; criterion 1 fails on that lane by more than a
-    reassociation argument can carry.
+  - *Above 10 scaled, or a group's x64 witness above 1e-6 at any float32 value, or a non-zero
+    `forward_identity_concrete_override_vs_plain` anywhere* — a real forward-identity break.
+    Blocking; criterion 1 fails on that lane by more than a reassociation argument can carry.
+    **This branch takes precedence over the three above**: a witness above 1e-6, or a non-zero
+    concrete-override reading, governs whatever the float32 `max_scaled_diff` says, including a
+    green one. The concrete-override reading is included because it is the one witness that is
+    per leg: a non-zero there says the difference survives without a tracer, which is not
+    reassociation under the tape at all.
+  - *Any `false`-lane group reads other than exactly 0.0* — the three `false`-lane groups are
+    bit-identical today (`max_abs_diff` 0.0), and they are the control that says the identity
+    is a flux-lane property rather than a general tape defect. A non-zero there, at any
+    magnitude, is reported next to the flux-lane numbers before either is interpreted; it would
+    mean the reassociation is not confined to the Poynting DFT.
 
 **(ii) The AD-vs-FD zero-derivative leg — expected to stay RED, and its sibling may move.**
 `pec_short | flux | eps | s11_mag2`: first run `g_ad = +2.683e-5` (float32) against
@@ -714,6 +873,16 @@ which are separate from the sibling's below:
     and it means the objective is no longer zero-derivative, which contradicts |S11| = 1 in
     front of a PEC and is a finding about the extractor. A green is written up with which of
     (a), (b), (c) it is, and only (b) counts as the leg closing.
+  - *Red with `|g_ad|` in the declared 3e-6 … 3e-4 scale but the x64 AD no longer ~−1e-6* —
+    its own branch, because the x64 AD is this leg's entire mechanism claim and a float32
+    reading in range does not certify it. The claim is that the derivative is physically zero
+    and the float64 tape sees the O(1e-6) residual correctly (−9.821e-7 in the first run,
+    same sign and order as `g_fd`). An x64 AD at, say, 1e-4 — two orders up, or sign-flipped —
+    says the float64 tape no longer agrees with the float64 FD either, so the story is not
+    "a float32 noise floor above a zero derivative" and the leg is a defect on both precisions.
+    Report `g_ad`, `g_fd`, `g_ad_x64` and `fd_ulp_span` together; the leg does not stay on §6's
+    x64 declaration and is root-caused against the port change instead. The threshold: the x64
+    AD must stay within a factor 3 of −9.821e-7 **and** keep its sign.
   - *Red with `|g_ad|` far outside the declared scale — above 3e-4 or below 3e-6* — the noise
     floor moved by more than an order without the tape changing. Report `g_ad`, `g_fd`, the x64
     AD and `fd_ulp_span` together; a `|g_ad|` at 1e-3 is not the same defect as the one this
@@ -726,7 +895,16 @@ which are separate from the sibling's below:
   gradient shrinks with it. Three branches, all pre-declared:
   - *it skips under the ULP floor* — the parent note's §5(a) expectation ("expected skip,
     declared now") is finally realized; record it as such;
-  - *it stays green with a smaller `g_fd`* — the residual derivative is still resolvable;
+  - *it stays green with a smaller `g_fd`* — the residual derivative is still resolvable, and
+    the shrink is the predicted one;
+  - *it stays green with a LARGER `g_fd`* — green, and against the prediction, so it is not
+    folded into the branch above. §5.4 predicts the spurious `|S11|` on this lane falls by
+    roughly an order at the fine rung, so its `|S11|²` sensitivity to εr should fall with it; a
+    `g_fd` that grows past the first run's 7.716e-5 means the sensitivity went the other way.
+    The reading to rule out first is that the growth is the `Z_TE` change itself rather than a
+    changed mismatch: at the fine rung `Z_TE` rises by 1.24 % … 4.07 % across the band, so a
+    growth of a few percent is that, and a growth by tens of percent is not. Report `g_ad`,
+    `g_fd`, `fd_ulp_span` and the leg's `|S11|` at θ0 next to §5.4's empty-guide numbers;
   - *it goes red like the flux lane* — candidate for the SAME mechanism, a float32 AD noise
     floor above a near-zero derivative, now reaching the second lane. **That reading is not
     free, and the threshold that earns it is declared here**: the x64 witness must show the x64
@@ -736,10 +914,44 @@ which are separate from the sibling's below:
     against the port change before anything else in §5 is quoted from this lane. Without that
     x64 comparison the red is recorded as unexplained, not as benign.
 
-  The other 14 AD-vs-FD legs are predicted green with `rel` in 1e-4 … 1.2e-2 against the 0.05
-  gate (first run: 1.0e-4 … 1.1e-2, ledger `:3110` expectation 1e-3). Gradient *magnitudes* on
-  the `normalize=False` lane will move with `Z_TE`; the gated quantity is the AD-FD agreement,
-  which should not.
+  **The other 14 AD-vs-FD legs — predicted green, and now branched, because a prediction with
+  only a pass branch is not a pre-declaration.** Predicted `rel` in **1e-4 … 1.2e-2** against
+  the 0.05 gate (first run: 1.018e-4 … 1.138e-2, ledger `:3110` expectation 1e-3). Seven of the
+  14 sit on the `normalize=False` lane — `pec_short|false|eps|{re_s11, im_s11}`,
+  `pec_short|false|sigma|s11_mag2` and all four `slab|false|eps` legs — and their gradient
+  *magnitudes* will move with `Z_TE`, which at the fine rung rises by **1.24 % … 4.07 %** across
+  the band (2.00 % at band centre; computed from the two cutoffs, 6.378004 → 6.555060 GHz).
+  The gated quantity is the AD-FD agreement, and a common scale factor cancels from
+  `|g_ad − g_fd| / |g_fd|` exactly, so `rel` should not move with it. Every leg's `fd_ulp_span`
+  in the first run was **8.1e13 … 4.9e15**, nine to eleven orders above the 1e4 floor.
+  - *All 14 green with `rel` in 1e-4 … 1.2e-2* — as predicted; the tape is undisturbed by the
+    port correction and the differentiable claim on both lanes carries over unchanged.
+  - *Green (`rel` ≤ 0.05) but outside 1e-4 … 1.2e-2 on any leg* — green against the gate, a
+    missed prediction, written up as a miss rather than as a pass. Above 1.2e-2 the `Z_TE`
+    cancellation argument is the thing in doubt, so quote `g_ad`, `g_fd` and the ratio of each
+    to its first-run value: if both moved by the same 1–4 % and `rel` still grew, the movement
+    is not a common factor and something lane-specific entered the tape. Below 1e-4, check
+    `fd_ulp_span` first — a `rel` falling because `g_fd` grew is a different event from one
+    falling because the two now agree.
+  - *Any of the 14 goes RED (`rel` > 0.05)* — **the single most informative outcome in this
+    section**, and it blocks the run's claims-bearing AD statements on that lane until it is
+    root-caused. It is the sign that the port correction disturbed the AD tape, and a red on
+    one of the seven `normalize=False` legs is the likeliest place for it, since that is the
+    lane whose `Z_TE` moves. The declared discriminator, in order: (a) `fd_ulp_span` — if it
+    collapsed toward 1e4 the FD reference is the broken side, not the tape; (b) `g_ad` against
+    its first-run value — a move of 1–4 % is the `Z_TE` change and cannot by itself produce a
+    `rel` above 0.05, a move by orders is the tape; (c) the group's `g_ad_x64` where it carries
+    one, against `g_fd`, which is computed in float64 already — if the x64 AD agrees with
+    `g_fd` at `rel` ≤ 0.05 while the float32 AD does not, this is a float32 precision leg like
+    §5.6(ii)'s zero-derivative leg and joins §6's declaration; if the x64 AD disagrees too, it
+    is a real gradient defect. Attribution to the port correction requires (b) or (c), not the
+    red alone.
+  - *Any of the 14 SKIPS under the ULP floor* — a leg that was resolvable at 8.1e13 ULP in run
+    1 has become unresolvable, which is a collapse of the objective's response to θ by nine
+    orders and cannot be a consequence of a 1–4 % impedance change. Not benign, and not
+    recorded as an "expected skip": report `f_plus`, `f_minus`, `fd_ulp_span` and `h`, and
+    treat the leg as unmeasured rather than as passed. Nothing on that lane is quoted as
+    claims-bearing while a skip is unexplained.
 
 **(iii) The three uninterpretable ladders — expected to stay "not interpretable".**
 `slab_s11_mag|false` (ratio 0.037 at 8.4 GHz), `slab_s21_mag|false` (0.098 at 8.6 GHz),
@@ -764,34 +976,74 @@ verdict class is predicted unchanged.
 
 ### 5.7 Referee and physics gates at the claims rung
 
-All gates unchanged. Predicted from the first run plus the `Z_TE` correction:
+All gates unchanged. Predicted from the first run plus the `Z_TE` correction, which at the
+fine rung raises `Z_TE` by **1.24 % … 4.07 %** across the band (2.00 % at band centre; from the
+two cutoffs 6.378004 → 6.555060 GHz, `Z_TE ∝ 1/√(1 − (fc/f)²)`).
 
-| quantity | gate | first run (fine rung) | predicted |
-|---|---|---|---|
-| PEC-short \|S11\| range | 0.99 … 1.03 | `false` 0.999967 … 1.000005; `flux` 0.999992 … 1.000008 | 0.9999 … 1.0002 on both lanes, still well inside |
-| slab vs Airy, magnitude | ≤ 0.05 | 0.02072 (`false`) / 0.00903 (flux) | 0.010 … 0.021 (`false`), ≤ 0.012 (flux) |
-| slab vs Airy, phase | ≤ 15° | 7.37° / 6.58° | 5 … 8°, improving on the `false` lane |
-| column power, both DUTs | < 1.02 | 1.000975 (slab `false`) | ≤ 1.002 |
-| magnitude reciprocity | < 0.01 | 2.585e-3 | ≤ 4e-3 |
-| complex reciprocity | ≤ 0.01 | 6.983e-3 (`false`) / 3.28e-4 (flux) | ≤ 8e-3 / ≤ 5e-4 |
+**How the prediction interval is built, since an earlier draft built it wrongly.** The
+`false`-lane prediction is "improves", so its upper bound is the frozen value itself and never
+above it — otherwise a number could be simultaneously "as predicted" and "worse than frozen",
+which is the freedom this document exists to remove. The lower bound is the **flux lane's own
+frozen number at the same rung**: that lane is power-normalized and carries no `Z_TE` term, so
+its residual is the part of the disagreement the correction cannot remove. Removing all of the
+`Z_TE` share cannot take the `false` lane below it; removing none leaves it at the frozen
+value. Both ends are measurements from the frozen artifact, not estimates. It is an argument,
+not a theorem — the two lanes could differ for reasons other than `Z_TE` — so falling below the
+lower bound has its own branch rather than being called a failure.
 
-The `false`-lane referee numbers are predicted to *improve* because the ~2 % `Z_TE` error at
-the fine rung is removed; the flux lane is power-based and predicted to move less. Column power
-does **not** move in one direction for both DUTs: §5.4 predicts the empty guide and the slab
-improve, §5.5 predicts the PEC-short gets worse (a cancellation removed), and the ≤ 1.002 above
-bounds both. A run in which every column-power number moves the same way contradicts that
-reading and is a finding.
-- *Every `false`-lane referee number inside its predicted range, flux lane moving less* — as
-  predicted; the ~2 % `Z_TE` error is gone and the mechanism claim of §2.2 is corroborated by a
-  family that does not share the rotation's arithmetic.
+| quantity | gate | frozen `false` (fine) | frozen `flux` (fine) | predicted `false` | predicted `flux` |
+|---|---|---|---|---|---|
+| slab vs Airy, magnitude | ≤ 0.05 | 0.020721 | 0.009029 | **0.00903 … 0.02072** | 0.0072 … 0.0108 |
+| slab vs Airy, phase | ≤ 15° | 7.3732° | 6.5785° | **6.58 … 7.37°** | 5.3 … 7.9° |
+| slab column power | < 1.02 | 1.000975 | 1.000014 | **1.000014 … 1.000975** | 1.00001 … 1.00002 |
+| slab magnitude reciprocity | < 0.01 | 2.5853e-3 | 7.707e-7 | **7.7e-7 … 2.585e-3** | ≤ 1e-6 |
+| slab complex reciprocity | ≤ 0.01 | 6.9832e-3 | 3.2772e-4 | **3.28e-4 … 6.983e-3** | ≤ 4e-4 |
+| PEC-short \|S11\| range | 0.99 … 1.03 | 0.999967 … 1.000005 | 0.999992 … 1.000008 | **widens to ≈ 0.99985 … 1.00015** (§5.5) | unchanged, 0.99999 … 1.00001 |
+
+The flux-lane column is a ±20 % band around its own frozen value, because that lane carries no
+`Z_TE` term and is predicted to move only with the run-to-run spread; it is written down so
+"the flux lane moved less" is a checkable claim rather than a direction.
+
+**The PEC-short row is the one row where a number moving away from unity is the prediction.**
+§5.5 predicts the PEC-short's `normalize=False` column power gets worse — 1.000009 → ≈ 1.0003
+at the fine rung, a cancellation removed — and for a total reflector `column_power ≈ |S11|²`
+(the frozen cell reads 1.0000094 against `max_s11` 1.0000047, i.e. the square to seven digits).
+So `max_s11` is predicted at √1.0003 ≈ **1.00015** and the range widens outward. That is
+consistent with §5.5 and is **excluded from the "worse than frozen is a contradiction" rule
+below**; the rule that governs it is §5.5's own factor-2 partition, with the 0.99–1.03 gate 130×
+away. Column power as a whole does **not** move in one direction for both DUTs: §5.4 predicts
+the empty guide and the slab improve, §5.5 predicts the PEC-short worsens. A run in which every
+column-power number moves the same way contradicts that reading and is a finding.
+
+**A disclosure about how independent this family still is.** §5.7 is offered as a check "from a
+family that does not share the rotation's arithmetic", and that is weaker for run 2 than it was
+for run 1. The Airy oracle takes `FC_TE10_HZ` = 6.557140 GHz and the extractor takes
+`fc_port_hz`; the gap between them at the fine rung falls from **179.1 MHz to 2.08 MHz**, an 86×
+narrowing. The two are still different inputs and the run must show them different (below), but
+the referee's sensitivity to a *residual* cutoff error is now 86× smaller than it was, so this
+family can no longer detect a small remaining cutoff error the way it could before. It remains
+independent of the *shift algebra*, which is what §5.1 and §5.2 measure, and that is the
+independence being claimed here.
+- *Every `false`-lane referee number inside its predicted interval, every flux-lane number
+  inside its ±20 % band, and the PEC-short row widening no further than §5.5's bound* — as
+  predicted; the 1.2–4.1 % `Z_TE` error is gone and the mechanism claim of §2.2 is corroborated
+  by a family that does not share the shift algebra of §5.1 and §5.2.
+- *A flux-lane number outside its ±20 % band while the `false` lane behaves* — its own reading,
+  because the flux lane is the control for "this is a `Z_TE` effect". That lane carries no
+  `Z_TE` term, so a move there is a move in something the correction was not supposed to touch.
+  Report both lanes' per-bin residual curves side by side before attributing anything on the
+  `false` lane to `Z_TE`; not blocking on its own, and not absorbed into the branch above.
 - *Green but DEGRADED — any `false`-lane referee number worse than its frozen value, while
   staying inside its gate.* This is the branch that matters most in this section, because the
   prediction here is directional ("improve") and a green would otherwise swallow the opposite
   result. Concretely: slab-vs-Airy magnitude above 0.02072, phase above 7.37°, magnitude
-  reciprocity above 2.585e-3, complex reciprocity above 6.983e-3, or the PEC-short `|S11|`
-  range wider than 0.999967 … 1.000005 — each on the `false` lane at the claims rung. Any one
-  of them **contradicts the run's central mechanism claim**: removing a 2 % impedance error
-  cannot make the comparison against an independent oracle worse. It is reported as a
+  reciprocity above 2.585e-3, complex reciprocity above 6.983e-3, or slab column power above
+  1.000975 — each on the `false` lane at the claims rung, and each equal to the TOP of that
+  row's predicted interval, so no number is both "as predicted" and "a contradiction". **The
+  PEC-short row is excluded**: §5.5 predicts its range widens and §5.5's factor-2 partition is
+  what reads it. Any one of the rows above **contradicts the run's central mechanism claim**:
+  removing a 1.2–4.1 % impedance error cannot make the comparison against an independent oracle
+  worse. It is reported as a
   contradiction, with the per-bin residual curve and the worst bin, and §2.2's attribution is
   reported as *not corroborated by the referee family* — not quietly carried on the strength of
   §5.1. A degradation of more than 2× the frozen value (e.g. magnitude ≥ 0.042 against the
@@ -801,16 +1053,25 @@ reading and is a finding.
   the same relative size is reported the same way but is not on its own blocking, since that
   lane does not carry the `Z_TE` term.
 - *Green and better than predicted — any `false`-lane number below the bottom of its predicted
-  range* (slab-vs-Airy magnitude under 0.010, phase under 5°, magnitude reciprocity under
-  2e-3). Welcome, and still written up as a missed prediction rather than folded into the first
-  branch. The prediction's basis is that removing a ~2 % `Z_TE` error removes a ~2 % share of
-  the residual; a residual that falls by much more says the `Z_TE` term was a larger share of
-  the disagreement than the frozen numbers implied, which changes what #873's remaining
-  second-order term is worth. Report the per-bin residual curve at the claims rung and say the
-  extrapolation in this table was conservative. The one reading to rule out first: the Airy
-  oracle and the extractor now sharing an input they did not share before — the oracle takes
-  `FC_TE10_HZ` (the module literal, §5.1) and the extractor takes `fc_port_hz`, and those two
-  must stay 6.557140 GHz and 6.555060 GHz at the fine rung, not converge.
+  interval*, i.e. below that row's flux-lane frozen value: slab-vs-Airy magnitude under
+  0.00903, phase under 6.58°, slab column power under 1.000014, magnitude reciprocity under
+  7.7e-7, complex reciprocity under 3.28e-4. Welcome, and still written up as a missed
+  prediction rather than folded into the first branch — and it is the branch that tests the
+  interval's own basis, since the lower bound is an argument ("the flux lane's residual is the
+  part `Z_TE` cannot explain") and not a theorem. A `false`-lane number below its flux-lane
+  counterpart falsifies that argument: the two lanes' residuals do not decompose the way this
+  section assumes, so the interval's lower end is void and the corresponding "as predicted"
+  reading loses its floor. Report both lanes' per-bin residual curves and say so explicitly;
+  the upper half of the interval, which is the frozen value, is unaffected. The other reading
+  to weigh: removing a 1.2–4.1 % `Z_TE` error removed a larger share of the residual than the
+  frozen numbers implied, which changes what #873's remaining second-order term is worth.
+  Either way, report the per-bin residual curve at the claims rung for both lanes. **The one
+  reading to rule out first**, and the reason the disclosure above matters: the Airy oracle and
+  the extractor now sharing an input they did not share before. The oracle takes `FC_TE10_HZ`
+  (the module literal, §5.1) and the extractor takes `fc_port_hz`; at the fine rung those must
+  read 6.557140 GHz and 6.555060 GHz, 2.08 MHz apart, and must not converge. If the artifact
+  shows them equal, the referee is no longer an independent family and nothing in this section
+  is quotable.
 - *Any referee gate red* — blocking, and the first thing to check is the comparator: the Airy
   oracle and its `exp(−2jβ_v d_L)` / `exp(−jβ_v(d_L+d_R))` shift convention are unchanged
   here, so a red says the extraction moved, not the oracle.
@@ -819,7 +1080,241 @@ reading and is a finding.
   claims-rung envelope; a second run measuring materially worse than 6.983e-3 puts that
   advisory's derivation back on the table and must be said out loud in the measurement PR.
 
-### 5.8 The success criterion for this run
+### 5.8 `|S|` invariance under the shift — 4 verdicts, re-measured by §4's declaration
+
+Gate: `np.allclose(|S_base|, |S_shift|, rtol=1e-3, atol=1e-4)` — `ABS_S_INVARIANCE_RTOL` /
+`ABS_S_INVARIANCE_ATOL` (`tests/_waveguide_chain_battery_gates.py:75-76`, from
+`twoport_contract_v1.py:270`). Unchanged. Recorded quantity: `abs_s_max_diff`, the largest
+`||S_shift| − |S_base||` over the four entries and 17 bins.
+
+**This is the leg §5.1 and §5.2 stand on, and the new shift pair re-measures all four of its
+verdicts.** The de-embedding factor is `exp(∓jβ_port·s)`, which has unit modulus at every bin
+where β is real, so `|S|` must be invariant. If it is not, the measured "rotation" is not a
+rotation and neither residual in §5.1 means what §5.1 says it means. An earlier draft of this
+note left the family with no prediction and no branch; a red would then have arrived on the
+family the run exists to fix with nobody having agreed how to read it.
+
+Frozen (fine rung, all four green): `pec_short|false` **2.2206e-7**, `pec_short|flux`
+**5.6586e-8**, `slab|false` **1.9747e-7**, `slab|flux` **7.8814e-8** — three orders under the
+1e-4 `atol`.
+
+Predicted: **unchanged, 5e-8 … 3e-7 on all four cells.** Basis: the residual is float32
+rounding of a complex multiply on quantities of order 1 (`float32` eps = 1.19e-7), not a
+function of the shift distance. Halving Δ halves the rotation angle but not the rounding of the
+product, so this number is predicted **not** to scale with the lever — which also makes it a
+check on the reading itself, since a number that halves with Δ would mean it was never rounding.
+
+The one mechanism that would break unit modulus is β going imaginary — a bin below cutoff turns
+`exp(∓jβs)` into a real exponential. The band runs 8.4 … 11.6 GHz against corrected cutoffs of
+6.523901 / 6.548821 / 6.555060 GHz, so the lowest bin clears the highest cutoff by 1.84 GHz.
+That is checkable in the artifact (`fc_port_hz < 8.4e9`) before any `|S|` number is read.
+
+The branches below partition `abs_s_max_diff` — one reading per value, no interval read two
+ways — and the lever-independence claim is then read on a **different** number, the ratio of
+each cell's value to its own frozen value.
+
+- **All four in 5e-8 … 3e-7 with `abs_s_allclose` true** — as predicted. The de-embedding factor
+  is unit modulus and §5.1/§5.2's rotation readings are licensed. *Inside this branch one
+  further quantity is read, and it is not `abs_s_max_diff`*: the per-cell ratio to the frozen
+  value (2.2206e-7 / 5.6586e-8 / 1.9747e-7 / 7.8814e-8). Predicted **0.7 … 1.5**, because a
+  rounding residual does not depend on the lever. If all four ratios instead sit near 0.5 — the
+  halved-lever value — the residual tracked the rotation after all and the "float32 rounding"
+  basis above is wrong even though the value is inside its predicted band; report the four
+  ratios against the per-entry lever changes, which are **not** uniform (∠S11's lever falls 2×,
+  ∠S22's 5×, ∠S21's 3×), and say the basis is unsupported. The value reading stands either way.
+- **Any cell above 3e-7 with `abs_s_allclose` still true** — green against the gate, against the
+  prediction, written up as a miss rather than a pass. The allclose threshold is
+  `atol + rtol·|S_shift|`, i.e. 1e-4 … 1.1e-3 here, so a reading of 1e-5 is comfortably green
+  and is fifty times the float32 rounding this section predicts — something other than rounding
+  entered the factor. Quote the worst entry, its bin, and the two `|S|` values there before any
+  §5.1 number from that cell is quoted.
+- **Any cell strictly between 0 and 5e-8** — below the predicted floor, and its own case rather
+  than a better version of the first branch. The frozen minimum is 5.66e-8 on the quietest cell,
+  which is about half a float32 ULP at unit scale, so there is not much room underneath before
+  the number stops being a measurement of anything. Report it with the cell's `|S|` peak and the
+  ratio to its frozen value; a cell an order below its frozen value is heading for the exact-zero
+  case below and is checked the same way.
+- **`abs_s_allclose` false on any cell** — blocking for the whole plane-shift family, §5.1 and
+  §5.2 included. No rotation number from that cell is reported as a physics result. Check
+  `fc_port_hz` against the 8.4 GHz band edge first, then the shift arithmetic. The tolerance is
+  not widened; it is a committed contract value.
+- **`abs_s_max_diff` exactly 0.0 on any cell** — suspect rather than perfect. The two S matrices
+  come from two separate full builds, and float32 rounding of two independently compiled solves
+  does not normally cancel to the last bit. An exact zero says the shifted build may not have
+  been shifted: check `reference_planes_shifted_m` against 0.02540 / 0.09906 and
+  `plane_shift.shift_m` against +0.00508 / −0.00254 before reading it as invariance.
+
+### 5.9 Gradient invariance under the shift — 12 verdicts, re-measured against a different φ
+
+Gate: the per-artifact pin `gradient_invariance_gate`, derived by
+`gate_from_envelope(max rel_change, quantum=1000)`. The frozen artifact's is **0.001** from an
+envelope of **1.7938165e-7** and is **not moved**; the new artifact derives its own by the same
+policy (§7). Report bar `GRADIENT_REPORT_BAR = 1e-2`. The stage runs at the **fine rung only**
+(§5.1's note on which rows are artifact-backed applies here too).
+
+`gradient_invariance_entry` (`tests/_waveguide_chain_battery_gates.py:415-445`) records two
+quantities, and the new pair moves them very differently.
+
+**(a) `rel_change` — the gated one, predicted UNCHANGED.** For a magnitude objective it is
+`|g_shift − g_base| / |g_base|` (the gradient of a magnitude is invariant under a plane shift).
+For a complex objective it is
+`|dS/dθ|shift − e^{jφ_meas}·dS/dθ|base| / |dS/dθ|base|` with `φ_meas = ∠(S_shift/S_base)` at the
+centre bin — **the rotation the extractor actually applied**, not the pre-declared one. That
+choice is what makes this leg insensitive to the value of β: it tests whether the gradient
+carries the same unit-modulus factor as the value, which is a property of the tape and not of
+the shift distance. Predicted at the float32 noise floor, **0 … 3e-7** on the ten in-programme
+legs — frozen: **three exact zeros** (`pec_short|flux|sigma:s11_mag2`,
+`slab|false|eps:s11_mag2`, `slab|flux|eps:s21_mag2`) and 5.98e-8, 6.50e-8, 7.31e-8, 9.46e-8,
+9.73e-8, 9.78e-8, 1.79e-7, so the envelope is **1.7938165e-7**. The two
+`gradient_invariance|pec_short|{false,flux}|eps:s11_mag2` legs are `report_only` — excluded from
+the envelope as pre-declared ULP-floor skip legs — and read 7.234e-3 / 6.816e-3; that is the
+same physically-zero derivative §5.6(ii) discusses, and they are predicted to stay in
+1e-3 … 1e-2 and to stay `report_only`.
+
+**(b) `rel_change_predeclared_phi` — recorded, NOT gated, and predicted to fall by two orders.**
+It repeats the comparison with the pre-declared `φ = 2β_yee(c/2a)·Δ`, so it equals
+`2·|sin(Δφ/2)|` where Δφ is the centre-bin rotation residual. Frozen: **6.4800e-2**
+(`eps:s11_complex`, both lanes) and **7.2897e-2** (`eps:s21_complex`, both lanes) — that formula
+reproduces both from the frozen Δφ of 3.7134° and 4.1775° to five digits, which is how this
+section knows what it is measuring. Under the new pair and the corrected cutoff the fine-rung
+Δφ falls to **0.02207°** (∠S11) and **0.01655°** (∠S21), so predicted **3.85e-4** and
+**2.89e-4** — factors of 168 and 252. `phi_measured_deg` itself moves from −172.058° / −148.565°
+to **+92.136° / +69.102°**, and `phi_predeclared_deg` from 184.229° / 207.257° to **92.114° /
+69.086°**.
+
+Branches. (b) is ungated, so its branches are the only rule that reads it.
+
+The (a) branches partition the ten in-programme legs on `rel_change`; the two `report_only` legs
+are excluded from the envelope and from the pin, so they get their own branch at the end rather
+than a share of these.
+
+- **(a) all ten in-programme legs ≤ 3e-7** — as predicted; the gradient carries the same
+  unit-modulus factor as the value, and the AD tape is undisturbed by the new lever. The derived
+  pin then reads 0.001 again by arithmetic, not as a separate condition:
+  `gate_from_envelope(x, quantum=1000)` rounds `1.5·x` up to the nearest 0.001, so it stays at
+  0.001 for any envelope up to **6.67e-4**.
+- **(a) any in-programme leg above 3e-7 but at or below the derived pin** — green, and a missed
+  prediction. Quote the new envelope, the derived pin and that leg's `rel_change` beside the
+  frozen 1.7938165e-7 / 0.001, per §7's rule that the two pins are stated side by side; the
+  frozen pin is not loosened to match. **Nested inside this branch, one further outcome**, on a
+  different number: if the new envelope exceeds **6.67e-4** the derived pin itself steps to
+  0.002, so every "pass" in the family would be measured against a gate that grew by the policy
+  rather than by a measurement. That is reported as a finding before any verdict from this
+  family is quoted, and it does not turn the green above into a red.
+- **(a) any in-programme leg above the derived pin (verdict `fail`)** — blocking for the family.
+  Since the pin comes from that run's own envelope, a `fail` means one leg sits more than the
+  1.5× policy multiplier above the rest of its own population, so it is a per-leg defect and not
+  a scale change. Report all twelve `rel_change` values, the two `report_only` legs with them,
+  and the envelope.
+- **(a) the two `report_only` legs** — predicted **1e-3 … 1e-2** (frozen 7.234e-3 / 6.816e-3) and
+  predicted to stay `report_only`. Inside that range and still `report_only`: as predicted, and
+  they stay out of the envelope. Outside it, either side: their own reading, because they are
+  the gradient-side view of §5.6(ii)'s physically-zero derivative and the two sections must
+  agree — report them next to §5.6(ii)'s `g_ad` and its x64 witness, and if the two sections
+  disagree about whether that derivative moved, neither reading stands. **Changing class** —
+  a leg that is no longer `report_only`, i.e. one whose ULP-floor exclusion changed — is
+  reported before anything else in this section: the exclusion is a driver-side rule
+  (`_in_program`), so a change there is a change in what the family measures, not in the
+  measurement.
+- **(b) both complex legs in 2e-4 … 6e-4** — as predicted. The pre-declared β and the applied β
+  agree at the centre bin to about 0.02°, which is §5.1's whole-band statement measured on a
+  different quantity and a different code path.
+- **(b) either complex leg above 1e-3** — the centre-bin rotation residual is then above 0.057°,
+  which contradicts §5.1's ≤ 0.032° fine-rung prediction on the very bin this leg uses. Report
+  `phi_measured_deg`, `phi_predeclared_deg` and §5.1's `resid_yee_max` together: the two paths
+  through β must tell the same story, and if they do not, one of them is wrong and neither
+  reading stands.
+- **(b) either complex leg below 5e-5** — better than predicted, still a miss, and the first
+  thing to rule out is the self-comparison §5.1's last branch names. A value that low means
+  Δφ < 0.003° at the centre bin, ten times tighter than §5.1 predicts; check that `fc_port_hz`
+  and `fc_predeclared_hz` are still two different numbers (6.555060 and 6.557140 GHz at the fine
+  rung). If they have merged, this quantity goes to zero by construction and measures nothing.
+- **(b) anything else in 5e-5 … 1e-3** — i.e. 6e-4 … 1e-3, or 5e-5 … 2e-4: the right order but
+  outside the declared window, and its own case rather than a rounding of the first branch. The
+  quantity is ungated, so this branch is the only rule that reads it. It maps to a centre-bin
+  rotation residual of 0.003° … 0.011° or 0.034° … 0.057°, both of which are inside §5.1's
+  ≤ 0.1° "as predicted" band but outside its 0.032° point prediction — report the pair
+  (`phi_measured_deg`, `phi_predeclared_deg`) with §5.1's `resid_yee_max` and say which of the
+  two is the tighter statement at that rung. Nothing is tuned to move it into the window.
+- **(b) `phi_measured_deg` not near +92.14° / +69.10°** — the applied rotation is not the
+  declared one, which is the same failure §5.2's ≤ 10° branch describes, reached from the
+  gradient side. Check `reference_planes_shifted_m` and the builder constants before reading
+  any number in this section.
+
+### 5.10 Three inherited families with no other leg — `non_vacuity`, `power_closure`, `ladder_richardson`
+
+These 32 verdicts are re-measured by this run and are not covered by §5.1–§5.9 or §5.6(iii).
+None of them is a shift-pair function; all three move with the corrected cutoff.
+
+**`non_vacuity` — 12 verdicts, all `pass` today.** Gate `max_f|S11| > 0.20`
+(`NON_VACUITY_MIN_MAX_S11`, `twoport_contract_v1.py:266`). It is the control that says a cell
+measured something. Frozen: `pec_short` 1.000005 … 1.000058, `slab` 0.6933 … 0.7748. Predicted
+**pass on all 12**, with `pec_short` at 1.0000 … 1.0002 (widening with §5.5, since for a total
+reflector `max|S11| ≈ √column_power`) and `slab` inside 0.66 … 0.81, i.e. its frozen values
+±5 %, because the slab's own reflection should move only through `Z_TE` (1.24 % … 4.07 % at the
+fine rung).
+  - *All 12 pass with `slab` inside ±5 %* — as predicted; every other verdict on those cells is
+    reading a real measurement.
+  - *Any red* — blocking for that cell and read before anything else on it: a cell whose `|S11|`
+    is below 0.20 produced essentially no reflection, which makes every other verdict on it
+    vacuous rather than passing. Check the drive and the DUT mask first.
+  - *`slab` moving by more than 5 % while still above 0.20* — green and a miss. The slab's
+    reflection is a physics quantity, and a move larger than the `Z_TE` share says the
+    correction changed more than the impedance. Report the per-bin `|S11|` curve at the claims
+    rung next to §5.7's Airy residual. A `slab` cell that moves enough to go *below* 0.20 is
+    read by the blocking branch above, which takes precedence.
+  - *`pec_short` outside 1.0000 … 1.0002* — not read here. For a total reflector this quantity
+    is `√column_power` to seven digits, so §5.5's factor-2 partition owns it and this leg only
+    records that the cell was non-vacuous.
+
+**`power_closure` — 12 verdicts, all `report_only` BY CONSTRUCTION.** The driver assigns that
+class unconditionally (`tests/_waveguide_chain_battery_gates.py:673`), so the verdict cannot
+change and only the number carries information. It is `max|1 − Σ_i |S_i1|²|` over bins and
+columns — the same sum as `column_power_max`, but taking the deficit side as well as the excess.
+Frozen at the fine rung: `slab|false` 9.7486e-4, `pec_short|false` 6.6809e-5, `slab|flux`
+1.3651e-5, `pec_short|flux` 1.6007e-5. Predicted to track §5.4/§5.5/§5.7 one for one: `slab`
+`false` improves into 1.4e-5 … 9.7e-4, `pec_short` `false` worsens to ≈ 3e-4, the `flux` lane
+stays within ±20 %.
+  - *Every cell tracking its own `column_power_max` within a factor 2* — as predicted, and it
+    adds **no** independent information: it is the same sum, so it is not a second witness for
+    §5.4 or §5.5 and is not quoted as one.
+  - *Any cell diverging from its `column_power_max` by more than a factor 2* — this is where the
+    number earns its place. The two differ only in that `power_closure` also sees columns whose
+    power falls **below** unity, so a divergence means some bin lost power while another gained
+    it — which the frozen `pec_short|fine|false` cell already shows in miniature (6.68e-5 against
+    an excess of 9.4e-6). Report both per-bin curves and say which bins are on which side; a
+    two-sided error is a different mechanism from the one-sided excess §5.4 describes.
+
+**`ladder_richardson` — 8 verdicts (4 `pass`, 4 `report_only`), and its measured side moves
+while its oracle does not.** The PEC-short phase oracle is `π − 2βd` with `β = G.beta_yee(...)`,
+which hard-codes `FC_TE10_HZ` = c/2a (`tests/_waveguide_chain_battery_gates.py:180`,
+`scripts/diagnostics/waveguide_chain_battery_measure.py:643`); the *measured* phase rotates by
+β_port, which #889 moves. So this family is predicted to **improve in the same direction §5.7
+predicts for the referee**, and it is the only ladder leg for which that is true. Frozen
+`mid-fine` `max_abs_diff`: `pec_short_s11_phase_deg` 0.925° (`false`) / 0.829° (`flux`),
+`slab_s11_mag` 0.01883 / 0.01811, `slab_s21_mag` 0.01297 / 0.01169, `slab_s21_phase_deg` 2.046 /
+1.888. Predicted at or below those values on the `false` lane and within ±20 % on `flux`, by the
+same lane argument §5.7 uses.
+  - *Every `mid-fine` `max_abs_diff` at or below its frozen value on the `false` lane, `flux`
+    within ±20 %* — as predicted; the corrected β brought the measured phase closer to an oracle
+    that did not move.
+  - *A `false`-lane value above its frozen value while its verdict stays green* — green and
+    against the prediction, and it is the same shape of contradiction §5.7 describes: the
+    measured side moved toward an unmoved oracle, so it cannot get worse for the reason this run
+    claims. Report the per-rung Richardson triple and the derived pin next to the frozen one.
+  - *Any of the four pinned legs goes `fail`* — blocking for the ladder family. Because the pin
+    is re-derived from the same run's own `mid-fine` envelope (§7), a fail means the
+    coarse-mid/mid-fine pair disagrees with itself by more than the policy multiplier, which is
+    a convergence failure and not a tolerance question.
+  - *A `flux`-lane value outside its ±20 % band while green* — its own reading, and the same
+    control argument §5.7 uses: the `flux` lane carries no `Z_TE` term, so a move there is a
+    move in something the correction was not supposed to touch. Report both lanes' Richardson
+    triples before attributing the `false` lane's movement to the corrected β.
+  - *A leg changes interpretability class* — handled by §5.6(iii), which owns the ratio window;
+    a `report_only` Richardson verdict here is the downstream consequence of that class and is
+    not read separately.
+
+### 5.11 The success criterion for this run
 
 Three tests are `xfail(strict=True)` today, pointing at this re-measurement. **They are the
 criterion**; nothing else in this note substitutes for them.
@@ -935,8 +1430,17 @@ Lane placement, unchanged from the parent: the replay layer is JSON arithmetic a
 the measurement is minutes on a GPU and stays in the slow lane / the tracked VESSL YAML. The
 whole-battery wall time goes in the measurement PR body (first run: 1157.6 s).
 
-**Pins.** The frozen artifact's pins (`gradient_invariance_gate` 0.001 from envelope
-1.7938e-7, `richardson_quantum` 100 / 10, `monotone_quantum` 100) are **not** moved. The new
+**Pins.** The frozen artifact's pins are **not** moved. `fixture["pins"]` carries
+`gradient_invariance_gate` 0.001 (from envelope 1.7938165e-7), `richardson_quantum` 100 / 10
+and `monotone_quantum` 100. **Five more pins live outside that block**, under
+`fixture["ladder"]` rather than `fixture["pins"]`, and they are listed here because an earlier
+draft named only the first three: `pinned_richardson_gate` = **1.4**
+(`pec_short_s11_phase_deg|false`), **0.03** (`slab_s11_mag|flux`), **0.02**
+(`slab_s21_mag|flux`), **3.1** (`slab_s21_phase_deg|false`) and **2.9**
+(`slab_s21_phase_deg|flux`), plus `pinned_monotone_fraction_min` = **0.66** on the seven
+interpretable observables. The three not-interpretable ladders carry no pin by §5(c) guard 2.
+Those twelve ladder-side pins are re-derived per artifact by the same policy as the three in
+`fixture["pins"]`, and none of the fifteen is moved on the frozen file. The new
 artifact carries its own pins derived by the same `gate_from_envelope` policy from its own
 measured envelopes, in a separate pin step, and the measurement PR states both numbers
 side by side. If the new envelope is larger than the frozen one, that is reported as a
@@ -964,4 +1468,4 @@ finding; the frozen pin is not loosened to accommodate it.
 
 ---
 
-R3: memory=rfx-known-issues.md:99 (chain-status row — the N+1 aperture mechanism and the ±180° wrong-sign arithmetic, both acted on here), :64 (#729 node-vs-cell class), :3110-3122, :3413-3420, :4129, :4336, :3735-3752, :3546 + project_issue527_f32_comparator | R2-attempts=0 in this lane (no measurement; the second RUN is authorized by a changed instrument — PR #881 d6a3df5d and PR #889 0141f39e — not by a repeat of the first mechanism hypothesis) | falsifier=rebuilt the fixture on main 0141f39e and read the port back, comparing each quantity against ITSELF across the two instruments: the eigen-aperture entry count (cfg.ez_profile.shape[0]) is 9 / 18 / 36, down from 10 / 19 / 37; f_cutoff is 6.523901 / 6.548821 / 6.555060 GHz, up from the frozen artifact's fc_port_hz 5.877188 / 6.204954 / 6.378004 GHz; and the artifact's continuous-inversion metric port_cutoff_effective_width_cells will therefore read 9.045856 / 18.022867 / 36.011426, not 9/18/36, against the frozen 10.041242 / 19.021661 / 37.011117 — each pair matches the closed forms pi/(2 sin(pi/2M)) and (2/dx) sin(pi/2M) c/2pi at M = N and M = N+1 to 10+ digits. Meanwhile fc_TE10_numerical stays 6.557140 GHz and CPML stays 17/34/68, and tests/unit/geometry/test_waveguide_chain_battery_geometry.py is 15 passed, so the inherited geometry of section 3 is unchanged
+R3: memory=rfx-known-issues.md:99 (chain-status row — the N+1 aperture mechanism and the ±180° wrong-sign arithmetic, both acted on here), :64 (#729 node-vs-cell class), :3110-3122, :3413-3420, :4129, :4336, :3735-3752, :3546 + project_issue527_f32_comparator | R2-attempts=0 in this lane (no measurement; the second RUN is authorized by a changed instrument — PR #881 d6a3df5d and PR #889 0141f39e — not by a repeat of the first mechanism hypothesis) | falsifier=rebuilt the fixture on main 0141f39e and read the port back, comparing each quantity against ITSELF across the two instruments: the eigen-aperture entry count (cfg.ez_profile.shape[0]) is 9 / 18 / 36, down from 10 / 19 / 37; f_cutoff is 6.523901 / 6.548821 / 6.555060 GHz, up from the frozen artifact's fc_port_hz 5.877188 / 6.204954 / 6.378004 GHz; and the artifact's continuous-inversion metric port_cutoff_effective_width_cells will therefore read 9.045856 / 18.022867 / 36.011426, not 9/18/36, against the frozen 10.041242 / 19.021661 / 37.011117 — each pair matches the closed forms pi/(2 sin(pi/2M)) and (2/dx) sin(pi/2M) c/2pi at M = N and M = N+1 to 10+ digits. Meanwhile fc_TE10_numerical stays 6.557140 GHz and CPML stays 17/34/68, and tests/unit/geometry/test_waveguide_chain_battery_geometry.py is 15 passed, so the inherited geometry of section 3 is unchanged. Round 3 adds two more cheap checks, both run against the frozen artifact rather than asserted: (a) forward_identity.max_scaled_diff and max_abs_diff are bit-identical across the objectives of every one of the six (dut, lane, theta-kind) groups (0.0 / 0.0 / 1.064779 / 1.439853 / 0.0 / 1.439905), which is what licenses reading a group's x64 witness for each of its legs in section 5.6(i); (b) rel_change_predeclared_phi equals 2|sin(dphi/2)| with dphi the centre-bin rotation residual — 6.4799e-2 and 7.2896e-2 against the stored 6.480010e-2 and 7.289650e-2 — which is what makes section 5.9's 3.85e-4 / 2.89e-4 prediction a derivation rather than a guess
