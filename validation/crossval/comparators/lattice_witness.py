@@ -379,6 +379,16 @@ def model_separation(freqs_hz, model: str, params: dict, dx: float, dt: float,
           the lattice's own second-order term W_lat(f).
       ``eps_x1p01``
           the declared lattice with eps' (eps_inf) 1 % high.
+      ``eps_continuum``
+          the lattice built on the CONTINUUM permittivity ``eps_analytic``
+          instead of the discrete-time ``eps_numerical_ade``. This is the
+          falsifier for the one ingredient this lane adds -- carrying eps_num
+          into the lattice -- and nothing else: same marcher, same geometry,
+          same (dx, dt), only the material's discrete-time correction removed.
+          It is identically zero for a lossless non-dispersive slab (cv04's
+          material: eps_analytic IS eps_num there), so it cannot fire on that
+          rung by construction, which is stated rather than reported as a
+          silent pass.
     """
     R0, T0, A0 = lattice_rta(freqs_hz, model, params, dx, dt, d_slab_m=d_slab_m)
     if kind == "thickness_plus_cell":
@@ -391,6 +401,10 @@ def model_separation(freqs_hz, model: str, params: dict, dx: float, dt: float,
     elif kind == "eps_x1p01":
         R1, T1, A1 = lattice_rta(freqs_hz, model, defective_params(kind, model, params),
                                  dx, dt, d_slab_m=d_slab_m)
+    elif kind == "eps_continuum":
+        R1, T1 = de.yee_lattice_slab_rt_eps(freqs_hz, de.eps_analytic(freqs_hz, model, params),
+                                            d_slab_m, dx, dt)
+        A1 = 1.0 - R1 - T1
     else:
         raise ValueError(kind)
     return np.abs(R1 - R0), np.abs(T1 - T0), np.abs(A1 - A0)
@@ -421,6 +435,9 @@ def evaluate_falsifier(arm_doc: dict, kind: str, *, model: str | None = None,
         A1 = 1.0 - R1 - T1
     elif kind == "eps_x1p01":
         R1, T1, A1 = lattice_rta(f, mdl, defective_params(kind, mdl, prm), dx, dt, d_slab_m=d_slab_m)
+    elif kind == "eps_continuum":
+        R1, T1 = de.yee_lattice_slab_rt_eps(f, de.eps_analytic(f, mdl, prm), d_slab_m, dx, dt)
+        A1 = 1.0 - R1 - T1
     else:
         raise ValueError(kind)
     R_x = np.asarray(arm_doc["R_rfx"], dtype=float)
@@ -455,7 +472,8 @@ def evaluate_falsifier(arm_doc: dict, kind: str, *, model: str | None = None,
     }
 
 
-FALSIFIER_KINDS = ("thickness_plus_cell", "thickness_minus_cell", "continuum", "eps_x1p01")
+FALSIFIER_KINDS = ("thickness_plus_cell", "thickness_minus_cell", "continuum",
+                   "eps_x1p01", "eps_continuum")
 
 
 # ---------------------------------------------------------------------------
@@ -468,7 +486,7 @@ def witness_document(case_id: str, entries: dict, *, commit: str | None = None,
 
     ``entries`` maps a rung name ("<arm>" or "<arm>_dx2") to the per-arm doc
     that ``evaluate`` takes. Every entry gets the gate and, unless
-    ``falsifiers=False``, the four analytic falsifiers replayed against it.
+    ``falsifiers=False``, every kind in ``FALSIFIER_KINDS`` replayed against it.
     """
     doc = {"schema": SCHEMA, "case_id": case_id, "commit": commit,
            "d_slab_m": float(d_slab_m), "rungs": {}}

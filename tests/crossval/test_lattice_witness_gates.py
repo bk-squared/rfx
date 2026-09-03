@@ -58,31 +58,62 @@ _DT_DX = 2.335067793382187e-12   # the rig's dt at dx = 1 mm (Courant 0.700)
 # dominates its 2.2e-3 lattice term) and the finest cv23 rungs, where the
 # second-order term has fallen below the window -- which is F2 measuring the
 # convergence it is supposed to measure.
+#
+# ``eps_continuum`` (F4, note section 7) is the falsifier for the ONE ingredient
+# this lane adds: carrying eps_num into the lattice. It fires on cv22's Drude arm
+# only, and on the two cv23 rungs whose sigma term is large enough to see at
+# their record (tand1 and tand3 = tand3_dx2, through T). Its "False" rows are a
+# measurement, not an omission: at these rungs the ADE / sigma discrete-time term
+# is BELOW the window, so it is not separately testable there.
 _F_FIRES = {
-    ("cv22", "debye"): {"thickness_plus_cell": True, "thickness_minus_cell": True,
-                        "continuum": False, "eps_x1p01": False},
-    ("cv22", "lorentz"): {"thickness_plus_cell": True, "thickness_minus_cell": True,
-                          "continuum": True, "eps_x1p01": True},
-    ("cv22", "drude"): {"thickness_plus_cell": True, "thickness_minus_cell": True,
-                        "continuum": True, "eps_x1p01": True},
-    ("cv23", "tand0p1"): {"thickness_plus_cell": True, "thickness_minus_cell": True,
-                          "continuum": True, "eps_x1p01": True},
-    ("cv23", "tand1"): {"thickness_plus_cell": True, "thickness_minus_cell": True,
-                        "continuum": True, "eps_x1p01": True},
-    ("cv23", "tand3"): {"thickness_plus_cell": True, "thickness_minus_cell": True,
-                        "continuum": True, "eps_x1p01": True},
-    ("cv23", "tand0p1_dx2"): {"thickness_plus_cell": True, "thickness_minus_cell": True,
-                              "continuum": True, "eps_x1p01": True},
-    ("cv23", "tand0p1_dx4"): {"thickness_plus_cell": True, "thickness_minus_cell": True,
-                              "continuum": False, "eps_x1p01": True},
-    ("cv23", "tand1_dx2"): {"thickness_plus_cell": True, "thickness_minus_cell": True,
-                            "continuum": True, "eps_x1p01": True},
-    ("cv23", "tand1_dx4"): {"thickness_plus_cell": True, "thickness_minus_cell": True,
-                            "continuum": True, "eps_x1p01": True},
-    ("cv23", "tand3_dx2"): {"thickness_plus_cell": True, "thickness_minus_cell": True,
-                            "continuum": True, "eps_x1p01": True},
-    ("cv23", "tand3_dx4"): {"thickness_plus_cell": True, "thickness_minus_cell": True,
-                            "continuum": True, "eps_x1p01": True},
+    ("cv22", "debye"): {
+        "thickness_plus_cell": True, "thickness_minus_cell": True,
+        "continuum": False, "eps_x1p01": False, "eps_continuum": False,
+    },
+    ("cv22", "lorentz"): {
+        "thickness_plus_cell": True, "thickness_minus_cell": True,
+        "continuum": True, "eps_x1p01": True, "eps_continuum": False,
+    },
+    ("cv22", "drude"): {
+        "thickness_plus_cell": True, "thickness_minus_cell": True,
+        "continuum": True, "eps_x1p01": True, "eps_continuum": True,
+    },
+    ("cv23", "tand0p1"): {
+        "thickness_plus_cell": True, "thickness_minus_cell": True,
+        "continuum": True, "eps_x1p01": True, "eps_continuum": False,
+    },
+    ("cv23", "tand1"): {
+        "thickness_plus_cell": True, "thickness_minus_cell": True,
+        "continuum": True, "eps_x1p01": True, "eps_continuum": True,
+    },
+    ("cv23", "tand3"): {
+        "thickness_plus_cell": True, "thickness_minus_cell": True,
+        "continuum": True, "eps_x1p01": True, "eps_continuum": True,
+    },
+    ("cv23", "tand0p1_dx2"): {
+        "thickness_plus_cell": True, "thickness_minus_cell": True,
+        "continuum": True, "eps_x1p01": True, "eps_continuum": False,
+    },
+    ("cv23", "tand0p1_dx4"): {
+        "thickness_plus_cell": True, "thickness_minus_cell": True,
+        "continuum": False, "eps_x1p01": True, "eps_continuum": False,
+    },
+    ("cv23", "tand1_dx2"): {
+        "thickness_plus_cell": True, "thickness_minus_cell": True,
+        "continuum": True, "eps_x1p01": True, "eps_continuum": False,
+    },
+    ("cv23", "tand1_dx4"): {
+        "thickness_plus_cell": True, "thickness_minus_cell": True,
+        "continuum": True, "eps_x1p01": True, "eps_continuum": False,
+    },
+    ("cv23", "tand3_dx2"): {
+        "thickness_plus_cell": True, "thickness_minus_cell": True,
+        "continuum": True, "eps_x1p01": True, "eps_continuum": True,
+    },
+    ("cv23", "tand3_dx4"): {
+        "thickness_plus_cell": True, "thickness_minus_cell": True,
+        "continuum": True, "eps_x1p01": True, "eps_continuum": False,
+    },
 }
 
 
@@ -253,6 +284,38 @@ def test_f2_is_the_lattice_term_itself_and_falls_at_second_order():
         seps.append(float(np.mean(sR)))
     for lo, hi in zip(seps[:-1], seps[1:]):
         assert 1.7 <= math.log2(lo / hi) <= 2.3, seps
+
+
+def test_f4_eps_continuum_isolates_the_one_ingredient_this_lane_adds():
+    """F4 (``eps_continuum``): the lattice built on the CONTINUUM permittivity
+    instead of the discrete-time ``eps_num`` the update realizes. It is the only
+    falsifier that moves the ADE / sigma correction and nothing else -- same
+    marcher, same geometry, same (dx, dt).
+
+    Two things are asserted, both analytic:
+
+    * on a LOSSLESS non-dispersive slab (cv04's material, eps' = 4, sigma = 0)
+      the separation is IDENTICALLY zero, because eps_analytic IS eps_num there.
+      So F4 cannot fire on that rung by construction, and a "silent" reading
+      there is geometry, not detection power.
+    * on every arm whose material HAS a discrete-time correction the separation
+      is strictly positive and grows with the correction, so the falsifier is
+      not vacuous where it is claimed to bite.
+    """
+    f = np.linspace(4.0e9 + 1e6, 10.0e9, 229)
+    sR, sT, sA = LW.model_separation(f, "conductive", {"eps_inf": 4.0, "sigma": 0.0},
+                                     G.DX_M, _DT_DX, "eps_continuum")
+    assert max(float(np.max(sR)), float(np.max(sT)), float(np.max(sA))) == 0.0
+
+    for arm, spec in L23.ARMS.items():
+        K = L23.ARM_DX_DIV.get(arm, 1)
+        sR, sT, _sA = LW.model_separation(f, "conductive", spec["params"],
+                                          G.DX_M / K, _DT_DX / K, "eps_continuum")
+        assert float(np.mean(sR)) > 0.0 and float(np.mean(sT)) > 0.0, arm
+    for arm, spec in G.ARMS.items():
+        sR, sT, _sA = LW.model_separation(f, spec["model"], spec["params"],
+                                          G.DX_M, _DT_DX, "eps_continuum")
+        assert float(np.mean(sR)) > 0.0 and float(np.mean(sT)) > 0.0, arm
 
 
 # ===========================================================================

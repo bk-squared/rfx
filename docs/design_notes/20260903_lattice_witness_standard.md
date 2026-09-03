@@ -507,9 +507,77 @@ several arms it is carried by the per-bin gate (GL1), not the band mean — the 
 perturbation moves the fringe positions more than the fringe-averaged level, and
 GL1 is what sees that.
 
-All three falsifiers, at every rung, are asserted in
-`tests/crossval/test_lattice_witness_gates.py::test_falsifiers_fire_exactly_where_the_note_says_they_do`
-against the table `_F_FIRES`, which is this section in code.
+### F4 — the lattice built on the CONTINUUM ε (the falsifier for this lane's one new ingredient)
+
+**Added 2026-09-03 after the independent review, which found that the lane's one
+new ingredient — carrying `ε_num` into the lattice — had no falsifier.** F1
+moves the geometry, F2 replaces the whole model, F3 moves `ε′`; none of them
+touches the discrete-time correction the ADE and the σ average contribute. F4
+does exactly that and nothing else: the same marcher, the same geometry, the
+same (dx, dt), with the slab nodes built on `dispersive_eps.eps_analytic`
+instead of `dispersive_eps.eps_numerical_ade`
+(`FALSIFIER_KINDS` gained `"eps_continuum"`).
+
+| rung | sep/W R | sep/W T | sep/W A | bins over window R / T / A | fires |
+|---|---|---|---|---|---|
+| cv22 debye | 0.003 | 0.003 | 0.001 | 0 / 0 / 0 | **no** |
+| cv22 lorentz | 0.149 | 0.263 | 0.066 | 0 / 0 / 0 | **no** |
+| cv22 drude | 0.447 | 0.280 | 0.268 | 33 / 57 / 28 | yes |
+| cv23 tand0p1 | 0.017 | 0.054 | 0.043 | 0 / 0 / 0 | no |
+| cv23 tand0p1_dx2 | 0.005 | 0.029 | 0.018 | 0 / 0 / 0 | no |
+| cv23 tand0p1_dx4 | 0.001 | 0.013 | 0.006 | 0 / 0 / 0 | no |
+| cv23 tand1 | 0.147 | 0.905 | 0.027 | 0 / 141 / 0 | yes (T) |
+| cv23 tand1_dx2 | 0.041 | 0.234 | 0.007 | 0 / 0 / 0 | no |
+| cv23 tand1_dx4 | 0.013 | 0.074 | 0.002 | 0 / 0 / 0 | no |
+| cv23 tand3 (= dx2) | 0.102 | 0.593 | 0.100 | 0 / 46 / 0 | yes (T) |
+| cv23 tand3_dx4 | 0.027 | 0.149 | 0.027 | 0 / 0 / 0 | no |
+| cv04 material (settled) | **0.000** | **0.000** | **0.000** | 0 / 0 / 0 | **no, by construction** |
+
+**Read plainly, because this is the honest reading and it is not the flattering
+one.** On cv22 the ADE's discrete-time term is separately testable on the
+**Drude arm only** (sep/W = 0.447 in R, 33 gated bins over the per-bin window).
+On the **Debye arm the separation is 0.003 of the window and on the Lorentz arm
+0.149** — three and one order(s) below the level the gate can resolve at those
+records. **So at the committed cv22 rungs the lattice gate does NOT separately
+test the ADE term on the Debye and Lorentz arms.** Those arms' lattice gates
+still pass, and §5.2's a-priori prediction of their continuum residual still
+holds; what does not hold is any claim that the gate would have caught a wrong
+`ε_num` there.
+
+On cv04's material the separation is IDENTICALLY zero: with σ = 0 and no pole,
+`eps_analytic` IS `eps_num`, so there is no discrete-time correction to remove.
+That row is geometry, not a gate weakness, and it is stated rather than left as
+a silent pass.
+
+**What would make it testable.** Two independent routes, neither run here:
+
+1. **A longer record on the Debye and Lorentz arms.** F4's separation is fixed
+   by the material and (dx, dt) — 5.3e-5 in the gated mean on Debye — while the
+   window is not: `W_witness,R` is 1.71e-2 there and truncation-dominated.
+   §8.1's `3e-4` settling bar shrinks it to a predicted 7.3e-4 (23×), which
+   takes Debye's F4 ratio from 0.003 to **0.073**: still short. Firing on the
+   band mean needs the tail below **1e-5** — 350 steps past the committed 1108,
+   i.e. 181 past §8.1's rung, about 1.3× one cv22 arm — where the predicted
+   window is 3.7e-5 and sep/W is 1.44. Even a perfectly settled record does not
+   make it arbitrarily sharp: with the truncation term driven to zero the
+   remaining incident-purity and float32 terms leave `W_witness,R = 1.24e-5`,
+   sep/W = 4.3. That is the ceiling of what F4 can ever say on this arm at this
+   mesh, and it is 4×, not 400×.
+2. **A rung where the correction is larger.** `ε_num − ε` grows like (ω dt)²;
+   the same arm at the SAME dx with a larger Courant number, or at a higher
+   band, separates faster than the window shrinks. That is a new recipe, not a
+   new rung of this ladder, and it is NOT proposed here.
+
+Until one of those runs, the honest statement is the one above: the ADE term is
+carried, its effect on the continuum residual is predicted a priori (§5.2), and
+it is separately FALSIFIED only on Drude and on cv23's tand1 / tand3.
+
+All four falsifiers, at every rung, are asserted in
+`tests/crossval/test_lattice_witness_gates.py` `test_falsifiers_fire_exactly_where_the_note_says_they_do`
+against the table `_F_FIRES`, which is this section in code; F4's two structural
+properties (identically zero on the lossless slab, strictly positive on every
+material that has a correction) are asserted analytically in
+`test_f4_eps_continuum_isolates_the_one_ingredient_this_lane_adds`.
 
 ## 8. New rungs — pre-declared, with cost, not run here
 
