@@ -115,9 +115,13 @@ Check that the derivation is not new physics: for the conductive case
 because `ω̂/ω = sin x / x` — the literal expression cv23 wrote by hand in
 `yee_lattice_slab_rt`.
 
-**Numerically verified** (`tests/crossval/test_lattice_witness_gates.py::test_extended_lattice_reproduces_the_cv23_solver_it_generalizes`):
+**Numerically verified** (`tests/crossval/test_lattice_witness_gates.py`
+`test_extended_lattice_reproduces_the_cv23_solver_it_generalizes`):
 `yee_lattice_slab_rt_model("conductive", …)` equals `yee_lattice_slab_rt`
-**bit-for-bit at σ = 0** and to **≤ 1e-15 in R and T** on all three cv23 arms —
+**bit-for-bit at σ = 0** and to a **measured maximum of 1.7e-15 in R and T** on
+all three cv23 arms at the test's grid (the note first said "≤ 1e-15", which the
+measurement does not support; the test asserts the 1e-14 class, which is the
+part that is stable across environments — §10(8)) —
 cv23's committed lattice numbers are unchanged (the old function is kept as the
 literal expression and now shares the marcher, and reproduces its pre-refactor
 output exactly).
@@ -312,8 +316,38 @@ Two readings worth stating:
   **all 229 gated bins** (§7). The observable the continuum gate cannot resolve
   is the sharpest one the lattice gate has.
 - **The margin is 3–50×, not 1.05×.** The worst ratio anywhere is 0.30. The gate
-  is not passing by luck, and it is 20–200× tighter than the continuum window it
-  sits beside.
+  is not passing by luck.
+- **How much tighter than the continuum window it sits beside: 5–8800×
+  (median ≈ 20×), not "20–200×".** The 2026-09-03 review recomputed the claim
+  per observable and it was wrong at both ends. The ratio is
+  `mean_window_{R,T,A}` (the arm's own committed continuum band-mean window,
+  `rfx.json`) over `mean_W_witness_{R,T,A}_gated`, on the same gated bins:
+
+| rung | band-mean R | T | A | per-bin floor R | T | A |
+|---|---|---|---|---|---|---|
+| `tand0p1` | 7.8 | **5.2** | 5.9 | 12.0 | **7.1** | 8.9 |
+| `tand0p1_dx2` | 8.9 | 10.9 | 10.0 | 13.2 | 14.4 | 13.7 |
+| `tand0p1_dx4` | 9.2 | 20.2 | 14.0 | 13.9 | 27.1 | 18.3 |
+| `tand1` | 11.8 | 137.5 | 27.6 | 26.0 | 183.8 | 45.4 |
+| `tand1_dx2` | 13.4 | 138.1 | 30.9 | 28.6 | 176.8 | 49.2 |
+| `tand1_dx4` | 17.4 | 174.3 | 40.1 | 37.7 | 225.3 | 64.6 |
+| `tand3` = `tand3_dx2` | 21.3 | **8772** | 57.2 | 47.4 | 13211 | 94.4 |
+| `tand3_dx4` | 23.1 | 8649 | 62.0 | 52.1 | 13101 | 103.7 |
+
+  Read plainly: the minimum over the 27 (rung, observable) pairs is **5.2×**
+  (`tand0p1`, T), the per-bin floor is **7.1×** (same pair), the maximum is
+  **8772×** (`tand3`, T), and the median is **21×**. **Six of the nine rungs are
+  below 20× in at least one observable** — every `tand0p1` and every `tand1`
+  rung. The lattice gate is uniformly tighter than the continuum gate on cv23,
+  but "20–200×" overstated the floor by 4× and understated the ceiling by 44×,
+  and the previous wording hid that the tightest observable on the arm that
+  matters least (`tand3` T, whose continuum gate is vacuous) is what carried the
+  high end.
+
+  On cv22 the same ratio is **not** uniformly above 1: the Debye arm's lattice
+  window is 0.6× (R) and 0.8× (T) of its continuum window — i.e. LOOSER — which
+  is §5.2's declared non-discriminating rung stated as a number. Lorentz is
+  4.0× / 8.3× and Drude 122× / 58×.
 
 ### 5.2 cv22 — three rungs, all green; the pole lattice predicts the residual a priori
 
@@ -365,19 +399,37 @@ the issue-#341 comment block, committed config 2026-07-13) against the family's
 0.10` there bounds "gross non-settling", and the residual is the documented
 order-2 etalon echo still in flight). Put those levels through §3 with the
 lossless etalon rate `Γ = 1.65e10 s⁻¹` (ρ = |r|² = 1/9 per round trip, t_rt =
-2·2·d/c) and Λ = 48.323:
+2·2·d/c) and Λ = 48.323, and the run confirms the derivation:
 
-    W_witness,R = 5.2e-2 in the gated mean,  W_witness,T = 1.7e-1
+| quantity (cv04 AS COMMITTED, 719 steps, 115 gated bins) | value |
+|---|---|
+| `W_witness,R` gated mean | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_W_witness_R_gated = 0.0535` |
+| `W_witness,T` gated mean | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_W_witness_T_gated = 0.178` |
+| a-priori ceiling, R | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_W_ceiling_R_gated = 0.0149` |
+| `\|rfx − lattice\|` gated mean, R | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_dR_lattice_gated = 0.00168` |
+| `\|rfx − lattice\|` gated mean, T | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_dT_lattice_gated = 0.00625` |
+| worst per-bin ratio, R / T | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.worst_ratio_R = 0.095` / `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.worst_ratio_T = 0.056` |
+| Γ, source | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.budget.rate_ringdown_1_s = 1.647e10` (derived) |
 
-which is looser than cv04's own band-mean windows. The wrong-model falsifier F2
-does not fire there (0 of 115 gated bins), nor does F3 (0 of 115). A gate that
-cannot reject the continuum model is not a gate; it is reported.
+which is looser than cv04's own band-mean windows, and 3.6× looser than its own
+a-priori ceiling because the measured tails are 3.6× and 5.1× the declared bar.
+The wrong-model falsifier F2 does not fire there (separation 0.099 of the
+window, 0 of 115 gated bins), nor does F3 (0.082, 0 of 115). A gate that cannot
+reject the continuum model is not a gate; it is reported.
+
+**These are the run's numbers, not a reconstruction.** The note's first draft
+carried derived values for this table that were 3–15 % off — 5.2e-2 for a
+measured 5.35e-2, 1.7e-1 for 1.78e-1, and F1 / F2 / F3 separations of
+1.50 / 0.45, 0.10 and 0.08 for a measured 1.45 / 0.43, 0.099 and 0.082. Every
+number above is now a key of the committed artifact the VESSL run wrote (§9.1).
 
 **cv04's material does have a claims-bearing lattice rung today, at zero cost.**
 cv23's `tand0p1_sigma_zero` falsifier arm is cv04's slab exactly — ε′ = 4,
 σ = 0, d = 10 mm, dx = 1 mm — on the SETTLED version of the same rig
-(`validation/crossval/_23_lossy_results/rfx__falsifier_tand0p1_sigma_zero.json::arms.tand0p1.params_run`
-= `{eps_inf: 4.0, sigma: 0.0}`, 1078 steps, tails 3.6e-3 / 1.2e-3). Gated
+(`validation/crossval/_23_lossy_results/rfx__falsifier_tand0p1_sigma_zero.json::arms.tand0p1.params_run.eps_inf = 4.0`,
+`validation/crossval/_23_lossy_results/rfx__falsifier_tand0p1_sigma_zero.json::arms.tand0p1.params_run.sigma = 0`,
+`validation/crossval/_23_lossy_results/rfx__falsifier_tand0p1_sigma_zero.json::arms.tand0p1.run.n_steps = 1078`
+steps, tails 3.6e-3 / 1.2e-3). Gated
 against its own material:
 
 | quantity | value |
@@ -387,14 +439,23 @@ against its own material:
 | worst per-bin ratio, R | **0.06** — passes |
 | `\|rfx − TMM\|` gated mean, R | 5.24e-3 |
 | `lattice − TMM` gated mean, R | 5.28e-3 |
-| F2 (continuum as the model) | fires, 91 of 229 bins |
+| F2 (continuum as the model) | fires, 0.958 of the window, 91 of 229 bins |
+| F3 (ε′ 1 % high) | fires, 0.790, 123 of 229 bins |
+| F4 (continuum ε in the lattice) | **0 by construction** — σ = 0, no pole (§7) |
+
+**The settled rung is ten times sharper than cv04's own.** `|rfx − lattice|` is
+**1.69e-4** in the gated mean here against **1.68e-3** at cv04's committed
+719-step rung — a factor of ten, and the whole of it is record truncation: the
+material, the mesh and dt are identical, only the record length differs (1078
+steps against 719, tails 3.6e-3 / 1.2e-3 against 0.036 / 0.051). In T the same
+comparison is 1.34e-4 against 6.25e-3, a factor of 47.
 
 Read plainly: **cv04's committed band-mean `|ΔR|` — the number the whole slab
 family's windows are derived from
-(`tests/fixtures/golden_workflows/multilayer_fresnel.json::expected_metrics[id=mean_reflectance_error].observed_baseline
-= 0.0066`) — IS this slab's Yee-lattice second-order term, not solver error.**
-The lattice term over cv04's own masked band (3.03–11.81 GHz, 169 bins) is
-0.0072 in `|ΔR|`; over 4–10 GHz it is 0.0053. cv23 §12.2 said this in one
+(`tests/fixtures/golden_workflows/multilayer_fresnel.json::expected_metrics[0].observed_baseline = 0.0066`) — IS this slab's Yee-lattice second-order term, not solver error.**
+The lattice term over cv04's own masked band (3.032–11.867 GHz, 170 bins, of
+which 115 are gated) is 0.00727 in `|ΔR|`; over the gated 4–10 GHz it is
+0.00530. cv23 §12.2 said this in one
 sentence; here it is measured, against a committed artifact, with a derived
 window. Nothing about cv04's gates changes — the point is that the envelope those
 gates and cv22's and cv23's windows are built on is a discretization number, and
@@ -443,7 +504,7 @@ requires at least 40 bins over the window on R or T at each.
 | cv23 tand3 (= dx2) | **0.94** | **174.4** | 113 / 229 / 74 |
 | cv23 tand3_dx4 | 0.54 | 93.7 | 101 / 229 / 46 |
 | cv04 material (settled) | 14.1 | 17.4 | 228 / 227 / 0 |
-| cv04 as committed | 1.50 | 0.45 | 90 / 28 / 0 |
+| cv04 as committed | 1.45 | 0.43 | 89 / 24 / 0 |
 
 (The `thickness_minus_cell` twin is within 15 % of each row and also fires
 everywhere; both are recorded in the artifact.)
@@ -474,7 +535,7 @@ separation falls at order 2.
 | cv22 drude | dx | 5.99 | **dx** (214 bins) | — |
 | cv22 debye | dx | **0.13** | **never** — see §5.2 | — |
 | cv04 material (settled) | dx | 0.96 | **dx** (91 bins) | — |
-| cv04 as committed | dx | 0.10 | **never** — see §5.3 | — |
+| cv04 as committed | dx | 0.099 | **never** — see §5.3 | — |
 
 **Answer to "compute which rung F2 fires at":** F2 fires at the COARSEST rung of
 every ladder that runs one — dx for cv23's tand0p1 and tand1 and for cv22's
@@ -500,7 +561,7 @@ cv04/cv23, ε∞ for cv22) 1 % high.
 | cv23 tand1 / _dx2 / _dx4 | 0.78 / 0.87 / 1.12 | 76 / 110 / 160 in R, 216 / 219 / 229 in T | yes |
 | cv23 tand3 / _dx4 | 0.52 / 0.57 | 94 / 95 in R, 229 / 229 in T | yes |
 | cv04 material (settled) | 0.79 | 123 / 128 / 0 | yes |
-| cv04 as committed | 0.08 | 0 / 0 / 0 | **no** (§5.3) |
+| cv04 as committed | 0.082 | 0 / 0 / 0 | **no** (§5.3) |
 
 F3 fires on every rung except the two declared non-discriminating ones. On
 several arms it is carried by the per-bin gate (GL1), not the band mean — the 1 %
@@ -753,8 +814,10 @@ Recorded because the record is the point.
 7. **The lattice verdict is not wired into the cases' exit codes.** §6. It is a
    separate invocation with its own rc. Wiring it changes what a red case means
    and should follow a green VESSL run, not precede it.
-8. **The committed cv23 `arms.<arm>.lattice.R_lattice` arrays reproduce to 1e-15,
-   not bit-for-bit,** when recomputed today. The refactor of
+8. **The committed cv23 `arms.<arm>.lattice.R_lattice` arrays reproduce to
+   7e-15 (measured maximum 6.9e-15, on `tand3`'s R), not bit-for-bit,** when
+   recomputed today. The note first said "1e-15", which the measurement does not
+   support. The refactor of
    `yee_lattice_slab_rt` is bit-for-bit identical to its pre-refactor self
    (checked against `git show HEAD:…`), so the 1e-15 is an environment
    difference in the r3 pod's numpy/BLAS, not this lane. Recorded, not chased.
