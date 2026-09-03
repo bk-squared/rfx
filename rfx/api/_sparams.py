@@ -846,6 +846,170 @@ def _warn_if_passivity_projected(
     )
 
 
+WAVEGUIDE_RECIPROCITY_ADVISORY_TOL = 0.011
+"""Warn-only complex-reciprocity tolerance for the rectangular-waveguide
+S-matrix extractor, in the dimensionless per-bin measure
+
+    dev = max_f  max_{i<j} |S_ij(f) - S_ji(f)| / max_{p,q} |S_pq(f)|
+
+DERIVED, not chosen: ``gate_from_envelope(6.9831664765629175e-3,
+quantum=1000)`` = ``ceil(6.9831664765629175e-3 * 1.5 * 1000) / 1000`` =
+``0.011``, with the repo-wide ``ENVELOPE_GATE_MULTIPLIER = 1.5`` of
+``tests/_gate_policy.py``. ``quantum=1000`` (three decimals) is the coarsest
+quantum that still resolves an envelope of order 7e-3; ``quantum=100`` rounds
+to 0.02, which is 2.9x the measured worst case. The derivation is re-run
+against the fixture, from outside this file, by
+``tests/unit/sparams/test_waveguide_reciprocity_advisory.py::
+test_advisory_tolerance_is_derived_from_the_measured_chain_battery_envelope``.
+
+MEASURED ENVELOPE. Artifact:
+``tests/fixtures/waveguide_chain_battery/fixture.json`` -- the single
+pre-declared WR-90 chain-battery run. Per-cell numbers sit at
+``physics_gates["<dut>|<rung>|<lane>"]["reciprocity_complex_max"]`` for the
+pec_short and slab DUTs, and at ``cells[*]["reciprocity_complex_max"]`` for
+all three DUTs (the thru control has no ``physics_gates`` row). The battery's
+own measure is ``cell_metrics`` in
+``tests/_waveguide_chain_battery_gates.py``, which is the formula above --
+that is why this tolerance is expressed in it and not in an absolute
+|S_ij - S_ji|.
+
+Cells INCLUDED -- the claims rung (``physics_gates["claims_rung"] ==
+"fine"``), both normalize lanes, both DUTs that actually transmit:
+
+    slab | fine | normalize=False    6.9831664765629175e-3   <- the envelope
+    slab | fine | normalize='flux'   3.2771666678166415e-4
+    thru | fine | normalize=False    4.3316503043657606e-4
+    thru | fine | normalize='flux'   3.2770621911991577e-4
+
+All four settle well below -40 dB (``settling_db`` between -97.96 and
+-100.43 dB over the eight drives), so none of the four is a record-truncation
+artifact.
+
+Cells EXCLUDED, and why:
+
+  * ``pec_short``, every rung and lane. A full-height PEC short transmits
+    nothing: ``S21`` and ``S12`` are zero to float32 denormal noise (worst
+    ``max|S21|`` across its six cells is 3.4e-20), so its reciprocity
+    deviation is 0 by construction and witnesses nothing. Its settling
+    number is degenerate for the same reason -- the port-2 time records are
+    identically zero, which is what puts ``+0.0 dB`` in its ``settling_db``
+    and what sets the fixture's ``settling_all_below_minus_40_db`` false.
+    Counting a vacuous zero as a witness is the same mistake #395 named for
+    the empty-guide reflection identity, applied here to the transmission
+    entries.
+  * the ``coarse`` and ``mid`` rungs. They are the mesh ladder, and their
+    reciprocity deviation -- up to 6.758813e-2 at slab|coarse|normalize=False
+    -- IS the discretization error this advisory exists to surface.
+    Calibrating the tolerance from them would leave the advisory silent on
+    exactly the under-resolved runs it is for. At 0.011 the advisory fires on
+    slab|coarse|normalize=False (6.76e-2) and slab|mid|normalize=False
+    (1.99e-2), and on nothing else among the fixture's 18 cells.
+
+ONE tolerance covers both lanes. The two lanes' envelopes differ by ~21x
+(6.98e-3 on normalize=False vs 3.28e-4 on normalize='flux'), so 0.011 is
+loose for the flux lane. A per-lane split is deliberately NOT done here: it
+would double the derivation surface for an advisory, and the conservative
+single value cannot fire on a run the committed gate accepts.
+
+This is NOT the chain battery's gate. That gate is
+``RECIPROCITY_COMPLEX_MAX = 0.01`` in
+``tests/_waveguide_chain_battery_gates.py``, pre-declared before the
+measurement, hard, and untouched here. 0.011 > 0.01 on purpose: a warn-only
+advisory must never fire on a run the committed gate would pass.
+
+PORT COUNT. Every cell in the envelope is a 2-port. The check itself is
+port-count-agnostic (``S_ij = S_ji`` is), and it is left enabled for 3+ port
+waveguide results -- a T-junction reference sim is exactly where an extraction
+asymmetry is most likely -- but applying a 2-port-measured tolerance there is
+an EXTRAPOLATION. It is an acceptable one only because nothing gates on this
+number: the advisory is informational on every path.
+
+SCOPE. The waveguide extractor only. No other port family has a measured
+complex-reciprocity envelope -- ``compute_mixed_s_matrix`` in particular
+carries a documented ~9% reciprocity residual on its own experimental lane --
+so the check stays off everywhere else.
+"""
+
+
+def _reciprocity_advisory_message(s_np, f_np, port_names, *, extractor, tol):
+    """WARN-ONLY reciprocity advisory text, or ``None`` when there is nothing
+    to say (fewer than two ports, non-finite data, or a deviation within
+    ``tol``).
+
+    This function NEVER raises and NEVER touches the returned S-parameters. A
+    user whose structure is genuinely non-reciprocal -- magnetised ferrite, an
+    active device -- must get a message, not a broken run.
+
+    Detection is delegated to :func:`rfx.validation.validate_port_smatrix`
+    rather than re-implemented. That validator compares ``|S - S^T|`` against
+    ``atol + rtol * max(1, |S|, |S^T|)``, i.e. an ABSOLUTE difference for a
+    passive S, where the scale floor of 1 always wins. The envelope this
+    tolerance is derived from is the per-bin RELATIVE deviation
+    ``|S_ij - S_ji| / max_pq |S_pq|``. Handing the validator the per-bin
+    ``max|S|``-normalized view ``S_hat`` makes the two identical: by
+    construction ``max_pq |S_hat_pq(f)| = 1``, so the validator's scale is
+    exactly 1 in every bin and, with ``atol=0`` and ``rtol=tol``, its trigger
+    condition ``max |S_hat - S_hat^T| > tol`` is the battery's
+    ``reciprocity_complex_max > tol``. ``check_passivity=False`` here on
+    purpose: passivity is the separate guard in
+    :func:`_warn_if_nonpassive_smatrix`, and it must see the UNNORMALIZED S.
+    """
+    s_np = np.asarray(s_np)
+    if s_np.ndim != 3 or s_np.shape[0] < 2 or s_np.shape[2] < 1:
+        return None
+    if not np.all(np.isfinite(s_np)):
+        # Non-finite data is the passivity/finiteness guard's business.
+        return None
+
+    per_bin_max = np.max(np.abs(s_np), axis=(0, 1))
+    s_hat = s_np / np.maximum(per_bin_max, 1e-12)[None, None, :]
+
+    from rfx.validation import validate_port_smatrix
+
+    report = validate_port_smatrix(
+        s_params=s_hat,
+        freqs=np.asarray(f_np),
+        port_names=tuple(port_names),
+        source=f"{extractor} (per-bin |S|-normalized reciprocity view)",
+        check_passivity=False,
+        check_reciprocity=True,
+        reciprocity_atol=0.0,
+        reciprocity_rtol=float(tol),
+        require_positive_freqs=False,
+        require_strictly_increasing_freqs=False,
+    )
+    issue = next(
+        (i for i in report.issues if i.code == "reciprocity_violation"), None)
+    if issue is None:
+        return None
+
+    dev = float(report.metrics.get("max_reciprocity_abs_diff", float("nan")))
+    i, j = (issue.port_indices or (0, 1))[:2]
+    k = int(issue.frequency_index or 0)
+    names = tuple(port_names)
+    n_i = names[i] if i < len(names) else str(i)
+    n_j = names[j] if j < len(names) else str(j)
+    f_flat = np.asarray(f_np).reshape(-1)
+    f_ghz = float(f_flat[k]) / 1e9 if f_flat.size > k else float("nan")
+    return (
+        f"{extractor}: reciprocity ADVISORY (warn-only -- nothing failed, the "
+        f"S-parameters are returned unchanged): worst complex reciprocity "
+        f"deviation max|S_ij - S_ji| / max|S| = {dev:.4g} exceeds "
+        f"{float(tol):g}, at ports ({n_i}, {n_j}), frequency index {k} "
+        f"({f_ghz:.4f} GHz). The tolerance is derived from the WR-90 "
+        f"chain-battery envelope -- see WAVEGUIDE_RECIPROCITY_ADVISORY_TOL in "
+        f"rfx/api/_sparams.py for the cells it comes from. rfx models eps, "
+        f"sigma and mu_r as isotropic scalars, and a structure built only "
+        f"from those is reciprocal by Lorentz reciprocity, so on this lane a "
+        f"deviation this large is normally a discretization or extraction "
+        f"artifact: refine dx (the measured ladder runs 6.8e-2 coarse -> "
+        f"7.0e-3 fine on normalize=False) or use normalize='flux', which "
+        f"measured ~21x tighter at the same mesh. If your structure genuinely "
+        f"IS non-reciprocal (magnetised ferrite, an active device), this "
+        f"advisory is expected -- it is informational and changes nothing."
+    )
+
+
 def _warn_if_nonpassive_smatrix(
     result,
     *,
@@ -853,6 +1017,8 @@ def _warn_if_nonpassive_smatrix(
     strict: bool = False,
     passivity_tol: float = 0.10,
     amplitude_eps: float = 0.05,
+    check_reciprocity: bool = False,
+    reciprocity_tol: float = WAVEGUIDE_RECIPROCITY_ADVISORY_TOL,
 ) -> None:
     """Auto-run the passivity/finiteness self-check on a freshly-extracted
     S-matrix and surface a non-physical result as a warning (or raise when
@@ -893,6 +1059,21 @@ def _warn_if_nonpassive_smatrix(
         # Traced / non-materializable — never let a diagnostic break the
         # numeric return path.
         return
+
+    # WARN-ONLY reciprocity advisory, enabled per port family by the caller
+    # (today: the waveguide extractor, the only family with a measured
+    # complex-reciprocity envelope). Emitted as its OWN warning, before the
+    # passivity guard below, so that it can neither be swallowed by that
+    # guard's early return nor promoted into its ``strict`` raise: a
+    # reciprocity finding must stay advisory on every path.
+    if check_reciprocity:
+        _recip_msg = _reciprocity_advisory_message(
+            s_np, f_np, tuple(result.port_names),
+            extractor=extractor, tol=reciprocity_tol,
+        )
+        if _recip_msg:
+            import warnings as _w
+            _w.warn(_recip_msg, stacklevel=3)
 
     from rfx.validation import validate_port_smatrix
 
@@ -1008,6 +1189,7 @@ def _finalize_sparam_result(
     extractor: str,
     strict: bool,
     passivity_tol: float = 0.10,
+    check_reciprocity: bool = False,
 ):
     """Shared two-run-S-param epilogue: run the passivity/finiteness guard on a
     freshly-assembled S-matrix result, then return it unchanged.
@@ -1026,12 +1208,19 @@ def _finalize_sparam_result(
 
     ``passivity_tol`` defaults to the tight 0.10 bound (matching the coax call
     site). The waveguide path passes a ``normalize``-aware tolerance.
+
+    ``check_reciprocity`` is opt-in per family and WARN-ONLY: it emits the
+    advisory built by :func:`_reciprocity_advisory_message` and never raises,
+    never changes the result. Only the waveguide extractor turns it on, because
+    it is the only family with a measured complex-reciprocity envelope (see
+    ``WAVEGUIDE_RECIPROCITY_ADVISORY_TOL``).
     """
     _warn_if_nonpassive_smatrix(
         result,
         extractor=extractor,
         strict=strict,
         passivity_tol=passivity_tol,
+        check_reciprocity=check_reciprocity,
     )
     return result
 
@@ -2518,6 +2707,7 @@ class _SparamMixin:
                 _res_nu,
                 extractor="compute_waveguide_s_matrix",
                 strict=strict_passivity,
+                check_reciprocity=True,
                 # normalize=False carries documented Yee-dispersion + band-edge
                 # |S11| overshoot (validated paths reach ~1.4-1.7), so use a
                 # loose bound there that still catches gross extractor bugs
@@ -2887,6 +3077,7 @@ class _SparamMixin:
                 _res_mm,
                 extractor="compute_waveguide_s_matrix",
                 strict=strict_passivity,
+                check_reciprocity=True,
                 passivity_tol=2.0 if normalize is False else 0.10,
             )
 
@@ -3080,6 +3271,7 @@ class _SparamMixin:
             _res_sm,
             extractor="compute_waveguide_s_matrix",
             strict=strict_passivity,
+            check_reciprocity=True,
             passivity_tol=2.0 if normalize is False else 0.10,
         )
 

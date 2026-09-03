@@ -198,6 +198,23 @@ def _enumerate_emission_sites():
 # ``warnings.warn`` — deliberately NOT a PreflightWarning construction, so it
 # is invisible to the AST walk above and the site count stays at 89. A
 # conscious contract edit, recorded here rather than absorbed silently.
+# 89 -> 89 sites / 59 -> 59 literal codes, UNCHANGED, issue #854 item 4
+# (warn-only waveguide reciprocity advisory). Recorded here because the
+# expectation going in was that a new advisory moves these numbers, and
+# MEASURED it does not: that advisory is a ``warnings.warn`` inside
+# ``rfx/api/_sparams.py``'s shared extractor guard
+# ``_warn_if_nonpassive_smatrix``, not a ``PreflightWarning`` construction in
+# ``rfx/api/_preflight.py``, so the AST walk above cannot see it -- the same
+# boundary already noted for the coax<->MSL realized ladder in the #823 block.
+# It could not have been a preflight check either way: preflight runs BEFORE
+# the solve and validates input fidelity, while reciprocity is measured on the
+# extracted S-matrix. The surface that DID move -- the guard's advisory
+# emission sites, 2 -> 3 -- is frozen by
+# ``tests/unit/sparams/test_waveguide_reciprocity_advisory.py::
+# test_runtime_guard_advisory_surface_is_frozen``, which is that file's
+# deliberate sibling of this freeze. EMISSION_CLASSIFICATION is unchanged too:
+# no preflight call was added, so ``compute_waveguide_s_matrix`` stays
+# DIAGNOSTIC_ONLY.
 _FROZEN_TOTAL_SITES = 89
 _FROZEN_LITERAL_CODE_COUNT = 59
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line

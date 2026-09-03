@@ -659,3 +659,40 @@ envelope first; then a warn-only check for the **waveguide family** takes its to
 `tests/unit/preflight/test_preflight_advisory_emission_contract.py` (`_FROZEN_LITERAL_CODE_COUNT` at `:202`, test
 at `:218`) are updated in the same PR. Tracked as **#854 item 4**, carried in WP7 as a follow-on,
 and listed in the contract's "explicitly not required for v1.8".
+
+### Outcome — landed warn-only, and one prediction above was wrong
+
+Wired as `check_reciprocity` on the three `compute_waveguide_s_matrix` call sites of
+`_finalize_sparam_result`, emitted by `_warn_if_nonpassive_smatrix` as its own `warnings.warn`
+before the passivity guard, so it can neither be swallowed by that guard's early return nor
+promoted into its `strict` raise. Warn-only on every path.
+
+**Tolerance.** `WAVEGUIDE_RECIPROCITY_ADVISORY_TOL = 0.011` in `rfx/api/_sparams.py` =
+`gate_from_envelope(6.9831664765629175e-3, quantum=1000)`. The envelope is the worst of the four
+claims-rung transmitting cells of `tests/fixtures/waveguide_chain_battery/fixture.json`:
+slab/false 6.9831664765629175e-3 (the envelope), slab/flux 3.2771666678166415e-4, thru/false
+4.3316503043657606e-4, thru/flux 3.2770621911991577e-4 — all four settling between −97.96 and
+−100.43 dB. `pec_short` is excluded at every rung: it transmits nothing, so its S21/S12 are zero to
+float32 denormal noise (worst `max|S21|` 3.4e-20) and both its reciprocity deviation and its
+`settling_db` are degenerate. The `coarse` and `mid` rungs are excluded because they are the ladder
+whose discretization error the advisory exists to surface; at 0.011 the advisory fires on
+slab|coarse|false (6.76e-2) and slab|mid|false (1.99e-2) and on nothing else in the 18-cell fixture.
+The battery's own hard gate `RECIPROCITY_COMPLEX_MAX = 0.01` is untouched, and 0.011 > 0.01 on
+purpose so the advisory cannot fire on a run the gate passes. Re-derived from outside the
+production file by `tests/unit/sparams/test_waveguide_reciprocity_advisory.py`.
+
+**The preflight-counter prediction above did not hold, measured.** `_FROZEN_TOTAL_SITES` (89) and
+`_FROZEN_LITERAL_CODE_COUNT` (59) do NOT move: that contract's AST walk covers
+`rfx/api/_preflight.py` only, and this advisory is a `warnings.warn` in `rfx/api/_sparams.py`,
+invisible to it — the same boundary that file already records for the coax↔MSL realized-ladder
+warn. It could not have been a preflight check either way: preflight runs before the solve and
+validates input fidelity, while reciprocity is measured on the extracted S-matrix. The surface that
+did move is the shared extractor guard's own advisory sites, 2 → 3, now frozen by
+`test_waveguide_reciprocity_advisory.py::test_runtime_guard_advisory_surface_is_frozen`. The
+counter-update sentence above is left standing as the prediction it was; this paragraph is the
+measurement.
+
+**Not done, deliberately.** One tolerance covers both lanes even though their envelopes differ ~21×
+(6.98e-3 on `normalize=False` vs 3.28e-4 on `normalize='flux'`), so 0.011 is loose for the flux
+lane. A per-lane split would double the derivation surface for an advisory; the single conservative
+value cannot fire on a run the committed gate accepts.
