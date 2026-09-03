@@ -10,6 +10,7 @@ The pre-declared self-checks S1' and S2 of
 here.  S3' (the two-wave residual) is enforced inside the crossval script
 itself, because it is a property of the run, not of the comparator.
 """
+import math
 import sys
 from pathlib import Path
 
@@ -172,15 +173,52 @@ def _built():
     return mod.build()
 
 
+def _leaves_beyond_tolerance(fresh, committed, path="", rel=1e-12, abs_=1e-15):
+    """Every leaf where a fresh build and the committed artifact disagree.
+
+    Structure, keys, strings, ints and bools must match EXACTLY.  Floats are
+    compared to ``rel``/``abs_``: the oracle solves ``u tan(u) = sqrt(V^2-u^2)``
+    by bisection on the platform's ``tan``, and libm's last-digit rounding of
+    ``tan`` differs between the macOS build the artifact was written on and the
+    Linux build CI replays it on (byte-equality went red on CI on 2026-09-03
+    for exactly that reason, with the artifact reproducing bit-for-bit on the
+    machine that wrote it).  ``rel = 1e-12`` is three orders above the
+    bisection's own ``1e-15`` convergence bracket and nine orders below the
+    smallest physics margin this lane gates, so it can only absorb libm
+    rounding, never a changed number.  This is a reproducibility check of
+    committed code, not a physics tolerance."""
+    bad = []
+    if isinstance(fresh, dict) and isinstance(committed, dict):
+        for k in sorted(set(fresh) | set(committed)):
+            if k in fresh and k in committed:
+                bad += _leaves_beyond_tolerance(fresh[k], committed[k], f"{path}.{k}", rel, abs_)
+            else:
+                bad.append(f"{path}.{k}: present on one side only")
+    elif isinstance(fresh, list) and isinstance(committed, list):
+        if len(fresh) != len(committed):
+            bad.append(f"{path}: length {len(fresh)} vs {len(committed)}")
+        else:
+            for i, (a, b) in enumerate(zip(fresh, committed)):
+                bad += _leaves_beyond_tolerance(a, b, f"{path}[{i}]", rel, abs_)
+    elif (isinstance(fresh, float) or isinstance(committed, float)) and not (
+            isinstance(fresh, bool) or isinstance(committed, bool)):
+        if not math.isclose(fresh, committed, rel_tol=rel, abs_tol=abs_):
+            bad.append(f"{path}: fresh {fresh!r} vs committed {committed!r}")
+    elif fresh != committed:
+        bad.append(f"{path}: fresh {fresh!r} vs committed {committed!r}")
+    return bad
+
+
 def test_matched_frequency_artifact_is_what_the_builder_emits():
-    """The committed JSON must be byte-reproducible from committed code."""
+    """The committed JSON must be reproducible from committed code."""
     import json
     assert _ARTIFACT.is_file(), f"missing artifact {_ARTIFACT}"
     committed = json.loads(_ARTIFACT.read_text())
-    assert committed == _built(), (
+    bad = _leaves_beyond_tolerance(_built(), committed)
+    assert not bad, (
         "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json is "
         "stale -- re-run scripts/diagnostics/cv03_flux/"
-        "build_cv03_matched_frequency.py")
+        "build_cv03_matched_frequency.py\n" + "\n".join(bad))
 
 
 def test_round1_mismatch_mechanism_reproduces_and_inverts():
