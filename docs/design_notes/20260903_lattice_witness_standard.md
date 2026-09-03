@@ -602,8 +602,13 @@ lane's gates are unaffected either way.
   is a separate post-processing invocation with its own exit code (0 = every rung
   passed), exactly like `--meep-ladder-summary`. Wiring the lattice verdict into
   the cases' own `verdict.exit_code` is a follow-up the PI can call for once the
-  VESSL run has confirmed the numbers on a fresh tree; it is NOT done here, and
-  that is stated rather than implied.
+  VESSL run has confirmed the numbers on a fresh tree; the run has now done so
+  (§9.1, 12 of 12 rungs green, worst ratio 0.30), so the precondition is met and
+  the wiring is a PI call — it is still NOT done here, and that is stated rather
+  than implied.
+- No committed rung of any case is added, removed or re-run. §8.1's remedy rung
+  is a NEW rung and lives in `_22_dispersive_diag/`, outside every case's
+  `rungs_from_results` glob, precisely so that this bullet stays true.
 - cv23's `arms.<arm>.lattice` reported block is unchanged and still written; the
   new artifact does not replace it.
 
