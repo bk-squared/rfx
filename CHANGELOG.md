@@ -31,8 +31,7 @@ analytic Airy slab, the PEC short and the five broad-E5 replay bands as
 referees. Power closure is witnessed **independent in the plane index only (both routes integrate the same transverse window with the same uniform dA through the same flux kernel, and neither sees the reference-plane de-embedding, which is phase-only)** and is **bounded** rather than demonstrated:
 two interior `add_flux_monitor` planes and the port route agree to `2.146e-05`
 against a `0.02` gate at the coarse rung, but both sit at that rung's float32
-field-noise floor; that measurement is under review on PR #870 and is not yet
-on `main`. No gate, tolerance or measured number moved, and no simulation was
+field-noise floor; that measurement landed on `main` in PR #870 (`1bccdfba`).
 re-run for this entry. Artifacts: `tests/oracle/test_waveguide_chain_battery.py`,
 `tests/unit/geometry/test_waveguide_chain_battery_geometry.py`,
 `tests/fixtures/waveguide_chain_battery/fixture.json`,

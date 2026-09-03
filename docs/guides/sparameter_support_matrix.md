@@ -582,7 +582,7 @@ both routes integrate the same transverse window with the same uniform `dA`
 through the same flux kernel, so an area-weighting or shared-kernel error
 cancels in both ratios, and neither route sees the reference-plane de-embedding,
 which is phase-only; that measurement is under
-review on PR #870 and is not yet on `main`. A separate observation from the same
+landed on `main` in PR #870 (`1bccdfba`). A separate observation from the same
 comparison is open as issue #873: the `normalize=False` extractor reports
 `1.825e-2` column power on an **empty** WR-90 guide at the coarse rung, falling
 about 4x per dx halving (so it is second order in dx), while the flux lane on
