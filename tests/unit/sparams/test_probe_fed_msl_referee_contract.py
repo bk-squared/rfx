@@ -19,11 +19,13 @@ pinned by any test in this file.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
 import subprocess
 import sys
+from fractions import Fraction
 from pathlib import Path
 
 import numpy as np
@@ -939,6 +941,116 @@ def test_plan_computes_the_post_smoothing_mesh_the_builder_hands_openems(ref):
         assert "z_lo" not in pml, "z_lo is PEC, not PML -- it has no depth"
         # and the honest headline: the built mesh is several times the plan
         assert built["n_cells_total"] > 4 * plan["n_cells_total"]
+
+
+_CSX_UNIT_MM = 1e-3
+
+
+def _line_digest(lines) -> str:
+    """sha256 of a line array's IEEE bytes, byte-order pinned."""
+    return hashlib.sha256(
+        np.ascontiguousarray(lines, dtype="<f8").tobytes()).hexdigest()
+
+
+def test_the_y_mesh_line_set_is_pinned_across_platforms(ref):
+    """The mesh openEMS receives is a COMMITTED set, not a per-host one.
+
+    Issue #876: the y line count was the only thing pinned, and on macOS
+    the plan smoothed to 402 lines where Linux got 401 — two platforms
+    building two different meshes under one recorded number. The cause was
+    a 1-ulp difference in the PRE-smoothing lines (``np.arange`` contracted
+    into an FMA by the macOS numpy build; see
+    ``uncontracted_arange``), amplified by the smoother's ``np.ceil`` ties.
+    A count cannot catch that: the 402 came from lines that were each
+    within 4.4e-16 mm of the right ones.
+
+    So the line SET itself is pinned, in the CSX drawing unit (mm) that the
+    builder hands ``AddLine`` / ``SmoothMeshLines``, both before and after
+    smoothing. Provenance of the digests: dumps taken from Linux x86-64 and
+    Linux arm64 (glibc), which agree with each other bit for bit; this
+    checkout reproduces them on macOS arm64 under numpy 2.2.6 and 2.4.6.
+    They are therefore what openEMS was already receiving on the reference
+    platform — the #490 lane's mesh is unchanged.
+    """
+    expect = {
+        50e-6: {
+            "pre_n": 85, "post_n": 401,
+            "pre_sha": "07ae7a147e853a1b7b03978f7f8d4ad1"
+                       "b5e87d530165d9e1b07137dd21fdf907",
+            "post_sha": "e9331dc637623bc364148c772348ff06"
+                        "f15145fa969a60fa0696ca02f7a9dcae",
+        },
+        80e-6: {
+            "pre_n": 59, "post_n": 301,
+            "pre_sha": "118175fd0fea21955ec2097c3009309a"
+                       "7900b2b3f7d7c5458d90c464c7f6a9bb",
+            "post_sha": "e3c2e8c834c7749e701f589d9f06f39a"
+                        "f558b6056217c771c5fbcdef8d573120",
+        },
+    }
+    u = 1.0 / _CSX_UNIT_MM
+    for dx_m, want in expect.items():
+        pre_mm = ref.openems_mesh_plan(dx_m)["y_lines_m"] * u
+        post_mm = ref._csxcad_smooth_mesh_lines(pre_mm, (dx_m / 4.0) * u, 1.4)
+        assert pre_mm.size == want["pre_n"]
+        assert _line_digest(pre_mm) == want["pre_sha"], (
+            f"dx={dx_m}: the PRE-smoothing y lines moved. Count alone would "
+            f"not see this; a 1-ulp shift here is what produced 402 lines "
+            f"instead of 401 on macOS (#876)")
+        assert post_mm.size == want["post_n"]
+        assert _line_digest(post_mm) == want["post_sha"], (
+            f"dx={dx_m}: the mesh handed to openEMS moved")
+
+
+def test_the_mesh_line_generator_is_fma_invariant(ref):
+    """``uncontracted_arange`` is the two-rounding result, at every element.
+
+    The reference is built with ``fractions.Fraction``, i.e. with no
+    floating-point arithmetic at all: each of the two operations is applied
+    exactly and then rounded once, which is what two separate numpy ufunc
+    calls must produce on any platform. The contrast is the SINGLE-rounding
+    (FMA) evaluation of the same expression — what the macOS numpy build's
+    own ``arange`` emits — and the test first asserts that the two exact
+    references genuinely disagree on this fixture, so that agreeing with
+    one of them is evidence rather than a coincidence.
+    """
+    pad50 = ref.B_PML_CELLS * 50e-6
+    cases = [
+        # the plan's own three axes at dx = 50 um, the fixture #876 was
+        # measured on, plus the 80 um leg's y axis
+        (0.0 - pad50, ref.B_LY_M + pad50 + 0.5 * 50e-6, 50e-6),
+        (ref.B_TRACE_X_LO_M - pad50,
+         ref.B_TRACE_X_HI_M + pad50 + 0.5 * 50e-6, 50e-6),
+        (ref.B_H_SUB_M, ref.B_LZ_M + pad50 + 0.5 * 50e-6, 50e-6),
+        (0.0 - ref.B_PML_CELLS * 80e-6,
+         ref.B_LY_M + ref.B_PML_CELLS * 80e-6 + 0.5 * 80e-6, 80e-6),
+    ]
+    contended = 0
+    for start, stop, step in cases:
+        got = ref.uncontracted_arange(start, stop, step)
+        assert got.size == np.arange(start, stop, step).size, (
+            "the generator must keep numpy's own length rule")
+        delta = (start + step) - start
+        two_round = np.array([
+            float(Fraction(start) + Fraction(float(Fraction(i)
+                                                   * Fraction(delta))))
+            for i in range(got.size)])
+        one_round = np.array([
+            float(Fraction(start) + Fraction(i) * Fraction(delta))
+            for i in range(got.size)])
+        n_split = int((two_round != one_round).sum())
+        contended += n_split
+        np.testing.assert_array_equal(
+            got, two_round,
+            err_msg=f"start={start!r} step={step!r}: the generator is not "
+                    f"the two-rounding result at every element")
+        if n_split:
+            assert not np.array_equal(got, one_round), (
+                f"start={start!r} step={step!r}: the generator produced the "
+                f"CONTRACTED (single-rounding) lattice — the #876 defect")
+    assert contended > 0, (
+        "no element of any case distinguishes the contracted from the "
+        "uncontracted evaluation, so this fixture proves nothing")
 
 
 def test_planned_total_cells_reaches_the_artifact_instead_of_zero(ref):

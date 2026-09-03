@@ -672,6 +672,48 @@ def merge_coincident_mesh_lines(lines, dx_m: float,
     return np.asarray(kept, dtype=float)
 
 
+def uncontracted_arange(start: float, stop: float, step: float) -> np.ndarray:
+    """``np.arange(start, stop, step)`` written so no compiler may contract it.
+
+    Issue #876. numpy fills a float64 ``arange`` as
+    ``buffer[i] = buffer[0] + i * (buffer[1] - buffer[0])``, and whether the
+    compiler emits that as a multiply followed by an add (two roundings) or
+    as a single FMA (one rounding) is a property of the numpy BUILD, not of
+    numpy. Measured on this plan's y lines at dx = 50 um: the Linux x86-64
+    and Linux arm64 wheels give the two-rounding result, the macOS arm64
+    wheel gives the FMA result, and they disagree on 19 of 78 elements by
+    1 ulp (4.4e-16 mm).
+
+    That ulp is not harmless here, because the CSXCAD smoother downstream
+    resolves ties: its ``np.ceil(range / max_res)`` sits on values like
+    1.0000000000000142 and 3.99999999999995, and a 1-ulp shift of a 2.6 mm
+    line moves that quotient by ~3.6e-14 — larger than the tie margins. The
+    macOS lines therefore smoothed to 402 lines where Linux gets 401: the
+    two platforms handed openEMS two different meshes.
+
+    Recomputing numpy's OWN fill formula as two separate ufunc calls — one
+    multiply, one add, each correctly rounded on its own — is single-rounded
+    per operation on every platform by construction. It reproduces the Linux
+    line set bit for bit (verified against dumps from Linux x86-64 and Linux
+    arm64: all 85 pre-smoothing y lines identical, 401 lines after
+    smoothing), so this changes what openEMS receives on macOS ONLY, onto
+    what Linux already built.
+
+    The step is ``(start + step) - start`` and not ``step`` for the same
+    reason: that is the delta numpy's fill actually uses, and it is what the
+    committed Linux line set was built from. Substituting ``step`` is a
+    different lattice — measured, it moves 76 of the 85 y lines and smooths
+    to 399, i.e. it would silently re-mesh the #490 lane on Linux too.
+    """
+    if step == 0.0:
+        raise ValueError("step must be non-zero")
+    n = int(np.ceil((stop - start) / step))
+    if n <= 0:
+        return np.empty(0, dtype=np.float64)
+    delta = (start + step) - start
+    return start + np.arange(n, dtype=np.float64) * delta
+
+
 def min_mesh_cell_m(lines) -> float:
     """Smallest cell in a line array -- 0.0 for a single line."""
     lines = np.asarray(lines, dtype=float)
@@ -908,7 +950,7 @@ def openems_mesh_plan(dx_m: float) -> dict:
     y0, y1 = 0.0 - pad, B_LY_M + pad
     z1 = B_LZ_M + pad
 
-    x_lines = np.arange(x0, x1 + 0.5 * dx_m, dx_m)
+    x_lines = uncontracted_arange(x0, x1 + 0.5 * dx_m, dx_m)
     # Lines that MUST exist: the lumped feed, the MSL start plane, the
     # measurement plane, and both open ends (a port off the mesh is
     # CSXCAD's "Unused primitive" -> zero energy; the patch precedent's
@@ -918,7 +960,7 @@ def openems_mesh_plan(dx_m: float) -> dict:
     x_lines = merge_coincident_mesh_lines(
         np.concatenate([x_lines, required_x]), dx_m, exact=required_x)
 
-    y_lines = np.arange(y0, y1 + 0.5 * dx_m, dx_m)
+    y_lines = uncontracted_arange(y0, y1 + 0.5 * dx_m, dx_m)
     trace_y_lo = B_Y_C_M - 0.5 * B_W_TRACE_M
     trace_y_hi = B_Y_C_M + 0.5 * B_W_TRACE_M
     third = np.asarray([2.0 * dx_m / 3.0, -dx_m / 3.0]) / 4.0
@@ -932,7 +974,7 @@ def openems_mesh_plan(dx_m: float) -> dict:
     # the substrate cell count is chosen, never left to an unguided arange.
     n_sub = max(int(round(B_H_SUB_M / dx_m)), 1)
     z_sub = np.linspace(0.0, B_H_SUB_M, n_sub + 1)
-    z_air = np.arange(B_H_SUB_M, z1 + 0.5 * dx_m, dx_m)
+    z_air = uncontracted_arange(B_H_SUB_M, z1 + 0.5 * dx_m, dx_m)
     z_lines = merge_coincident_mesh_lines(
         np.concatenate([z_sub, z_air]), dx_m, exact=z_sub)
 
