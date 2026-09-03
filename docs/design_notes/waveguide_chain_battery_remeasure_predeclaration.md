@@ -596,8 +596,21 @@ computed over is the frozen one.
 
 - **`settling_degenerate_records` differs from the frozen skip set on ANY cell — read whatever
   the dB says.** This branch is not conditional on a dB reading, and it is checked on all 18
-  cells before the first branch above is allowed to call the run "as predicted": the skip set
-  is the quantity #881 introduced, and this run is its first measurement. The frozen set, read
+  cells before the first branch above is allowed to call the run "as predicted".
+
+  **What this field is, stated correctly.** It is NOT #881's skip set, and this run is not its
+  first measurement — the frozen artifact already carries it. It is a driver-side, report-only
+  list built in the assembly step as `r["peak"] < finfo(float32).tiny`, where `peak` is a
+  **power** (`p.max()` of `amp**2`) compared against an **amplitude** floor of 1.1754944e-38.
+  #881's witness skips on a different test, `sqrt(peak_power) < tiny·10**(40/20)` =
+  1.1754944e-36. On the frozen records the two sets coincide at the mid and fine rungs and
+  **disagree at coarse**, where the driver lists 8 records on each `pec_short|coarse` cell that
+  #881 scores and keeps — their own values are −95.11 / −92.65 / −97.96 / −94.85 / −96.76 /
+  −92.83 / −91.38 / −94.25 dB, none of them binding. So on a coarse cell a change in this list
+  does not by itself mean the dB was scored over a different population; sub-branch (a) below
+  must read `settling_records` to say that, and the artifact carries it in full for both runs.
+  The field is still worth branching because it is the cheapest signal that the record set
+  moved at all. The frozen set, read
   from the artifact (`cells[].settling_degenerate_records`), is **8 entries on each of the six
   `pec_short` cells and empty on all twelve `thru` and `slab` cells**. The eight are the four
   records (`v_probe_t`, `v_ref_t`, `i_probe_t`, `i_ref_t`) of the far port on each of the two
@@ -623,7 +636,7 @@ computed over is the frozen one.
     frozen one rather than as a moved value.
   - *The count is still 8 but the NAMES moved* — a different call index, or a different record
     inside a call (`call1/port0` becoming `call3/port0`; a `v_` record surviving while its `i_`
-    partner is skipped). §3 and §7 declare the driver unchanged, so a changed call/port
+    partner is skipped). §7 declares the driver changed only by the identity stamp and §4's shift constants, so a changed call/port
     indexing or record set is a change in the instrument, not in the physics. Print the two
     lists side by side before any dB from that cell is read.
   In all four the dB is still recorded and still read by its own branch above. What this branch
@@ -1500,9 +1513,30 @@ physics that distinguishes it — the port's transverse mode solved on the guide
 with `schema_version` 2, the same schema otherwise
 (`tests/fixtures/waveguide_chain_battery/README.md`, extended in the measurement PR for the
 two new keys below), `predeclaration` pointing at **this** note and `predeclaration_sha` the
-commit that lands it, which must predate `provenance.commit`. Driver and lane are unchanged:
+commit that lands it, which must predate `provenance.commit`. The lane is unchanged:
 `scripts/diagnostics/waveguide_chain_battery_measure.py --fixture-out <new path>` under
 `scripts/vessl_waveguide_chain_battery.yaml`.
+
+**The driver is NOT unchanged, and here is the rule for what may change in it.** An earlier
+draft of this section said it was, which is false as written: `schema_version` and
+`predeclaration` come from module constants (`waveguide_chain_battery_measure.py:83`,
+`:799-800`) and that constant currently points at the PARENT note, while `shift_pair_name` and
+`supersedes` — this section's own two discriminator keys — do not exist anywhere in the repo
+yet. Producing the artifact this note describes therefore requires editing the driver.
+
+The rule, declared here so the measurement PR's reviewer has one: the driver may be edited
+**only to stamp the new artifact's identity** — `schema_version` to 2, the `predeclaration`
+constant to this note, and the two new keys `shift_pair_name` and `supersedes` — plus the
+declared plane-shift constants themselves (§4). It may **not** be edited to change what is
+measured, which record is scored, which objective carries a witness, or how any quantity is
+computed. That is why §5.6(i) declines to widen the `forward_identity_x64` witness to the other
+five legs even though doing so would make its falsifier evaluable per leg: widening it changes
+what is measured, and the driver is part of the pre-declared contract. A measurement PR that
+edits the driver beyond the identity stamp and §4's constants is out of contract, and the
+reviewer should say so rather than absorb it.
+
+The two discriminators in the next paragraph are unaffected by this: `fc_port_hz` and
+`port_cutoff_effective_width_cells` are already written by the driver today.
 
 **Three mechanisms tell them apart, and none of them is a filename convention:**
 
