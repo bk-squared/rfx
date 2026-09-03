@@ -36,7 +36,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 CV14_PATH = REPO_ROOT / "validation" / "crossval" / "14_rect_cavity_pozar.py"
 
 

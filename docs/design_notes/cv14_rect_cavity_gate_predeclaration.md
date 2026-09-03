@@ -292,7 +292,7 @@ does.
 
 ### Falsifiers committed
 
-`tests/test_crossval_cv14_cavity_gates.py`, 16 tests: 12 synthetic (fast lane, no FDTD)
+`tests/crossval/test_crossval_cv14_cavity_gates.py`, 16 tests: 12 synthetic (fast lane, no FDTD)
 pinning the gate math, the axis-blind `min()` defect, NOT-FOUND handling, the unchanged
 2 % threshold, Gate 0 on a one-cell error on each axis, Gate 3's void-not-passing
 behaviour when Gate 0 fails, and the `0.1/T` scaling; plus 3 end-to-end FDTD legs marked
