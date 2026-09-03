@@ -486,8 +486,10 @@ the family is not chain-closed. One pre-declared WR-90 measurement
 and `a/36` across the `normalize=False` and `normalize="flux"` lanes, with the
 DUT set thru (non-vacuity control only), PEC short and `eps_r = 4` slab. Of the
 185 stored verdicts, **26 are red — 23 failures plus 3 dx ladders that the
-pre-declared guard reports as *not interpretable*** — grouped in five families.
-Every tolerance, position and drive setting was fixed in
+pre-declared guard reports as *not interpretable*** — grouped in five families
+that account for all 26: forward identity 8, settling witness 2, AD-vs-FD 1,
+reference-plane rotation 12, dx ladders 3. Every tolerance, position and drive
+setting was fixed in
 [`waveguide_chain_battery_predeclaration.md`](../design_notes/waveguide_chain_battery_predeclaration.md)
 before the first run, and no gate was moved afterwards.
 
@@ -499,7 +501,8 @@ before the first run, and no gate was moved afterwards.
   reassociation of the flux lane's 2849-step Poynting DFT under the
   reverse-mode tape, not the override channel: the same traced call under a
   scoped x64 context agrees with the untraced call to `1.5e-15`.
-- **Criterion 2 (physics gates) — red on the settling witness only.** Column
+- **Criterion 2 (physics gates) — red on the settling witness only, 2 verdict
+  keys.** Column
   power (max `1.000975` against `1.02`), magnitude reciprocity and complex
   reciprocity all pass at the claims rung. The energy-based ring-down witness
   reads `settling_db = 0.00 dB` on both drives of the PEC-short fine-rung cells
