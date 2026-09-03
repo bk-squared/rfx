@@ -88,7 +88,8 @@
         "tests/crossval/test_lattice_witness_gates.py"
       ],
       "artifact_paths": [
-        "validation/crossval/_04_fresnel_results/fringe_gate_geometry.json"
+        "validation/crossval/_04_fresnel_results/fringe_gate_geometry.json",
+        "validation/crossval/_04_fresnel_results/lattice_witness.json"
       ],
       "cpu_runner": {"order": 2},
       "scheduled_external_order": 4,

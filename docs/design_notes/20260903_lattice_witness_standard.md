@@ -664,16 +664,55 @@ recipe.
   rungs.
 - `validation/crossval/_04_fresnel_results/lattice_witness.json` — one rung,
   written by `python validation/crossval/04_multilayer_fresnel.py
-  --lattice-witness`, with `gated_here = false` and `gated_here_reason`. **Not
-  committed in this PR**: it needs an FDTD run of cv04, which is a VESSL leg
-  (`scripts/vessl_lattice_witness.yaml` section 6), and the manifest contract
-  requires every listed artifact path to exist. cv04's `artifact_paths` therefore
-  stays empty and §5.3's cv04 numbers are DERIVED here, not read from an
-  artifact — stated plainly rather than cited to a file that does not exist.
+  --lattice-witness`, with `gated_here = false` and `gated_here_reason`.
+  **Committed** as of the VESSL run below; cv04's `artifact_paths` now lists it
+  and §5.3's cv04 numbers are READ from it rather than derived.
 
-Both committed witness JSONs are rebuilt from the committed `rfx*.json` rungs by
-`test_committed_witness_artifact_rebuilds_from_the_committed_rungs`, so they can
-never drift from the measurements they summarize.
+All three committed witness JSONs are rebuilt from the committed `rfx*.json`
+rungs by `test_committed_witness_artifact_rebuilds_from_the_committed_rungs`
+(cv22 and cv23; cv04's single rung has no committed `rfx.json` and is rebuilt by
+re-running the case), so they can never drift from the measurements they
+summarize.
+
+### 9.1 Provenance of the committed copies (VESSL run, 2026-09-03)
+
+The three committed `lattice_witness.json` files are the ones the cluster run
+`lattice-witness-20260903T044345Z` wrote, at branch commit
+`9f28d0bd3898810520fae1ed5ce8abdd45135e2b`, on `remilab-c0`. **All 12 committed
+rungs passed on the cluster, worst `|rfx − lattice| / W_witness` = 0.30**
+(cv23 `tand3_dx4`, T).
+
+- **cv22 / cv23.** The run's copies replace the ones this lane had generated
+  locally. Every scalar leaf — every gate, verdict, budget term, gated mean and
+  worst ratio — agrees to the `rel = 1e-9, abs = 1e-15` leaf tolerance the
+  rebuild test uses. **Eighty-one per-bin array entries in cv23 do not**, out of
+  25 071 differing leaves and ~29 000 total: they are `dR_lattice` / `dA_lattice`
+  values of order 1e-6 differing by at most **9.1e-15** absolute (3e-9 relative),
+  on the finest rungs. That is the same numpy/BLAS environment difference §10(8)
+  records, accumulated through the marcher; it is 8 orders below the smallest
+  window in §5 and changes no gate. It is recorded here rather than rounded away.
+  cv22's copies agree at every leaf, including every array entry.
+- **cv04.** No committed copy existed before; this is the case's first. Its
+  measured arrays (`dR_lattice`, `dT_lattice`) are float32 FDTD output and differ
+  from a local re-run at the 5e-6 level — the platform difference of the run
+  itself, not of the lattice model, whose `R_lattice` / `T_lattice` agree to
+  1.7e-15 between the pod and a local re-run. The gated means the note quotes
+  (§5.3) are the pod's.
+- **cv04's leg exited 2, and that is not a lattice-witness failure.** Exit 2 on
+  `04_multilayer_fresnel.py` means "Meep secondary reference unavailable"
+  (`ModuleNotFoundError: No module named 'meep'` on that image). The case's own
+  gates PASS on that run — `T` mean error 0.0110, `R` mean error 0.0066,
+  `R+T` mean deviation 0.0091 (all against 0.05), `max|R+T−1|` 0.0487 ≤ 0.06,
+  both tail witnesses and the tail purity `ok`, and `rfx accuracy: PASS` — and
+  the lattice witness wrote its record and reported `witness_ok = true`.
+- **The committed copies were written before §7's F4 existed** and therefore
+  carry `falsifiers.{thickness_plus_cell, thickness_minus_cell, continuum,
+  eps_x1p01}` only. F4 (`eps_continuum`) is analytic post-processing of the same
+  committed rungs; its verdict at every rung is tabulated in §7 and asserted by
+  `test_falsifiers_fire_exactly_where_the_note_says_they_do`, which computes it
+  from the rungs rather than reading it from the artifact. The next
+  `--lattice-witness` invocation will add the block; the addition is purely
+  additive and changes no gate.
 
 ## 10. Dead ends and things I could not close
 

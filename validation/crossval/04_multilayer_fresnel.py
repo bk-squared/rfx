@@ -421,6 +421,7 @@ if "--lattice-witness" in sys.argv:
     import json as _json
     import cv22_dispersive_gates as _G
     import lattice_witness as _LW
+    import slab_rig as _RIG
 
     _params = {"eps_inf": eps_slab, "sigma": 0.0}
     _rates = _G.slab_ringdown_rates("conductive", _params)
@@ -437,7 +438,11 @@ if "--lattice-witness" in sys.argv:
                 "record": {"rate_ring_1_s": _rates["rate_ring_1_s"],
                            "t_safe_cpml_steps": int(n_steps_safe)}},
     }
+    # Stamp the commit the way cv22 / cv23 do, so this artifact carries its own
+    # provenance instead of a null (review, 2026-09-03).
     _doc = _LW.witness_document("04_multilayer_fresnel", {"slab_eps4": _arm},
+                                commit=_RIG.staged_commit(os.path.dirname(os.path.dirname(SCRIPT_DIR)),
+                                                          cwd=SCRIPT_DIR),
                                 d_slab_m=d_slab)
     _doc["gated_here"] = False
     _doc["gated_here_reason"] = (
