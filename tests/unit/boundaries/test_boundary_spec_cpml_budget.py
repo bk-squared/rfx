@@ -350,37 +350,100 @@ def test_an_axis_outside_cpml_axes_keeps_its_pre_876_applied_depth():
     assert _axis_buffer_depths(pec_closed, 16) == (1, 1, 4)
 
 
+def _split_pad_sim(budget, lo_thickness, hi_thickness, *, n_steps=120):
+    """The cube with its z absorber split ``lo``/``hi`` at a fixed budget.
+
+    ``lo_thickness + hi_thickness`` fixes the z extent (an axis is
+    ``interior + pad_lo + pad_hi``), so two calls with the same SUM build
+    the same grid shape while allocating different ACTIVE depths
+    (``max(pad_lo, pad_hi)``). That is the degree of freedom this file's
+    control needs, and the one it did not have.
+    """
+    z = Boundary(
+        lo="cpml" if lo_thickness else "pec",
+        hi="cpml" if hi_thickness else "pec",
+        lo_thickness=lo_thickness or None,
+        hi_thickness=hi_thickness or None,
+    )
+    sim = Simulation(
+        freq_max=_FREQ, domain=_CUBE, cpml_layers=budget,
+        boundary=BoundarySpec(x="pec", y="pec", z=z),
+    )
+    sim.add_source(_CENTRE, "ez", amplitude_kind="field")
+    sim.add_probe(_PROBE, "ez")
+    return sim
+
+
 def test_thinning_the_active_absorber_is_a_different_answer():
-    """Negative control for the saturation test.
+    """Negative control for the saturation test — at a FIXED grid shape.
 
-    The digest must respond to the ABSORBER. Without this the saturation
-    assertion would also pass on a harness that simply cannot tell two runs
-    apart.
+    The saturation test asserts that two budgets over one absorber agree.
+    This is its control: the emitted program must still respond to the
+    ABSORBER, so that "they agree" is evidence rather than an artefact of a
+    harness that cannot tell two runs apart.
 
-    This is the sibling that used to compare two BUDGETS below saturation
-    (4 vs 8 with ``hi_thickness=4`` pinned) and assert they differed. They
-    did differ — measured here at 418/768 ``ex`` cells and max |Δ| 5.6e-7
-    after 120 steps — but not for a reason that survives inspection: both
-    runs build the same grid and the same 4-layer absorber, and every layer
-    the deeper buffer added was no-op padding (b=1, c=0, kappa=1). The
-    entire signal was the allocation budget leaking into the emitted
-    arithmetic, i.e. the #876 defect itself, so once the clamp removes it
-    those two runs are correctly identical. The control is therefore
-    re-pointed at a degree of freedom that is real: same budget, thinner
-    absorber.
+    Two earlier versions of this control did not do that job.
+
+    * The original compared two BUDGETS below saturation (4 vs 8 with
+      ``hi_thickness=4`` pinned). They did differ — 418/768 ``ex`` cells,
+      max |Δ| 5.6e-7 after 120 steps — but only because the allocation
+      budget was leaking into the emitted arithmetic, which is the #876
+      defect itself.
+    * Its replacement compared ``hi_thickness=4`` against
+      ``hi_thickness=2`` at one budget. Those two grids are (8, 8, 12) and
+      (8, 8, 10): the digests differ because the field arrays are different
+      LENGTHS, which is true of any two differently shaped runs and says
+      nothing about the absorber. It could not fail.
+
+    So this holds the shape fixed and moves only the split: ``lo=0, hi=4``
+    against ``lo=2, hi=2``, both allocating 4 padding cells on z at budget
+    8. Same shape, same budget, same total padding — different ACTIVE
+    depth (4 vs 2), which is what the clamp reads.
+
+    Measured, by reverting ``_axis_buffer_depths`` to the pre-#876
+    ``min(cpml_layers, extent)`` and re-running these three assertions on
+    the same two sims:
+
+                        with the clamp        clamp reverted
+        grid shape      (8,8,12) == (8,8,12)  (8,8,12) == (8,8,12)
+        active depths   (1,1,4) vs (1,1,2)    (8,8,8) == (8,8,8)   -> FAILS
+        psi buffers     differ                identical            -> FAILS
+        field digests   differ                differ
+
+    So assertions 1 and 2 are the live ones and the test dies on the first
+    of them. The digest assertion cannot fail here — two genuinely
+    different absorbers give different fields either way — which is exactly
+    why it is not the control on its own.
     """
     budget = 8
-    thick = _field_digest(
-        _cube_sim(budget, hi_thickness=4).run(n_steps=120, skip_preflight=True))
-    thin = _field_digest(
-        _cube_sim(budget, hi_thickness=2).run(n_steps=120, skip_preflight=True))
-    assert thin != thick
-    # and the change is in the absorber, not in the budget: the buffer
-    # depth follows hi_thickness at a FIXED cpml_layers
-    assert _axis_buffer_depths(
-        _cube_sim(budget, hi_thickness=4)._build_grid(), budget) == (1, 1, 4)
-    assert _axis_buffer_depths(
-        _cube_sim(budget, hi_thickness=2)._build_grid(), budget) == (1, 1, 2)
+    hi_only = _split_pad_sim(budget, 0, 4)
+    split = _split_pad_sim(budget, 2, 2)
+
+    # the premise: one shape, one budget, one total padding
+    assert hi_only._build_grid().shape == split._build_grid().shape
+    assert (hi_only._build_grid().pad_z_lo + hi_only._build_grid().pad_z_hi
+            == split._build_grid().pad_z_lo + split._build_grid().pad_z_hi
+            == 4)
+
+    # 1. the ACTIVE depth is a real degree of freedom at that fixed shape
+    assert _axis_buffer_depths(hi_only._build_grid(), budget) == (1, 1, 4)
+    assert _axis_buffer_depths(split._build_grid(), budget) == (1, 1, 2)
+
+    # 2. and it reaches the emitted program — the psi buffers the face
+    #    slices are cut from. THIS is the assertion that dies if the clamp
+    #    stops tracking the absorber.
+    shapes_hi_only, _ = _cpml_program(hi_only)
+    shapes_split, _ = _cpml_program(split)
+    assert shapes_hi_only != shapes_split, (
+        "the two absorbers compiled to the same psi buffers, so the "
+        "saturation test above cannot tell two absorbers apart"
+    )
+
+    # 3. and to the fields, which is now a comparison of equal-length
+    #    arrays rather than of two differently shaped runs
+    d_hi_only = _field_digest(hi_only.run(n_steps=120, skip_preflight=True))
+    d_split = _field_digest(split.run(n_steps=120, skip_preflight=True))
+    assert d_hi_only != d_split
 
 
 # --------------------------------------------------------------------------
