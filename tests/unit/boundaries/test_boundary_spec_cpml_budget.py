@@ -38,9 +38,15 @@ import hashlib
 import numpy as np
 import pytest
 
+import jax
+
 from rfx import Simulation
-from rfx.boundaries.cpml import _assert_absorber_fits
+from rfx.boundaries.cpml import (
+    _assert_absorber_fits, _axis_buffer_depths, apply_cpml_e, apply_cpml_h,
+    init_cpml,
+)
 from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.core.yee import init_state
 
 # The reported fixture: 20 mm cube, 5 GHz, five PEC faces + one CPML face.
 _FREQ = 5.0e9
@@ -68,6 +74,30 @@ def _field_digest(result) -> str:
     for comp in ("ex", "ey", "ez", "hx", "hy", "hz"):
         h.update(np.asarray(getattr(result.state, comp)).tobytes())
     return h.hexdigest()
+
+
+def _cpml_program(sim):
+    """The CPML update this sim COMPILES: psi shapes + optimized HLO text.
+
+    ``lower(...).compile().as_text()`` is the post-optimization HLO, i.e.
+    the program XLA will actually run — the level at which #876 lived (two
+    budgets over the same absorber fused, and therefore contracted, their
+    ``ey + cb*(d1*inv - d2*inv)`` differently). The PRE-optimization text
+    would not do: the profile arrays are still budget-length constants
+    there, and only constant-folding the ``_clip_lo`` / ``_clip_hi`` slices
+    reveals that the two budgets describe one program.
+    """
+    grid = sim._build_grid()
+    params, cpml_state = init_cpml(grid)
+
+    def step(state, cs):
+        state, cs = apply_cpml_e(state, params, cs, grid)
+        return apply_cpml_h(state, params, cs, grid)
+
+    text = jax.jit(step).lower(init_state(grid.shape), cpml_state) \
+        .compile().as_text()
+    shapes = tuple(np.shape(v) for v in jax.tree_util.tree_leaves(cpml_state))
+    return shapes, text
 
 
 def _interior_energy(result, grid) -> float:
@@ -146,46 +176,143 @@ def test_result_saturates_once_the_budget_covers_the_narrowest_axis():
 
     ``hi_thickness`` is pinned, so every budget here builds the SAME grid
     with the SAME active absorber; only the scratch-buffer allocation
-    differs. Once the buffer covers the narrowest axis the clamp holds it
-    there, so every larger budget must reproduce the fitting-budget result
-    BIT for BIT. That fitting budget is a configuration the pre-fix code
-    also ran, which is what makes this an invariance witness rather than a
-    self-consistency check: the clamped answer is the unclamped answer.
+    differs. The clamp holds that allocation at the ACTIVE absorber depth,
+    so every one of these budgets must compile to the SAME PROGRAM — the
+    psi buffer shapes and the optimized HLO — and therefore reproduce the
+    fitting-budget fields BIT for BIT. That fitting budget is a
+    configuration the pre-fix code also ran, which is what makes this an
+    invariance witness rather than a self-consistency check: the clamped
+    answer is the unclamped answer.
+
+    Program identity is asserted directly and not left to the digest
+    because the digest alone cannot say WHY two runs agree. Issue #876:
+    before the clamp reached the active depth, budgets 8 and 9 over the
+    same 4-layer absorber emitted two different fusions, and on arm64 the
+    XLA fusion emitter contracted one of them into an FMA — 1 ulp on three
+    ``ey`` cells at step 6, a different sha at step 120. Nothing physical
+    distinguished the two runs; the allocation budget had leaked into the
+    emitted arithmetic. Asserting the program closes that leak at the
+    place it happens, on every platform, instead of noticing it only where
+    the fusion happens to differ.
     """
     grid = _cube_sim(4, hi_thickness=4)._build_grid()
     saturate_at = min(grid.shape)
 
-    reference = None
+    reference = digest = shapes = text = None
     for budget in (saturate_at, saturate_at + 1, saturate_at + 5,
                    4 * saturate_at, 8 * saturate_at):
         sim = _cube_sim(budget, hi_thickness=4)
         assert sim._build_grid().shape == grid.shape, (
             "pinning hi_thickness must keep the grid fixed"
         )
+        shapes, text = _cpml_program(sim)
         digest = _field_digest(sim.run(n_steps=120, skip_preflight=True))
         if reference is None:
-            reference = digest
-        assert digest == reference, (
+            reference = (shapes, text, digest)
+        assert shapes == reference[0], (
+            f"budget={budget} changed the CPML buffer shapes although the "
+            f"active absorber is identical to budget={saturate_at}: "
+            f"{shapes} vs {reference[0]}"
+        )
+        assert text == reference[1], (
+            f"budget={budget} compiled a different CPML program than "
+            f"budget={saturate_at} although the active absorber is "
+            f"identical — the allocation budget is leaking into the "
+            f"emitted arithmetic (#876)"
+        )
+        assert digest == reference[2], (
             f"budget={budget} changed the fields although the grid and the "
             f"active absorber are identical to budget={saturate_at}"
         )
 
 
-def test_a_budget_below_saturation_is_a_different_answer():
-    """Negative control for the test above.
+def test_the_clamp_saturates_at_the_active_absorber_not_the_axis_extent():
+    """Where saturation SITS: the active absorber, not the grid (#876).
 
-    Below saturation the buffer depth is a real degree of freedom, so the
-    digest MUST move. Without this the saturation assertion would also pass
-    on a harness that simply cannot tell two runs apart.
+    The buffer depth is what the emitted program is cut from, so the depth
+    itself is the invariant worth pinning — the test above would still pass
+    if the clamp saturated one layer late on every axis, and the fields
+    would then still depend on the budget between the two thresholds.
     """
-    grid = _cube_sim(4, hi_thickness=4)._build_grid()
-    saturate_at = min(grid.shape)
-    below = _field_digest(
-        _cube_sim(4, hi_thickness=4).run(n_steps=120, skip_preflight=True))
-    at = _field_digest(
-        _cube_sim(saturate_at, hi_thickness=4).run(
-            n_steps=120, skip_preflight=True))
-    assert below != at
+    sim = _cube_sim(16, hi_thickness=4)
+    grid = sim._build_grid()
+    assert grid.pad_z_hi == 4 and grid.pad_z_lo == 0
+    assert _axis_buffer_depths(grid, 16) == (1, 1, 4), (
+        "z is clamped to its own 4 active layers; x and y are PEC-closed "
+        "and keep a single no-op layer (depth 0 would make the hi-face "
+        "slice arr[-0:] the whole axis)"
+    )
+    # ...and a UNIFORM absorber is untouched: every face allocates the full
+    # budget, so the depths stay the budget and every currently-compiled
+    # program — every committed digest — is the same program as before.
+    uni = Simulation(freq_max=_FREQ, domain=_CUBE, cpml_layers=4,
+                     boundary="cpml")
+    uni_grid = uni._build_grid()
+    assert _axis_buffer_depths(uni_grid, 4) == (4, 4, 4)
+
+
+def test_a_grid_that_does_not_state_its_face_pads_keeps_the_full_buffer():
+    """The active-depth clamp is licensed by the grid, not assumed (#876).
+
+    ``apply_cpml_e/h`` are also driven with duck-typed grids that carry only
+    a whole-axis ``pad_<axis>`` and a single legacy ``CPMLParams`` — there
+    EVERY face gets a real absorbing profile of length ``cpml_layers``, and
+    an absent ``pad_x_lo`` means "this grid does not say", not "no
+    absorber". Reading it as the latter thinned a real 10-layer waveguide
+    absorber to one layer: ``test_overlap_extraction.py`` measured the
+    overlap-vs-V/I S21 agreement going from < 1e-4 to 1.3e-2 (S11 4.0e-2).
+    Such an axis must keep the pre-#876 ``min(cpml_layers, extent)`` depth.
+
+    The shape below is ``_WgGrid`` from that file, reduced to what
+    ``_axis_buffer_depths`` reads.
+    """
+    class _WholeAxisPadGrid:
+        shape = (40, 21, 11)
+        cpml_layers = 10
+        pad_x, pad_y, pad_z = 10, 0, 0
+
+    assert _axis_buffer_depths(_WholeAxisPadGrid(), 10) == (10, 10, 10), (
+        "an axis whose per-face pads are not stated must not be clamped: "
+        "nothing there is KNOWN to be no-op padding"
+    )
+    # a grid that states one face still gets the clamp on that axis
+    class _OneFaceStated(_WholeAxisPadGrid):
+        pad_x_hi = 4
+
+    assert _axis_buffer_depths(_OneFaceStated(), 10) == (4, 10, 10)
+
+
+def test_thinning_the_active_absorber_is_a_different_answer():
+    """Negative control for the saturation test.
+
+    The digest must respond to the ABSORBER. Without this the saturation
+    assertion would also pass on a harness that simply cannot tell two runs
+    apart.
+
+    This is the sibling that used to compare two BUDGETS below saturation
+    (4 vs 8 with ``hi_thickness=4`` pinned) and assert they differed. They
+    did differ — measured here at 418/768 ``ex`` cells and max |Δ| 5.6e-7
+    after 120 steps — but not for a reason that survives inspection: both
+    runs build the same grid and the same 4-layer absorber, and every layer
+    the deeper buffer added was no-op padding (b=1, c=0, kappa=1). The
+    entire signal was the allocation budget leaking into the emitted
+    arithmetic, i.e. the #876 defect itself, so once the clamp removes it
+    those two runs are correctly identical. The control is therefore
+    re-pointed at a degree of freedom that is real: same budget, thinner
+    absorber.
+    """
+    budget = 8
+    thick = _field_digest(
+        _cube_sim(budget, hi_thickness=4).run(n_steps=120, skip_preflight=True))
+    thin = _field_digest(
+        _cube_sim(budget, hi_thickness=2).run(n_steps=120, skip_preflight=True))
+    assert thin != thick
+    # and the change is in the absorber, not in the budget: the buffer
+    # depth follows hi_thickness at a FIXED cpml_layers
+    assert _axis_buffer_depths(
+        _cube_sim(budget, hi_thickness=4)._build_grid(), budget) == (1, 1, 4)
+    assert _axis_buffer_depths(
+        _cube_sim(budget, hi_thickness=2)._build_grid(), budget) == (1, 1, 2)
 
 
 # --------------------------------------------------------------------------

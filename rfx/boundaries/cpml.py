@@ -279,7 +279,11 @@ def _grid_extents(grid) -> tuple[int, int, int]:
 
 
 def _axis_buffer_depths(grid, n_alloc: int) -> tuple[int, int, int]:
-    """Per-axis CPML scratch-buffer depth: ``min(n_alloc, axis_extent)``.
+    """Per-axis CPML scratch-buffer depth: the axis's ACTIVE absorber depth.
+
+    ``min(n_alloc, extent, max(pad_lo, pad_hi))``, floored at 1, on any grid
+    that DESCRIBES its per-face absorber; ``min(n_alloc, extent)`` on one
+    that does not.
 
     ``grid.cpml_layers`` is an ALLOCATION BUDGET, not a per-face absorber
     thickness: every face profile is built with its OWN active layer count
@@ -311,9 +315,60 @@ def _axis_buffer_depths(grid, n_alloc: int) -> tuple[int, int, int]:
     ``pad_lo + pad_hi > 0``), which is why the #647 fixture survives the NU
     lane and dies on the uniform one. ``_assert_absorber_fits`` below covers
     the case this reasoning does NOT license.
+
+    Issue #876: the clamp goes all the way down to the ACTIVE absorber depth
+    ``max(pad_lo, pad_hi)`` rather than stopping at the axis extent. Every
+    layer between the active depth and the budget is no-op padding
+    (``b=1, c=0, kappa=1``), so dropping it cannot change the physics — but
+    it does change the EMITTED PROGRAM: with the old clamp, budget 8 and
+    budget 9 over the same 4-layer absorber compiled to two different XLA
+    fusions, and on arm64 the fusion emitter contracted ``ey + cb*(d1*inv -
+    d2*inv)`` one way at depth 8 and the other way at depth 9, so the two
+    runs disagreed by 1 ulp on three cells from step 6 onwards. Clamping to
+    the active depth makes every budget at or above saturation compile to
+    the SAME program, which is what
+    ``test_result_saturates_once_the_budget_covers_the_narrowest_axis``
+    asserts (buffer shapes AND compiled HLO, not just the field digest).
+    What the depth still tracks is the ABSORBER: thinning a face's
+    ``lo_thickness`` / ``hi_thickness`` thins the buffer with it, so a
+    genuinely different absorber is still a different answer. (A budget
+    BELOW a face's allocated pad is not a thinner buffer, it is a request
+    that cannot be honoured, and ``_assert_absorber_fits`` rejects it —
+    before this change as well as after.)
+
+    The floor of 1 is not physics, it is slicing: the hi-face slices are
+    written ``arr[-depth:]``, and ``arr[-0:]`` is the WHOLE axis rather than
+    an empty edge, so a face that allocates nothing keeps a single no-op
+    layer instead of a zero-length one. Its profile is
+    ``_cpml_noop_profile``, so that layer contributes exactly ``psi = 1*0 +
+    0*curl = 0``.
+
+    The active-depth clamp is only licensed on a grid that says what each
+    FACE allocated, i.e. one carrying ``pad_<axis>_lo`` / ``pad_<axis>_hi``
+    (``rfx.grid.Grid`` and ``rfx.nonuniform.NonUniformGrid`` both do). This
+    function is also called with duck-typed grids that carry only a whole-
+    axis ``pad_<axis>`` and drive ``apply_cpml_e/h`` with the LEGACY
+    single-``CPMLParams`` path, where every face gets a real absorbing
+    profile of length ``n_alloc`` irrespective of any pad — there, reading
+    an absent ``pad_x_lo`` as "no absorber" would thin a real 10-layer
+    absorber to one layer (measured on
+    ``tests/unit/sparams/test_overlap_extraction.py``: overlap-vs-V/I S21
+    went from < 1e-4 to 1.3e-2). So an axis whose per-face pads are not
+    stated keeps the pre-#876 ``min(n_alloc, extent)`` clamp: nothing is
+    known to be no-op there, so nothing is dropped.
     """
-    nx, ny, nz = _grid_extents(grid)
-    return min(n_alloc, nx), min(n_alloc, ny), min(n_alloc, nz)
+    extents = _grid_extents(grid)
+    depths = []
+    for axis_idx, axis in enumerate("xyz"):
+        pad_lo = getattr(grid, f"pad_{axis}_lo", None)
+        pad_hi = getattr(grid, f"pad_{axis}_hi", None)
+        if pad_lo is None and pad_hi is None:
+            # the grid does not describe this axis's faces — no clamp
+            depths.append(min(int(n_alloc), extents[axis_idx]))
+            continue
+        active = max(int(pad_lo or 0), int(pad_hi or 0))
+        depths.append(max(1, min(int(n_alloc), extents[axis_idx], active)))
+    return depths[0], depths[1], depths[2]
 
 
 def _assert_absorber_fits(grid, depths: tuple[int, int, int]) -> None:
@@ -426,9 +481,12 @@ def init_cpml(grid, *, kappa_max: float | None = None,
 
     nx, ny, nz = _grid_extents(grid)
     # Issue #647: the psi buffers are indexed by the SAME face slices the
-    # scan body applies, so they carry the same per-axis clamp. ``n_x ==
-    # n_y == n_z == n`` on every configuration that runs today, which keeps
-    # the CPMLState shapes — and therefore the JIT cache — untouched.
+    # scan body applies, so they carry the same per-axis clamp. On a uniform
+    # absorber (every face allocates the full budget) the depths are still
+    # ``n`` on all three axes, so those CPMLState shapes — and the JIT cache
+    # — are untouched. On a per-face layout they are the ACTIVE absorber
+    # depth (#876), which is what makes the emitted program a function of
+    # the absorber rather than of the allocation budget.
     n_x, n_y, n_z = _axis_buffer_depths(grid, n)
     _assert_absorber_fits(grid, (n_x, n_y, n_z))
 
