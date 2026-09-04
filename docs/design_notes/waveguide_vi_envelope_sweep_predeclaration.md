@@ -63,8 +63,20 @@ common and a differential half:
 ```
 
 `D` converges; `eps` and `delta` are the two halves of the port error and need not.
-**Reporting only sym and asy hides `eps` inside "the symmetric order", which is where the
-boundary actually lives** — so `eps` is reported explicitly (§0.3).
+Reporting only `sym` and `asy` hides `eps` inside "the symmetric order", which is where the
+boundary actually lives — so its **presence** is tested directly (§0.1).
+
+**`eps`'s magnitude is NOT reported, because this ladder cannot estimate it.** Separating
+`sym = A·h^p + eps` needs three free parameters, and after §0.7 excludes N=9 the sweep has
+three usable rungs — zero degrees of freedom. Assuming `p = 2` to close the system is worse
+than not estimating: a `C/N² + F` fit returns `F/sym(N=72)` = 29.3 % and 28.8 % at
+[1.030,1.080] and [1.023,1.060], i.e. "there is a floor" in exactly the two bands whose
+symmetric part converges cleanly at 1.86 and 1.82 — the constant is manufactured by forcing
+an `h²` model onto an `h^1.86` curve. The excess-ratio discriminator of §0.1 assumes no
+exponent, which is why it is the test. **It answers whether a floor is present, not how
+large it is**, and the sweep reports it that way. A magnitude would need a fourth usable
+rung or an independently known `p`, and the record says so rather than quoting a fitted
+number that the fit's own assumption produced.
 
 ### 0.1 The discriminator: floor or power law, from three rungs
 
@@ -76,8 +88,24 @@ extrapolation:
 excess(n -> 2n) = sym(2n) - sym(n)/4          ratio = excess(18->36) / excess(36->72)
 ratio > 2.5  => power law, no detectable floor
 ratio < 1.6  => floor
-otherwise    => report both readings, claim neither
+otherwise    => INDETERMINATE: report both readings, claim neither
 ```
+
+**The rung triple is fixed per band and stated with every ratio**: {18,36,72} wherever the
+band runs four rungs, {9,18,36} at R0, which runs three. They are not interchangeable — on
+its own triple R0 reads 1.910 / 1.734 / 2.162 across its 1.5 / 2.5 / 4.0 λ_g lanes, all
+three INDETERMINATE rather than "floor".
+
+**2.5 and 1.6 are a declared bracket, not calibrated thresholds, and the gap between them
+is the point.** The statistic is a ratio of differences, so it amplifies level noise by
+roughly an order of magnitude: `excess(36→72)` is about 11 % of `sym(72)` at
+[1.023,1.060], so a 1.5 % shift in level moves that band's ratio from 2.76 to anywhere in
+[2.40, 3.12] — straddling the upper threshold. Measured lane-to-lane spread of the ratio
+itself, across absorber thicknesses on {9,18,36}, is 1.1 / 4.2 / 18.9 / 9.2 % for the four
+bands. The bracket is placed to leave the observed 2.76-to-0.82 gap open on both sides, so
+that a band has to land clearly on one side to be called; anything between is reported
+INDETERMINATE and carried as such into §3.4's interval. A single threshold at, say, 2.0
+would have converted that noise directly into verdicts.
 
 Applied to the CHECK 3 archive (`check3_lowr_results.json`, 1.5 λ_g lane, discrete lock):
 
@@ -109,8 +137,12 @@ pair reads 1.861 / 1.824 / **1.429** / **0.554**.
 - **At and below `r_lo ≈ 1.017`**: the common half appears too. `sym` stops converging —
   1.429, then 0.554 — and both halves are floor-limited.
 
-**The envelope's low boundary and this regime change are the same frequency.** That is
-not a coincidence: the boundary IS the appearance of `eps` in the symmetric part. It is
+**The envelope's low boundary and this regime change fall in the same place on the coarse
+ladder** — and that is a consistency check, not corroboration: M2's order and the
+excess-ratio discriminator are both functions of the same `sym` ladder, so they cannot fail
+independently. **They also do not coincide at `N_f = 72`**: §3.4's expected `r_pass` there
+is [1.030,1.080] while the regime change stays between 1.017 and 1.023. Read the regime
+change as the *mechanism* behind the boundary, not as a second measurement of it. It is
 also why the boundary depends on the finest rung — a floor is only visible once `D` has
 fallen below it — and why the deliverable is a surface `r_min(N_fine)` rather than a
 number (§3.4).
@@ -143,8 +175,12 @@ Neither is an assumption, and both are free from data every case already produce
    at **1.21e-4 at N=9** in the committed band, a thousand times the float32 floor. Across
    rungs it reads 1.21e-4 / 2.945e-7 / 1.227e-7 at N = 9 / 72 / 144 — falling at order
    **2.89** and then flattening onto 1.19e-7. So it is a **discretization** quantity at
-   coarse rungs and a precision gauge only at the fine end where it stops falling. Reported
-   at every case, used as a floor only where flat.
+   coarse rungs and a precision gauge only at the fine end where it stops falling.
+   It is also **not independent of the quantity it would gauge**: at one fixed grid,
+   precision, absorber and band it reads 2.945e-7 for `prod` against 7.714e-8 for `plane` —
+   3.8× from the one-cell index change that is itself under study — so it tracks the port's
+   normalization, not arithmetic. **It is therefore an UPPER bound on the arithmetic floor,
+   never the floor itself**, and witness 1 carries the precision claim alone.
 
 **Witness 1 is the one the precision claim rests on**, because it isolates arithmetic by
 construction: the two twins solve the identical problem and differ only in how many DFT
@@ -192,9 +228,12 @@ residue is a declared output.
 
 CHECK 2 located, statically, a one-cell non-covariance in
 `rfx/sources/waveguide_port.py::apply_waveguide_port_e`: a `+` port corrects E at
-`cfg.x_index`, a `−` port at `cfg.x_index + 1`, so the E-plane index sum is `nx` where
-every other port index sums to the mirror-covariant `nx−1`. Instrumenting it removes
-**155×** of the residue at N=9 in the committed band but **1.01×** at N=144 — so it
+`cfg.x_index`, a `−` port at `cfg.x_index + 1`, so the E-plane index sum is `nx` where its
+mirror-covariant value is `nx−1`. (Every other port index is covariant too, at the value
+its own staggering requires: `nx−1` for the node-centred `x_index`, `ref_x` and `probe_x`,
+and `nx−2` for the face-centred TFSF H-plane — §7's audit asserts exactly those, and a
+reader checking §0.6 against it should not read "`nx−1` everywhere".) Instrumenting the
+E-plane removes **155×** of the residue at N=9 in the committed band but **1.01×** at N=144 — so it
 dominates the coarse-rung asymmetry and is irrelevant at fine rungs, where a different
 floor takes over. Whether it produces the **near-cutoff** floor is untested; reproducing
 a symptom is not a licence to assert a cause, and case **F1** settles it for about a
@@ -226,7 +265,11 @@ At [1.010,1.030] N=9, going from `n_trav` = 4 to 10 (19079 → 39442 steps) move
 antisymmetric band mean by **−17.4 %** and single bins by up to 74× (8.92e-5 → 1.20e-6),
 while `sym` moves +0.07 %. At [1.005,1.010] the same doubling moves it −0.01 %, so
 truncation is not a general driver — but that band-rung value is not a settled number.
-This is the real reason §4's `n_trav = 10` twin is mandatory at each band's finest rung.
+**The baseline run length, declared here because every wall estimate and the twins'
+definition depend on it and revision 2 named it only inside twin comparisons:** every case
+runs `n_trav = 4` domain traversals at the band's own group velocity, plus the source's
+full modulated-gaussian support, converted to timesteps at the band's `freq_max`. The
+`n_trav = 10` twins of §4.1 are that number multiplied by 2.5, at N = 9 and 18 of R1 and R2.
 
 ---
 
@@ -369,8 +412,10 @@ downstream is readable. If **S0-b or S0-c** fails:
 
 > **Order-bearing headline: the band MEAN of the per-bin `max(|S11|, |S22|)`.**
 > **Level-bearing headline: the band MAX of the same per-bin quantity.**
-> **Reported beside them, never folded in: the `sym` / `asy` split of §0, the fitted
-> common floor `eps`, the excess-ratio discriminator, and the per-case reciprocity floor.**
+> **Reported beside them, never folded in: the `sym` / `asy` split of §0, the excess-ratio
+> discriminator's floor/power-law verdict per band, and the per-case arithmetic floor with
+> the reciprocity residual as its upper bound (§7).** The common floor `eps` is deliberately
+> NOT among them — §0 explains why it is not estimable on this ladder.
 
 The port index is arbitrary, so `|S11|` alone reports whichever port faces `+x`;
 `max(|S11|,|S22|)` is invariant under relabelling the ports, which is the property an
@@ -412,7 +457,8 @@ A case is readable iff all of:
 The absolute bar used in scouting was calibrated on `|S11|` and does not survive the change
 of statistic. Nor does an unnamed rung set: the headline LSQ for [1.017,1.045] is 1.671 on
 {9,18,36}, 1.499 on {18,36,72} and 1.563 on all four, and the anchor moves with it
-(1.890 / 1.945 / 1.916, so a 0.90× bar of 1.701 / 1.751 / 1.724). So:
+(1.890 / 1.945 / 1.916 in **|S11|**, so a 0.90× bar of 1.701 / 1.751 / 1.724; the headline
+figures used by §3.4 are 1.9021 / 1.9521). So:
 
 > **Rung sets are fixed now.** For `N_f = 36` the set is **{9, 18, 36}**; for `N_f = 72`
 > it is **{18, 36, 72}**. The anchor is fitted on the identical set.
@@ -534,6 +580,8 @@ rung's own discrete TE10 cutoff `f_c·sinc(π/2N)` (0.994931 / 0.998731 / 0.9996
 0.999921 `f_c` at N = 9/18/36/72), so every rung solves the same problem in its own
 discrete coordinates. The lock is worth 0.011 in LSQ at [1.030,1.080], 0.48 at
 [1.010,1.030], and a **sign change** at [1.005,1.010] (−0.209 continuous vs +0.649 locked).
+Those three are **mean |S11|**; in the headline statistic they read 0.003 and 0.421, and
+the sign change survives.
 
 **What the lock does not do**, stated because it bounds the fits: it matches bins in each
 rung's own cutoff units, not in absolute frequency. Bin 0 of [1.030,1.080] sits at
@@ -561,8 +609,9 @@ at {18,36,72} and excludes it.
 GPU asking whether second order continues past a/72 and whether the port residue's growing
 share at N=144 breaks it. Measured at a converged absorber (3.003 λ_g), committed band,
 full precision: headline order 72→144 = **1.981**, `sym` 1.983, `asy` 0.363 % of the
-headline at N=144 against 0.242 % at N=72. The alarming 61 % share was the 1.5 λ_g
-absorber; even at 1.5 λ_g the five-rung headline ladder fits LSQ 1.900 with p(72→144) =
+headline at N=144 against 0.242 % at N=72 — both **band mean over band mean**. The alarming
+61 % figure is **band max over band max**, a different statistic; on the mean-over-mean
+basis that same 1.5 λ_g case reads **1.55 %**, and it was the absorber either way; even at 1.5 λ_g the five-rung headline ladder fits LSQ 1.900 with p(72→144) =
 1.890. Cited from VESSL run `369367258356`, not re-run. Re-running a measurement that
 exists is not a falsifier.
 
@@ -573,13 +622,22 @@ archive's lane-to-lane correlations are not merely low but systematically **nega
 (10 of 12; −0.708, −0.764, −0.810 among them). **Declared prediction, before the cases
 run:**
 
-> If the floor is an absorber leak, the signed residue's correlation against the K=3.0 lane
-> goes negative at K=4.0 and returns positive at K=5.0, while the magnitude stays inside
-> the 1.03–1.95× lane spread.
-> If the floor is port geometry, all three lanes correlate positively with each other at
-> the 0.94–1.00 level already seen **across rungs** at fixed thickness.
+> **If the floor is an absorber leak**, the signed residue's correlation against the K=3.0
+> lane goes negative at K=4.0 and returns positive at K=5.0, while the magnitude stays
+> inside the 1.03–1.95× lane spread. That pattern establishes a leak.
+>
+> **Three positive correlations establish nothing.** They are consistent with port geometry,
+> and equally consistent with a leak whose phase happens to advance a whole number of turns
+> per guide wavelength — which is exactly what a 1 λ_g step cannot distinguish. **The trace
+> is a one-sided test** and is reported as one.
 
-These predict opposite signs of a measured quantity, which the magnitude test could not.
+The one-sidedness is the honest reading and it is stated before the cases run. Nothing in
+this design derives the leak's phase advance per λ_g: with `κ_max` pinned at 1 there is no
+coordinate stretch, and `σ_max = −ln(R)(m+1)/(2ηd)` with `d = n_layers·dx` fixes the
+attenuation, not the accumulated phase. The step of 1 λ_g is chosen because the archive
+shows an inversion across a 1 λ_g change (1.5 → 2.5 λ_g, 10 of 12 lane pairs negative,
+down to −0.810), not because it is derived to be a half turn. A step that is derived rather
+than observed would need the phase advance, and the sweep does not measure it.
 The trace runs at N=36, where +1 λ_g costs about 7 s per case (measured: 23.6 s at
 1.5 λ_g, 31.0 s at 2.5 λ_g); at N=72 the same step costs ~175 s, so N=72 keeps two lanes
 and inherits the attribution. The rotation is a property of the absorber and is testable
@@ -633,12 +691,19 @@ that is the trap this repo has been caught by before — so F1 runs **three** ca
 |---|---|---|
 | `prod` | `nx` (shipped) | baseline |
 | `plane` | `nx−1` (covariant) | `asy` falls by ≥ 5× |
-| `anti` | `nx−2` (non-covariant the OTHER way) | `asy` is comparable to `prod` and the **signed residue flips sign** |
+| `anti` | `nx−2` (non-covariant the OTHER way) | the **signed residue flips sign** against `prod` |
+
+**The branch matters and is named**: all three variants displace the **`−` port's** cfg and
+leave the `+` port untouched — the harness applies `{prod: 0, plane: −1, anti: −2}` under
+`cfg.direction.startswith("-")`. Reaching `nx−2` by displacing the `+` port instead would
+make `anti` the exact mirror of `prod`, and its sign flip a symmetry identity rather than a
+measurement. An index sum alone does not pin the configuration; the branch does.
 
 > **Declared discriminator: covariance is the mechanism iff `plane` reduces `asy` by ≥ 5×
-> AND `anti`'s signed residue anti-correlates with `prod`'s at ≤ −0.5.** A reduction in
-> `plane` alone, with `anti` merely also reduced or uncorrelated, is reported as
-> NOT ESTABLISHED.
+> AND `anti`'s signed residue anti-correlates with `prod`'s at ≤ −0.5.** The **sign clause
+> is the binding half**; `anti`'s magnitude is reported but is not part of the test, because
+> a one-cell displacement need not preserve magnitude in either direction. A reduction in
+> `plane` alone, with `anti` uncorrelated, is reported as NOT ESTABLISHED.
 
 **F2 — is the fine-rung committed-band floor precision?** At N=72 and N=144 the
 antisymmetric term is 8.371e-7 and 3.176e-7 against a **measured** float32 floor of
@@ -715,6 +780,14 @@ right reason.
    **Acceptance: the baseline-corrected `P_j − 1` at that bin moves by less than 20 % of
    C-A's departure across BOTH twins; otherwise that bin is reported absorber-limited or
    truncation-limited and the C-A verdict is withdrawn.**
+   **Run length at that bin is set by the TE20 group velocity, not TE10's.** At 1.001 × the
+   TE20 cutoff `v_g/c = 0.045`, about 20× slower than the TE10 mode the baseline `n_trav`
+   rule is written against, and the domain-length twin lengthens it again by its own factor.
+   So the twin cases at that bin run `n_trav = 4` traversals **at 0.045 c**, and they are
+   costed at that (§8), not at the C leg's TE10 rate. The bin is kept rather than moved to
+   1.02–1.04 × the cutoff, where the run would be four times cheaper: the ceiling verdict is
+   read at the bins nearest the cutoff, and a twin that probes a different bin does not
+   control the one the claim rests on.
 4. **C-S's condition, declared now:** above the cutoff, C-S's baseline-corrected departure
    must stay below **20 %** of C-A's at the same bin.
 5. **C-S must also FALL with dx at every bin BELOW the cutoff.** The confound constraint 4
@@ -725,7 +798,10 @@ right reason.
    ceiling is withdrawn.**
 
 Prior scouting this leg refines: column-power loss −1.46 / −0.43 / −0.15 % at `f/f_c` = 1.85
-(converging) against +35.3 / +35.5 / +33.5 % at 2.15 (flat).
+(converging) against +35.3 / +35.5 / +33.5 % at 2.15 (flat). **Labelled unverified.** These
+six numbers appear only in revision 1's own design note; no blade case exists in any of the
+four declared archives and no run path was recorded for them. They motivate the leg's shape
+and are not evidence for its verdict — C-A, C-S and C-0 measure it from nothing.
 
 ---
 
@@ -826,7 +902,16 @@ be instant and would only restate the script's own arithmetic.
 
 **Expected preflight findings, quoted verbatim.** R0–R5, F1 and F2 on the literal ladder
 are expected to produce `[PREFLIGHT] All checks passed.` — confirmed on all 65 cases of the
-low-frequency archive, which ran at K = 1.5 / 2.5 / 4.0 and **never at K = 3.0**. Clearance
+low-frequency archive, which ran at K = 1.5 / 2.5 / 4.0 and **never at K = 3.0**. That
+archive covers only bands at or below 1.08 `f_c`, so **R4, R5 and F2 are outside its
+coverage** and rest instead on the source argument of §11 (the threshold is
+`0.90 × fc_next` = 11.803 GHz and R5's top bin is 11.600 GHz). The N=9 smoke case confirms
+it directly for R5: zero findings.
+
+**One bin sits exactly on the threshold and is flagged rather than assumed.** R6's bottom
+bin at 1.80 `f_c` is 11.802853 GHz and `0.90 × fc_TE20` is 11.802853 GHz — the same number
+to every printed digit. Whether the advisory fires there is a floating-point comparison, so
+R6's preflight output is recorded verbatim either way and neither outcome voids the case. Clearance
 advisories scale with absorber magnitude, so this expectation is checked by the first case
 that runs and any deviation is reported rather than absorbed. R6, R7 and all three C legs
 raise two findings each, one per port, and they are expected:
@@ -847,8 +932,12 @@ Calibration: the absorber archive's 250 cases sat between −75.4 and −107.7 d
 port-asymmetry archive's between −100.0 and −108.4 dB, and the low-frequency archive's
 worst anywhere was −46.58 dB (`b101_a15_cont_N36`). **Declared limitation**: a flat −40 dB
 floor does not scale with the number being measured — at [1.030,1.080] N=72 the witness is
-−55.0 dB while the headline is 2.8e-4 — which is why §4.1's run-length twins are mandatory
-at the coarse rungs of the low bracket.
+−55.0 dB while the headline is 2.8e-4. That inadequacy is at the FINE rung, and §4.1's
+twins are at N = 9 and 18, so it is not what motivates them: they sit where the truncation
+effect is largest and cheapest (−17.4 % on `asy` at N=9 against −2.6 % at N=18). **The
+fine-rung truncation question is therefore not measured directly.** It is answered by
+extrapolating the two coarse points — the effect falls by ~6.6× per halving there — and
+that extrapolation, not a measurement, is what the record carries for N ≥ 36.
 
 **Per-case floors, recorded for every case (§0.4).** Two numbers, and they measure
 different things:
@@ -878,24 +967,45 @@ Wall times per two-drive S-matrix case, GPU `gpu-rtx4090`, cluster `remilab-c0`,
 | Zero-FDTD artifacts | §7, both | seconds |
 | Stage 0 | S0-a (24 s + 34 s); S0-b (~40 s + ~55 s) | ~2.5 min |
 | R5 anchor | 3 / 3 / 5 / 24 s | ~35 s |
-| R1 at N=72 | K=3.0 ~672 s + K=4.5 ~1128 s | ~30 min |
+| R1 at N=72 | K=3.0 ~824 s + K=4.5 ~1128 s | ~32.5 min |
 | R2 at N=72 | K=3.0 ~515 s + K=4.5 ~704 s (**= S0-c**) | ~20 min |
 | R1, R2 at N ≤ 36 | three thicknesses each at N=36, plus N=9/18 | ~8 min |
-| R3 | +continuous twin; N=72 at K=3.0 ~277 s | ~6 min |
+| R3 | +continuous twin; N=72 at K=3.0 ~339 s | ~7 min |
 | R0 | 9/18/36 only, +continuous twin | ~3 min |
 | R4, R6, R7 | N ≤ 72, all short | ~3 min |
-| C-0, C-A, C-S | 18/36/72, plus the two twins of §5.2 constraint 3 | ~3 min |
+| C-0, C-A, C-S | 18/36/72, nine cases at the C leg's own rate | ~3 min |
+| C twins (§5.2 constraint 3) | thickness + domain-length, at the 1.001× bin, `n_trav` at `v_g = 0.045 c` | ~11 min |
 | F1 (three variants), F2 | N=36 ×3; N=72 float64 in its own process | ~4 min |
 | Run-length twins | N=9 and 18 at R1, R2 | ~1 min |
-| **Total** | | **≈ 70 min of GPU solve** |
+| **Total** | | **≈ 95 min of GPU solve** |
 
-Roughly two thirds of it is four cases: R1 and R2 at N=72, in two absorber lanes each.
-Revision 1's estimate of 75 min was short by about 2× because it placed the run-length
-twins at each band's finest rung (64–80 min on its own) and still carried R5-X; §4.1 moved
-the twins to the coarse rungs on evidence and dropped R5-X as already measured. **If the
-budget binds, the pre-declared cut order is: R0's continuous twin, then R4, then R7.** A
-truncation control dropped mid-sweep for time is the failure a pre-declaration exists to
-prevent, so the cut order is fixed now and the twins are not in it.
+Every wall time here scales the archive's measured 1.5 λ_g run by the cell-count ratio the
+thicker absorber implies — 1.584 at K=3.0 and 2.168 at K=4.5, since the domain is fixed and
+only the two absorber pads grow. Two rows of an earlier draft used 1.29 instead and are
+corrected above; the total moves from a claimed 70 to **≈ 95 min**. Revision 1's 75 min was
+short for a different reason: it put the run-length twins at each band's finest rung
+(64–80 min on its own) and still carried R5-X.
+
+Roughly half the sweep is four cases: R1 and R2 at N=72, two absorber lanes each.
+
+**The cut order, and what each cut actually costs.** An earlier draft named R0's continuous
+twin, then R4, then R7 — together about 5 minutes of 95, which cannot relieve a binding
+budget, and two of the three take a §6 blank with them.
+
+| cut | saves | what it costs |
+|---|---|---|
+| **1. R1 at N=72, K=4.5** | ~19 min | Nothing declared. §4.1 already says N=72 "inherits the attribution" from the N=36 rotation trace, so this lane has no purpose the design states. **It is the first cut and the only one that moves the budget.** |
+| 2. R0's continuous twin | ~1 min | The record loses its demonstration that the continuous axis misbehaves below 1.03; §4 keeps R3's twin, which still shows it. |
+| 3. R4 | ~2 min | Widens sentence 1's unmeasured strip from (1.160, 1.281) to **(1.080, 1.281)**. |
+| 4. R7 | ~2 min | Removes the **only** empty-guide support for sentence 1's ≥ 2.000 clause, which must then be withdrawn rather than filled. |
+
+Cuts 3 and 4 are named with the blank they empty precisely so neither is taken for time
+without the sentence changing with it. The run-length twins are not in the list at any
+position: a truncation control dropped mid-sweep for time is the failure a pre-declaration
+exists to prevent.
+
+**And the real budget risk is not the cut list at all** — it is §1.3.1's band-dependent-K
+branch, which re-runs R1 and R2 deeper and roughly doubles their ~53 min.
 
 Measured cost of the honest absorber, so it is not re-argued: at N=72 in the committed
 band, **13.7 s at 1.5 λ_g (270 layers) vs 22.9 s at 3.0 λ_g (540 layers), +67 %** — from
