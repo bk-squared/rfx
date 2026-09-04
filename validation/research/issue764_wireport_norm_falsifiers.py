@@ -328,6 +328,11 @@ def evaluate_f7b(runs):
     kbin = 2 * np.pi * FREQS / 2.998e8
     dface = max(dxb, dyb, dzb)
     deriv_floor = 3.0 * (kbin * dface) ** 2 * (1.0 + qp)
+    # A face whose plane coincides with the driven Ez node carries ~zero net
+    # flux, so its Q/P is 0/0 -> NaN; that face is degenerate as a referee
+    # surface, not a source of a finite floor. Drop NaN bins from the floor
+    # comparison rather than asserting a comparison NaN makes silently False.
+    floor_computable = bool(np.all(np.isfinite(deriv_floor)))
 
     print(f"  box x[{xL*1e3:.3f},{xR*1e3:.3f}] y[{yL*1e3:.3f},{yR*1e3:.3f}] "
           f"z[{zB*1e3:.3f},{zT*1e3:.3f}] mm; driven cell ({i0},{j0}) k={live_ks}")
@@ -346,7 +351,11 @@ def evaluate_f7b(runs):
     print(f"  residual |(1-|S11|^2)-P_box/|a|^2| = {resid.round(4)} "
           "(pre-declared gate <= 0.10)")
     print(f"  derived near-field floor 3*(k*d_face)^2*(1+Q/P) = "
-          f"{deriv_floor.round(3)} (Q/P={qp.round(2)}, d_face={dface*1e3:.3f}mm)")
+          f"{deriv_floor.round(3)} (Q/P={qp.round(2)}, d_face={dface*1e3:.3f}mm)"
+          + ("" if floor_computable else
+             " [NaN: a box face coincides with the driven Ez node -> 0/0 Q/P;"
+             " floor not computable, attribution rests on F7a + per-face"
+             " asymmetry below]"))
     # PEC-closed cavity: the energy-decay ring-down witness is scope-excluded
     # (closed PEC conserves energy); DFT-bin settling is witnessed by F7a's
     # wiring identity holding stationary at the analysis bins.
@@ -366,11 +375,15 @@ def evaluate_f7b(runs):
               "1-cell Yee flux box cannot isolate a single source cell — the "
               "-x/-y faces coincide with the driven Ez node, so only one "
               "half-cell of the outward H is captured (per-face flux is "
-              "asymmetric above, ~1/4 of delivered power recovered). The "
-              "structural half-power miss exceeds even the near-field-amplified "
-              "discretization floor, confirming a box-geometry inadequacy on "
-              "the staggered grid, not a physics error. Gate un-widened; verdict "
-              "segregated from G0/WIRING/F0-F9.")
+              "asymmetric above, ~1/4 of delivered power recovered). This is a "
+              "box-geometry inadequacy on the staggered grid, not a physics "
+              "error"
+              + (", and the residual also exceeds the near-field-amplified "
+                 "discretization floor above" if floor_computable else
+                 " (the derived floor is not computable here because a face "
+                 "coincides with the driven node; the conclusion rests on the "
+                 "per-face asymmetry and F7a, not on the floor)")
+              + ". Gate un-widened; verdict segregated from G0/WIRING/F0-F9.")
     return ok7b
 
 
