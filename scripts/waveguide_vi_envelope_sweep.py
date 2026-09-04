@@ -216,15 +216,29 @@ def num_periods_for(case: dict, lay: dict, fc_hz: float, f_lo: float,
                     f_hi: float) -> tuple[float, dict]:
     """Record length = 2*t0 (full modulated-gaussian support) + n_trav domain
     traversals at the slowest in-band group velocity, expressed in periods of
-    freq_max (``grid.num_timesteps``' own convention)."""
+    freq_max (``grid.num_timesteps``' own convention).
+
+    ``v_group_cutoff_hz`` overrides which mode sets the traversal time. The C-leg
+    twins (§5.2 constraint 3) carry the TE20 cutoff, because the mode that carries
+    their finding is TE20 and just above its cutoff it is far slower than TE10 at
+    the same frequency: at 1.02 x the TE20 cutoff v_g/c = 0.197 against TE10's
+    0.86, so a TE10-based record under-runs the twin by 4.4x and a null result
+    would read as clearance.
+    """
     f0 = 0.5 * (f_lo + f_hi)
     fwidth = f0 * float(case["bandwidth"])
     t0 = 5.0 / fwidth
+    # layout() has ALREADY stretched k_domain by domain_mult; multiplying again here
+    # would double-count the domain-length twin's own factor.
     L = lay["k_domain"] * DX_COARSE
-    t_trav = L / v_group(f_lo, fc_hz)
+    fc_vg = float(case.get("v_group_cutoff_hz") or fc_hz)
+    t_trav = L / v_group(f_lo, fc_vg)
     T = 2.0 * t0 + float(case["n_trav"]) * t_trav
     return T * f_hi, dict(t0_s=t0, t_traverse_s=t_trav, t_record_s=T,
-                          fwidth_hz=fwidth, v_group_low_m_s=v_group(f_lo, fc_hz))
+                          fwidth_hz=fwidth, v_group_low_m_s=v_group(f_lo, fc_vg),
+                          v_group_cutoff_hz=fc_vg,
+                          v_group_mode=("TE20" if case.get("v_group_cutoff_hz")
+                                        else "TE10"))
 
 
 # --------------------------------------------------------------------------

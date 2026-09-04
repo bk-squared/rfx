@@ -828,9 +828,20 @@ right reason.
    (prior scouting, unverified: +35 % at 1.075 × against −0.15 % below). The boundary's
    **location** rests on the per-bin dx trend with the C-0 correction and the C-S control,
    which the twins do not carry either way.
-   Run length at that bin still follows the TE20 group velocity rather than TE10's:
-   `v_g/c = 0.197` at 1.02 ×, about 4.4× slower than the rate the baseline `n_trav` rule is
-   written against, and §8 costs it at that.
+   Run length at that bin follows the TE20 group velocity rather than TE10's: `v_g/c = 0.197`
+   at 1.02 ×, about 4.4× slower than the rate the baseline `n_trav` rule is written against.
+   Implemented as a per-case `v_group_cutoff` override; measured effect on the twin's record,
+   84 periods against 41, the traversal term scaling 4.42× while the fixed source support
+   does not.
+
+   **Declared limitation: the bins in [0.999, 1.005] are NOT run-length-controlled.** The
+   twins sit at 1.02 ×, so the three bins closest to the cutoff — where TE20's group velocity
+   falls to 0.045 c — have no truncation control of their own, and the main C cases run on the
+   TE10-based baseline. The ceiling verdict is therefore read from the **trend across bins**
+   with the C-0 correction and the C-S control, never from those three bins alone; if the
+   trend's turning point lands inside [0.999, 1.005] the verdict is reported as
+   **not resolved**, not as a boundary. Controlling those bins directly would cost ~20× their
+   run length for a twin that, at that same bin, cannot attribute (above).
 4. **C-S's condition, declared now:** above the cutoff, C-S's baseline-corrected departure
    must stay below **20 %** of C-A's at the same bin.
 5. **C-S must also FALL with dx at every bin BELOW the cutoff.** The confound constraint 4

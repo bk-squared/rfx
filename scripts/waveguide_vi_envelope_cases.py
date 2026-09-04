@@ -46,7 +46,7 @@ are reviewable rather than buried:
   N = 18/36/72) from those FIXED numbers. Under a TE20 lock the N=18 top would
   land at 2.213 f_c, 0.9 % from that rung's discrete TE01 — breaking the margin
   the same paragraph declares. The arithmetic wins: R7's bins are fixed in f_c.
-* **Which rung carries the C twins.** §5.2 constraint 3 fixes the BIN (1.001 x
+* **Which rung carries the C twins.** §5.2 constraint 3 fixes the BIN (1.02 x
   the discrete TE20 cutoff) but not the rung. N=36, following §4.1's own
   reasoning that a thickness axis is tested where it is cheapest.
 * **The C domain-length twin's factor.** 2.0x the port-to-blade distance.
@@ -90,7 +90,13 @@ BANDWIDTH_LITERAL = {
 # §5.2: bins at these ratios of EACH RUNG'S OWN discrete TE20 cutoff.
 C_TE20_RATIOS = [0.94, 0.96, 0.98, 0.99, 0.995, 0.999,
                  1.001, 1.005, 1.01, 1.02, 1.04, 1.06]
-C_TWIN_RATIO = 1.001          # §5.2 constraint 3: the twins run at this bin
+# §5.2 constraint 3: the twins run at 1.02 x the rung's own discrete TE20 cutoff,
+# NOT at 1.001. At 1.001 the evanescent TE20 decay length diverges (~82 mm at
+# 0.999x, comparable to the port-to-blade distance itself), so a domain-length
+# twin moves there for a PHYSICAL reason as well as an artifactual one and the
+# acceptance rule fires on the physics. The most expensive bin is the one bin
+# where the control cannot attribute.
+C_TWIN_RATIO = 1.02
 C_TWIN_N = 36
 C_TWIN_K = 4.5
 C_TWIN_DOMAIN_MULT = 2.0
@@ -117,7 +123,7 @@ def case(case_id: str, band_id: str, N: int, *, r_lo: float, r_hi: float,
          port_variant: str = "prod", b_over_a: float | None = None,
          domain_mult: float = 1.0, freqs_hz=None, f0_hz=None, bandwidth=None,
          te20_ratios=None, te20_ratio_lo=None, te20_ratio_hi=None,
-         role: str = "") -> dict:
+         v_group_cutoff: str | None = None, role: str = "") -> dict:
     if N not in DX_BY_N:
         raise ValueError(f"N={N} is not a ladder rung {sorted(DX_BY_N)}")
     dx = DX_BY_N[N]
@@ -146,6 +152,16 @@ def case(case_id: str, band_id: str, N: int, *, r_lo: float, r_hi: float,
         c["f0_hz"] = float(f0_hz)
     if te20_ratios is not None:
         c["te20_ratios"] = [float(v) for v in te20_ratios]
+    if v_group_cutoff is not None:
+        # Which mode's group velocity sets the record length. "te20" hands the
+        # sweep the TE20 cutoff so the C twins run long enough for the mode that
+        # carries their finding: at 1.02 x that cutoff v_g/c = 0.197 against
+        # TE10's 0.86 at the same frequency, so a TE10-based record under-runs
+        # them 4.4x and a null twin would read as clearance (§5.2 constraint 3).
+        if v_group_cutoff != "te20":
+            raise ValueError(f"unknown v_group_cutoff {v_group_cutoff!r}")
+        c["v_group_cutoff_hz"] = 2.0 * FC_CONTINUOUS_HZ * sinc_te20(N)
+        c["v_group_mode"] = "te20"
     if te20_ratio_lo is not None:
         c["te20_ratio_lo"] = float(te20_ratio_lo)
     if te20_ratio_hi is not None:
@@ -277,25 +293,27 @@ def ceiling_cases() -> list[dict]:
                             role={"C0": "per-bin baseline for P_j",
                                   "CA": "brackets the ceiling, per bin",
                                   "CS": "attribution falsifier"}[tag]))
-    # Constraint 3: both twins run at the SAME single bin, 1.001 x the rung's
+    # Constraint 3: both twins run at the SAME single bin, 1.02 x the rung's
     # own discrete TE20 cutoff, and each carries its own C-0 baseline — an
     # uncorrected twin compares against the wrong unity.
     #   thickness twin — reported in lam_g,TE20 at that bin, not lam_g,TE10
     #   domain-length twin — the independent axis a steady-state leak must move
     #                        and a true unaccounted-power ceiling must not
     for tag, dut in (("C0", "thru"), ("CA", "blade_offset")):
-        out.append(case(f"{tag}_N{C_TWIN_N}_b1001_{_ktag(K_MAIN)}", tag, C_TWIN_N,
+        out.append(case(f"{tag}_N{C_TWIN_N}_b102_{_ktag(K_MAIN)}", tag, C_TWIN_N,
                         r_lo=C_R_LO, r_hi=C_R_HI, lock="te20_ratio",
                         te20_ratios=[C_TWIN_RATIO], K=K_MAIN, dut=dut,
+                        v_group_cutoff="te20",
                         role="C twin reference bin (§5.2.3)"))
-        out.append(case(f"{tag}_N{C_TWIN_N}_b1001_{_ktag(C_TWIN_K)}", tag, C_TWIN_N,
+        out.append(case(f"{tag}_N{C_TWIN_N}_b102_{_ktag(C_TWIN_K)}", tag, C_TWIN_N,
                         r_lo=C_R_LO, r_hi=C_R_HI, lock="te20_ratio",
                         te20_ratios=[C_TWIN_RATIO], K=C_TWIN_K, dut=dut,
+                        v_group_cutoff="te20",
                         role="C thickness twin (§5.2.3)"))
-        out.append(case(f"{tag}_N{C_TWIN_N}_b1001_{_ktag(K_MAIN)}_L2", tag, C_TWIN_N,
+        out.append(case(f"{tag}_N{C_TWIN_N}_b102_{_ktag(K_MAIN)}_L2", tag, C_TWIN_N,
                         r_lo=C_R_LO, r_hi=C_R_HI, lock="te20_ratio",
                         te20_ratios=[C_TWIN_RATIO], K=K_MAIN, dut=dut,
-                        domain_mult=C_TWIN_DOMAIN_MULT,
+                        domain_mult=C_TWIN_DOMAIN_MULT, v_group_cutoff="te20",
                         role="C domain-length twin (§5.2.3)"))
     return out
 
