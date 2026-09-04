@@ -255,3 +255,99 @@ No VESSL run. Wall time: 2-D (depth x target x angle) grid 75 measurements in ~7
 Scripts (session scratchpad, to be committed as the rig check named in section 7):
 `aux_refl.py` (two-mode fit, 2-D), `aux_echo_pad.py` (padded twin, both paths),
 `cv04_echo.py` (cv04's own rig and band), `sweep_nr.py`, `sweep_depth_1d.py`, `sweep_70.py`.
+
+---
+
+## 7. cv04 re-run: what moved, and the gate that went red
+
+cv04 re-run on the derived absorber, everything else untouched (719 steps, same
+mesh, same slab). `origin/main`'s own numbers, measured in the same session by
+pointing `PYTHONPATH` at the un-changed checkout, are the "before" column.
+
+| | before | after | |
+|---|---|---|---|
+| mean \|dR\| vs analytic | 0.0066 | 0.0070 | |
+| mean \|dT\| vs analytic | 0.0110 | 0.0105 | |
+| **max \|R+T-1\| per bin** | 0.0487 | **0.0421** | -13.5 % |
+| tail scat @ refl | 0.0363 | 0.0328 | |
+| tail total @ trans | 0.0514 | 0.0475 | |
+| tail window purity | 2.11e-04 | 1.46e-04 | |
+| mean \|dR - lattice\| (gated) | 1.682e-03 | **1.417e-03** | -16 % |
+| max \|dR - lattice\| (gated) | 5.636e-03 | **4.731e-03** | -16 % |
+| mean \|dT - lattice\| (gated) | 6.251e-03 | 6.087e-03 | |
+| aux-echo arrival | 1196 | 1176 | ratio 0.601 -> 0.611, still ok |
+| **fringe gate** | ok | **FAIL** | |
+
+On the gated band the run moved TOWARD the exact Yee lattice, which is the
+strongest available statement: the exact lattice is what a correct discrete
+solver on this mesh should produce, and rfx is now 16 percent closer to it in R.
+The per-bin closure -- the term cv04's `W_BIN` is derived from -- fell 13.5 %.
+
+**And the fringe gate went red.** Its three extrema:
+
+| fringe | analytic | Yee lattice | before | after |
+|---|---|---|---|---|
+| 1 (max) | 3.7475 | 3.7440 | 3.7175 (-26.5 vs lattice) | 3.7287 (**-15.3**) |
+| 2 (min) | 7.4950 | 7.4678 | 7.4706 (+2.8) | 7.4722 (+4.4) |
+| 3 (max) | 11.2425 | 11.1509 | 11.3084 (+157.5) | 11.5015 (**+350.6**) |
+
+(The Yee-lattice column solves `k_num d = (2m+1) pi/2` with
+`sin(k dx/2)/dx = sqrt(eps) sin(w dt/2)/(c dt)`: the lattice moves every fringe
+DOWN, by 3.4, 27.0 and 91.3 MHz. The gate's own window is built to absorb
+exactly that, `W(f) = 2 (df_bin/2 + |lattice shift|)`.)
+
+Fringes 1 and 2 moved toward the lattice truth. Fringe 3 moved away from it, and
+from the analytic reference, by 193 MHz.
+
+**It is not a band-edge artifact.** The obvious suspicion -- fringe 3 sits near
+the top of the 2 percent incident-power band, whose edge moved 11.87 -> 11.81 GHz
+when the injection got cleaner -- was tested and is wrong. Re-running the SHIPPED
+fringe gate on the same run under a 1 percent mask (band top 12.60 GHz, 184 bins),
+a 5 percent mask, and upper limits of 12, 12.5 and 13 GHz moves fringe 3 by
+exactly zero in both the before and after runs. The extremum is stable in the
+band; it is the physics of the measurement there that changed.
+
+### 7.1 Where cv04 gates, and where cv04's fringe gate looks
+
+`gated_mask` -- the case's own policy for which bins carry enough incident
+amplitude to be judged, at 10 percent of peak -- admits **4.012 to 9.998 GHz**,
+459 of 918 bins. The fringe gate runs on `freqs[mask]`, the 2 percent band,
+3.03 to 11.87 GHz.
+
+| fringe | inside the GATED band? |
+|---|---|
+| 1 (3.7475 GHz) | **no** |
+| 2 (7.4950 GHz) | yes |
+| 3 (11.2425 GHz) | **no** |
+
+Two of the fringe gate's three extrema sit where the case's own gating policy
+says the incident is too weak to judge -- between 2 and 10 percent of peak. The
+exact-lattice witness never looks at either of them, which is why it can report
+16 percent closer while fringe 3 moves 193 MHz further away: the two
+instruments are not looking at the same band.
+
+That is the same defect shape as decision B, in a different case: a window (here,
+a whole gate) applied outside the domain where the quantity it judges is
+measurable. It is NOT resolved by widening `W(f)` -- the working agreement
+forbids that and it would be wrong anyway, since the window already carries the
+lattice shift it was built for.
+
+**Three resolutions, and this is a PI decision because it changes what cv04
+gates:**
+
+1. **Restrict the fringe gate to the gated band.** Only fringe 2 survives; the
+   gate drops from three extrema to one, and its three audited criterion-(B)
+   falsifiers must be re-measured for detection power against the reduced gate
+   before it is accepted (the working agreement: a replacement gate must be
+   shown to kill the same mutants, measured).
+2. **Widen the rig, not the window.** Raise cv04's source bandwidth so 11.24 GHz
+   carries at least 10 percent incident amplitude, putting fringe 3 inside the
+   gated band and making it measurable. Physically the honest fix -- measure
+   where you can measure -- but it re-baselines every cv04 number, including the
+   envelope decision B is about to re-derive from.
+3. **Declare fringes 1 and 3 REPORTED, not gated**, with the incident amplitude
+   at each printed beside it, exactly as this case already does for its lattice
+   witness (`gated_here = false`).
+
+Until that is decided the fringe gate is left RED rather than adjusted. Nothing
+in this lane widens it.
