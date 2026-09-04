@@ -1616,3 +1616,145 @@ def test_run_stage_b_reds_end_to_end_on_a_coherent_rfx_beta_error(monkeypatch):
                             end_criteria=1e-4,
                             rfx_fixture=module._load_rfx_fixture(str(RFX_FIXTURE_PATH)))
     assert "solver 'openems'" in str(excinfo.value)
+
+
+# ===========================================================================
+# Issue #830 (2026-09-02 audit finding G1): the SIGNED analytic-beta envelope,
+# DERIVED AT RUNTIME (no pinned per-board fractions).
+#
+# The gated _analytic_beta_witness checks max(|dev|) <= B_BETA_ANALYTIC_TOL_FRAC
+# -- a SYMMETRIC magnitude budget. Two of its three physical terms are
+# sign-definite (finite-thickness NEGATIVE, dispersion POSITIVE), so a
+# physically-correct quasi-static line's SIGNED deviation lives in an
+# ASYMMETRIC envelope [lo, hi] that _signed_beta_envelope computes at runtime
+# from the realized dims. rfx's committed residual is one-signed POSITIVE,
+# past the +hi bound and on the WRONG side of the finite-thickness physics --
+# invisible to the symmetric gate, caught by the signed one. The signed leg is
+# REPORTED, NOT gated (kept out of sanity_passed), because reddening cv20's
+# sanity_passed would break the committed suite for the OPEN #830 question.
+# ===========================================================================
+def test_signed_beta_envelope_is_derived_at_runtime_and_moves_with_the_board():
+    """The envelope must be a FUNCTION of the realized dims, not pinned
+    fractions: feed a different board and [lo, hi] must move. The sign
+    structure is re-derived here from the RAW closed forms (not asserted from
+    the module's own output) so the two cannot silently agree on a wrong sign.
+    """
+    module = _load_referee_module()
+
+    # (1) Only the HJ MODEL figure is a constant; it is board-independent.
+    hj = module._beta_frac_from_eps_eff_frac(module.HJ_MODEL_ACCURACY_EPS_EFF_FRAC)
+    assert hj > 0.0
+
+    # (2) Sign-definiteness, re-derived from the raw closed forms on the
+    #     realized board -- thickness LOWERS eps_eff (negative), Getsinger
+    #     dispersion RAISES it (positive).
+    er, w, h, t = module.B_EPS_R, 600e-6, 300e-6, module.B_DX_M
+    eps0 = module._hammerstad_jensen_eps_eff(w, h, er)
+    d_eps_thickness = -(er - 1.0) * (t / h) / (4.6 * math.sqrt(w / h))
+    assert d_eps_thickness < 0.0, "Bahl-Garg finite thickness must LOWER eps_eff"
+    z0 = module._hammerstad_z0(eps0, w, h)
+    f_p = z0 / (2.0 * module._MU0 * h)
+    g = 0.6 + 0.009 * z0
+    d_eps_getsinger = (er - (er - eps0) / (1.0 + g * (module.B_GATE_F_HI_HZ / f_p) ** 2)) - eps0
+    assert d_eps_getsinger > 0.0, "Getsinger dispersion must RAISE eps_eff"
+
+    # (3) The envelope equals +(HJ + getsinger) / -(HJ + |thickness| + getsinger),
+    #     re-composed from the module's OWN component functions -- proving the
+    #     asymmetry (hi omits the negative-only thickness term) is what ships.
+    getsinger = module._getsinger_beta_dev_frac(er, w, h, module.B_GATE_F_HI_HZ)
+    thickness = module._bahl_garg_thickness_beta_dev_frac(er, w, h, t)
+    assert getsinger > 0.0 and thickness < 0.0
+    lo, hi = module._signed_beta_envelope(er, w, h, t, module.B_GATE_F_HI_HZ)
+    assert hi == pytest.approx(hj + getsinger, abs=1e-12)
+    assert lo == pytest.approx(-(hj + abs(thickness) + getsinger), abs=1e-12)
+    # The positive bound is strictly tighter than the symmetric gate -- else
+    # the asymmetry would catch nothing.
+    assert hi < module.B_BETA_ANALYTIC_TOL_FRAC
+
+    # (4) NOT PINNED: a different board yields a materially different envelope.
+    lo2, hi2 = module._signed_beta_envelope(4.4, 300e-6, 635e-6, 17.5e-6, 10e9)
+    assert abs(hi2 - hi) > 1e-4, "hi must move with the board (not a pinned constant)"
+    assert abs(lo2 - lo) > 1e-4, "lo must move with the board (not a pinned constant)"
+    # And the move is driven by the recomputed physical terms, not noise:
+    g2 = module._getsinger_beta_dev_frac(4.4, 300e-6, 635e-6, 10e9)
+    t2 = module._bahl_garg_thickness_beta_dev_frac(4.4, 300e-6, 635e-6, 17.5e-6)
+    assert hi2 == pytest.approx(hj + g2, abs=1e-12)
+    assert lo2 == pytest.approx(-(hj + abs(t2) + g2), abs=1e-12)
+
+
+def test_signed_beta_envelope_flags_rfx_that_the_symmetric_gate_passes():
+    """Fail-before / pass-after for audit G1, on the committed run-2 artifact.
+
+    The OLD symmetric _analytic_beta_witness reports rfx passed=True (|dev|
+    < B_BETA_ANALYTIC_TOL_FRAC). The NEW signed envelope reports rfx
+    passed=False (its residual is one-signed POSITIVE, above the +hi bound)
+    while openEMS passes (negative, finite-thickness side). Before the fix
+    _signed_analytic_beta_envelope_witness / _signed_beta_envelope do not
+    exist, so this test errors; after, it passes.
+    """
+    module = _load_referee_module()
+    stage_b = json.loads(_RUN2_RESULT_PATH.read_text())["stage_b"]
+    freqs = np.asarray(stage_b["freqs_hz"], dtype=float)
+    cross = stage_b["cross_solver_report"]
+    eps = _rfx_realized_eps_eff(module)
+    beta_rfx = np.asarray(cross["beta_rfx_real"], dtype=float)
+    beta_oe = np.asarray(cross["beta_openems_real"], dtype=float)
+
+    # Envelope DERIVED from the realized board (fixture-sourced dims + one-cell
+    # metal thickness), the same call _run_stage_b makes.
+    fixture = module._load_rfx_fixture(str(RFX_FIXTURE_PATH))
+    lo, hi = module._signed_beta_envelope(
+        module.B_EPS_R, fixture["meta"]["w_trace_realized_m"],
+        fixture["meta"]["h_sub_realized_m"], module.B_DX_M, module.B_GATE_F_HI_HZ)
+
+    # OLD symmetric gate: rfx passes (this is the defect the finding names).
+    old_rfx = module._analytic_beta_witness(
+        freqs, beta_rfx, eps_eff=eps, tol_frac=module.B_BETA_ANALYTIC_TOL_FRAC,
+        label="g1", solver="rfx")
+    assert old_rfx["passed"] is True
+    assert old_rfx["max_abs_dev_frac"] < module.B_BETA_ANALYTIC_TOL_FRAC
+
+    # NEW signed envelope: rfx FAILS (wrong-signed positive), openEMS PASSES.
+    new_rfx = module._signed_analytic_beta_envelope_witness(
+        freqs, beta_rfx, eps_eff=eps, lo_frac=lo, hi_frac=hi,
+        label="g1", solver="rfx")
+    new_oe = module._signed_analytic_beta_envelope_witness(
+        freqs, beta_oe, eps_eff=eps, lo_frac=lo, hi_frac=hi,
+        label="g1", solver="openems")
+    assert new_rfx["passed"] is False
+    assert new_rfx["min_signed_dev_frac"] > hi  # entirely above +hi (wrong sign)
+    assert new_oe["passed"] is True
+    assert new_oe["min_signed_dev_frac"] >= lo
+    assert new_oe["max_signed_dev_frac"] <= hi
+
+
+def test_signed_beta_envelope_is_reported_not_gated(monkeypatch):
+    """The signed leg must be recorded in the artifact but MUST NOT enter
+    sanity_passed -- reddening cv20's sanity_passed would break the committed
+    suite for the OPEN #830 question. End-to-end through the real
+    _run_stage_b (the same replay harness the #812 P1 wiring test uses).
+    """
+    module = _load_referee_module()
+    import inspect
+    src = inspect.getsource(module._run_stage_b)
+    # Computed and recorded ...
+    assert "signed_beta_envelope_witness_rfx" in src
+    assert "signed_beta_envelope_witness_openems" in src
+    # ... but NOT in the sanity_passed conjunction.
+    sanity = src[src.index("sanity_passed = bool("):]
+    sanity = sanity[:sanity.index("\n    )")]
+    assert "signed_beta_envelope" not in sanity
+
+    _stage_b_replay_fakes(module, monkeypatch)
+    result = module._run_stage_b(sim_root="/tmp/_unused_830_cv20", threads=1, nrts=200000,
+                                 end_criteria=1e-4,
+                                 rfx_fixture=module._load_rfx_fixture(str(RFX_FIXTURE_PATH)))
+    # Signed rfx leg FAILED on committed data, yet sanity_passed stays True.
+    assert result["sanity_passed"] is True
+    report = result["cross_solver_report"]
+    assert report["signed_beta_envelope_witness_rfx"]["passed"] is False
+    assert report["signed_beta_envelope_witness_rfx"]["gated"] is False
+    assert report["signed_beta_envelope_witness_openems"]["passed"] is True
+    # The recorded envelope is the runtime-derived one, not a pinned pair.
+    assert report["signed_beta_envelope_hi_frac"] < module.B_BETA_ANALYTIC_TOL_FRAC
+    assert report["signed_beta_envelope_lo_frac"] < 0.0
