@@ -446,3 +446,134 @@ def test_report_renders_every_row_kind_without_crashing() -> None:
     long = rmj.format_report(_judge(RFX_TODAY + [rmj.SolverMode(0.16, 500.0)]))
     assert "SURPLUS" in long
     assert "FAIL" not in long
+
+
+# --- cv02 audit G2: per-mode ring-down settling witness ---------------------
+#
+# cv02 is an open (UPML) claims-bearing Harminv case, so the repo rule
+# ("Ring-down settling witness" in rfx/CLAUDE.md) requires its mode numbers to
+# be quoted with how far the record's end energy sits below the post-source
+# peak. The script recorded none. These tests pin the witness math -- all of it
+# derived from a mode's own (f, Q) and the run's own record length, none pinned
+# to this geometry -- and the fact that the run length now scales with the
+# radiation-limited highest-Q mode instead of a fixed step count.
+
+
+def test_amplitude_tau_is_Q_over_pi_f() -> None:
+    """tau = Q/(pi f), the same decay time the Q window uses. No fitted number."""
+    for f, q in [(0.118, 80.0), (5.25e13, 1677.0), (1.0, 1.0)]:
+        assert rmj.amplitude_tau(f, q) == pytest.approx(q / (math.pi * f),
+                                                        rel=1e-12)
+    # A non-decaying / non-physical mode has infinite tau (never truncated).
+    assert math.isinf(rmj.amplitude_tau(0.15, 0.0))
+    assert math.isinf(rmj.amplitude_tau(0.0, 100.0))
+
+
+def test_energy_db_per_efold_is_the_exponential_decay_constant() -> None:
+    """-8.6859 dB per amplitude e-folding is 10*log10(e**-2) -- a property of
+    exponential decay, not a chosen threshold."""
+    assert rmj.ENERGY_DB_PER_EFOLD == pytest.approx(10.0 * math.log10(math.e ** -2))
+    assert rmj.ENERGY_DB_PER_EFOLD == pytest.approx(-8.6859, abs=1e-3)
+
+
+def test_mode_settling_energy_db_is_t_over_tau_times_the_constant() -> None:
+    """Per-mode witness: T/tau e-foldings and the energy end/peak they imply."""
+    f, q = 5.0e13, 300.0
+    tau = q / (math.pi * f)
+    record = 2.5 * tau                      # 2.5 amplitude e-foldings
+    row = rmj.mode_settling(f, q, record)
+    assert row.t_over_tau == pytest.approx(2.5, rel=1e-12)
+    assert row.energy_db == pytest.approx(2.5 * rmj.ENERGY_DB_PER_EFOLD, rel=1e-12)
+    # 2.5 e-foldings of amplitude is exp(-5) of energy = -21.7 dB, closed form.
+    assert row.energy_db == pytest.approx(10.0 * math.log10(math.exp(-5.0)),
+                                          rel=1e-9)
+    assert row.observed is True
+
+
+def test_mode_settling_flags_truncation_at_the_judges_own_floor() -> None:
+    """`observed` uses the judge's Q-gating floor (Q_RECORD_MIN_EFOLDS = 1/4):
+    a record shorter than that has not seen the decay and is flagged, not
+    trusted -- the same cut the judge gates on, reused as a report flag."""
+    f, q = 5.0e13, 300.0
+    tau = q / (math.pi * f)
+    just_under = rmj.mode_settling(f, q, 0.20 * tau)   # < 1/4 e-folding
+    just_over = rmj.mode_settling(f, q, 0.30 * tau)    # > 1/4 e-folding
+    assert just_under.observed is False
+    assert just_over.observed is True
+    assert just_under.t_over_tau < rmj.Q_RECORD_MIN_EFOLDS <= just_over.t_over_tau
+
+
+def test_slowest_mode_sets_the_record_length() -> None:
+    """The record length scales with the SLOWEST (highest-Q) mode's tau, so a
+    fixed number of e-foldings of it guarantees at least that many of every
+    faster mode. This is the runtime rule that replaces a fixed step count."""
+    modes = [rmj.SolverMode(0.118, 80.0),
+             rmj.SolverMode(0.147, 316.0),
+             rmj.SolverMode(0.175, 1677.0)]      # highest Q, slowest decay
+    taus = [rmj.amplitude_tau(m.freq, m.Q) for m in modes]
+    assert rmj.slowest_amplitude_tau(modes) == pytest.approx(max(taus))
+    # 0.175 mode is the slowest here, so it caps every other mode's e-foldings.
+    assert max(taus) == taus[2]
+    for target in (0.25, 1.0, 4.6):
+        L = rmj.record_length_for_efolds(modes, target)
+        assert L == pytest.approx(target * max(taus), rel=1e-12)
+        # every faster mode gets >= `target` e-foldings over that same record
+        for m, tau in zip(modes, taus):
+            assert L / tau >= target - 1e-12
+    # No decaying mode -> nothing to scale from -> None (caller falls back).
+    assert rmj.slowest_amplitude_tau([]) is None
+    assert rmj.record_length_for_efolds([], 1.0) is None
+
+
+def test_signal_settling_db_matches_a_known_decay() -> None:
+    """The measured whole-signal witness reproduces an analytic end/peak ratio
+    (same 10*log10(tail_power/peak_power) convention as the S-parameter
+    settling witness)."""
+    n = 20000
+    dt = 1.0
+    t = np.arange(n) * dt
+    tau = 2500.0                                    # amplitude e-folding time
+    sig = np.exp(-t / tau) * np.sin(2 * math.pi * 0.02 * t)
+    db = rmj.signal_settling_db(sig, tail_fraction=0.1)
+    # tail is the last 10% of samples; its mean power vs the peak power is an
+    # analytic function of the decay -- reproduce it directly from the array.
+    p = sig ** 2
+    expect = 10.0 * np.log10(p[-n // 10:].mean() / p.max())
+    assert db == pytest.approx(expect, rel=1e-9)
+    assert db < -40.0                               # this record IS well settled
+    # A pure tone never decays -> tail power ~ peak power -> ~0 dB (unsettled).
+    pure = np.sin(2 * math.pi * 0.02 * t)
+    assert rmj.signal_settling_db(pure) > -3.5
+    # Empty / dead records are NaN, never a false 0 dB pass.
+    assert math.isnan(rmj.signal_settling_db(np.zeros(100)))
+    assert math.isnan(rmj.signal_settling_db(np.array([])))
+
+
+def test_format_settling_report_states_the_physical_limitation() -> None:
+    """The report names the -40 dB rule as a documented physical limitation,
+    not a gate, and prints the per-mode e-foldings."""
+    rows = [rmj.mode_settling(0.175, 1677.0, 1.0 * rmj.amplitude_tau(0.175, 1677.0)),
+            rmj.mode_settling(0.118, 80.0, 1.0 * rmj.amplitude_tau(0.175, 1677.0))]
+    text = rmj.format_settling_report(rows, -26.0, 1.0)
+    assert "PHYSICAL LIMITATION" in text
+    assert "not a gate" in text
+    assert "T/tau" in text
+    assert "4.61 e-foldings" in text     # -40 dB / -8.686 dB per e-folding
+
+
+def test_script_records_a_per_mode_settling_witness() -> None:
+    """Revert-proof: the script must wire the per-mode settling witness and, on
+    the Meep-absent lane, scale the run length off the radiation-limited mode's
+    tau (record_length_for_efolds) rather than the old magic 450 constant."""
+    source = SCRIPT_PATH.read_text(encoding="utf-8")
+    assert "mode_settling" in source
+    assert "record_length_for_efolds" in source
+    assert "format_settling_report" in source
+    assert "SETTLE_TARGET_EFOLDS" in source
+    # the driven portion is skipped by the computed source-off time on the
+    # tau-scaled lane (the Meep verdict lane keeps its calibrated 40% window).
+    assert "source_off_time" in source
+    # the tau-scaled record replaces the old magic 450.0 fallback: 450 may
+    # still seed the *bootstrap* discovery run, but must no longer be the
+    # length the witness/harminv record is taken at.
+    assert "slowest_amplitude_tau" in source or "record_length_for_efolds" in source

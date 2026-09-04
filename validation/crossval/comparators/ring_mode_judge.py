@@ -340,6 +340,196 @@ def format_report(verdict: Verdict, freq_tol_pct: float = FREQ_TOL_PCT) -> str:
     return "\n".join(lines)
 
 
+# --- per-mode ring-down settling witness (cv02 audit G2) --------------------
+#
+# Why this lives here and not inline in the script: it is pure array math on
+# an extracted mode list and a recorded signal (no rfx import, no solve), so
+# the crossval script and ``tests/crossval/test_cv02_ring_mode_judge.py`` drive
+# exactly the same witness code, the same way they share the judge above.
+#
+# The repo rule (``rfx/CLAUDE.md`` "Ring-down settling witness"): a
+# claims-bearing Harminv/DFT number taken in an open (CPML) domain must be
+# quoted together with how far below the post-source peak the record's end
+# energy sits, because a fixed run length can truncate a high-Q ring-down and
+# fake a clean spectrum. cv02 is such a structure (open UPML, Harminv modes),
+# and it recorded no witness. It is also multi-Q, so ONE global end/peak dB is
+# set entirely by the slowest-decaying mode and says nothing about the faster
+# ones -- hence a PER-MODE witness derived from each mode's own decay.
+
+#: Energy (amplitude^2) ring-down in dB per amplitude e-folding time ``tau``.
+#: A mode whose amplitude envelope is ``A0 * exp(-t/tau)`` carries energy
+#: proportional to ``exp(-2 t/tau)``; after a free-decay span ``T`` its energy
+#: relative to its own peak is ``exp(-2 T/tau)``, i.e.
+#: ``10*log10(exp(-2 T/tau)) = (T/tau) * 10*log10(e**-2)`` dB. The coefficient
+#: ``10*log10(e**-2) = -8.6859 dB`` per e-folding is a property of exponential
+#: decay, geometry-independent; the only per-board inputs are the mode's own
+#: extracted ``(f, Q)`` and the run's own free-decay record length.
+ENERGY_DB_PER_EFOLD = 10.0 * math.log10(math.e ** -2)
+
+
+def amplitude_tau(freq: float, Q: float) -> float:
+    """Amplitude e-folding time ``tau = Q / (pi f)`` of one mode.
+
+    The same definition the Q window uses (see :func:`q_window`): amplitude
+    decay rate ``alpha = pi f / Q`` gives e-folding time ``tau = 1/alpha``.
+    Units follow the inputs (Hz -> s, ``c/a`` -> ``a/c``). Returns ``inf`` for
+    a non-decaying (``Q<=0``) or non-physical (``f<=0``) mode.
+    """
+    if freq <= 0 or Q <= 0:
+        return float("inf")
+    return Q / (math.pi * freq)
+
+
+def slowest_amplitude_tau(modes) -> float | None:
+    """Largest amplitude e-folding time over ``modes`` -- the slowest-decaying
+    (highest-Q) mode.
+
+    That mode alone sets the record length a run needs to observe a target
+    number of e-foldings of *every* mode, because a record that gives the
+    slowest mode ``k`` e-foldings gives every faster mode more. ``modes`` is
+    any iterable of objects with ``.freq`` and ``.Q``. Returns ``None`` when no
+    mode carries a finite positive tau, so the caller can fall back instead of
+    scaling off nothing.
+    """
+    taus = [amplitude_tau(m.freq, m.Q) for m in modes]
+    taus = [t for t in taus if math.isfinite(t) and t > 0]
+    return max(taus) if taus else None
+
+
+def record_length_for_efolds(modes, target_efolds: float) -> float | None:
+    """Free-decay record length that observes ``target_efolds`` amplitude
+    e-foldings of the SLOWEST mode (and at least that many of every faster
+    mode).
+
+    Returns ``target_efolds * slowest_amplitude_tau(modes)`` in the modes' own
+    time units, or ``None`` when no mode sets a tau. This is cv02's runtime
+    record-length rule: the length scales with the radiation-limited highest-Q
+    mode's *own* tau, recomputed per board from that board's extracted modes,
+    so it replaces a fixed step/period count that generalizes to no other ring.
+    """
+    tau = slowest_amplitude_tau(modes)
+    if tau is None:
+        return None
+    return float(target_efolds) * tau
+
+
+@dataclass(frozen=True)
+class ModeSettling:
+    """Per-mode ring-down witness on one run's free-decay record."""
+
+    freq: float
+    Q: float
+    tau: float
+    t_over_tau: float     # free-decay amplitude e-foldings the record observed
+    energy_db: float      # energy end/peak this mode's own decay implies, dB
+    observed: bool        # record spans >= the judge's Q-gating e-folding floor
+
+
+def mode_settling(freq: float, Q: float, record_after_source: float,
+                  observe_efolds: float = Q_RECORD_MIN_EFOLDS) -> ModeSettling:
+    """Per-mode settling witness for one extracted mode.
+
+    ``record_after_source`` is the record length AFTER the source is off, in
+    the same time units as ``1/freq``. The witness is ``T/tau`` amplitude
+    e-foldings and the energy end/peak dB they imply
+    (``T/tau * ENERGY_DB_PER_EFOLD``). ``observed`` reuses the judge's own
+    Q-gating floor (:data:`Q_RECORD_MIN_EFOLDS`) as the line below which the
+    record has not seen enough decay to trust the number -- the same
+    truncation cut, applied here as a report flag, not a hard gate. Every value
+    is computed from the mode's own ``(f, Q)`` and the run's own record length.
+    """
+    tau = amplitude_tau(freq, Q)
+    t_over_tau = (record_after_source / tau
+                  if math.isfinite(tau) and tau > 0 else 0.0)
+    return ModeSettling(
+        freq=freq, Q=Q, tau=tau, t_over_tau=t_over_tau,
+        energy_db=t_over_tau * ENERGY_DB_PER_EFOLD,
+        observed=t_over_tau >= observe_efolds,
+    )
+
+
+def signal_settling_db(signal, tail_fraction: float = 0.1) -> float:
+    """Measured energy ring-down of ONE recorded time series, in dB.
+
+    Same end/peak arithmetic as the S-parameter settling witness
+    (:func:`rfx.sources.waveguide_port.settling_db_from_port_records`):
+    ``10*log10(mean(P[last tail_fraction]) / max(P))`` with ``P = |signal|**2``.
+    The peak is the maximum of whatever array it is given; the cv02 caller
+    passes the FREE-DECAY span (the driven portion already skipped by the
+    source-off time), so ``max(P)`` here is the post-source peak the repo rule
+    refers to. On cv02 this single number is dominated by the slowest-decaying
+    mode -- reported next to, never instead of, the per-mode witness, which
+    resolves each mode separately.
+    """
+    p = np.abs(np.asarray(signal, dtype=float)) ** 2
+    if p.size == 0:
+        return float("nan")
+    peak = float(p.max())
+    if not (peak > 0.0):
+        return float("nan")
+    tail = max(1, int(p.size * tail_fraction))
+    end = float(p[-tail:].mean())
+    tiny = float(np.finfo(float).tiny)
+    return float(10.0 * np.log10((end + tiny) / (peak + tiny)))
+
+
+def format_settling_report(rows, signal_db: float,
+                           record_after_source: float,
+                           observe_efolds: float = Q_RECORD_MIN_EFOLDS) -> str:
+    """Human-readable per-mode settling table for the crossval script's stdout.
+
+    ``rows`` is a list of :class:`ModeSettling`. Prints, per mode, ``tau``, the
+    e-foldings ``T/tau`` the record observed, and the energy end/peak dB that
+    decay implies -- plus the measured whole-signal end/peak dB and an explicit
+    statement of the physical limitation: the slowest (radiation-limited) mode
+    cannot be run down to the -40 dB rule in feasible time, so its shortfall is
+    reported, not gated.
+    """
+    lines: list[str] = []
+    lines.append(
+        f"  free-decay record after source-off T = {record_after_source:.3e} "
+        f"(1/freq units); per-mode T/tau and energy end/peak below are computed"
+    )
+    lines.append("  from each mode's own extracted (f, Q) -- no pinned value")
+    lines.append("")
+    lines.append(
+        f"  {'freq':>16} {'Q':>10} {'tau':>12} {'T/tau':>8} "
+        f"{'E end/peak':>12} {'decay':>14}"
+    )
+    for row in rows:
+        note = "observed" if row.observed else "truncation-susp"
+        lines.append(
+            f"  {row.freq:>16.6e} {row.Q:>10.1f} {row.tau:>12.4e} "
+            f"{row.t_over_tau:>8.3f} {row.energy_db:>10.1f} dB {note:>14}"
+        )
+    lines.append("")
+    lines.append(
+        f"  measured whole-signal end/peak energy = {signal_db:.1f} dB "
+        f"(post-source peak; tail dominated by the slowest mode)"
+    )
+    lines.append(
+        f"  PHYSICAL LIMITATION (not a gate): the -40 dB settling rule needs "
+        f"{-40.0 / ENERGY_DB_PER_EFOLD:.2f} e-foldings; a radiation-limited"
+    )
+    lines.append(
+        "  high-Q ring mode's tau can be arbitrarily large, so driving the "
+        "slowest mode that deep is not"
+    )
+    lines.append(
+        f"  generally feasible. The record is scaled to give the slowest mode "
+        f">= {observe_efolds:g} e-folding (the judge's"
+    )
+    lines.append(
+        "  Q-gating floor); faster modes settle proportionally deeper. Modes "
+        "marked 'truncation-susp' are"
+    )
+    lines.append(
+        "  reported, and the judge Q-gates only modes whose decay the record "
+        "observed (same floor)."
+    )
+    return "\n".join(lines)
+
+
 # --- the judge that shipped, kept executable --------------------------------
 
 

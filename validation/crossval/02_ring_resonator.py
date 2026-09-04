@@ -166,38 +166,107 @@ sim_rfx.add_material("air_hole", eps_r=1.0)
 sim_rfx.add(RfxCylinder(center=ring_center_rfx, radius=r * a,
                          height=dx, axis="z"), material="air_hole")
 
+wf_main = ModulatedGaussian(f0=fcen_hz, bandwidth=bw_rfx,
+                            cutoff=5.0 / math.sqrt(2))
 sim_rfx.add_source(position=(src_rfx_x, src_rfx_y, 0), component="ez",
-    waveform=ModulatedGaussian(f0=fcen_hz, bandwidth=bw_rfx,
-                               cutoff=5.0 / math.sqrt(2)))
+                   waveform=wf_main)
 sim_rfx.add_probe(position=(src_rfx_x, src_rfx_y, 0), component="ez")
 
-# Run long enough for source to decay + ringdown
-# Meep ran ~200 time units after source; convert to rfx steps
-if HAVE_MEEP:
-    meep_total_t = sim_meep.meep_time()  # in Meep units (c=1)
-else:
-    # Meep absent: use the tutorial's nominal source + 300 after-source time
-    # units so the rfx ringdown is long enough for Harminv (matches the run
-    # length Meep would have produced).
-    meep_total_t = 450.0
-rfx_total_t = meep_total_t * a / C0  # physical seconds
+# Load the shared judge + settling-witness module ONCE. PART 2 (below) uses the
+# per-mode settling witness; PART 3 uses the judge. Both drive this same code.
+import importlib.util as _ilu
+
+_judge_path = os.path.join(SCRIPT_DIR, "comparators", "ring_mode_judge.py")
+_judge_spec = _ilu.spec_from_file_location("cv02_ring_mode_judge", _judge_path)
+ring_mode_judge = _ilu.module_from_spec(_judge_spec)
+sys.modules["cv02_ring_mode_judge"] = ring_mode_judge
+_judge_spec.loader.exec_module(ring_mode_judge)
+
 dt_rfx = dx / (C0 * math.sqrt(2)) * 0.99
-n_steps_rfx = int(rfx_total_t / dt_rfx) + 500
 
-snap = SnapshotSpec(components=("ez",), slice_axis=2, slice_index=0)
-print(f"  Running rfx: {n_steps_rfx} steps...")
+# Source-off time: 2*t0, where t0 = cutoff*tau is the ModulatedGaussian onset
+# (this matches rfx's own _auto_source_decay_time harminv-window start). It is
+# read from the source waveform, not a fixed step count, so the driven portion
+# skipped below scales with the source, not with this geometry.
+source_off_time = 2.0 * wf_main.t0
+
+# ----------------------------------------------------------------------------
+# Record length -- two regimes, because the judge's per-mode Q window is
+# ``tau_ref / T`` (derived per PART 3's design note, not pinned), so lengthening
+# the record TIGHTENS it:
+#
+#   * Meep PRESENT (a real crossval verdict): keep the record Meep's own run
+#     produced (``sim_meep.meep_time()``), the length the judge was calibrated
+#     for. Extending it tightens the FASTEST mode's Q window below the stable
+#     solver-to-solver Q disagreement and would red a physically sound case
+#     (measured on this geometry: at one e-folding of the slowest mode the
+#     mode-1 window is 0.069 vs a 0.086 inter-solver |ln Q| -- a false fail
+#     driven purely by run length, the #812 tautology inverted). So on the
+#     verdict lane the record is NOT extended; the settling witness below is
+#     reported on this calibrated record and honestly flags the slowest,
+#     radiation-limited mode as truncation-suspect.
+#
+#   * Meep ABSENT (exit 2, inconclusive -- there is NO verdict to preserve):
+#     scale the record with the radiation-limited highest-Q mode's own tau,
+#     discovered by a short bootstrap run, so the witness observes every mode's
+#     decay. This is the runtime tau-scaling; it replaces the old magic 450.0.
+# ----------------------------------------------------------------------------
 sim_rfx.preflight(strict=False)
-t0 = time.time()
-res_rfx = sim_rfx.run(n_steps=n_steps_rfx, snapshot=snap,
-                       subpixel_smoothing=True)
-print(f"  Done in {time.time()-t0:.1f}s")
 
-# Harminv on rfx probe signal
+if HAVE_MEEP:
+    meep_total_t = sim_meep.meep_time()  # Meep units (c=1); calibrated record
+    n_steps_rfx = int(meep_total_t * a / C0 / dt_rfx) + 500
+    snap = SnapshotSpec(components=("ez",), slice_axis=2, slice_index=0)
+    print(f"  Running rfx: {n_steps_rfx} steps (record = Meep run length)...")
+    t0 = time.time()
+    res_rfx = sim_rfx.run(n_steps=n_steps_rfx, snapshot=snap,
+                          subpixel_smoothing=True)
+    print(f"  Done in {time.time()-t0:.1f}s")
+else:
+    # Bootstrap: short run to discover the modes (hence their tau).
+    n_steps_boot = int(450.0 * a / C0 / dt_rfx) + 500
+    print(f"  Bootstrap rfx: {n_steps_boot} steps (discover mode Q -> tau)...")
+    t0 = time.time()
+    res_boot = sim_rfx.run(n_steps=n_steps_boot, subpixel_smoothing=True)
+    print(f"  Bootstrap done in {time.time()-t0:.1f}s")
+    ts_boot = np.array(res_boot.time_series).ravel()
+    skip_boot = min(len(ts_boot) - 10, max(1, int(source_off_time / dt_rfx)))
+    boot_modes = [m for m in harminv(ts_boot[skip_boot:], dt_rfx,
+                                     fmin_hz, fmax_hz)
+                  if m.Q > 1 and m.amplitude > 1e-10]
+    # SETTLE_TARGET_EFOLDS is dimensionless and geometry-independent: the free
+    # decay records this many amplitude e-foldings of the SLOWEST mode (and
+    # >= that many of every faster mode). It is 4x the judge's Q-gating floor
+    # (Q_RECORD_MIN_EFOLDS = 1/4) = one e-folding. It is NOT the -40 dB rule
+    # (~4.6 e-foldings), which a radiation-limited Q can make infeasible -- the
+    # documented physical limitation reported by the witness below.
+    SETTLE_TARGET_EFOLDS = 4.0 * ring_mode_judge.Q_RECORD_MIN_EFOLDS  # = 1.0
+    record_target = ring_mode_judge.record_length_for_efolds(
+        boot_modes, SETTLE_TARGET_EFOLDS)  # seconds of free decay, or None
+    if record_target is None:
+        # No decaying mode found -> nothing to scale from. Keep the bootstrap
+        # length; the self-check below then fails on 0 modes (exit 1).
+        n_steps_rfx = n_steps_boot
+    else:
+        n_steps_rfx = int((source_off_time + record_target) / dt_rfx) + 500
+        n_steps_rfx = max(n_steps_rfx, n_steps_boot)  # never shorten bootstrap
+    print(f"  Final rfx: {n_steps_rfx} steps (source-off + "
+          f"{SETTLE_TARGET_EFOLDS:g} e-folding of the slowest mode)...")
+    t0 = time.time()
+    res_rfx = sim_rfx.run(n_steps=n_steps_rfx, subpixel_smoothing=True)
+    print(f"  Done in {time.time()-t0:.1f}s")
+
+# Harminv on the rfx probe signal, over the free-decay span. On the Meep
+# (verdict) lane the harminv window is UNCHANGED from the calibrated design
+# (skip the first 40%), so the judge sees exactly the signal it was tuned for.
+# On the Meep-absent lane the driven portion is skipped by the computed
+# source-off time, matching the tau-scaled record.
 ts = np.array(res_rfx.time_series).ravel()
 dt = float(res_rfx.dt)
-
-# Skip first part (source active) — use last 60% of signal
-skip = int(len(ts) * 0.4)
+if HAVE_MEEP:
+    skip = int(len(ts) * 0.4)   # calibrated verdict-lane window (unchanged)
+else:
+    skip = min(len(ts) - 10, max(1, int(source_off_time / dt)))
 signal = ts[skip:]
 rfx_modes_raw = harminv(signal, dt, fmin_hz, fmax_hz)
 
@@ -211,6 +280,40 @@ for freq, Q, amp in rfx_modes:
     print(f"  {freq:>16.6e} {f_meep:>12.6f} {Q:>10.1f} {amp:>12.6e}")
 
 print(f"\n  Found {len(rfx_modes)} modes")
+
+# --- Per-mode ring-down settling witness (repo rule; cv02 is open/CPML) -----
+# For every extracted mode: T/tau (tau = Q/(pi f)) and the energy end/peak dB
+# its own decay implies over the free-decay record, plus the measured
+# whole-signal end/peak dB. All computed from THIS run's (f, Q) and record
+# length -- nothing pinned to this geometry.
+print(f"\n{'-' * 70}")
+print("  Ring-down settling witness (per extracted mode)")
+record_after_source = len(signal) * dt   # seconds of observed free decay
+settling_rows = [ring_mode_judge.mode_settling(freq, Q, record_after_source)
+                 for freq, Q, _ in rfx_modes]
+signal_db = ring_mode_judge.signal_settling_db(signal)
+if settling_rows:
+    print(ring_mode_judge.format_settling_report(
+        settling_rows, signal_db, record_after_source))
+    # The record length the SLOWEST mode WOULD need, computed at runtime from
+    # its own tau -- the physical limitation, quantified (not a gate).
+    tau_max = ring_mode_judge.slowest_amplitude_tau(
+        [ring_mode_judge.SolverMode(f, Q) for f, Q, _ in rfx_modes])
+    if tau_max:
+        need_gate = source_off_time + \
+            ring_mode_judge.Q_RECORD_MIN_EFOLDS * tau_max
+        need_40db = source_off_time + \
+            (-40.0 / ring_mode_judge.ENERGY_DB_PER_EFOLD) * tau_max
+        scale = C0 / a  # seconds -> Meep units (a/c)
+        print(f"  slowest-mode tau = {tau_max * scale:.0f} (Meep units); this "
+              f"record spans {record_after_source / tau_max:.3f} e-folding(s) "
+              f"of it.")
+        print(f"  runtime tau-derived record to Q-gate the slowest mode "
+              f"(>= {ring_mode_judge.Q_RECORD_MIN_EFOLDS:g} e-fold): "
+              f"{need_gate * scale:.0f}; to reach -40 dB: {need_40db * scale:.0f}"
+              f" (Meep units).")
+else:
+    print("  (no modes extracted -- no settling witness)")
 
 # =============================================================================
 # PART 3: Frequency comparison
@@ -230,13 +333,8 @@ rfx_freqs_meep = [f * a / C0 for f, Q, amp in rfx_modes]
 # 200,000 random trials through it never produced a mean error at or above 5%
 # (#812). The old logic is kept verbatim as `legacy_shipped_judge` in that
 # module; tests/crossval/test_cv02_ring_mode_judge.py separates the two judges.
-import importlib.util as _ilu
-
-_judge_path = os.path.join(SCRIPT_DIR, "comparators", "ring_mode_judge.py")
-_judge_spec = _ilu.spec_from_file_location("cv02_ring_mode_judge", _judge_path)
-ring_mode_judge = _ilu.module_from_spec(_judge_spec)
-sys.modules["cv02_ring_mode_judge"] = ring_mode_judge
-_judge_spec.loader.exec_module(ring_mode_judge)
+# (The module was loaded once as `ring_mode_judge` in PART 2 for the settling
+# witness; it is reused here for the judge.)
 
 # Record length harminv actually saw, in Meep units (a/c). Every Q window below
 # is tau_ref / T computed from THIS and from the reference Q -- no chosen
