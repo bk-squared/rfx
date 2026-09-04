@@ -351,6 +351,59 @@ def pos_to_nu_index(grid: NonUniformGrid, pos) -> tuple[int, int, int]:
     return position_to_index(grid, pos)
 
 
+def _nu_flux_tangential_bounds(d_arr, pad_lo: int, pad_hi: int,
+                               center, size) -> tuple[int, int]:
+    """Physical ``(center, size)`` in metres -> half-open CELL slice
+    ``[lo:hi]`` on one graded tangential axis of a flux-monitor plane.
+
+    The finite-region ``add_flux_monitor(size=...)`` counterpart of the
+    waveguide port's ``_range_to_slice_nu`` cumulative-edge argmin lookup.
+    This is a FRESH helper used ONLY by the flux-monitor loop; the waveguide
+    path (``_build_waveguide_port_config_nu`` / ``_range_to_slice_nu``) is
+    left byte-identical because origin/main #889 is editing it concurrently
+    (audit c/B1 collision-avoidance). Steps, all against the REALIZED graded
+    profile ``d_arr`` (no ``/dx`` cubic-cell arithmetic):
+
+      edges = insert(cumsum(interior_cells(d_arr, pad_lo, pad_hi)), 0, 0)
+      lo_local = argmin|edges - (center - size/2)|
+      hi_local = argmin|edges - (center + size/2)|
+
+    ``edges`` is interior-relative (edges[0]=0 at the first interior face),
+    matching the physical-coordinate convention ``add_flux_monitor`` validates
+    against ``[0, domain]``. ``center=None`` -> the realized interior midpoint
+    ``edges[-1]/2`` (uniform-lane ``domain/2`` parity, but read off the graded
+    grid so it tracks the mesh).
+
+    NODE span -> CELL span (issue #868): ``FluxMonitor`` integrates per-cell
+    face areas ``dA = d1[lo:hi] (x) d2[lo:hi]``, so the window must select the
+    ``hi_local - lo_local`` CELLS whose cumulative width equals the requested
+    ``size`` -- NOT the ``hi_local - lo_local + 1`` NODES the argmin brackets.
+    We build the node span and narrow it with the shipped, tested
+    ``_node_span_to_cell_span`` (the same conversion the NU waveguide builder
+    applies to its aperture), which also raises on a degenerate (<1 cell) span
+    rather than silently clamping.
+    """
+    d_np = np.asarray(d_arr)
+    interior = interior_cells(d_np, pad_lo, pad_hi)
+    edges = np.insert(np.cumsum(interior), 0, 0.0)
+    if size is None or float(size) <= 0.0:
+        raise ValueError(
+            f"flux monitor size={size!r} is not a positive extent")
+    c = float(edges[-1]) / 2.0 if center is None else float(center)
+    lo_phys = c - float(size) / 2.0
+    hi_phys = c + float(size) / 2.0
+    lo_local = int(np.argmin(np.abs(edges - lo_phys)))
+    hi_local = int(np.argmin(np.abs(edges - hi_phys)))
+    if hi_local <= lo_local:
+        raise ValueError(
+            f"flux monitor center={center!r} size={size!r} resolves to a "
+            f"degenerate aperture on the NU grid (edge nodes "
+            f"lo_local={lo_local}, hi_local={hi_local}); it spans no "
+            f"interior cell -- widen size= or move center=")
+    node_span = (lo_local + pad_lo, hi_local + pad_lo + 1)
+    return _node_span_to_cell_span(node_span)
+
+
 def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
                                      freqs: jnp.ndarray, n_steps: int):
     """NU-aware waveguide port config builder.
@@ -614,19 +667,11 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     """
     from rfx.api import Result
 
-    # Flux monitors: the NU scan body now accumulates Poynting-flux DFTs
-    # (parity with the uniform path). Full-plane monitors are supported;
-    # finite-region (``size=``) monitors still need NU cumulative-edge
-    # index conversion and are rejected below until that lands.
-    for _fm in getattr(sim, "_flux_monitors", None) or []:
-        if getattr(_fm, "size", None) is not None:
-            raise NotImplementedError(
-                "add_flux_monitor(size=...) finite-region monitors are not "
-                "yet supported on the non-uniform mesh path; the tangential "
-                "sub-region index conversion against the graded cumulative "
-                "edges is not implemented. Use a full-plane flux monitor "
-                "(omit size=) or the uniform lane."
-            )
+    # Flux monitors: the NU scan body accumulates Poynting-flux DFTs (parity
+    # with the uniform path). Full-plane AND finite-region (``size=``)
+    # monitors are supported; the finite-region tangential CELL window is
+    # resolved against the graded cumulative cell edges in the monitor-build
+    # block below (``_nu_flux_tangential_bounds``, audit c/B1, issue #764).
 
     # ---- until_decay (issue #383) fences + sizing ----
     if until_decay is not None:
@@ -1007,9 +1052,13 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 )
             )
 
-    # Flux monitors — full-plane only (finite-region rejected above).
-    # Tangential cell sizes are passed as per-cell arrays so a graded
-    # tangential axis is integrated correctly by FluxMonitor.dA.
+    # Flux monitors. Full-plane monitors integrate the entire plane;
+    # finite-region (``size=``) monitors restrict the DFT accumulation to the
+    # CELL window whose cumulative face area matches the requested physical
+    # size, resolved against the graded cumulative cell edges via
+    # ``_nu_flux_tangential_bounds`` (audit c/B1, issue #764). Tangential cell
+    # sizes are passed as per-cell arrays so a graded tangential axis is
+    # integrated correctly by FluxMonitor.dA.
     flux_monitor_objs = []
     if getattr(sim, "_flux_monitors", None):
         from rfx.probes.probes import init_flux_monitor
@@ -1019,6 +1068,14 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             0: (np.asarray(grid.dy_arr), np.asarray(grid.dz)),
             1: (np.asarray(grid.dx_arr), np.asarray(grid.dz)),
             2: (np.asarray(grid.dx_arr), np.asarray(grid.dy_arr)),
+        }
+        # Per-tangential-axis (d_arr, pad_lo, pad_hi) for size-> CELL index.
+        _axis_d = {0: np.asarray(grid.dx_arr), 1: np.asarray(grid.dy_arr),
+                   2: np.asarray(grid.dz)}
+        _axis_pad = {
+            0: (grid.pad_x_lo, grid.pad_x_hi),
+            1: (grid.pad_y_lo, grid.pad_y_hi),
+            2: (grid.pad_z_lo, grid.pad_z_hi),
         }
         for pe in sim._flux_monitors:
             axis_idx = axis_to_index[pe.axis]
@@ -1031,6 +1088,21 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 else jnp.linspace(sim._freq_max / 10, sim._freq_max, pe.n_freqs)
             )
             d1_arr, d2_arr = _d_arr[axis_idx]
+            # Finite-region window (B1): physical size/center -> CELL slice on
+            # each tangential axis against the graded cumulative edges. Full
+            # plane keeps init_flux_monitor's (0, -1) full-extent defaults.
+            lo1, hi1, lo2, hi2 = 0, -1, 0, -1
+            if getattr(pe, "size", None) is not None:
+                tangential_axes = [a for a in range(3) if a != axis_idx]
+                centers = (pe.center
+                           if getattr(pe, "center", None) is not None
+                           else (None, None))
+                bounds = []
+                for j, t in enumerate(tangential_axes):
+                    _plo, _phi = _axis_pad[t]
+                    bounds.append(_nu_flux_tangential_bounds(
+                        _axis_d[t], _plo, _phi, centers[j], pe.size[j]))
+                (lo1, hi1), (lo2, hi2) = bounds
             flux_monitor_objs.append(
                 init_flux_monitor(
                     axis=axis_idx,
@@ -1042,6 +1114,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     dft_total_steps=sizing_n,
                     dft_window=getattr(pe, "dft_window", "rect"),
                     dft_window_alpha=getattr(pe, "dft_window_alpha", 0.25),
+                    lo1=lo1, hi1=hi1, lo2=lo2, hi2=hi2,
                 )
             )
 
