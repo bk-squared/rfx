@@ -504,11 +504,34 @@ def run_case(case: dict) -> dict:
             sim._waveguide_ports[1], grid, jnp.asarray(freqs), n_steps)
         out["port_f_cutoff_hz"] = float(cfg0.f_cutoff)
         out["r_bins_discrete"] = [float(f / float(cfg0.f_cutoff)) for f in freqs]
+        # §3.1 M1 clause 3: the audit signature is checkable per case, and the
+        # E-plane expectation depends on the case's port variant — nx for
+        # shipped, nx-1 for F1-`plane`, nx-2 for F1-`anti`. F1's two controls
+        # are non-covariant ON PURPOSE; a rule demanding nx unconditionally
+        # would void the discriminator the mechanism test is built on.
+        nx = int(grid.shape[0])
+        variant = case.get("port_variant", "prod")
+        offset = PORT_VARIANT_OFFSET[variant]
+        plus, minus = ((cfg0, cfg1) if cfg0.direction.startswith("+")
+                       else (cfg1, cfg0))
+        h_sum = int(plus.x_index - 1) + int(minus.x_index)
+        e_sum = int(plus.x_index) + int(minus.x_index + 1 + offset)
+        sig = {
+            "x_index": (int(cfg0.x_index) + int(cfg1.x_index), nx - 1),
+            "ref_x": (int(cfg0.ref_x) + int(cfg1.ref_x), nx - 1),
+            "probe_x": (int(cfg0.probe_x) + int(cfg1.probe_x), nx - 1),
+            "tfsf_h_plane": (h_sum, nx - 2),
+            "tfsf_e_plane": (e_sum, nx + offset),
+        }
         out["port_indices"] = dict(
-            nx=int(grid.shape[0]),
+            nx=nx,
             x_index=[int(cfg0.x_index), int(cfg1.x_index)],
             ref_x=[int(cfg0.ref_x), int(cfg1.ref_x)],
-            probe_x=[int(cfg0.probe_x), int(cfg1.probe_x)])
+            probe_x=[int(cfg0.probe_x), int(cfg1.probe_x)],
+            tfsf_h_plane_sum=h_sum, tfsf_e_plane_sum=e_sum)
+        out["mirror_covariance_signature"] = {
+            k: dict(got=g, declared=d, ok=(g == d)) for k, (g, d) in sig.items()}
+        out["mirror_covariance_signature_ok"] = all(g == d for g, d in sig.values())
         out["discrete_te20_cutoff_hz"] = 2.0 * FC_CONTINUOUS_HZ * sinc_te20(N)
         out["r_bins_over_discrete_te20"] = [
             float(f / out["discrete_te20_cutoff_hz"]) for f in freqs]
