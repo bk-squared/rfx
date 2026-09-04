@@ -351,8 +351,22 @@ def test_instrument_discriminator_reads_the_guides_own_cells(fx, rung):
         assert pc["port_cutoff_effective_width_cells"] == pytest.approx(eff(n_cells), rel=1e-9)
         assert abs(pc["port_cutoff_effective_width_cells"] - eff(n_cells + 1)) > 0.9, (
             "the two apertures must stay a full cell apart")
-        # the extractor's cutoff now tracks the cutoff the guide propagates with
-        assert pc["rms_deg_at_port_cutoff"] < 0.05, (rung, lane, pc["rms_deg_at_port_cutoff"])
+        # §7's third sentence: "``rms_deg_at_port_cutoff`` collapses … to
+        # ``rms_deg_at_discrete_guide``". That collapse IS the claim, so it is
+        # asserted as the equality it is rather than as a loose bound this run
+        # would have chosen for itself after seeing its own answer.
+        assert pc["rms_deg_at_port_cutoff"] == pc["rms_deg_at_discrete_guide"]
+        # §7 parenthesised the FROZEN artifact's own rms_deg_at_discrete_guide
+        # (0.0797 / 0.0173 / 0.0041°) as the predicted new value. The measured
+        # phase moved as well, so both keys read 0.033620 / 0.012387 / 0.003592°
+        # — 2.4× / 1.4× / 1.2× off that parenthesis, in the better direction.
+        # Pinned at what it measured; named as a miss in the PR body. §7's own
+        # outcome branch is scoped to fc_port_hz and the effective width, both of
+        # which sit on fc(N) / effw(N) above, so the discriminator itself is green.
+        assert pc["rms_deg_at_port_cutoff"] == pytest.approx(
+            {"coarse": 0.033620, "mid": 0.012387, "fine": 0.003592}[rung], rel=2e-3)
+        assert pc["rms_deg_at_port_cutoff"] < {"coarse": 0.0797, "mid": 0.0173,
+                                               "fine": 0.0041}[rung]
 
 
 def test_the_absorber_reader_did_not_move(fx):
@@ -528,22 +542,82 @@ def test_empty_guide_s11_is_the_unnamed_branch(fx):
     ratios = [vals[0] / vals[1], vals[1] / vals[2]]
     assert ratios == pytest.approx([2.502, 2.334], abs=5e-3)
     assert not (vals[2] <= 0.004 and 3.5 <= ratios[0] <= 4.5), "not branch 1"
+    # The branch's declared response includes "the per-bin |S11| curve at each
+    # rung". It lives in the artifact as cells[].s_params.S11; pinned here by its
+    # length, its worst bin and that bin's value, so a later change to the curve
+    # reds instead of passing quietly. The worst bin is 8.6 GHz at every rung —
+    # the low end of the band, nearest cutoff, which is where a residual aperture
+    # mismatch would sit.
+    freqs = fx["fixture"]["freqs_hz"]
+    for rung, expected in (("coarse", 0.041048), ("mid", 0.016405), ("fine", 0.007028)):
+        curve = [abs(complex(re, im))
+                 for re, im in _cell("thru", rung, "false")["s_params"]["S11"]]
+        assert len(curve) == len(freqs)
+        worst = max(range(len(curve)), key=curve.__getitem__)
+        assert freqs[worst] == 8.6e9, (rung, freqs[worst])
+        assert curve[worst] == pytest.approx(expected, abs=5e-6)
 
 
-def test_empty_guide_column_power_branch_one(fx):
-    """§5.4's column-power branch 1, "Every rung's excess within a factor 2 of its
-    prediction, sequence still ~4× per halving — as predicted; the residual is the
-    second-order term". Predicted excess 6e-3 / 1.5e-3 / 4e-4; measured
-    6.135e-3 / 1.161e-3 / 2.546e-4, i.e. 1.02× / 0.77× / 0.64× the prediction, with
-    ratios 5.284 and 4.560 (order 2.40 and 2.19). The coarse→mid step is 1.32× the
-    declared 4 and is quoted rather than rounded to it."""
+def test_empty_guide_column_power_is_the_unnamed_combination_branch(fx):
+    """§5.4's LAST column-power branch, "Anything else below the frozen value at
+    every rung — the case the four branches above do not name: every rung inside a
+    factor 2 of its prediction but the ratio sequence away from 4 … This branch is
+    a case in its own right and is not sorted into whichever branch it is nearest."
+
+    Measured excess 6.135e-3 / 1.161e-3 / 2.546e-4 against a predicted
+    6e-3 / 1.5e-3 / 4e-4 — 1.02× / 0.77× / 0.64×, so every rung is inside its
+    factor 2 and no per-rung factor-2 branch fires. The ratios are 5.284 and 4.560.
+    5.284 is 1.32× the declared 4; the contract's only calibration for "away from
+    4" is its own worked example, "ratios ≈ 3", which is 0.76× — the same
+    multiplicative distance. Reading 5.284 as "~4×" while
+    ``test_empty_guide_s11_is_the_unnamed_branch`` refuses 2.502 as "≈ 2" on the
+    same cells would be two standards for one run, so this leg is read by the
+    branch written for exactly this shape.
+
+    Its declared response, delivered here and in the PR body: the three per-rung
+    excesses, the two ratios, the per-bin column-power curve at each rung, |S11|
+    and |S21| separately at the worst bin, and the statement that the 4.06× ratio
+    transferred from the PEC-short (§5.5) is NOT confirmed on this DUT."""
     ex = [_cell("thru", r, "false")["column_power_max"] - 1.0 for r in ("coarse", "mid", "fine")]
     assert ex == pytest.approx([6.135e-3, 1.161e-3, 2.546e-4], rel=2e-3)
     for e, pred in zip(ex, (6e-3, 1.5e-3, 4e-4)):
         assert 0.5 * pred <= e <= 2.0 * pred, (e, pred)
-    assert [ex[0] / ex[1], ex[1] / ex[2]] == pytest.approx([5.284, 4.560], abs=5e-3)
+    ratios = [ex[0] / ex[1], ex[1] / ex[2]]
+    assert ratios == pytest.approx([5.284, 4.560], abs=5e-3)
+    # not the branch this leg was first reported under: 5.284 is as far from 4 in
+    # log space as the contract's own "≈ 3" example of a sequence away from 4.
+    assert abs(math.log(ratios[0] / 4.0)) >= abs(math.log(3.0 / 4.0)) * 0.95
+    # every rung below its frozen value, which is what puts this in the LAST
+    # branch rather than in "worse than the frozen value at that rung"
+    for e, frozen in zip(ex, (1.8252530e-2, 4.0816620e-3, 9.8340770e-4)):
+        assert e < frozen, (e, frozen)
     for r in ("coarse", "mid", "fine"):
         assert _cell("thru", r, "false")["column_power_max"] < G.COLUMN_POWER_MAX
+    # the per-bin curve, and |S11| / |S21| at the worst bin. The excess is NOT a
+    # mismatch term: at 11.6 GHz it is |S21|² − 1 that carries it (5.454e-3 of
+    # 6.135e-3 coarse, 1.087e-3 of 1.161e-3 mid, 2.464e-4 of 2.546e-4 fine) while
+    # |S11|² is 6.8e-4 / 7.5e-5 / 8.2e-6 — one to one and a half orders below.
+    # §5.4's own words for that: "a column-power excess that does NOT track |S11|
+    # points at |S21| — a transmitted-magnitude error — rather than at the
+    # mismatch, and that distinction is the thing to report."
+    freqs = fx["fixture"]["freqs_hz"]
+    expected = {"coarse": (6.135092e-3, 0.026092, 1.002723),
+                "mid": (1.161080e-3, 0.008636, 1.000543),
+                "fine": (2.546142e-4, 0.002864, 1.000123)}
+    for rung, (exc, s11_w, s21_w) in expected.items():
+        c = _cell("thru", rung, "false")
+        cols = c["column_power_per_bin"]
+        assert len(cols) == 2 and all(len(col) == len(freqs) for col in cols)
+        per_bin = [max(cols[0][i], cols[1][i]) - 1.0 for i in range(len(freqs))]
+        worst = max(range(len(per_bin)), key=per_bin.__getitem__)
+        assert freqs[worst] == 11.6e9, (rung, freqs[worst])
+        assert per_bin[worst] == pytest.approx(exc, rel=2e-3)
+        s11 = abs(complex(*c["s_params"]["S11"][worst]))
+        s21 = abs(complex(*c["s_params"]["S21"][worst]))
+        assert s11 == pytest.approx(s11_w, abs=5e-6)
+        assert s21 == pytest.approx(s21_w, abs=5e-6)
+        assert (s21 ** 2 - 1.0) > 6.0 * s11 ** 2, (
+            "the excess is a |S21| term, not the mismatch")
 
 
 def test_pec_short_column_power_branch_one(fx):
@@ -603,6 +677,26 @@ def test_forward_identity_stays_red_on_the_flux_lane(fx, group, scaled, x64):
         conc = entry.get("forward_identity_concrete_override_vs_plain")
         if conc is not None:
             assert conc["max_abs_diff"] == 0.0, "a non-zero here survives without a tracer"
+    # The "1.5 < scaled ≤ 10" branch asks for two more numbers than the first
+    # branch does: "Report the worst entry, its ``abs_s_at_worst``, its group's
+    # x64 witness, and the per-leg ``forward_identity_concrete_override_vs_plain``
+    # where the group carries one." The first two were missing from the first
+    # write-up of this run; pinned here and quoted in the PR body.
+    fi = legs[0]["forward_identity"]
+    worst_by_group = {
+        "pec_short|flux|eps": ([1, 1, 16], 1.000006477, 1.094054e-05),
+        "pec_short|flux|sigma": ([0, 0, 16], 0.747453662, 1.147447e-05),
+        "slab|flux|eps": ([0, 0, 0], 0.202672520, 9.150247e-06),
+    }
+    entry_ix, abs_s, abs_diff = worst_by_group[group]
+    assert fi["worst_entry"] == entry_ix
+    assert fi["abs_s_at_worst"] == pytest.approx(abs_s, rel=1e-6)
+    assert fi["max_abs_diff"] == pytest.approx(abs_diff, rel=1e-5)
+    # the branch's own test of the reassociation story: the ABSOLUTE difference
+    # has not grown past the ~1.1e-5 the first run measured, on any of the three
+    # groups, so what moved is the scaling |S| at the worst entry, not the error.
+    assert abs_diff <= 1.2e-5
+    assert len({tuple(e["forward_identity"]["worst_entry"]) for e in legs}) == 1
 
 
 def test_forward_identity_is_exactly_zero_on_the_false_lane(fx):
@@ -655,24 +749,53 @@ def test_zero_derivative_siblings_gradient_grew_by_an_order(fx):
     as a miss beside §5.4's empty-guide numbers."""
     leg = _leg("pec_short", "false", "eps", "s11_mag2")
     assert leg["rel"] <= G.AD_FD_REL_GATE
-    assert leg["g_fd"] == pytest.approx(7.64331e-4, rel=1e-4)
-    assert leg["g_fd"] / 7.716e-5 > 5.0, "grew by far more than the Z_TE share"
+    assert leg["rel"] == pytest.approx(8.6513e-3, rel=1e-3)
+    # The branch names four numbers to report together: "Report ``g_ad``,
+    # ``g_fd``, ``fd_ulp_span`` and the leg's ``|S11|`` at θ0 next to §5.4's
+    # empty-guide numbers." All four, pinned:
+    assert leg["g_ad"] == pytest.approx(7.709435e-4, rel=1e-5)
+    assert leg["g_fd"] == pytest.approx(7.643310e-4, rel=1e-5)
+    assert leg["fd_ulp_span"] == pytest.approx(3.442241e11, rel=1e-5)
     assert leg["fd_ulp_span"] >= G.FD_ULP_FLOOR
+    # the objective is |S11|², so |S11| at θ0 is its square root: 1.0000451
+    # against run 1's 0.9999984. The PEC short's |S11| moved OUTWARD from unity,
+    # which is §5.5's predicted worsening seen on a single leg — and it is why
+    # the sensitivity grew instead of shrinking with §5.4's mismatch.
+    assert leg["value_at_theta0"] == pytest.approx(1.00009012, rel=1e-8)
+    assert math.sqrt(leg["value_at_theta0"]) == pytest.approx(1.0000451, abs=5e-7)
+    assert leg["g_fd"] / 7.716e-5 > 5.0, "grew by far more than the Z_TE share"
 
 
 def test_the_other_fourteen_ad_fd_legs_are_green_as_predicted(fx):
     """§5.6(ii)'s last block, branch 1: "All 14 green with ``rel`` in
     1e-4 … 1.2e-2 — as predicted; the tape is undisturbed by the port correction".
-    Measured 1.230e-4 … 1.074e-2, every FD span between 3.4e11 and 4.8e15 ULP, nine
-    to eleven orders above the 1e4 floor, and no leg skipped."""
+
+    The 14 are the 16 ``ad_vs_fd`` legs minus the zero-derivative leg and its
+    ``false``-lane sibling, both of which have their own branches and their own
+    tests above. On that population: ``rel`` 1.225e-4 (``slab|false|eps|s21_mag2``)
+    … 1.074e-2 (``pec_short|false|eps|re_s11``), FD spans 8.75e13 … 4.82e15 ULP,
+    ten to eleven orders above the 1e4 floor, no leg skipped. The sibling's own
+    span, 3.44e11, belongs to the sibling and is not quoted as one of the 14."""
+    excluded = {("pec_short", "flux", "eps", "s11_mag2"),
+                ("pec_short", "false", "eps", "s11_mag2")}
     legs = [entry for entry in fx["ad_vs_fd"]
             if (entry["dut"], entry["lane"], entry["theta_kind"], entry["objective"])
-            != ("pec_short", "flux", "eps", "s11_mag2")]
-    assert len(legs) == 15      # 14 predicted-green + the false-lane sibling above
+            not in excluded]
+    assert len(legs) == 14
     for entry in legs:
         assert entry["rel"] <= G.AD_FD_REL_GATE, entry
         assert 1e-4 <= entry["rel"] <= 1.2e-2, (entry["dut"], entry["objective"], entry["rel"])
         assert entry["fd_ulp_span"] >= G.FD_ULP_FLOOR, entry
+    rels = sorted(entry["rel"] for entry in legs)
+    spans = sorted(entry["fd_ulp_span"] for entry in legs)
+    assert rels[0] == pytest.approx(1.22494e-4, rel=1e-4)
+    assert rels[-1] == pytest.approx(1.07366e-2, rel=1e-4)
+    assert spans[0] == pytest.approx(8.746317e13, rel=1e-5)
+    assert spans[-1] == pytest.approx(4.824417e15, rel=1e-5)
+    # the sibling is green on the same band but is NOT one of the 14
+    sibling = _leg("pec_short", "false", "eps", "s11_mag2")
+    assert 1e-4 <= sibling["rel"] <= 1.2e-2
+    assert sibling["fd_ulp_span"] < spans[0]
 
 
 def test_the_three_uninterpretable_ladders_became_interpretable(fx):
@@ -699,41 +822,69 @@ def test_the_three_uninterpretable_ladders_became_interpretable(fx):
         assert lad["monotone_fraction_of_bins"] >= lad["pinned_monotone_fraction_min"], key
 
 
-def test_ladder_richardson_false_lane_phase_rose_above_its_frozen_value(fx):
+def test_ladder_richardson_three_false_lane_legs_rose_above_their_frozen_value(fx):
     """§5.10's second branch, "A ``false``-lane value above its frozen value while
     its verdict stays ``pass`` or ``report_only`` … Against the prediction either
     way, and it is the same shape of contradiction §5.7 describes: the measured
     side moved toward an unmoved oracle, so it cannot get worse for the reason this
     run claims."
 
-    Two of the four ``false``-lane legs rose: ``pec_short_s11_phase_deg|false``
-    3.6905 → 3.7886 (+2.7 %) and ``slab_s21_mag|false`` 0.060135 → 0.060430
-    (+0.5 %). The other two fell as predicted (``slab_s11_mag|false``
-    0.084866 → 0.073687, ``slab_s21_phase_deg|false`` 9.0498 → 8.8930). Every
-    ``flux``-lane leg stayed inside its ±20 % band. The derived pin on
-    ``pec_short_s11_phase_deg|false`` moves 1.4 → 1.5 by the same
-    ``gate_from_envelope`` policy; the FROZEN pin is not touched."""
-    rose = {"pec_short_s11_phase_deg|false": (3.690504131650855, 3.78862445853268),
-            "slab_s21_mag|false": (0.06013453829776627, 0.06042994679365454)}
-    fell = {"slab_s11_mag|false": (0.08486550441365195, 0.07368675165660973),
-            "slab_s21_phase_deg|false": (9.049827099642798, 8.892973194394685)}
-    for key, (old, new) in rose.items():
-        lad = fx["ladder"][key]
-        assert lad["richardson_max_abs_diff"] == pytest.approx(new, rel=1e-9)
-        assert new > old
-        assert lad["verdict"] in ("pass", "report_only")
-    for key, (old, new) in fell.items():
-        assert fx["ladder"][key]["richardson_max_abs_diff"] == pytest.approx(new, rel=1e-9)
-        assert new < old
-    flux_frozen = {"pec_short_s11_phase_deg|flux": 3.254078135648712,
-                   "slab_s11_mag|flux": 0.07428218024993852,
-                   "slab_s21_mag|flux": 0.05618245004679767,
-                   "slab_s21_phase_deg|flux": 8.313685507552854}
-    for key, old in flux_frozen.items():
-        new = fx["ladder"][key]["richardson_max_abs_diff"]
-        assert 0.8 * old <= new <= 1.2 * old, (key, new, old)
+    **The quantity is the MID-FINE Richardson ``max_abs_diff``**, not the
+    top-level ``richardson_max_abs_diff``. §5.10 names it — "Frozen ``mid-fine``
+    ``max_abs_diff``" — and the eight numbers it quotes (0.925 / 0.829, 0.01883 /
+    0.01811, 0.01297 / 0.01169, 2.046 / 1.888) are exactly
+    ``ladder[key]["richardson"]["mid-fine"]["max_abs_diff"]`` in the frozen
+    artifact. The top-level key is the COARSE-MID value (3.6905 / 0.084866 /
+    0.060135 / 9.0498), which the contract never names; the first write-up of this
+    run read it, and got the population wrong in one leg. The derived pin is on
+    the declared quantity either way — every pinned ladder carries
+    ``pinned_richardson_pair == "mid-fine"``.
+
+    On the declared quantity THREE of the four ``false``-lane legs rose:
+    ``pec_short_s11_phase_deg`` 0.925009 → 0.994539 (+7.5 %), ``slab_s21_mag``
+    0.0129711 → 0.0131110 (+1.1 %), ``slab_s21_phase_deg`` 2.046017 → 2.051128
+    (+0.25 %). Only ``slab_s11_mag`` fell, 0.0188338 → 0.0175896 (−6.6 %). The
+    branch class is unchanged — it fires on any of the four — but the population
+    against the prediction is 3 of 4, not 2. Every ``flux``-lane leg stayed inside
+    its ±20 % band (1.066 / 0.9998 / 1.0000 / 1.013), so §5.10's last branch does
+    not fire and the ``false``-lane movement is not explained away by a lane the
+    correction was not supposed to touch.
+
+    The derived pin on ``pec_short_s11_phase_deg|false`` moves 1.4 → 1.5 by the
+    same ``gate_from_envelope`` policy; the FROZEN pin is not touched."""
+    mid_fine = {k: v["richardson"]["mid-fine"]["max_abs_diff"]
+                for k, v in fx["ladder"].items() if "richardson" in v}
+    frozen_mid_fine = {
+        "pec_short_s11_phase_deg|false": 0.9250091885249533,
+        "slab_s11_mag|false": 0.01883376476653381,
+        "slab_s21_mag|false": 0.012971060638738319,
+        "slab_s21_phase_deg|false": 2.046016852253139,
+        "pec_short_s11_phase_deg|flux": 0.8294652794336201,
+        "slab_s11_mag|flux": 0.018112579378638055,
+        "slab_s21_mag|flux": 0.01168789898211342,
+        "slab_s21_phase_deg|flux": 1.888190642486268,
+    }
+    frozen = json.loads(FROZEN.read_text())
+    for key, value in frozen_mid_fine.items():
+        assert frozen["ladder"][key]["richardson"]["mid-fine"]["max_abs_diff"] == value
+    rose = {"pec_short_s11_phase_deg|false": 0.9945386406513278,
+            "slab_s21_mag|false": 0.01311100865645587,
+            "slab_s21_phase_deg|false": 2.051127509983207}
+    fell = {"slab_s11_mag|false": 0.017589593070640785}
+    assert set(rose) | set(fell) == {k for k in frozen_mid_fine if k.endswith("|false")}
+    for key, new in rose.items():
+        assert mid_fine[key] == pytest.approx(new, rel=1e-9)
+        assert new > frozen_mid_fine[key], key
+        assert fx["ladder"][key]["verdict"] in ("pass", "report_only")
+        assert fx["ladder"][key]["pinned_richardson_pair"] == "mid-fine"
+    for key, new in fell.items():
+        assert mid_fine[key] == pytest.approx(new, rel=1e-9)
+        assert new < frozen_mid_fine[key], key
+    for key in (k for k in frozen_mid_fine if k.endswith("|flux")):
+        old = frozen_mid_fine[key]
+        assert 0.8 * old <= mid_fine[key] <= 1.2 * old, (key, mid_fine[key], old)
     assert fx["ladder"]["pec_short_s11_phase_deg|false"]["pinned_richardson_gate"] == 1.5
-    assert json.loads(FROZEN.read_text())["ladder"]["pec_short_s11_phase_deg|false"][
+    assert frozen["ladder"]["pec_short_s11_phase_deg|false"][
         "pinned_richardson_gate"] == 1.4, "the frozen pin is not moved"
 
 
@@ -836,8 +987,10 @@ def test_referee_at_the_claims_rung(fx):
     """§5.7. Four of the five ``false``-lane referee numbers land inside their
     predicted intervals (slab-vs-Airy magnitude 0.012620 in 0.00903 … 0.02072; slab
     column power 1.0003528 in 1.000014 … 1.000975; magnitude reciprocity 2.2507e-3
-    in 7.7e-7 … 2.585e-3; complex reciprocity 4.8064e-3 in 3.28e-4 … 6.983e-3), and
-    every flux-lane number is inside its ±20 % band.
+    in 7.7e-7 … 2.585e-3; complex reciprocity 4.8064e-3 in 3.28e-4 … 6.983e-3).
+    The flux lane does NOT behave the same way — see
+    ``test_flux_lane_column_power_is_below_its_predicted_band`` — so branch 1 is
+    not claimed for this section as a whole.
 
     The fifth fires "Green and better than predicted — any ``false``-lane number
     below the bottom of its predicted interval": slab-vs-Airy PHASE reads 6.0986°,
@@ -879,6 +1032,76 @@ def test_referee_at_the_claims_rung(fx):
         "the Airy oracle and the extractor must not share an input")
 
 
+def test_flux_lane_column_power_is_below_its_predicted_band(fx):
+    """§5.7's SECOND branch, "A flux-lane number outside its ±20 % band while the
+    ``false`` lane behaves — its own reading, because the flux lane is the control
+    for 'this is a ``Z_TE`` effect'. That lane carries no ``Z_TE`` term, so a move
+    there is a move in something the correction was not supposed to touch. Report
+    both lanes' per-bin residual curves side by side before attributing anything on
+    the ``false`` lane to ``Z_TE``; not blocking on its own, and not absorbed into
+    the branch above."
+
+    §5.7's table gives the flux column as "a ±20 % band around its own frozen
+    value". Read that way at the claims rung:
+
+    * slab column power — excess 9.2485e-6 against the frozen 1.3651e-5, 0.68×,
+      BELOW the printed band 1.00001 … 1.00002. The branch fires on this row.
+    * slab complex reciprocity — 2.7303e-5 against 3.2772e-4, 0.083×. The table
+      prints this row's flux prediction one-sided ("≤ 4e-4") and 2.73e-5 is under
+      it, so it is inside the table and far outside the prose band; both readings
+      are recorded rather than the convenient one.
+    * slab magnitude reciprocity — 6.0224e-7 against 7.7072e-7, 0.78×, marginally
+      under a ±20 % band and inside the printed "≤ 1e-6".
+    * both Airy rows are inside on either reading (0.99996×, 0.935×).
+
+    The per-bin curves the branch asks for say what the misses are: on the flux
+    lane the column-power residual is 1e-7 … 9e-6 and changes sign bin to bin,
+    and complex reciprocity is 1.0e-6 … 2.7e-5, also unsigned — a float32 noise
+    floor, where a ±20 % envelope is not a meaningful prediction. The ``false``
+    lane over the same bins is 5.3e-5 … 3.6e-4 and 1.4e-3 … 4.8e-3, smooth and
+    single-signed. So nothing on the ``false`` lane is attributed to ``Z_TE`` on
+    the strength of a flux-lane ratio, which is exactly what the branch asks."""
+    flux = fx["physics_gates"]["slab|fine|flux"]
+    false = fx["physics_gates"]["slab|fine|false"]
+    frozen = json.loads(FROZEN.read_text())["physics_gates"]["slab|fine|flux"]
+
+    excess = flux["column_power_max"] - 1.0
+    frozen_excess = frozen["column_power_max"] - 1.0
+    assert excess == pytest.approx(9.248524e-6, rel=1e-5)
+    assert excess / frozen_excess == pytest.approx(0.6775, abs=5e-4)
+    assert excess < 0.8 * frozen_excess, "below its ±20 % band — the branch that fired"
+    assert flux["column_power_max"] < 1.0000109, "below the printed band 1.00001 … 1.00002"
+
+    assert flux["reciprocity_complex_max"] == pytest.approx(2.730282e-5, rel=1e-5)
+    assert flux["reciprocity_complex_max"] < 0.8 * frozen["reciprocity_complex_max"]
+    assert flux["reciprocity_complex_max"] <= 4e-4, "inside the table's printed '≤ 4e-4'"
+    assert flux["reciprocity_mag_mean"] == pytest.approx(6.022391e-7, rel=1e-5)
+    assert flux["reciprocity_mag_mean"] <= 1e-6, "inside the table's printed '≤ 1e-6'"
+
+    # the false lane behaves — which is the condition on this branch
+    assert 1.000014 <= false["column_power_max"] <= 1.0009748557
+    assert 3.28e-4 <= false["reciprocity_complex_max"] <= 6.9831665e-3
+
+    # both lanes' per-bin residual curves, which the branch asks to see before
+    # anything on the false lane is attributed to Z_TE
+    n_bins = len(fx["fixture"]["freqs_hz"])
+    for lane, lo, hi, signed in (("flux", 1e-7, 1e-5, False), ("false", 5e-5, 4e-4, True)):
+        c = _cell("slab", "fine", lane)
+        cols = c["column_power_per_bin"]
+        per_bin = [max(cols[0][i], cols[1][i]) - 1.0 for i in range(n_bins)]
+        assert len(per_bin) == n_bins
+        assert lo <= max(abs(v) for v in per_bin) <= hi, (lane, per_bin)
+        # the flux lane changes sign across the band; the false lane does too, but
+        # smoothly and with an order more amplitude — it is a residual, not noise
+        assert any(v > 0 for v in per_bin) and any(v < 0 for v in per_bin)
+        recip = c["reciprocity_complex_per_bin"]
+        assert len(recip) == n_bins
+        if signed:
+            assert min(recip) >= 1.4e-3 and max(recip) <= 4.9e-3
+        else:
+            assert min(recip) >= 1.0e-6 and max(recip) <= 2.8e-5
+
+
 def test_non_vacuity_branch_one(fx):
     """§5.10's ``non_vacuity`` branch 1, "All 12 pass with ``slab`` inside ±5 % —
     as predicted; every other verdict on those cells is reading a real
@@ -904,7 +1127,22 @@ def test_power_closure_tracks_column_power(fx):
     independent information: it is the same sum, so it is not a second witness for
     §5.4 or §5.5 and is not quoted as one". Worst ratio 1.99
     (``pec_short|fine|false``, the cell that already showed a two-sided error in
-    miniature in run 1)."""
+    miniature in run 1).
+
+    Recorded because the number is in the artifact and no §5.10 leg reads it: the
+    family is 12 verdicts and excludes ``thru`` by construction, and two ``thru``
+    ``flux`` cells DO diverge from their own ``column_power_max`` by more than a
+    factor 2 — ``thru|coarse|flux`` at 2.132 (frozen 2.124) and ``thru|mid|flux``
+    at 2.715, which was 1.000 in run 1. A divergence means some bin lost power
+    while another gained it; on these two the per-bin curve is a float32 noise
+    floor at the 1e-6 … 5e-5 level, an order below the ``false``-lane residual.
+    Not a verdict, not a witness for §5.4 — a line in the record."""
+    unscored = {("thru", "coarse", "flux"): 2.132, ("thru", "mid", "flux"): 2.715}
+    for (dut, rung, lane), ratio in unscored.items():
+        c = _cell(dut, rung, lane)
+        assert c["power_closure_max"] / (c["column_power_max"] - 1.0) == pytest.approx(
+            ratio, abs=5e-3)
+        assert f"power_closure|{dut}|{rung}|{lane}" not in fx["verdicts"]
     for c in fx["cells"]:
         if c["dut"] == "thru":
             continue
