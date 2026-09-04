@@ -295,7 +295,16 @@ def test_identity_stamp(fx):
     assert fx["supersedes_reason"]
     assert fx["legs_rung"] == G.LEGS_RUNG_DEFAULT == "fine"
     p = fx["provenance"]
-    assert p["run_id"] != "local" and p["run_lane"] == "vessl"
+    # run_id names the job. The measurement stamped the literal "vessl" because
+    # the yaml's ${VESSL_RUN_ID:-vessl} fallback fired on an unset env var; the
+    # real id was recovered from the backed-up log and written in, with
+    # run_id_source recording that it was recovered rather than stamped. Pin
+    # both, so neither the id nor its provenance can be quietly dropped, and
+    # reject the fallback strings outright.
+    assert p["run_id"] == "369367258205", p["run_id"]
+    assert p["run_id"] not in ("local", "vessl", "UNSET-see-log-filename")
+    assert "recovered" in p["run_id_source"] and "369367258205" in p["run_id_source"]
+    assert p["run_lane"] == "vessl"
     assert fx["predeclaration_sha"] not in ("unknown", "", p["commit"])
     assert p["commit"].startswith(fx["predeclaration_sha"]) is False, (
         "the pre-declaration must predate the run commit, not be it")

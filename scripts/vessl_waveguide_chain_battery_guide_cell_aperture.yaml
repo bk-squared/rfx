@@ -70,7 +70,23 @@ run: |-
   OUT="/root/workspace/claude-workspace/rfx/runs/waveguide_chain_battery/$(date -u +%Y%m%dT%H%M%SZ)-$SHORT"
   mkdir -p "$OUT"
   echo "artifacts: $OUT"
-  RUN_ID="${VESSL_RUN_ID:-vessl}"
+  # 2026-09-04: VESSL_RUN_ID was unset in the pod on run 369367258205, the
+  # old "${VESSL_RUN_ID:-vessl}" fallback fired silently, and the artifact
+  # stamped the literal "vessl" — so the record did not name its own run and
+  # the id had to be recovered from the backed-up log afterwards. Say it
+  # loudly instead of substituting a placeholder: the run still proceeds
+  # (losing the whole battery to a missing label would be worse), but the
+  # banner is unmissable in the log and the stamped value says it is unknown.
+  if [ -z "${VESSL_RUN_ID:-}" ]; then
+    RUN_ID="UNSET-see-log-filename"
+    echo "########################################################"
+    echo "WARNING: VESSL_RUN_ID is unset. provenance.run_id will be"
+    echo "         '$RUN_ID'. Recover the real id from the backed-up"
+    echo "         log filename and correct the artifact before the PR."
+    echo "########################################################"
+  else
+    RUN_ID="$VESSL_RUN_ID"
+  fi
   echo "run id (env VESSL_RUN_ID): $RUN_ID"
 
   # Stages in order; every case is persisted as its own JSON before the next

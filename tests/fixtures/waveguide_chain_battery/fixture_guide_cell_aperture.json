@@ -10,7 +10,7 @@
  "generated_at": "2026-09-03T23:18:09.066609+00:00",
  "provenance": {
   "commit": "5b588f3c6cdc2aeeb9af1eb528889cec3813525d",
-  "run_id": "vessl",
+  "run_id": "369367258205",
   "run_lane": "vessl",
   "jax_version": "0.4.33.dev20241023+e3c6d6430",
   "numpy_version": "1.26.4",
@@ -27,7 +27,8 @@
   "wall_time_note": "sum of the per-case solve wall times (cells incl. settling reruns, AD legs, FD pairs, shifted planes); JIT compile included",
   "recapture_command": "PYTHONPATH=. python scripts/diagnostics/waveguide_chain_battery_measure.py --out-dir <run-dir> --run-id <id> --run-lane <lane>; then --stages assemble --fixture-out tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json",
   "recapture_entry_point": "scripts/diagnostics/waveguide_chain_battery_measure.py",
-  "recapture_vessl_yaml": "scripts/vessl_waveguide_chain_battery_guide_cell_aperture.yaml"
+  "recapture_vessl_yaml": "scripts/vessl_waveguide_chain_battery_guide_cell_aperture.yaml",
+  "run_id_source": "recovered after the fact from the backed-up job log, not written by the run: the yaml's RUN_ID=\"${VESSL_RUN_ID:-vessl}\" fallback fired because VESSL_RUN_ID was unset in the pod, so the assemble step stamped the literal 'vessl'. The true id is confirmed three ways \u2014 the log filename docs/vessl-logs/waveguide_chain_battery_guide_cell_aperture_369367258205_completed.log, the id printed inside that log, and the NFS run directory 20260903T225627Z-5b588f3c referenced by it. No measured value was touched; this field and this note are the only edits."
  },
  "fixture": {
   "a_m": 0.02286,
