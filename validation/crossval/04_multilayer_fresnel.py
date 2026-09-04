@@ -435,12 +435,27 @@ rfx_self_ok = bool(
 # DERIVED from the lattice model's own error budget (record truncation, the
 # incident reference's truncation, float32), evaluated at the one dx rung this
 # case runs. Nothing here can change the exit code: the note derives, from
-# THIS config's committed tail levels (0.036 / 0.051 of the incident peak,
-# against cv22's -40 dB bar), that W_witness is 5.2e-2 in the gated mean here
-# -- looser than the case's own band-mean window -- so the cv04 lattice gate is
-# declared NON-DISCRIMINATING at the committed 719-step record and is REPORTED,
-# not gated (note section 5.3). The claims-bearing rung for this material is
-# the settled one, cv23's `sigma_zero` arm.
+# THIS config's committed tail levels, that W_witness is looser than the case's
+# own band-mean window, so the cv04 lattice gate was declared NON-DISCRIMINATING
+# at the committed 719-step record and REPORTED, not gated (note section 5.3).
+#
+# THAT REASON NO LONGER HOLDS ON R, and the change is recorded rather than acted
+# on here. The derived absorber (#888) and the derived rig (bw = 0.8) between
+# them dropped this rung's tails, and with them W_witness:
+#
+#            mean W_witness_R   ceiling   W exceeds ceiling   |rfx - lattice| R
+#   before        4.68e-02      1.44e-02        YES               1.42e-03
+#   now           1.98e-03      4.81e-03        no                1.98e-04
+#
+# W_witness_R is now FIVE TIMES TIGHTER than the case's own W_MEAN_R = 0.010 and
+# sits inside its own ceiling, and rfx uses 20 % of it (worst_ratio_R = 0.198).
+# The R channel of this witness has become gateable. The T channel has not:
+# W_witness_T = 1.39e-02 still exceeds its 1.17e-02 ceiling.
+#
+# Turning it on changes what cv04 gates, so it is a decision, not a lane patch --
+# see docs/design_notes/20260904_aux_absorber_depth_derivation.md section 11.
+# The claims-bearing rung for this material remains the settled one, cv23's
+# `sigma_zero` arm.
 # -----------------------------------------------------------------------------
 if "--lattice-witness" in sys.argv:
     _cmp = os.path.join(SCRIPT_DIR, "comparators")
@@ -486,8 +501,11 @@ if "--lattice-witness" in sys.argv:
     _doc["gated_here"] = False
     _doc["gated_here_reason"] = (
         "the committed 719-step record does not settle to -40 dB (tails "
-        f"{tail_refl_rel:.3f} / {tail_trans_rel:.3f} of the incident peak), so the "
-        "derived W_witness exceeds this case's own band-mean window; REPORTED, "
+        f"{tail_refl_rel:.3f} / {tail_trans_rel:.3f} of the incident peak). On R "
+        "that no longer makes the witness non-discriminating -- W_witness_R is now "
+        "inside its own ceiling and five times tighter than this case's W_MEAN_R "
+        "(#888 lane) -- but on T it still is: W_witness_T exceeds its ceiling. "
+        "Gating R is a decision this lane records rather than takes; REPORTED, "
         "see docs/design_notes/20260903_lattice_witness_standard.md section 5.3")
     _out04 = os.path.join(SCRIPT_DIR, "_04_fresnel_results")
     os.makedirs(_out04, exist_ok=True)

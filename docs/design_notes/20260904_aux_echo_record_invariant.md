@@ -183,27 +183,27 @@ its committed record, and written into the artifact.
 | cv23 | `tand3_dx4` | 4 | 4000 | 4723 | 8022 | **0.589** | 8349 | 0.566 |
 
 Every value in the "ratio" column is read back from the artifact:
-`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.record_over_echo_arrival = 0.601`,
-`validation/crossval/_22_dispersive_results/lattice_witness.json::rungs.debye.aux_echo.record_over_echo_arrival = 0.540`,
-`validation/crossval/_22_dispersive_results/lattice_witness.json::rungs.drude.aux_echo.record_over_echo_arrival = 0.569`,
-`validation/crossval/_22_dispersive_results/lattice_witness.json::rungs.lorentz.aux_echo.record_over_echo_arrival = 0.598`,
-`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand0p1.aux_echo.record_over_echo_arrival = 0.520`,
-`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand0p1_dx2.aux_echo.record_over_echo_arrival = 0.528`,
-`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand0p1_dx4.aux_echo.record_over_echo_arrival = 0.532`,
-`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand1.aux_echo.record_over_echo_arrival = 0.564`,
-`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand1_dx2.aux_echo.record_over_echo_arrival = 0.573`,
-`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand1_dx4.aux_echo.record_over_echo_arrival = 0.577`,
-`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand3.aux_echo.record_over_echo_arrival = 0.584`,
-`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand3_dx2.aux_echo.record_over_echo_arrival = 0.584`,
-`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand3_dx4.aux_echo.record_over_echo_arrival = 0.589`.
+`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.record_over_echo_arrival = 0.611`,
+`validation/crossval/_22_dispersive_results/lattice_witness.json::rungs.debye.aux_echo.record_over_echo_arrival = 0.545`,
+`validation/crossval/_22_dispersive_results/lattice_witness.json::rungs.drude.aux_echo.record_over_echo_arrival = 0.575`,
+`validation/crossval/_22_dispersive_results/lattice_witness.json::rungs.lorentz.aux_echo.record_over_echo_arrival = 0.604`,
+`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand0p1.aux_echo.record_over_echo_arrival = 0.525`,
+`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand0p1_dx2.aux_echo.record_over_echo_arrival = 0.530`,
+`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand0p1_dx4.aux_echo.record_over_echo_arrival = 0.533`,
+`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand1.aux_echo.record_over_echo_arrival = 0.570`,
+`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand1_dx2.aux_echo.record_over_echo_arrival = 0.575`,
+`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand1_dx4.aux_echo.record_over_echo_arrival = 0.578`,
+`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand3.aux_echo.record_over_echo_arrival = 0.587`,
+`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand3_dx2.aux_echo.record_over_echo_arrival = 0.587`,
+`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand3_dx4.aux_echo.record_over_echo_arrival = 0.590`.
 
 cv04's arrival and record, likewise:
-`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.echo_arrival_steps = 1196`,
+`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.echo_arrival_steps = 1176`,
 `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.record_steps = 719`,
-`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.echo_arrival_centre_steps = 1278`,
-`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.aux_n_1d = 652`,
+`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.echo_arrival_centre_steps = 1259`,
+`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.aux_n_1d = 1012`,
 and the reflector the phase slope located,
-`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.aux_reflector_index = 638.88`.
+`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.aux_reflector_index = 812.00`.
 
 **The notes' 0.50–0.57 is confirmed, at the notes' own convention.** In the
 centre column the 13 rungs span **0.500 to 0.575** — `tand0p1` at 0.4998 is the

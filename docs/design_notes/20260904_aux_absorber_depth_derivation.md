@@ -605,3 +605,62 @@ it does not fall, it rises slightly. `per_bin_max_RT_closure` falls by 11x,
 so `W_BIN` is roughly an order of magnitude looser than the rig it is derived
 from now warrants. Decision B's re-derivation should take its envelope from the
 derived rig, not from the committed one.
+
+---
+
+## 11. Two gates this lane made possible and did not turn on
+
+Regenerating cv04, cv22 and cv23 moved 73 numbers that four documents cite, and
+the #829 provenance gate caught every one. They were re-stated from the
+artifacts by the gate's own collector, resolver and tolerance
+(`tests/contracts/test_evidence_numeric_provenance.py`), not retyped -- 73
+citations across `validation/crossval/manifest.json`, `validation/README.md`,
+`docs/design_notes/20260903_lattice_witness_standard.md` and
+`docs/design_notes/20260904_aux_echo_record_invariant.md`.
+
+**Re-stating a number is not the same as re-stating the argument built on it**,
+and two arguments in the tree are now false. Both are corrected in place; neither
+gate is turned on here, because turning one on changes what a case gates.
+
+### 11.1 cv04's lattice witness has become a gate on R
+
+`docs/design_notes/20260903_lattice_witness_standard.md` §5.3 declared cv04's
+exact-lattice witness REPORTED, not gated, and gave the reason: *"a gate that
+cannot reject the continuum model is not a gate"*. On the rig it was written
+for, the continuum falsifier separated 0.099 of the window on 0 of 115 bins.
+
+Same case, same rung, same 719 steps, after the derived absorber and `bw = 0.8`:
+
+| | then | now |
+|---|---|---|
+| tails, scat / trans | 0.036 / 0.051 | 0.0042 / 0.0121 |
+| `W_witness,R` | 5.35e-02 | 1.98e-03 |
+| exceeds its own ceiling | yes | **no** (2.4x inside) |
+| vs cv04's own `W_MEAN_R` = 0.010 | looser | **5x tighter** |
+| `continuum` falsifier, sep / window R | 0.099 (0 bins) | **2.68 (65 of 115)** |
+| `eps_x1p01`, sep / window R | 0.082 (0 bins) | **2.20 (86 of 115)** |
+| `thickness_plus / minus_cell` | -- | 38.99 / 39.08 (115 / 114) |
+
+The witness now rejects the continuum model by 2.7x its own window. **T did not
+follow**: `W_witness,T` = 1.39e-02 still exceeds its 1.17e-02 ceiling and the
+continuum falsifier separates only 0.38 there, so T stays reported.
+
+Not turned on here. It adds a gate to a claims-bearing case, and the working
+agreement wants a replacement or new gate shown to kill its mutants first --
+which the table above does, on R, and does not, on T. **PI decision.**
+
+### 11.2 The slab family's `W_BIN` is derived from an envelope that no longer exists
+
+Section 10.6: `per_bin_max_RT_closure` 0.0487 -> 0.0043 while `mean_dR` 0.0066 ->
+0.0080. `W_BIN = gate_from_envelope(0.0487) = 0.074` is therefore about an order
+of magnitude looser than the rig it is derived from now warrants, and
+`W_MEAN_R = 0.010` is not -- the two envelopes have different causes and only one
+of them was illumination. This is decision B's input and belongs to decision B's
+lane, not this one.
+
+### 11.3 Not a gate, but recorded
+
+`cv23 tand3`'s `eps_continuum` falsifier is silent where it was declared to fire
+(§8.1), and cv04's `eps_continuum` separation is identically zero -- structurally,
+since cv04 is lossless and that defect IS the continuum permittivity there. Both
+are recorded as measured verdicts rather than repaired.
