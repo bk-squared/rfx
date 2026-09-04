@@ -75,7 +75,8 @@ import rfx  # noqa: E402
 from rfx import Simulation  # noqa: E402
 from rfx.boundaries.spec import Boundary, BoundarySpec  # noqa: E402
 from rfx.geometry.csg import Box  # noqa: E402
-import rfx.sources.waveguide_port as _wgp  # noqa: E402
+import rfx.sources.waveguide_port as _wgp
+import rfx.boundaries.cpml as _cpml_mod  # noqa: E402
 
 import tests._waveguide_chain_battery_fixture as F  # noqa: E402
 
@@ -312,6 +313,52 @@ def _variant_apply_e(offset: int):
     return _apply
 
 
+# --------------------------------------------------------------------------
+# the CFS-alpha instrument (the K-axis confound, added after Stage 0)
+# --------------------------------------------------------------------------
+# rfx/boundaries/cpml.py sets
+#     sigma_max = -ln(R0)(m+1) / (2*eta*d),  d = n_layers*dx
+#     alpha     = 0.05 * (1 - rho)
+# so the SIGMA dose is thickness-invariant by construction -- integral(sigma dx)
+# = -ln(R0)/(2*eta) = 0.045840, measured constant to 0.07 % across K = 3..9 --
+# while alpha is an ABSOLUTE S/m with no d in it, so integral(alpha dx) = 0.025*d
+# grows LINEARLY with K. The absorber-thickness ladder is therefore also an
+# alpha-dose ladder, and CFS alpha is exactly the term that governs grazing and
+# evanescent absorption, which is the regime the near-cutoff bands are in
+# (the guided wave meets the port-normal face at 76-82 deg there).
+#
+# This scales alpha at RUN time, leaving the geometry, the grid, the step count
+# and the boundary round-trip count untouched -- which is what separates the two
+# axes the K ladder confounds. Nothing in the library is edited.
+_ORIG_CPML_PROFILE = _cpml_mod._cpml_profile
+
+
+def _alpha_scaled_profile(scale: float):
+    def _profile(*a, **kw):
+        prm = _ORIG_CPML_PROFILE(*a, **kw)
+        alpha = prm.alpha * scale
+        sigma, kappa = prm.sigma, prm.kappa
+        dt = kw.get("dt", a[1] if len(a) > 1 else None)
+        denom = sigma * kappa + kappa ** 2 * alpha
+        b = jnp.exp(-(sigma / kappa + alpha) * dt / _cpml_mod.EPS_0)
+        c = jnp.where(denom > 1e-30, sigma * (b - 1.0) / denom, 0.0)
+        return prm._replace(alpha=alpha, b=b, c=c)
+    return _profile
+
+
+@contextlib.contextmanager
+def alpha_variant(scale):
+    """Scale the CFS alpha profile by ``scale`` for the duration of one case."""
+    if scale in (None, 1.0):
+        yield
+        return
+    _cpml_mod._cpml_profile = _alpha_scaled_profile(float(scale))
+    try:
+        yield
+    finally:
+        _cpml_mod._cpml_profile = _ORIG_CPML_PROFILE
+
+
 @contextlib.contextmanager
 def port_variant(variant: str):
     if variant not in PORT_VARIANT_OFFSET:
@@ -451,6 +498,7 @@ def run_case(case: dict) -> dict:
             "silently downcast float64 control is a no-op.")
     out: dict = dict(case)
     out["provenance"] = rfx_provenance()
+    out["alpha_scale"] = float(case.get("alpha_scale") or 1.0)
 
     r_lo = float(case.get("r_lo") or np.asarray(case["freqs_hz"]).min() / FC_CONTINUOUS_HZ)
     lay = layout(r_lo, float(case.get("domain_mult", 1.0)))
@@ -557,7 +605,8 @@ def run_case(case: dict) -> dict:
 
     # ---- the solve -------------------------------------------------------
     t_solve = time.time()
-    with port_variant(case.get("port_variant", "shipped")):
+    with alpha_variant(case.get("alpha_scale")), \
+            port_variant(case.get("port_variant", "shipped")):
         with warnings.catch_warnings(record=True) as wl:
             warnings.simplefilter("always")
             res = sim.compute_waveguide_s_matrix(n_steps=n_steps, normalize=False)
