@@ -48,7 +48,42 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
 
+from rfx.boundaries.cpml import _cpml_profile
 from rfx.core.yee import EPS_0, MU_0
+
+
+# ---------------------------------------------------------------------------
+# Auxiliary-grid absorber (#888)
+# ---------------------------------------------------------------------------
+# The aux grid's own absorber sets the injected incident field for EVERY
+# consumer of the oblique Bloch path, and R/T normalise by a probe of that same
+# field, so a reflection off it cancels in vacuum and enters the measurement
+# only once the record outlives the echo's flight time.  It shipped at 30 cells
+# with sigma_max = 0.8 (m+1)/(eta dx) * kappa_max -- the 0.8 (m+1)/(eta dx)
+# optimum multiplied by kappa_max = 7, i.e. 70x the reflection-minimising sigma
+# for that depth -- and reflected |B/A| = 4.2e-02 at normal incidence.  It is
+# now derived the way the 3-D absorber is (``_cpml_profile``: sigma_max from a
+# target reflection), at a depth that reaches that target.
+#
+# Measured by tests/unit/sources/test_tfsf_aux_absorber_reflection.py, which
+# gates |B/A| over the declared angle band -- the reflection gate whose absence
+# is why a 6 % absorber shipped.
+# Both constants are READ OFF the measured (depth, target, angle) grid in
+# docs/design_notes/20260904_aux_absorber_depth_derivation.md section 3, at the
+# WORST DECLARED ANGLE of this path (70 deg, cv26's gate cap) -- the optimal
+# target inverts with angle, so a normal-incidence derivation is wrong here.
+# Note sigma_max = -ln(R) (m+1) / (2 eta n dx) = 0.856 S/m, GENTLER than the 2.45
+# a shallow 30-cell absorber at R = 1e-6 would carry and 174x gentler than the
+# 148.6 that shipped: long and gentle beats short and steep.
+# Measured |B/A| (mean / max over the gated band): 1.13e-06 / 3.10e-06 at 0 deg,
+# 2.56e-06 / 1.25e-05 at 45 deg, 5.78e-06 / 4.62e-05 at 60 deg,
+# 3.83e-05 / 2.34e-04 at 70 deg -- at the instrument's own floor at every angle.
+AUX_N_CPML = 200            # was 30
+AUX_CPML_ORDER = 3          # rfx/boundaries/cpml.py _cpml_profile default
+AUX_CPML_KAPPA_MAX = 1.0    # no stretching: the aux grid carries one propagating mode
+AUX_CPML_R_ASYMPTOTIC = 1e-14
+AUX_N_MARGIN_X = 25
+AUX_SRC_OFFSET = 3          # source sits AUX_SRC_OFFSET cells inside the absorber's inner edge
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +160,10 @@ def init_tfsf_2d(
     polarization: str = "ez",
     direction: str = "+x",
     theta_deg: float = 0.0,
+    aux_n_cpml: int | None = None,
+    aux_cpml_order: int | None = None,
+    aux_cpml_kappa_max: float | None = None,
+    aux_cpml_r_asymptotic: float | None = None,
 ) -> tuple[TFSF2DConfig, TFSF2DState]:
     """Initialize 2D auxiliary grid for oblique-incidence TFSF.
 
@@ -178,9 +217,9 @@ def init_tfsf_2d(
         n2y = nz  # periodic axis is z for TEz
 
     # x-direction: TFSF span + margins + CPML on both ends
-    n_cpml_2d = 30
+    n_cpml_2d = AUX_N_CPML if aux_n_cpml is None else int(aux_n_cpml)
     n_tfsf_x = x_hi - x_lo + 2
-    n_margin_x = 25
+    n_margin_x = AUX_N_MARGIN_X
 
     n2x = n_cpml_2d + n_margin_x + n_tfsf_x + n_margin_x + n_cpml_2d
 
@@ -190,22 +229,22 @@ def init_tfsf_2d(
 
     # Source position
     if direction == "+x":
-        src_x = n_cpml_2d + 3
+        src_x = n_cpml_2d + AUX_SRC_OFFSET
     else:
-        src_x = n2x - n_cpml_2d - 4
+        src_x = n2x - n_cpml_2d - AUX_SRC_OFFSET - 1
 
-    # CFS-CPML profile (x-direction only), 4th order
-    cpml_order = 4
-    kappa_max = 7.0
-    eta = np.sqrt(MU_0 / EPS_0)
-    sigma_max = 0.8 * (cpml_order + 1) / (eta * dx) * kappa_max
-    rho = 1.0 - np.arange(n_cpml_2d, dtype=np.float64) / max(n_cpml_2d - 1, 1)
-    sigma_prof = sigma_max * rho ** cpml_order
-    kappa_prof = 1.0 + (kappa_max - 1.0) * rho ** cpml_order
-    alpha_prof = 0.05 * (1.0 - rho)
-    denom = sigma_prof * kappa_prof + kappa_prof ** 2 * alpha_prof
-    b_prof = np.exp(-(sigma_prof / kappa_prof + alpha_prof) * dt / EPS_0)
-    c_prof = np.where(denom > 1e-30, sigma_prof * (b_prof - 1.0) / denom, 0.0)
+    # CFS-CPML profile (x-direction only).  sigma_max is DERIVED from a target
+    # reflection through the same law the 3-D absorber uses
+    # (rfx/boundaries/cpml.py::_cpml_profile), never from a standalone
+    # heuristic -- see AUX_CPML_* above and #888.
+    prof = _cpml_profile(
+        n_cpml_2d, dt, dx,
+        order=AUX_CPML_ORDER if aux_cpml_order is None else int(aux_cpml_order),
+        kappa_max=AUX_CPML_KAPPA_MAX if aux_cpml_kappa_max is None else float(aux_cpml_kappa_max),
+        R_asymptotic=(AUX_CPML_R_ASYMPTOTIC if aux_cpml_r_asymptotic is None
+                      else float(aux_cpml_r_asymptotic)),
+    )
+    b_prof, c_prof, kappa_prof = prof.b, prof.c, prof.kappa
 
     # Source waveform
     tau = 1.0 / (f0 * bandwidth * np.pi)
@@ -252,9 +291,9 @@ def init_tfsf_2d(
         direction_sign=float(direction_sign),
         transverse_axis=transverse_axis,
         n_cpml=n_cpml_2d,
-        b_cpml=jnp.array(b_prof, dtype=jnp.float32),
-        c_cpml=jnp.array(c_prof, dtype=jnp.float32),
-        kappa_cpml=jnp.array(kappa_prof, dtype=jnp.float32),
+        b_cpml=jnp.asarray(b_prof, dtype=jnp.float32),
+        c_cpml=jnp.asarray(c_prof, dtype=jnp.float32),
+        kappa_cpml=jnp.asarray(kappa_prof, dtype=jnp.float32),
         grid_pad=cpml_layers,
         angle_deg=float(theta_deg),
         dx_1d=float(dx),

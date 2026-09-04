@@ -416,23 +416,45 @@ def rig_cells(nx_interior: int, dx_div: int = 1):
 # importing the echo into every number.
 #
 # WHAT IT DOES NOT DO. It bounds WHEN the echo arrives. It does not bound HOW
-# LARGE the echo is: a deeper auxiliary absorber with sigma re-derived from a
-# reflection target is the actual fix (#888 fix candidate 1, undecided), and
-# this guard would pass a rig whose absorber was ten times worse.
+# LARGE the echo is, and this guard would pass a rig whose absorber was ten
+# times worse. That gap is now closed from the other side:
+# tests/unit/sources/test_tfsf_aux_absorber_reflection.py measures the amplitude
+# on both auxiliary paths and gates it per angle (#888 fix candidate 1, taken).
 # ---------------------------------------------------------------------------
-AUX_N_CPML_1D = 20        # rfx/sources/tfsf.py: n_cpml_1d -- a hard-coded constant of the
-                          # auxiliary grid, NOT scaled by dx_div (cv04 note section 6.1)
-AUX_N_MARGIN_1D = 10      # rfx/sources/tfsf.py: n_margin
-AUX_SRC_OFFSET_1D = 3     # rfx/sources/tfsf.py: src_idx = n_cpml_1d + 3 for direction "+x"
+# The auxiliary layout is READ FROM the module that owns it rather than restated
+# here. Before #888's fix these four were copies of literals in
+# rfx/sources/tfsf.py, and the copy is what let the two drift: the depth is now
+# a derived constant of that module (200 cells, from the reflection measurement
+# in docs/design_notes/20260904_aux_absorber_depth_derivation.md), and a guard
+# reading a stale 20 would compute an arrival for a grid that no longer exists
+# and pass every record put to it. These constants do NOT scale with dx_div
+# (cv04 note section 6.1) -- that remains true of the module's values.
+from rfx.sources.tfsf import (  # noqa: E402
+    AUX_N_CPML_1D, AUX_N_MARGIN_1D, AUX_SRC_OFFSET_1D,
+)
+
 AUX_I0_1D = AUX_N_CPML_1D + AUX_N_MARGIN_1D   # tfsf.py: i0, the aux index mapping to 3-D x_lo
 # Where inside the absorber the reflection is generated, in cells from the
-# absorber's inner edge. MEASURED, not assumed: the two-mode fit
-# B/A = rho e^{-2 j k L} has a phase slope d(arg B/A)/dk = -1.277755 m, i.e.
-# a reflector at auxiliary index 638.88 with the hi CPML at 632..651
-# (cv04 note section 2), reproduced at 1038.88 on the nx_interior = 1000
-# geometry (section 9). The 2-D grid's counterpart is 8.0 cells inside its
-# 30-cell layer (#888 note section 3); it is passed explicitly there.
-AUX_REFLECTOR_DEPTH_CELLS = 6.88
+# absorber's inner edge.
+#
+# It used to be MEASURED: on the 20-cell absorber the two-mode fit
+# B/A = rho e^{-2 j k L} had a phase slope d(arg B/A)/dk = -1.277755 m, putting
+# the reflector at auxiliary index 638.88 with the hi CPML at 632..651 (cv04
+# note section 2), i.e. 6.88 cells inside; the 2-D grid's counterpart was 8.0
+# cells inside its 30-cell layer (#888 note section 3).
+#
+# On the DERIVED absorber it cannot be measured, and that is not a gap. The same
+# phase-slope fit returns 0.68 cells at 0 deg and NEGATIVE depths at 45 and 70
+# (2026-09-04 note section 4): at |B/A| ~ 1e-06 the residual backward wave is no
+# longer one specular echo from one place, so no single L describes it. The
+# constant therefore becomes a BOUND -- zero, the absorber's inner edge, the
+# earliest point a reflection could originate and so the earliest it could
+# arrive. The guard gets strictly more conservative, which is the safe
+# direction, and the amplitude statement it was standing in for now exists:
+# tests/unit/sources/test_tfsf_aux_absorber_reflection.py.
+AUX_REFLECTOR_DEPTH_CELLS = 0.0
+AUX_REFLECTOR_DEPTH_IS_BOUND = True
+AUX_REFLECTOR_DEPTH_MEASURED_AT_20_CELLS = 6.88
 # The invariant: a record is admissible only while it ENDS BEFORE the echo
 # ARRIVES. Equality is already a failure -- the last recorded step would be the
 # first contaminated one.
@@ -480,9 +502,10 @@ def slab_aux_echo(nx_interior: int, dt: float, *, dx_div: int = 1,
                   n_steps: int | None = None) -> dict:
     """``aux_echo_arrival`` at the slab family's own rig (cv04, cv22, cv23).
 
-    The auxiliary layout is ``rfx/sources/tfsf.py``'s:
-    ``n_1d = 20 + 10 + (x_hi - x_lo + 2) + 10 + 20``, source at 23, ``i0`` at
-    30 mapping to the 3-D ``x_lo``; its constants do NOT scale with ``dx_div``.
+    The auxiliary layout is ``rfx/sources/tfsf.py``'s, imported from it:
+    ``n_1d = 2 n_cpml + 2 margin + (x_hi - x_lo + 2)``, source at
+    ``n_cpml + 3``, ``i0`` at ``n_cpml + margin`` mapping to the 3-D ``x_lo``;
+    its constants do NOT scale with ``dx_div``.
 
     The speed is ``v_cells = c dt/dx``, the Courant cell speed
     ``derive_record_length`` already uses. On the 1-D Yee lattice that is the
