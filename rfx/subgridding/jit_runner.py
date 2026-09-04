@@ -33,6 +33,7 @@ from rfx.subgridding.sbp_sat_3d import (
 from rfx.subgridding.material_sat import interface_pair_deltas
 from rfx.core.yee import EPS_0, MU_0
 from rfx.probes.probes import _ampere_loop
+from rfx.core.dft_utils import half_step_current_phase as _half_i_phase
 
 
 class SubgridResult(NamedTuple):
@@ -2078,6 +2079,11 @@ def _make_step_fn(ctx):
                 * lumped_sparam_freqs_arr
                 * (step_idx.astype(jnp.float32) * dt)
             )
+            # Yee half-step: the Ampere-loop current is H-derived (H^{n+1/2})
+            # while the voltage is E-derived (E^{n+1}); advance the current
+            # sample by dt/2 so both DFT channels share a reference time
+            # (rfx/core/dft_utils.half_step_current_phase).
+            i_phase = phase * _half_i_phase(lumped_sparam_freqs_arr, dt)
             v_dft = carry["lumped_sparam_v"]
             i_dft = carry["lumped_sparam_i"]
 
@@ -2105,7 +2111,7 @@ def _make_step_fn(ctx):
             for idx_lp, (li, lj, lk, lc, _z0) in enumerate(lumped_sparam_meta):
                 voltage, current = _sample_lumped_vi(li, lj, lk, lc)
                 v_dft = v_dft.at[idx_lp].add(voltage * phase * dt)
-                i_dft = i_dft.at[idx_lp].add(current * phase * dt)
+                i_dft = i_dft.at[idx_lp].add(current * i_phase * dt)
 
         # === Source injection on fine grid ===
         if not inject_sources_before_e_coupling:

@@ -1490,6 +1490,7 @@ def make_core_step(ctx: _StepContext):
         # channels (v, i, v_port) are accumulated POST-injection below.
         if ctx.use_wire_sparams or ctx.use_lumped_sparams:
             from rfx.probes.probes import _ampere_loop
+            from rfx.core.dft_utils import half_step_current_phase as _half_i_phase
         if ctx.use_wire_sparams:
             new_wire_refs = []
             for accs, wp_meta in zip(carry["wire_sparam_accs"], ctx.wire_sparam_meta):
@@ -1514,9 +1515,14 @@ def make_core_step(ctx: _StepContext):
                     st, (li, lj, lk), lp_meta.component, dx, periodic)
                 t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
                 phase_l = jnp.exp(-1j * 2.0 * jnp.pi * lp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
+                # Yee half-step: current is H-derived (H^{n+1/2}) while the
+                # voltage is E-derived (E^{n+1}); advance the current sample
+                # by dt/2 so both share a reference time (dft_utils).
+                i_phase_l = phase_l * _half_i_phase(
+                    lp_meta.freqs.astype(jnp.float64), dt).astype(jnp.complex64)
                 new_lumped_accs.append((
                     v_dft_l + v_l * phase_l,
-                    i_dft_l + i_val_l * phase_l,
+                    i_dft_l + i_val_l * i_phase_l,
                 ))
 
         # Reference-plane V/I DFT accumulation (issue #313 opt-in) — same
@@ -1605,9 +1611,15 @@ def make_core_step(ctx: _StepContext):
                 # as EXACTLY the pre/post lane difference.)
                 i_val = _ampere_loop(
                     st, (mi, mj, mk), wp_meta.component, dx, periodic)
+                # Yee half-step: I is H-derived (H^{n+1/2}) while V/V_port are
+                # E-derived (E^{n+1}); advance the current sample by dt/2 so
+                # both DFT channels share a reference time (dft_utils). The
+                # E-derived channels keep the uncorrected `phase`.
+                i_phase = phase * _half_i_phase(
+                    wp_meta.freqs.astype(jnp.float64), dt).astype(jnp.complex64)
                 new_wire_accs.append((
                     v_dft + v * phase,
-                    i_dft + i_val * phase,
+                    i_dft + i_val * i_phase,
                     vinc_dft,
                     v_port_dft + v_port * phase,
                     v_ref_new,

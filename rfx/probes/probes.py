@@ -13,6 +13,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.dft_utils import dft_window_weight as _dft_window_weight
+from rfx.core.dft_utils import half_step_current_phase as _half_step_current_phase
 from rfx.grid import Grid
 from rfx.sources.sources import LumpedPort
 
@@ -432,9 +433,13 @@ def update_sparam_probe(
     v_inc = port.excitation(t)
 
     phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
+    # Yee half-step: H (hence the Ampere-loop current) is at n+1/2 while E
+    # (voltage) is at n+1; advance the current sample by dt/2 so both DFT
+    # channels share the same reference time (rfx/core/dft_utils).
+    i_phase = phase * _half_step_current_phase(probe.freqs, dt)
     weight = _dft_window_weight(state.step, probe.total_steps, probe.window, probe.window_alpha)
     new_v = probe.v_dft + v * phase * dt * weight
-    new_i = probe.i_dft + i * phase * dt * weight
+    new_i = probe.i_dft + i * i_phase * dt * weight
     new_vinc = probe.v_inc_dft + v_inc * phase * dt * weight
 
     return probe._replace(v_dft=new_v, i_dft=new_i, v_inc_dft=new_vinc)
@@ -1024,9 +1029,13 @@ def update_wire_sparam_probe(
     v_inc = port.excitation(t) / n_live
 
     phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
+    # Yee half-step: H (hence the Ampere-loop current) is at n+1/2 while E
+    # (voltage / gap voltage) is at n+1; advance the current sample by dt/2
+    # so both DFT channels share the same reference time (rfx/core/dft_utils).
+    i_phase = phase * _half_step_current_phase(probe.freqs, dt)
     weight = _dft_window_weight(state.step, probe.total_steps, probe.window, probe.window_alpha)
     new_v = probe.v_dft + v * phase * dt * weight
-    new_i = probe.i_dft + i_val * phase * dt * weight
+    new_i = probe.i_dft + i_val * i_phase * dt * weight
     new_vinc = probe.v_inc_dft + v_inc * phase * dt * weight
     old_vp = probe.v_port_dft if probe.v_port_dft is not None else 0.0
     new_vport = old_vp + v_port * phase * dt * weight
