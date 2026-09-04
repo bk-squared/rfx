@@ -89,7 +89,28 @@ _F_FIRES = {
     },
     ("cv23", "tand3"): {
         "thickness_plus_cell": True, "thickness_minus_cell": True,
-        "continuum": True, "eps_x1p01": True, "eps_continuum": True,
+        "continuum": True, "eps_x1p01": True,
+        # eps_continuum was pre-declared True and MEASURED True on the 20-cell
+        # auxiliary absorber. On the derived 200-cell one (#888) it is measured
+        # SILENT, and the reason is in the budget rather than in the defect:
+        # this arm is tan delta = 3, so T ~ 3e-05 and its transmitted tail sits
+        # at the float32 floor. The absorber fix moved that floor -- trans_tail_rel
+        # 6.41e-06 -> 2.63e-05 and mean_delta_trans_gated 2.68e-05 -> 1.04e-04,
+        # the only two budget terms of eleven that got worse -- which loosened
+        # W_witness_T by 3.6x. The falsifier had been firing through GL1_T ALONE
+        # (n_bins_R_over_window = 0 both before and after; separation_over_window_R
+        # 0.102 then, 0.194 now -- it never had R or A detection on this arm), so
+        # losing that one thread silences it.
+        #
+        # NOT a loss of detection power on this rung, measured: every other
+        # falsifier kills HARDER than before -- continuum 6.61 -> 12.52,
+        # thickness_plus 0.94 -> 1.79, thickness_minus 1.10 -> 2.09,
+        # eps_x1p01 0.52 -> 0.99 (separation over window, R). And eps_continuum
+        # still fires on tand1 (0.147 -> 0.252). What is recorded here is that
+        # cv23's most lossy arm cannot referee this particular defect, because
+        # the channel it was refereed through is not measurable there.
+        # docs/design_notes/20260904_aux_absorber_depth_derivation.md section 8.
+        "eps_continuum": False,
     },
     ("cv23", "tand0p1_dx2"): {
         "thickness_plus_cell": True, "thickness_minus_cell": True,

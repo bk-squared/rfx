@@ -39,6 +39,7 @@ def _load(name: str, rel: str):
 
 
 G = _load("ae_cv22_gates", "validation/crossval/comparators/cv22_dispersive_gates.py")
+import rfx.sources.tfsf as T  # noqa: E402  -- the module that OWNS the aux layout
 LW = _load("ae_lattice_witness", "validation/crossval/comparators/lattice_witness.py")
 
 # The rig's dt at dx = 1 mm (Courant 0.700); the same constant
@@ -55,10 +56,18 @@ _CASES = {
 # The measured arrivals the two notes report. These are MEASUREMENTS, and the
 # guard's job is to sit at or before each of them -- never after.
 # --------------------------------------------------------------------------
-# cv04, measured as the first step at which the shipped rig and an echo-free
-# control (the auxiliary array padded 4000 cells at its hi end) diverge in
-# float32 (cv04 note section 2, "Measured, not predicted").
-CV04_MEASURED_ARRIVAL = {"trans": 1230, "refl": 1350}
+# cv04, measured as the first step at which the rig and an echo-free control
+# (the auxiliary array padded 4000 cells at its hi end) diverge in float32
+# (cv04 note section 2, "Measured, not predicted").
+#
+# RE-MEASURED 2026-09-04 on the derived 200-cell absorber (#888), because the
+# 20-cell numbers -- trans 1230, refl 1350 -- are a measurement of a rig that no
+# longer exists, and a bound checked against a stale measurement is not checked.
+# Same instrument, cv04's own reference indices and its 2-D TMz timestep. The
+# echo the divergence carries is now 1.22e-04 of the incident peak, against
+# 5.78e-02 on the 20-cell absorber.
+CV04_MEASURED_ARRIVAL = {"trans": 1267, "refl": 1366}
+CV04_MEASURED_ARRIVAL_AT_20_CELLS = {"trans": 1230, "refl": 1350}
 # cv26 te_45 at its declared dx/2 rung: the arrival the #888 diagnosis tabulates
 # for the reflection probe (note section 0, "Records against echo arrival:
 # ... te_45 18083 vs 9358").
@@ -86,19 +95,45 @@ def _witness_docs():
 # 1. The computed quantity, against the arrivals that were MEASURED
 # ==========================================================================
 
-def test_the_arrival_reproduces_the_cv04_geometry_the_note_fitted():
-    """n_1d, the reflector index and both path lengths, against cv04 note §2.
+def test_the_arrival_is_the_LIVE_auxiliary_geometry_not_a_copy_of_it():
+    """The geometry is re-derived from the module that owns it, every run.
 
-    ``n_1d = 652`` with the hi CPML at 632..651 and the two-mode phase-slope fit
-    putting the reflector at auxiliary index 638.88; paths 894.8 cells to the
-    transmission reference and 964.8 to the reflection reference.
+    It used to be pinned: ``n_1d == 652``, source at 23, the phase-slope fit's
+    reflector at 638.88, paths 894.8 / 964.8 cells -- the 20-cell absorber's
+    numbers, from cv04 note section 2. #888's fix moved the absorber to 200
+    cells, and a pinned copy would have gone on computing an arrival for a grid
+    that no longer exists while passing every record put to it. So the
+    expectation is COMPUTED from ``rfx.sources.tfsf``'s own constants here, and
+    the only literals left are the ones the arithmetic cannot supply: the rig's
+    interior and its probe offsets.
     """
+    n_cpml, margin, off = T.AUX_N_CPML_1D, T.AUX_N_MARGIN_1D, T.AUX_SRC_OFFSET_1D
     e = G.slab_aux_echo(600, _DT_DX, dx_div=1, n_steps=719)
-    assert e["aux_n_1d"] == 652
-    assert e["aux_src_idx"] == 23
-    assert e["aux_reflector_index"] == pytest.approx(638.88, abs=0.01)
-    assert e["path_cells_trans"] == pytest.approx(894.8, abs=0.1)
-    assert e["path_cells_refl"] == pytest.approx(964.8, abs=0.1)
+    cells = G.rig_cells(600, 1)
+    x_lo = cells["x_lo"]
+    x_hi = cells["nx"] - x_lo - 1
+    n_1d = 2 * n_cpml + 2 * margin + (x_hi - x_lo + 2)
+    assert e["aux_n_1d"] == n_1d
+    assert e["aux_src_idx"] == n_cpml + off
+    # The reflector is now a BOUND at the absorber's inner edge, not a fitted
+    # position: at |B/A| ~ 1e-06 the residual backward wave is not one specular
+    # echo from one place (2026-09-04 note section 4).
+    assert G.AUX_REFLECTOR_DEPTH_CELLS == 0.0
+    assert G.AUX_REFLECTOR_DEPTH_IS_BOUND is True
+    assert e["aux_reflector_index"] == pytest.approx(n_1d - n_cpml, abs=1e-9)
+    for probe, key in (("probe_trans", "path_cells_trans"), ("probe_refl", "path_cells_refl")):
+        probe_aux = (n_cpml + margin) + (cells[probe] - x_lo)
+        expect = (n_1d - n_cpml) - (n_cpml + off) + ((n_1d - n_cpml) - probe_aux)
+        assert e[key] == pytest.approx(expect, abs=1e-9)
+
+
+def test_a_stale_copy_of_the_absorber_depth_would_be_caught():
+    """FALSIFIER for the test above: the 20-cell geometry it used to pin must
+    now DISAGREE with the live one, or re-deriving bought nothing."""
+    e = G.slab_aux_echo(600, _DT_DX, dx_div=1, n_steps=719)
+    assert e["aux_n_1d"] != 652
+    assert e["aux_src_idx"] != 23
+    assert e["aux_reflector_index"] != pytest.approx(638.88, abs=0.01)
 
 
 @pytest.mark.parametrize("probe", ["trans", "refl"])
@@ -223,20 +258,32 @@ def test_no_committed_rung_is_anywhere_near_the_arrival():
 # 3. Falsifiers
 # ==========================================================================
 
-@pytest.mark.parametrize("n_steps,expect_fire", [
-    (719, False),    # cv04's committed record
-    (1195, False),   # the last admissible step
-    (1196, True),    # the arrival itself: equality is already a failure
-    (1300, True),    # the note's first contaminated record (mean|dR| 0.0149)
-    (1400, True),    # the falsifier this lane declares
-    (3000, True),
+def _cv04_arrival() -> int:
+    """cv04's arrival, computed rather than pinned -- it moves with the absorber
+    (1196 at 20 cells, 1176 at 200: a deeper absorber pushes the reflector out
+    but pushes the source in by more, so it does NOT buy flight time)."""
+    return int(G.slab_aux_echo(600, _DT_DX, dx_div=1, n_steps=719)["echo_arrival_steps"])
+
+
+@pytest.mark.parametrize("offset,expect_fire", [
+    (None, False),   # cv04's committed record, 719 steps
+    (-1, False),     # the last admissible step
+    (0, True),       # the arrival itself: equality is already a failure
+    (+104, True),    # the note's first contaminated record class (mean|dR| 0.0149)
+    (+204, True),    # the falsifier this lane declares
+    (+1804, True),
 ])
-def test_the_guard_fires_on_a_cv04_record_pushed_past_the_arrival(n_steps, expect_fire):
+def test_the_guard_fires_on_a_cv04_record_pushed_past_the_arrival(offset, expect_fire):
     """FALSIFIER: cv04's rig, nothing changed but the record.
 
     Past its own arrival the case reproduces cv26's failure at normal incidence
-    (cv04 note §3), so a guard that stayed silent there would be worthless.
+    (cv04 note §3), so a guard that stayed silent there would be worthless. The
+    probe steps are taken RELATIVE to the computed arrival, so the boundary is
+    still exercised exactly at, one before and one after -- a pinned 1195/1196
+    pair would have drifted off the boundary when the geometry moved and gone on
+    passing.
     """
+    n_steps = 719 if offset is None else _cv04_arrival() + offset
     e = G.slab_aux_echo(600, _DT_DX, dx_div=1, n_steps=n_steps)
     assert (not e["ok"]) is expect_fire, (n_steps, e["record_over_echo_arrival"])
 
@@ -244,10 +291,12 @@ def test_the_guard_fires_on_a_cv04_record_pushed_past_the_arrival(n_steps, expec
 def test_the_failure_message_names_the_mechanism_and_the_issue():
     """A red gate has to hand its reader the mechanism, not only a ratio: the
     same defect passed every witness cv26 had for two rounds."""
-    e = G.slab_aux_echo(600, _DT_DX, dx_div=1, n_steps=1400)
+    n_steps = _cv04_arrival() + 204
+    e = G.slab_aux_echo(600, _DT_DX, dx_div=1, n_steps=n_steps)
     msg = G.aux_echo_failure_message(e)
     assert "#888" in msg
-    for phrase in ("auxiliary", "absorber", "cancels in vacuum", "1400", "1196"):
+    for phrase in ("auxiliary", "absorber", "cancels in vacuum",
+                   str(n_steps), str(_cv04_arrival())):
         assert phrase in msg, (phrase, msg)
 
 

@@ -351,3 +351,121 @@ gates:**
 
 Until that is decided the fringe gate is left RED rather than adjusted. Nothing
 in this lane widens it.
+
+---
+
+## 8. cv22 and cv23 re-run: unmoved, and one falsifier that went silent
+
+Both cases re-run on the derived absorber, everything else untouched. **Both pass
+every gate**, E2 (TMM) and E4 (Meep), on every arm and every observable.
+
+The numbers barely move -- fourth or fifth significant figure:
+
+| case / arm | `mean_dR_gated` before -> after |
+|---|---|
+| cv22 debye | 2.2918e-03 -> 2.2862e-03 |
+| cv22 lorentz | 2.8348e-03 -> 2.8332e-03 |
+| cv22 drude | 4.9471e-04 -> 4.9356e-04 |
+| cv23 tand0p1 | 3.9189e-03 -> 3.9188e-03 |
+| cv23 tand1 | 5.0940e-03 -> 5.0956e-03 |
+| cv23 tand3 | 3.1152e-03 -> 3.1134e-03 |
+
+That is the cv04 envelope-decomposition note's claim confirmed from the other
+side: on the settled slab rungs the auxiliary echo contributes nothing
+measurable, because those rungs run at 0.50 to 0.60 of their own echo arrival.
+cv04 moved (section 7) and these do not, and the difference is the record.
+
+### 8.1 The exception, and it is not a widening
+
+`tests/crossval/test_lattice_witness_gates.py` pre-declares which falsifiers must
+fire at which rung. One flipped: **cv23 `tand3`, `eps_continuum`, declared to
+fire, now silent.**
+
+It fired through `GL1_T` alone. `n_bins_R_over_window` is 0 both before and
+after, and `separation_over_window_R` is 0.102 before and 0.194 after -- it never
+had R or A detection on this arm, and its R separation actually IMPROVED.
+
+The budget says why. Eleven terms, nine of them better:
+
+| term | before | after | ratio |
+|---|---|---|---|
+| scat_tail_rel | 8.560e-05 | 4.886e-05 | 0.57 |
+| purity_rel | 1.109e-04 | 2.721e-05 | 0.25 |
+| mean_delta_scat_gated | 3.575e-04 | 1.936e-04 | 0.54 |
+| mean_delta_inc_gated | 3.536e-05 | 7.760e-06 | 0.22 |
+| **trans_tail_rel** | 6.411e-06 | 2.631e-05 | **4.10** |
+| **mean_delta_trans_gated** | 2.678e-05 | 1.043e-04 | **3.90** |
+
+`tand3` is tan delta = 3: `T ~ 3e-05`, and its transmitted tail sits at the
+float32 floor. The two terms that got worse are the two that measure that floor,
+and they loosened `W_witness_T` by 3.6x (3.634e-06 -> 1.299e-05) -- while
+`|rfx - lattice|` on T got BETTER (2.148e-07 -> 1.243e-07). A window derived from
+a noise floor moved with the noise.
+
+**Detection power on this rung went UP, measured**, which is what the working
+agreement asks to be shown before a changed gate is accepted:
+
+| falsifier | separation / window (R), before -> after |
+|---|---|
+| continuum | 6.61 -> 12.52 |
+| thickness_plus_cell | 0.94 -> 1.79 |
+| thickness_minus_cell | 1.10 -> 2.09 |
+| eps_x1p01 | 0.52 -> 0.99 |
+| eps_continuum | 0.10 -> 0.19 (still under 1: no R detection either way) |
+
+and `eps_continuum` still fires on `tand1` (0.147 -> 0.252).
+
+So the expectation is updated to what is MEASURED, with the reason in the table
+itself: cv23's most lossy arm cannot referee this defect, because the only
+channel it was refereed through -- a transmitted signal of 3e-05 -- is not
+measurable there. No window was widened and no falsifier was removed; one
+pre-declared verdict is now recorded as false, and this section is the record.
+
+---
+
+## 9. cv04's rig: the band was never illuminated (PI decision, 2026-09-04)
+
+Section 7 left the fringe gate red and put three resolutions to the PI. The PI
+chose **widen the rig**. Measured, at cv04's own rig with only `bw` changed:
+
+| bw | fringe 3 (GHz) | dev vs analytic | max \|R+T-1\| | T max err | R+T mean |
+|---|---|---|---|---|---|
+| **0.5** (shipped) | 11.5015 | **+259.0 FAIL** | 0.0421 | 0.0513 | 1.0026 |
+| 0.7 | 11.2038 | -38.7 ok | 0.0099 | 0.0200 | 0.9997 |
+| 0.9 | 11.1838 | -58.7 ok | 0.0035 | 0.0194 | 0.9999 |
+| 1.1 | 11.1818 | -60.7 ok | 0.0015 | 0.0189 | 1.0000 |
+
+Three things at once:
+
+1. **Fringe 3 stabilises and converges on the LATTICE answer.** The Yee-lattice
+   prediction is 11.1509 GHz. From bw 0.9 to 1.1 the measurement moves **2.0 MHz**,
+   against the 193 MHz it swung at bw = 0.5 when the injection changed. A quantity
+   that moves 193 MHz under a change of the injection and 2 MHz under a doubling of
+   the illumination was not being measured at bw = 0.5; it is at bw >= 0.9.
+2. **The closure envelope collapses by a factor of 28**: `max|R+T-1|` 0.0421 ->
+   0.0015. cv04's committed `per_bin_max_RT_closure = 0.0487` -- the number
+   `W_BIN = gate_from_envelope(0.0487) = 0.074` is derived from, for the WHOLE
+   slab family -- is very largely an artifact of a source that never illuminated
+   the top of its own analysis band.
+3. **The mean errors barely move**: `mean|dR|` 0.0070 -> 0.0080, `mean|dT|`
+   0.0105 -> 0.0080. So `W_MEAN_R`'s envelope really is the lattice term the cv04
+   decomposition note said it was, while `W_BIN`'s envelope was illumination.
+
+That separation is load-bearing for **decision B**, which is about to re-derive
+this family's windows: the mean-window and the bin-window envelopes have
+different causes, and only one of them is discretisation.
+
+**Not yet done, and it is the next thing.** Raising `bw` also raises the analysis
+band's top: at bw >= 0.7 the 2 percent incident-power floor no longer cuts the
+band below 15 GHz, and 15 GHz on this mesh is 5 cells per wavelength inside the
+slab. Gating there would be judging content the mesh does not resolve. So the rig
+change is `bw` PLUS an analysis-band ceiling derived from a declared
+cells-per-wavelength criterion -- not left at the 15 GHz literal. Until that
+derivation exists, `bw` is unchanged in the code and this section is the
+measurement that motivates it.
+
+Note also what "widen the rig" does NOT mean here. `BAND_GATED_HZ = (4.0e9, 10.0e9)`
+in `cv22_dispersive_gates.py` is a declared constant of the WHOLE slab family, not
+an amplitude criterion, so moving it to admit 11.24 GHz would move cv22 and cv23
+too, and would gate them at 13.3 cells per wavelength in the slab. cv04's fringe
+gate runs on its own band and needs no such change; the family constant stays.
