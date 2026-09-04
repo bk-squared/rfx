@@ -469,3 +469,139 @@ in `cv22_dispersive_gates.py` is a declared constant of the WHOLE slab family, n
 an amplitude criterion, so moving it to admit 11.24 GHz would move cv22 and cv23
 too, and would gate them at 13.3 cells per wavelength in the slab. cv04's fringe
 gate runs on its own band and needs no such change; the family constant stays.
+
+---
+
+## 10. The cv04 rig, derived
+
+Section 9 measured that widening the source fixes fringe 3 and left two things
+undone: which bandwidth, and what caps the analysis band. Both are derived here,
+and the first hypothesis for the mechanism turned out to be wrong.
+
+### 10.1 The band ceiling: where the REFERENCE stops being meetable
+
+cv04 gates rfx against the analytic **continuum** slab. That reference is usable
+only while a correct **lattice** solver could still meet it, so the ceiling is a
+property of the reference, not of rfx.
+
+Two channels, and only one of them can give a ceiling:
+
+* **Position.** `W(f) = SAFETY (df_bin/2 + |Yee dispersion shift at f|)` absorbs
+  the lattice shift *by construction*. A perfect lattice solver never breaches
+  it at any frequency, so this channel is self-referential and yields no ceiling.
+* **Value.** `value_limit = 0.04` is a FIXED tolerance. So the ceiling is the
+  frequency at which `|R_lattice - R_continuum|` reaches it:
+
+  ```
+  |R_lattice - R_continuum| < 0.04 for every f below   15.587 GHz
+  ```
+
+  (`de.yee_lattice_slab_rt_eps` against `de.tmm_slab_rt`, cv04's own dx and dt.)
+
+cv04's shipped analysis-band literal is **15.0 GHz**, which sits inside that
+ceiling with 587 MHz to spare, so **no new ceiling constant is needed** -- the
+literal is now justified rather than assumed. The band-mean channel never binds:
+`mean|R_lattice - R_continuum|` over 3-15 GHz is 0.0080 against a 0.05 limit.
+
+**Correction to section 9.** That section said 15 GHz is "5 cells per wavelength
+inside the slab" and used it to argue a new ceiling was needed. That was an
+arithmetic slip: `lambda_slab = c/(f n)` = 9.99 mm at 15 GHz, i.e. **10.0 cells**,
+not 5. The mesh's own Nyquist in the slab is 74.95 GHz. The concern that motivated
+a new constant does not exist.
+
+### 10.2 The mechanism: illumination, not cell truncation
+
+The first hypothesis was that fringe 3's half-fringe **search cell** (9.369 to
+13.116 GHz) was truncated by the band top (11.81 GHz at bw = 0.5, 66.7 percent
+covered), and that containment was the criterion. It is not:
+
+* at `bw = 0.55` the band reaches 13.017 GHz -- the cell is **94 percent**
+  covered -- and the gate still fails by **+245.8 MHz**;
+* from `bw = 0.65` to `1.10` the realized band top is **identical** (14.951 GHz)
+  and the measured position still moves **81 MHz**, monotonically, as the
+  illumination rises.
+
+The band sets what can be searched. The incident power AT the extremum sets
+whether the answer means anything. Measured on cv04's own rig, source bandwidth
+swept and nothing else changed:
+
+| bw | inc power @ 11.2425 GHz | f3 measured (GHz) | error vs converged | verdict |
+|---|---|---|---|---|
+| 0.50 | 0.0336 | 11.5015 | +319.7 MHz | FAIL |
+| 0.55 | 0.0735 | 11.4883 | +306.5 MHz | FAIL |
+| 0.60 | 0.1313 | 11.3690 | +187.2 MHz | ok |
+| 0.65 | 0.2037 | 11.2627 | +80.9 MHz | ok |
+| 0.70 | 0.2855 | 11.2038 | +22.0 MHz | ok |
+| 0.80 | 0.4571 | 11.1845 | +2.7 MHz | ok |
+| 0.90 | 0.6146 | 11.1838 | +2.0 MHz | ok |
+| 1.10 | 0.8414 | 11.1818 | 0 (reference) | ok |
+
+The error crosses the measurement's own resolution, `df_bin/2 = 26.14 MHz`,
+between 0.2037 and 0.2855 -- an incident power of **0.277**, fourteen times the
+2 percent mask floor that admits the bin to the band at all.
+
+`FRINGE_INC_POWER_MIN = 0.42` is that measured threshold carried through the
+shared gate policy's multiplier (`tests/_gate_policy.py`,
+`ENVELOPE_GATE_MULTIPLIER = 1.5`): `0.277 * 1.5 = 0.416`, quantised up.
+
+### 10.3 The bandwidth
+
+`bw = 0.8`: the smallest measured value at which EVERY gated extremum clears the
+bar -- 0.8761, 0.9093, 0.4571 against 0.42. (`bw = 0.7` leaves fringe 3 at
+0.2855, under it.) The realized band top is then 14.951 GHz, inside the 15.587
+GHz ceiling of section 10.1. No safety factor is applied twice: the 1.5 is
+already inside the bar.
+
+### 10.4 What the gate now does, and the hole that had to be closed
+
+`compare_fringes` takes `inc_power_rel` and **refuses** an extremum below the
+bar: it is reported N/A, never judged and never silently dropped.
+
+That opens a hole, and closing it is the point. Refusing an extremum makes the
+GATE smaller, and a smaller gate must not read as a greener case. So cv04
+declares which extrema its rig is supposed to measure (`CV04_DECLARED_EXTREMA`)
+and **fails** when one goes N/A. Run on the rig that shipped:
+
+```
+     max      3.7475       3.7287     -18.8     59.0   0.3600   0.3599  -0.0001        ok
+     min      7.4950           --        --       --       --       --       --       N/A   incident power 0.3704 < 0.42
+     max     11.2425           --        --       --       --       --       --       N/A   incident power 0.0336 < 0.42
+  !! fringe ADMISSION -- this rig no longer measures the min at 7.4950 GHz, the max at 11.2425 GHz.
+  rfx accuracy: FAIL
+```
+
+The shipped rig is now rejected for being unable to measure its own gate,
+instead of reading the third fringe 320 MHz off and passing.
+
+### 10.5 cv04 on the derived rig
+
+| | shipped (bw 0.5, 20-cell absorber) | derived (bw 0.8, 200-cell absorber) |
+|---|---|---|
+| `max\|R+T-1\|` per bin | 0.0487 | **0.0043** |
+| `mean\|dR\|` vs analytic | 0.0066 | 0.0080 |
+| `mean\|dT\|` vs analytic | 0.0110 | 0.0081 |
+| `mean\|dR - lattice\|` gated | 1.682e-03 | **1.98e-04** |
+| tail window purity | 2.11e-04 | 7.67e-05 |
+| fringe 1 / 2 / 3 | ok / ok / (+65.9, judged unlit) | ok / ok / **ok** (-58.0) |
+| verdict | PASS (on an unmeasurable fringe) | **PASS** |
+
+`mean|dR - lattice|` is 8.5 times smaller than it was before this lane started,
+and the per-bin closure envelope is 11 times smaller.
+
+### 10.6 What this hands decision B
+
+`CV04_ENVELOPE`, which the slab family's windows are derived from, was measured
+on a rig that did not illuminate the top of its own band:
+
+| envelope term | committed | on the derived rig | window it feeds |
+|---|---|---|---|
+| `per_bin_max_RT_closure` | 0.0487 | **0.0043** | `W_BIN = 0.074` |
+| `mean_dR` | 0.0066 | 0.0080 | `W_MEAN_R = 0.010` |
+| `mean_dT` | 0.011 | 0.0081 | `W_MEAN_T = 0.017` |
+
+The two envelopes have different causes and only one of them survives the rig
+fix. `mean_dR` is the lattice term the cv04 decomposition note said it was --
+it does not fall, it rises slightly. `per_bin_max_RT_closure` falls by 11x,
+so `W_BIN` is roughly an order of magnitude looser than the rig it is derived
+from now warrants. Decision B's re-derivation should take its envelope from the
+derived rig, not from the committed one.

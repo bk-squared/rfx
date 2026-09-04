@@ -550,5 +550,7 @@ def test_cv04_evidence_config_still_matches_the_script_it_cites():
     assert value_on(67, "dx") == emitter.DX_M
     assert value_on(43, "C0") == emitter.C0
     assert math.sqrt(emitter.EPS_R) == emitter.N_INDEX
-    # the FFT length the bin width is derived from
-    assert "np.ceil(np.log2(n_steps)) * 8" in lines[290 - 1]
+    # the FFT length the bin width is derived from. The line moved 290 -> 298
+    # when the source bandwidth grew a derivation comment (#888 lane, cv04 rig);
+    # re-checked at that revision, which is what this pin is for.
+    assert "np.ceil(np.log2(n_steps)) * 8" in lines[298 - 1]

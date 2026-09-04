@@ -65,7 +65,15 @@ n_slab = math.sqrt(eps_slab)
 d_slab = 10.0e-3     # 10 mm
 f0 = 10.0e9
 dx = 1.0e-3           # 1 mm (15 cells/λ at 20 GHz)
-bw = 0.5
+# bw = 0.5 shipped, and it never illuminated the top of this case's own analysis
+# band: the third fringe at 11.2425 GHz sat at 3.4 % of the incident power peak,
+# where its measured position is 320 MHz off and swings 193 MHz under a change
+# of the injection. DERIVED (#888 lane, note section 10): the smallest bandwidth
+# at which every gated extremum clears fringe_gate.FRINGE_INC_POWER_MIN = 0.42
+# -- here 0.876 / 0.909 / 0.457. The realized band top is then 14.95 GHz, inside
+# the 15.587 GHz ceiling at which a perfect lattice solver would start failing
+# this gate's own fixed value_limit against the continuum reference.
+bw = 0.8
 
 # Large domain with thick CPML for clean measurement
 # Probe-to-CPML distance must be large enough that CPML round-trip
@@ -384,13 +392,33 @@ cons_max_ok = bool(cons_rfx.max() <= CONS_MAX_LIMIT)
 # -----------------------------------------------------------------------------
 freqs_band = freqs[mask]
 df_bin = float(freqs[1] - freqs[0])
+# ``inc_power_rel`` is what makes the gate refuse an extremum it cannot measure
+# rather than read one off a dim shoulder: the mask admits a bin to the band at
+# 2 % of the incident peak, and an extremum POSITION needs 0.42 (fringe_gate.py,
+# FRINGE_INC_POWER_MIN -- measured, #888 lane). Before this, cv04 gated its third
+# fringe lit at 3.4 % and read it 320 MHz off.
 fringe_verdict = fringe_gate.compare_fringes(
     freqs_band, R_rfx,
     eps_r=eps_slab, d=d_slab, n_index=n_slab,
     dx=dx, dt=dt, df_bin_hz=df_bin, c0=C0,
     label="rfx vs analytic",
+    inc_power_rel=inc_power[mask] / inc_power.max(),
 )
-fringe_ok = bool(fringe_verdict.ok)
+# A gate that shrinks is not a gate that passes. ``compare_fringes`` refuses an
+# extremum it cannot measure and REPORTS it (N/A), which is the right verdict for
+# the gate; for the CASE, an extremum going N/A on a rig declared to measure it is
+# a failure, or a rig regression would read as green with a smaller gate.
+CV04_DECLARED_EXTREMA = (("max", 3.7475e9), ("min", 7.4950e9), ("max", 11.2425e9))
+_judged = {(r.kind, round(r.f_ref_hz, 1)) for r in fringe_verdict.rows}
+_missing = [(k, f) for k, f in CV04_DECLARED_EXTREMA if (k, round(f, 1)) not in _judged]
+fringe_admission_ok = not _missing
+if _missing:
+    print("    !! rfx vs analytic: fringe ADMISSION -- this rig no longer measures "
+          + ", ".join(f"the {k} at {f/1e9:.4f} GHz" for k, f in _missing)
+          + ". The gate reported them N/A; for the case that is a FAIL, not a "
+            "smaller gate (see fringe_gate.FRINGE_INC_POWER_MIN).")
+
+fringe_ok = bool(fringe_verdict.ok) and fringe_admission_ok
 print()
 print(fringe_gate.format_fringe_table(fringe_verdict, "rfx vs analytic"))
 
