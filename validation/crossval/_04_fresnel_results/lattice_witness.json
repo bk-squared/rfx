@@ -1,7 +1,7 @@
 {
  "schema": "lattice-witness/v1",
  "case_id": "04_multilayer_fresnel",
- "commit": "470dc31962f36edd973e81c5789f79923c571b12",
+ "commit": "49e8c807f062069688ea5e3178d52e98d1e45f02",
  "d_slab_m": 0.01,
  "rungs": {
   "slab_eps4": {
@@ -2305,6 +2305,13 @@
   "all_rungs_ok": true,
   "n_rungs": 1
  },
- "gated_here": false,
- "gated_here_reason": "the committed 719-step record does not settle to -40 dB (tails 0.004 / 0.012 of the incident peak), so the derived W_witness exceeds this case's own band-mean window; REPORTED, see docs/design_notes/20260903_lattice_witness_standard.md section 5.3"
+ "gated_here": true,
+ "gated_channels": [
+  "R"
+ ],
+ "reported_channels": [
+  "T",
+  "A"
+ ],
+ "gated_here_reason": "R is GATED (#888 lane, PI decision 2026-09-04): W_witness_R sits inside its own ceiling (1.98e-03 vs 4.81e-03), five times tighter than this case's own W_MEAN_R = 0.010, and the continuum falsifier separates 2.68 of that window on 65 of 115 gated bins where it used to separate 0.099 on none. T and A stay REPORTED: W_witness_T still exceeds its ceiling (1.39e-02 vs 1.17e-02) and the same falsifier separates only 0.38 there. The committed 719-step record still does not settle to -40 dB (tails 0.004 / 0.012 of the incident peak), which is why T is still the loose channel. See docs/design_notes/20260903_lattice_witness_standard.md section 5.3 and docs/design_notes/20260904_aux_absorber_depth_derivation.md section 11.1"
 }

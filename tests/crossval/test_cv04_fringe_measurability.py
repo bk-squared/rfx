@@ -146,3 +146,68 @@ def test_the_case_treats_a_refused_extremum_as_a_FAIL_not_a_smaller_gate():
     assert "fringe_ok = bool(fringe_verdict.ok) and fringe_admission_ok" in src
     assert "inc_power_rel=inc_power[mask] / inc_power.max()" in src
     assert "bw = 0.8" in src
+
+
+# ==========================================================================
+# cv04's exact-lattice witness, GATED on R (#888 lane, PI decision 2026-09-04)
+# ==========================================================================
+# It was REPORTED, not gated, and the reason given in
+# docs/design_notes/20260903_lattice_witness_standard.md section 5.3 was that a
+# gate which cannot reject the continuum model is not a gate: the continuum
+# falsifier separated 0.099 of the window on 0 of 115 bins. The derived absorber
+# and the derived rig moved that to 2.68 on 65 of 115, and W_witness_R from
+# above its own ceiling to 2.4x inside it. R is gated here; T and A are not,
+# because W_witness_T still exceeds its ceiling and the same falsifier separates
+# only 0.38 there.
+
+_LW = _load("cv04_lattice_witness", _CV / "comparators" / "lattice_witness.py")
+_W04 = _CV / "_04_fresnel_results" / "lattice_witness.json"
+
+
+def _cv04_rung() -> dict:
+    import json
+    return json.loads(_W04.read_text(encoding="utf-8"))
+
+
+def test_the_artifact_says_R_is_gated_and_T_is_not():
+    doc = _cv04_rung()
+    assert doc["gated_here"] is True
+    assert doc["gated_channels"] == ["R"]
+    assert doc["reported_channels"] == ["T", "A"]
+    assert "PI decision 2026-09-04" in doc["gated_here_reason"]
+
+
+def test_cv04s_lattice_witness_passes_on_R():
+    r = _cv04_rung()["rungs"]["slab_eps4"]
+    for key in ("precond_cpml_gate", "precond_tail_witness", "precond_aux_echo_record",
+                "GL1_R", "GL2_R"):
+        assert r["gates"][key] is True, (key, r["gates"])
+    assert r["W_exceeds_ceiling_R"] is False
+    assert r["n_bins_R_over_window"] == 0
+    assert r["mean_dR_lattice_gated"] < r["mean_W_witness_R_gated"]
+
+
+def test_the_R_window_is_inside_its_ceiling_and_tighter_than_the_cases_own():
+    """The two conditions that were false when the witness was declared
+    non-discriminating, and are the reason it now decides."""
+    r = _cv04_rung()["rungs"]["slab_eps4"]
+    assert r["mean_W_witness_R_gated"] < r["mean_W_ceiling_R_gated"]
+    W_MEAN_R = 0.010   # cv22_dispersive_gates.py, the family's band-mean window
+    assert r["mean_W_witness_R_gated"] < W_MEAN_R / 4.0
+
+
+def test_T_is_still_the_loose_channel_and_is_NOT_gated():
+    """Turning R on must not quietly turn T on: T's window still exceeds its own
+    ceiling, which is exactly the condition that disqualified R before."""
+    r = _cv04_rung()["rungs"]["slab_eps4"]
+    assert r["W_exceeds_ceiling_T"] is True
+    assert r["mean_W_witness_T_gated"] > r["mean_W_ceiling_T_gated"]
+    assert "T" in _cv04_rung()["reported_channels"]
+
+
+def test_the_case_exits_nonzero_when_the_R_witness_fails():
+    """The gate has teeth in the case, not only in this file."""
+    src = (_CV / "04_multilayer_fresnel.py").read_text(encoding="utf-8")
+    assert "lattice_R_ok" in src
+    assert "if not lattice_R_ok:" in src
+    assert 'W_exceeds_ceiling_R' in src

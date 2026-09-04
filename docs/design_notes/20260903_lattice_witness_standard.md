@@ -427,17 +427,18 @@ that stayed is the lattice.
 
 ### 5.3 cv04 — the witness is REPORTED, not gated, and the derivation says why
 
-> **SUPERSEDED IN PART, 2026-09-04 (#888 lane).** The verdict below — REPORTED,
-> not gated — was correct for the rig that produced it and is **no longer
-> correct on R**. The derived auxiliary absorber (#888) and the derived cv04 rig
+> **SUPERSEDED IN PART, 2026-09-04 (#888 lane, PI decision).** The verdict below
+> — REPORTED, not gated — was correct for the rig that produced it. **R is now
+> GATED** (`gated_channels = ["R"]`); T and A stay reported. The derived auxiliary absorber (#888) and the derived cv04 rig
 > (`bw = 0.8`) dropped this rung's tails by 8.6× and 4.2×, and with them
 > `W_witness`. What changed is measured in 5.3.1 below; the table and the falsifier
 > paragraph below have been re-stated to the run that exists now, and the
 > conclusion sentence they used to support has been withdrawn.
 
 cv04 runs one rung (dx = 1 mm, nx 600, 719 steps). `--lattice-witness` writes
-`validation/crossval/_04_fresnel_results/lattice_witness.json` with
-`gated_here = false`. The reason was derived, not measured: cv04's tail witness
+`validation/crossval/_04_fresnel_results/lattice_witness.json`, which carried
+`gated_here = false` and now carries `gated_here = true` with
+`gated_channels = ["R"]`. The original reason was derived, not measured: cv04's tail witness
 read **0.036 / 0.051** of the incident peak on the rig this note was written for
 (`04_multilayer_fresnel.py`, the issue-#341 comment block, committed config
 2026-07-13) against the family's −40 dB bar of 1e-2 — cv04's record did not
@@ -496,10 +497,13 @@ own `W_MEAN_R = 0.010`.
 **T is a different answer and stays reported:** `W_witness,T` = 1.39e-02 still
 exceeds its 1.17e-02 ceiling, and F2 separates only 0.38 there.
 
-So cv04's lattice witness has become gateable on R and has not on T. Turning it
-on changes what cv04 gates, so this note records the measurement and the #888
-lane does not take the decision:
-`docs/design_notes/20260904_aux_absorber_depth_derivation.md` §11.
+So cv04's lattice witness has become gateable on R and has not on T. **It is
+now on for R** (PI decision, 2026-09-04): `04_multilayer_fresnel.py` exits
+non-zero when the R channel fails, and `tests/crossval/test_cv04_fringe_measurability.py`
+replays it from the committed artifact. Measured teeth: a one-cell slab
+thickness error (10 mm → 11 mm) drives `|rfx − lattice|` on R from 1.98e-04 to
+**7.72e-02** and fails both `GL1_R` and `GL2_R`. T and A stay reported.
+`docs/design_notes/20260904_aux_absorber_depth_derivation.md` §11.1.
 
 **These are the run's numbers, not a reconstruction.** The note's first draft
 carried derived values for the ORIGINAL table that were 3–15 % off — 5.2e-2 for
@@ -975,7 +979,8 @@ lane as well as on the committed artifact.
   document, and it is what closes §5.2's stated limitation.
 - `validation/crossval/_04_fresnel_results/lattice_witness.json` — one rung,
   written by `python validation/crossval/04_multilayer_fresnel.py
-  --lattice-witness`, with `gated_here = false` and `gated_here_reason`.
+  --lattice-witness`, with `gated_here` / `gated_channels` and
+  `gated_here_reason` (R gated since 2026-09-04, T and A reported).
   **Committed** as of the VESSL run below; cv04's `artifact_paths` now lists it
   and §5.3's cv04 numbers are READ from it rather than derived.
 

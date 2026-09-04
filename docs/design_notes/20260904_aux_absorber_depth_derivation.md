@@ -645,9 +645,27 @@ The witness now rejects the continuum model by 2.7x its own window. **T did not
 follow**: `W_witness,T` = 1.39e-02 still exceeds its 1.17e-02 ceiling and the
 continuum falsifier separates only 0.38 there, so T stays reported.
 
-Not turned on here. It adds a gate to a claims-bearing case, and the working
-agreement wants a replacement or new gate shown to kill its mutants first --
-which the table above does, on R, and does not, on T. **PI decision.**
+**TURNED ON for R** (PI decision, 2026-09-04), T and A stay reported.
+`04_multilayer_fresnel.py` writes `gated_channels = ["R"]` and exits non-zero
+when the R channel fails; `tests/crossval/test_cv04_fringe_measurability.py`
+replays it from the committed artifact so it bites in CI, not only under the
+`--lattice-witness` flag.
+
+Teeth, measured rather than argued: a one-cell slab thickness error (10 mm ->
+11 mm, everything else untouched) drives `|rfx - lattice|` on R from 1.98e-04 to
+**7.72e-02** and fails both `GL1_R` and `GL2_R`.
+
+**What the improvement actually is, stated plainly**, because the honest split
+matters more than the headline. The tail drop that tightened `W_witness` is
+mostly the RIG, not the solver: the absorber fix alone moved the tails
+0.036 -> 0.033, and the bandwidth 0.5 -> 0.8 moved them 0.033 -> 0.0042. A
+shorter pulse settles further inside the same 719-step record. No window
+formula, limit or falsifier definition changed -- every constant is the one that
+shipped, and the derived window got TIGHTER, which is the opposite direction
+from a widening. The independent check that something real improved is
+`|rfx - lattice|`, which carries no window at all and fell 1.42e-03 -> 1.98e-04.
+Against that, `mean|dR|` versus the continuum went slightly the other way,
+0.0066 -> 0.0080. It is a better measurement, not a uniformly better answer.
 
 ### 11.2 The slab family's `W_BIN` is derived from an envelope that no longer exists
 

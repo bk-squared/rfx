@@ -498,15 +498,29 @@ if "--lattice-witness" in sys.argv:
                                 commit=_RIG.staged_commit(os.path.dirname(os.path.dirname(SCRIPT_DIR)),
                                                           cwd=SCRIPT_DIR),
                                 d_slab_m=d_slab)
-    _doc["gated_here"] = False
+    # R IS GATED HERE as of the #888 lane; T and A are still reported. See the
+    # comment block above for the measurement that changed the verdict.
+    _r0 = _doc["rungs"]["slab_eps4"]
+    _gates_R = {k: v for k, v in _r0["gates"].items()
+                if k.endswith("_R") or k.startswith("precond_")}
+    lattice_R_ok = bool(all(_gates_R.values())) and not _r0["W_exceeds_ceiling_R"]
+    _doc["gated_here"] = True
+    _doc["gated_channels"] = ["R"]
+    _doc["reported_channels"] = ["T", "A"]
     _doc["gated_here_reason"] = (
-        "the committed 719-step record does not settle to -40 dB (tails "
-        f"{tail_refl_rel:.3f} / {tail_trans_rel:.3f} of the incident peak). On R "
-        "that no longer makes the witness non-discriminating -- W_witness_R is now "
-        "inside its own ceiling and five times tighter than this case's W_MEAN_R "
-        "(#888 lane) -- but on T it still is: W_witness_T exceeds its ceiling. "
-        "Gating R is a decision this lane records rather than takes; REPORTED, "
-        "see docs/design_notes/20260903_lattice_witness_standard.md section 5.3")
+        "R is GATED (#888 lane, PI decision 2026-09-04): W_witness_R sits inside "
+        f"its own ceiling ({_r0['mean_W_witness_R_gated']:.2e} vs "
+        f"{_r0['mean_W_ceiling_R_gated']:.2e}), five times tighter than this "
+        "case's own W_MEAN_R = 0.010, and the continuum falsifier separates 2.68 "
+        "of that window on 65 of 115 gated bins where it used to separate 0.099 "
+        "on none. T and A stay REPORTED: W_witness_T still exceeds its ceiling "
+        f"({_r0['mean_W_witness_T_gated']:.2e} vs "
+        f"{_r0['mean_W_ceiling_T_gated']:.2e}) and the same falsifier separates "
+        "only 0.38 there. The committed 719-step record still does not settle to "
+        f"-40 dB (tails {tail_refl_rel:.3f} / {tail_trans_rel:.3f} of the "
+        "incident peak), which is why T is still the loose channel. See "
+        "docs/design_notes/20260903_lattice_witness_standard.md section 5.3 and "
+        "docs/design_notes/20260904_aux_absorber_depth_derivation.md section 11.1")
     _out04 = os.path.join(SCRIPT_DIR, "_04_fresnel_results")
     os.makedirs(_out04, exist_ok=True)
     with open(os.path.join(_out04, _LW.witness_json_name()), "w") as _fh:
@@ -518,7 +532,13 @@ if "--lattice-witness" in sys.argv:
           f"(limit {_ae['limit']:.1f}); ok={_ae['ok']}")
     print(f"  cv04-lattice-witness slab_eps4: |rfx-lattice| mean R "
           f"{_r['mean_dR_lattice_gated']:.2e} vs W {_r['mean_W_witness_R_gated']:.2e} "
-          f"(ceiling {_r['mean_W_ceiling_R_gated']:.2e}); reported, not gated")
+          f"(ceiling {_r['mean_W_ceiling_R_gated']:.2e}); R GATED -> "
+          f"{'ok' if lattice_R_ok else 'FAIL'}, T/A reported")
+    if not lattice_R_ok:
+        print("    !! cv04-lattice-witness R: " + ", ".join(
+            k for k, v in _gates_R.items() if not v)
+            + (" ; W_witness_R exceeds its own ceiling" if _r0["W_exceeds_ceiling_R"] else ""))
+        sys.exit(1)
     print(f"  wrote {os.path.join(_out04, _LW.witness_json_name())}")
 
 # =============================================================================
