@@ -692,11 +692,23 @@ def test_forward_identity_stays_red_on_the_flux_lane(fx, group, scaled, x64):
     assert fi["worst_entry"] == entry_ix
     assert fi["abs_s_at_worst"] == pytest.approx(abs_s, rel=1e-6)
     assert fi["max_abs_diff"] == pytest.approx(abs_diff, rel=1e-5)
-    # the branch's own test of the reassociation story: the ABSOLUTE difference
-    # has not grown past the ~1.1e-5 the first run measured, on any of the three
-    # groups, so what moved is the scaling |S| at the worst entry, not the error.
-    assert abs_diff <= 1.2e-5
     assert len({tuple(e["forward_identity"]["worst_entry"]) for e in legs}) == 1
+    # ``worst_entry`` / ``abs_s_at_worst`` are taken at the argmax of the SCALED
+    # metric (``forward_identity_metric``), so they say what the denominator was
+    # doing. It was doing nothing: the primal at the worst entry is unchanged to
+    # six digits across the two runs. The branch's own description therefore
+    # applies literally — "the absolute difference has grown … while the primal
+    # did not change scale, which a pure reassociation argument does not predict".
+    frozen_group = next(
+        e["forward_identity"] for e in json.loads(FROZEN.read_text())["ad_vs_fd"]
+        if (e["dut"], e["lane"], e["theta_kind"]) == (dut, lane, kind))
+    assert frozen_group["worst_entry"] == entry_ix, "the worst entry did not move"
+    assert fi["abs_s_at_worst"] == pytest.approx(frozen_group["abs_s_at_worst"], rel=2e-6)
+    assert fi["max_abs_diff"] > frozen_group["max_abs_diff"], "the error grew, not the scale"
+    # What the branch asks next: is it still a float32 story? Yes — the x64
+    # witness is eight orders inside and the concrete-override is exactly 0
+    # wherever the group carries one, both asserted above. By the branch's own
+    # words the leg "stays a float32 story with a larger constant and §6 proceeds".
 
 
 def test_forward_identity_is_exactly_zero_on_the_false_lane(fx):
