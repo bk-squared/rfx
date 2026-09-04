@@ -468,7 +468,11 @@ figures used by §3.4 are 1.9021 / 1.9521). So:
 > this sweep, **by more than 0.02 in absolute order**.
 >
 > A band within 0.02 of the bar is **INDETERMINATE** and folds into the interval, not into
-> the claim. 0.02 is the measured absorber-lane order spread (§3.4's table: 0.008–0.020).
+> the claim. 0.02 comes from the measured absorber-lane order spread, whose six computable
+> values are 0.0008 / 0.0189 / 0.0082 / **0.0249** / 0.0196 / 0.0039 — so the margin covers
+> five of six and is set from the three bands the boundary actually falls between
+> ([1.017,1.045], [1.023,1.060], [1.030,1.080]). The 0.0249 outlier is [1.010,1.030], which
+> is out of scope by construction (R0) and whose verdict the margin does not decide.
 
 Without the margin the published low edge could be decided by 0.009 in order — 0.5 %, less
 than the sweep's own lane-to-lane reproducibility.
@@ -623,21 +627,46 @@ archive's lane-to-lane correlations are not merely low but systematically **nega
 run:**
 
 > **If the floor is an absorber leak**, the signed residue's correlation against the K=3.0
-> lane goes negative at K=4.0 and returns positive at K=5.0, while the magnitude stays
-> inside the 1.03–1.95× lane spread. That pattern establishes a leak.
->
-> **Three positive correlations establish nothing.** They are consistent with port geometry,
-> and equally consistent with a leak whose phase happens to advance a whole number of turns
-> per guide wavelength — which is exactly what a 1 λ_g step cannot distinguish. **The trace
-> is a one-sided test** and is reported as one.
+> lane **collapses toward 0 at both K=4.0 and K=5.0**, with the magnitude staying inside the
+> 1.03–1.95× lane spread.
+> **If the floor is port geometry**, all three lanes correlate at the **+0.94 to +1.00**
+> level already measured **across rungs** at fixed thickness.
 
-The one-sidedness is the honest reading and it is stated before the cases run. Nothing in
-this design derives the leak's phase advance per λ_g: with `κ_max` pinned at 1 there is no
-coordinate stretch, and `σ_max = −ln(R)(m+1)/(2ηd)` with `d = n_layers·dx` fixes the
-attenuation, not the accumulated phase. The step of 1 λ_g is chosen because the archive
-shows an inversion across a 1 λ_g change (1.5 → 2.5 λ_g, 10 of 12 lane pairs negative,
-down to −0.810), not because it is derived to be a half turn. A step that is derived rather
-than observed would need the phase advance, and the sweep does not measure it.
+**The observable is coherence, not sign, and that is what makes the test two-sided.** An
+earlier draft predicted a sign inversion at K=4.0 recovering at K=5.0, which needed the
+leak's phase advance per λ_g — a quantity nothing here derives, since `κ_max` is pinned at 1
+so there is no coordinate stretch and `σ_max = −ln(R)(m+1)/(2ηd)` fixes attenuation rather
+than accumulated phase. Worse, correlation depends on phase only mod 2π, so a measured
+inversion bounds the advance to ≈180° **mod 360°** and says nothing about the winding
+number; three positive lanes would then have been consistent with a leak advancing a whole
+number of turns, and the test would have been one-sided.
+
+Band dispersion removes the need for any of that. Near cutoff `β` varies strongly across
+nine bins, so one thickness step rotates different bins by different amounts. The
+round-trip phase **spread across the band** at `ΔT = 1 λ_g(low edge)` is
+
+| band | spread | in turns |
+|---|---|---|
+| [1.017, 1.045] | 8.02 rad | 1.28 × 2π |
+| [1.023, 1.060] | 7.91 rad | 1.26 × 2π |
+| [1.030, 1.080] | 8.21 rad | 1.31 × 2π |
+
+more than a full turn at every band and at **any** winding number. A leak therefore cannot
+stay phase-coherent across the band under this step — it decorrelates — while a
+thickness-independent port term does not. No phase-advance derivation is required, and the
+1 λ_g spacing is kept.
+
+**This also corrects how the archive is read.** Its twelve lane-to-lane correlations run
+−0.11 to −0.81 with 33–44 % sign agreement. That is scatter around a decorrelated value,
+not the clean −1 a coherent half-turn would produce, so calling them "systematically
+negative" over-reads them; decorrelated is exactly right, and it is the leak signature this
+test now predicts.
+
+**Optional, and the cheapest thing in the sweep: measure the decorrelation curve instead of
+predicting it.** Adding `K = 3.25` and `3.5` at N=36 for R1 and R2 — four cases, about
+3 min, since +1 λ_g there costs ~7 s — gives correlation versus `ΔT` directly. Declared
+here as optional so that running it is not mistaken for a design change, and so that
+skipping it is not mistaken for an oversight.
 The trace runs at N=36, where +1 λ_g costs about 7 s per case (measured: 23.6 s at
 1.5 λ_g, 31.0 s at 2.5 λ_g); at N=72 the same step costs ~175 s, so N=72 keeps two lanes
 and inherits the attribution. The rotation is a property of the absorber and is testable
@@ -657,9 +686,15 @@ rungs") that one twin rung cannot produce. It is also backwards. Measured:
 
 The truncation effect on the antisymmetric part **shrinks** with rung, 17.4 % → 2.6 %, and
 on the symmetric part it is ≤ 1.1 % at both. So the twin is most informative exactly where
-it is nearly free. **Declared: `n_trav = 10` twins at N = 9 and N = 18 for R1 and R2;
-acceptance is that the headline band-mean shift is below 1.5 % at both, and that the
-antisymmetric shift's magnitude falls between them.** N=36 and N=72 are untwinned, with the
+it is nearly free. **Declared: `n_trav = 10` twins at N = 9 and N = 18 for R1 and R2.
+Acceptance: the headline band-mean shift is below 1.5 % at both rungs, AND the
+antisymmetric shift's magnitude falls with rung — **unless both antisymmetric shifts are
+below 1 %, in which case the ordering clause is waived** as unresolvable. Without that
+escape a noise-level ordering decides the verdict: at [1.005,1.010] the archive's pair is
+−0.01 % against −0.00 %. On failure the band is reported **truncation-limited at that rung**
+and its contribution to §3.4's interval is withdrawn rather than adjusted; the ordering
+evidence itself comes from two bands the twins do not run, so it motivates the placement
+and does not license a tighter rule.** N=36 and N=72 are untwinned, with the
 reason stated in the record rather than left silent. Cost ≈ 1 min.
 
 **R6 reaches the ceiling and R7 stops below TE01.** Revision 1 locked R6's top at 0.975 of
@@ -773,21 +808,29 @@ right reason.
    `λ_g,TE10` is a negligible change measured in `λ_g,TE20`: a null result on that axis is
    consistent both with "not absorber-limited" and with "thickness is not the axis that
    moves this leak", and would be read as clearance. So: **the twins run at the bin at
-   1.001 × the discrete TE20 cutoff**; the thickness twin is expressed and reported in
+   1.02 × the discrete TE20 cutoff**; the thickness twin is expressed and reported in
    `λ_g,TE20` **at that bin** with its realized value stated; and an **independent axis is
    added that a steady-state absorber leak must move and a true unaccounted-power ceiling
    must not — a domain-length (port-to-blade distance) twin at the same bin.**
    **Acceptance: the baseline-corrected `P_j − 1` at that bin moves by less than 20 % of
    C-A's departure across BOTH twins; otherwise that bin is reported absorber-limited or
    truncation-limited and the C-A verdict is withdrawn.**
-   **Run length at that bin is set by the TE20 group velocity, not TE10's.** At 1.001 × the
-   TE20 cutoff `v_g/c = 0.045`, about 20× slower than the TE10 mode the baseline `n_trav`
-   rule is written against, and the domain-length twin lengthens it again by its own factor.
-   So the twin cases at that bin run `n_trav = 4` traversals **at 0.045 c**, and they are
-   costed at that (§8), not at the C leg's TE10 rate. The bin is kept rather than moved to
-   1.02–1.04 × the cutoff, where the run would be four times cheaper: the ceiling verdict is
-   read at the bins nearest the cutoff, and a twin that probes a different bin does not
-   control the one the claim rests on.
+   **The twins run at the 1.02 × bin, not 1.001 ×, and that is not a cost decision.** At
+   1.001 × the TE20 cutoff the twin has no discriminating power: `v_g/c = 0.045`, and just
+   below the cutoff the evanescent TE20 decay length diverges — about 82 mm at 0.999 ×,
+   comparable to the port-to-blade distance itself. So a domain-length twin moves there for
+   a genuinely **physical** reason as well as an artifactual one, and the acceptance rule
+   ("moves ⇒ withdraw C-A") would fire on the physics. The one bin that is most expensive is
+   the one bin where the control cannot attribute.
+   1.02 × is the right place because of what the twins are *for*: constraint 3 attributes
+   the **mechanism above the cutoff**, it does not locate the boundary. If the ceiling is
+   real every bin above it fails, so 1.02 × tests the same claim with far better signal
+   (prior scouting, unverified: +35 % at 1.075 × against −0.15 % below). The boundary's
+   **location** rests on the per-bin dx trend with the C-0 correction and the C-S control,
+   which the twins do not carry either way.
+   Run length at that bin still follows the TE20 group velocity rather than TE10's:
+   `v_g/c = 0.197` at 1.02 ×, about 4.4× slower than the rate the baseline `n_trav` rule is
+   written against, and §8 costs it at that.
 4. **C-S's condition, declared now:** above the cutoff, C-S's baseline-corrected departure
    must stay below **20 %** of C-A's at the same bin.
 5. **C-S must also FALL with dx at every bin BELOW the cutoff.** The confound constraint 4
@@ -974,10 +1017,10 @@ Wall times per two-drive S-matrix case, GPU `gpu-rtx4090`, cluster `remilab-c0`,
 | R0 | 9/18/36 only, +continuous twin | ~3 min |
 | R4, R6, R7 | N ≤ 72, all short | ~3 min |
 | C-0, C-A, C-S | 18/36/72, nine cases at the C leg's own rate | ~3 min |
-| C twins (§5.2 constraint 3) | thickness + domain-length, at the 1.001× bin, `n_trav` at `v_g = 0.045 c` | ~11 min |
+| C twins (§5.2 constraint 3) | thickness + domain-length, at the **1.02×** bin, `n_trav` at `v_g = 0.197 c` | ~3 min |
 | F1 (three variants), F2 | N=36 ×3; N=72 float64 in its own process | ~4 min |
 | Run-length twins | N=9 and 18 at R1, R2 | ~1 min |
-| **Total** | | **≈ 95 min of GPU solve** |
+| **Total** | | **≈ 87 min of GPU solve** |
 
 Every wall time here scales the archive's measured 1.5 λ_g run by the cell-count ratio the
 thicker absorber implies — 1.584 at K=3.0 and 2.168 at K=4.5, since the domain is fixed and
