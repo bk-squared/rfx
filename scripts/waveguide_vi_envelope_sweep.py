@@ -153,7 +153,12 @@ def band_freqs(case: dict, N: int) -> np.ndarray:
       f -> f * sinc(pi/N) / sinc(pi/9). Used by R6/R7, whose bands straddle a
       ceiling that is 2 % away from 2.000 f_c at N=9 (§4).
     * ``"te20_ratio"`` — the bins ARE ratios of the rung's own discrete TE20
-      cutoff, f = ratio * 2 * fc_continuous * sinc(pi/N). The C leg (§5.2).
+      cutoff, f = ratio * 2 * fc_continuous * sinc(pi/N). Ratios come either as
+      an explicit ``te20_ratios`` list (the C leg, §5.2) or as a linspace
+      between ``te20_ratio_lo`` and ``te20_ratio_hi``.
+    * ``"te20_top"`` — the band's LOW edge is fixed in f_c and its TOP edge is a
+      ratio of the rung's own discrete TE20 cutoff. R6 (§4), whose top is
+      "0.999 x the rung's discrete TE20 cutoff" while its bottom is 1.80 f_c.
 
     ``freqs_hz`` in the case overrides everything (R5 and its descendants use
     the committed fixture band verbatim so §3.5 can compare against CHECK 1).
@@ -165,8 +170,15 @@ def band_freqs(case: dict, N: int) -> np.ndarray:
             raise ValueError("explicit freqs_hz cannot also carry a lock")
         return f
     if lock == "te20_ratio":
-        ratios = np.asarray(case["te20_ratios"], dtype=float)
+        if case.get("te20_ratios") is not None:
+            ratios = np.asarray(case["te20_ratios"], dtype=float)
+        else:
+            ratios = np.linspace(case["te20_ratio_lo"], case["te20_ratio_hi"],
+                                 int(case["n_bins"]))
         return ratios * 2.0 * FC_CONTINUOUS_HZ * sinc_te20(N)
+    if lock == "te20_top":
+        f_hi = float(case["te20_ratio_hi"]) * 2.0 * FC_CONTINUOUS_HZ * sinc_te20(N)
+        return np.linspace(case["r_lo"] * FC_CONTINUOUS_HZ, f_hi, int(case["n_bins"]))
     f = np.linspace(case["r_lo"], case["r_hi"], int(case["n_bins"])) * FC_CONTINUOUS_HZ
     if lock in ("none", None):
         return f
@@ -177,13 +189,18 @@ def band_freqs(case: dict, N: int) -> np.ndarray:
     raise ValueError(f"unknown lock {lock!r}")
 
 
-def layout(r_lo: float) -> dict:
+def layout(r_lo: float, domain_mult: float = 1.0) -> dict:
     """Coarse-cell x-layout scaled to this band's low-edge guide wavelength.
 
     Scaled from the NOMINAL band low edge, never from a rung's locked value, so
     every rung of a band realizes ONE geometry.
+
+    ``domain_mult`` stretches the domain and every plane in it by a further
+    factor. It is the independent axis §5.2 constraint 3 asks for: a
+    steady-state absorber leak must move with port-to-blade distance and a true
+    unaccounted-power ceiling must not.
     """
-    s = lam_g(r_lo * FC_CONTINUOUS_HZ) / LAMG_REF_M
+    s = lam_g(r_lo * FC_CONTINUOUS_HZ) / LAMG_REF_M * domain_mult
     K = int(round(K_DOMAIN * s))
     K += K % 2                                   # keep the domain even
     f = K / K_DOMAIN
@@ -191,6 +208,7 @@ def layout(r_lo: float) -> dict:
     k_ref = max(1, int(round(K_REF * f)))
     k_probe = max(k_ref + 1, int(round(K_PROBE * f)))
     return dict(scale=s, k_domain=K, k_port=k_port, k_ref=k_ref, k_probe=k_probe,
+                domain_mult=float(domain_mult),
                 lam_g_low_m=lam_g(r_lo * FC_CONTINUOUS_HZ))
 
 
@@ -256,30 +274,40 @@ def _add_dut(sim: Simulation, dut: str, domain_x_m: float, dx: float) -> dict:
 # --------------------------------------------------------------------------
 _ORIG_APPLY_E = _wgp.apply_waveguide_port_e
 
+# §4.2 F1 runs THREE variants, not two. Shipped code corrects E at
+# ``cfg.x_index`` for a ``+`` port and at ``cfg.x_index + 1`` for a ``-`` port,
+# so the E-plane index sum is ``nx`` where every other port index sums to the
+# mirror-covariant ``nx-1``. Shifting only the ``-`` port's cfg moves that sum:
+#
+#   prod   offset  0  ->  sum nx      (shipped)
+#   plane  offset -1  ->  sum nx-1    (covariant)
+#   anti   offset -2  ->  sum nx-2    (non-covariant the OTHER way)
+#
+# ``anti`` is what makes F1 a discriminator rather than a single variant that
+# happens to lower a number: a mechanism claim needs the reversed case to
+# behave like the reversed case, not merely for the fix to look better.
+# Nothing in the library is edited — the lanes differ by this wrapper alone.
+PORT_VARIANT_OFFSET = {"prod": 0, "shipped": 0, "plane": -1, "anti": -2}
 
-def _instrumented_apply_e(state, cfg, step, dt, dx):
-    """The one-cell E-plane change CHECK 2 identified, applied at RUN time only.
 
-    Shipped code corrects E at ``cfg.x_index`` for a ``+`` port and at
-    ``cfg.x_index + 1`` for a ``-`` port, so the E-plane index sum is ``nx``
-    where every other port index sums to the mirror-covariant ``nx-1``. Handing
-    the ``-`` port a cfg with ``x_index - 1`` puts its correction back on
-    ``x_index`` and restores the sum. Nothing in the library is edited; the
-    shipped lane and this lane differ by this wrapper alone.
-    """
-    if cfg.direction.startswith("-") and cfg.h_inc_table.shape[0] > 1:
-        cfg = cfg._replace(x_index=cfg.x_index - 1)
-    return _ORIG_APPLY_E(state, cfg, step, dt, dx)
+def _variant_apply_e(offset: int):
+    def _apply(state, cfg, step, dt, dx):
+        if cfg.direction.startswith("-") and cfg.h_inc_table.shape[0] > 1:
+            cfg = cfg._replace(x_index=cfg.x_index + offset)
+        return _ORIG_APPLY_E(state, cfg, step, dt, dx)
+    return _apply
 
 
 @contextlib.contextmanager
 def port_variant(variant: str):
-    if variant == "shipped":
+    if variant not in PORT_VARIANT_OFFSET:
+        raise ValueError(f"unknown port variant {variant!r}; expected one of "
+                         f"{sorted(PORT_VARIANT_OFFSET)}")
+    offset = PORT_VARIANT_OFFSET[variant]
+    if offset == 0:
         yield
         return
-    if variant != "instrumented_e_plane":
-        raise ValueError(f"unknown port variant {variant!r}")
-    _wgp.apply_waveguide_port_e = _instrumented_apply_e
+    _wgp.apply_waveguide_port_e = _variant_apply_e(offset)
     try:
         yield
     finally:
@@ -411,7 +439,7 @@ def run_case(case: dict) -> dict:
     out["provenance"] = rfx_provenance()
 
     r_lo = float(case.get("r_lo") or np.asarray(case["freqs_hz"]).min() / FC_CONTINUOUS_HZ)
-    lay = layout(r_lo)
+    lay = layout(r_lo, float(case.get("domain_mult", 1.0)))
     freqs = band_freqs(case, N)
 
     # Pass 1 — realized numerical TE10 cutoff of the rasterized guide, read at
@@ -508,6 +536,10 @@ def run_case(case: dict) -> dict:
 
     s11, s12, s21, s22 = S[0, 0], S[0, 1], S[1, 0], S[1, 1]
     a11, a12, a21, a22 = (np.abs(x) for x in (s11, s12, s21, s22))
+    signed = a11 - a22            # §0.3: the SIGNED residue is the stable object
+    recip = np.abs(a21 - a12)     # §0.4 witness 2: exactly zero for a correct
+    #                               reciprocal discretization, so it reads the
+    #                               case's own float arithmetic floor.
     sym = 0.5 * (a11 + a22)
     asy = 0.5 * np.abs(a11 - a22)
     headline = np.maximum(a11, a22)                 # == sym + asy, per bin
@@ -517,6 +549,14 @@ def run_case(case: dict) -> dict:
         abs_s11=[float(v) for v in a11], abs_s22=[float(v) for v in a22],
         abs_s21=[float(v) for v in a21], abs_s12=[float(v) for v in a12],
         per_bin_sym=[float(v) for v in sym], per_bin_asy=[float(v) for v in asy],
+        per_bin_signed_residue=[float(v) for v in signed],
+        per_bin_reciprocity_residual=[float(v) for v in recip],
+        reciprocity_floor_mean=float(recip.mean()),
+        reciprocity_floor_max=float(recip.max()),
+        # §7: no antisymmetric number is a measurement unless it clears its own
+        # case's reciprocity floor by 10x; below that it is reported as a bound.
+        asy_over_reciprocity_floor=(float(asy.mean() / recip.mean())
+                                    if recip.mean() > 0 else None),
         per_bin_headline=[float(v) for v in headline],
         band_mean_headline=float(headline.mean()),
         band_max_headline=float(headline.max()),

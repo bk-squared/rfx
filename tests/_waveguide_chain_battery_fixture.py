@@ -70,8 +70,13 @@ B_M = 0.01016   # WR-90 narrow wall (z), metres
 DX_COARSE = 0.00254
 DX_LADDER: tuple[float, ...] = (0.00254, 0.00127, 0.000635)
 N_LADDER: tuple[int, ...] = (9, 18, 36)
-# The two finer rungs the VI-envelope sweep adds
+# The finer rungs the VI-envelope sweep adds
 # (``docs/design_notes/waveguide_vi_envelope_sweep_predeclaration.md`` §5.1).
+# That section adds 0.0003175 (N=72) and says of the next one, verbatim,
+# "0.00015875 is not added: R5-X is dropped". It is carried here anyway,
+# unused by any emitted case, so the literal value and its integrality assert
+# stay on the record rather than being re-derived by hand if R5-X is ever
+# revived — recomputing it as A_M/144 is the mistake this block exists to stop.
 # They are LITERAL cell sizes, never ``A_M / N``: 0.0003175 = DX_COARSE / 8 and
 # 0.00015875 = DX_COARSE / 16 are exact binary halvings of the coarse cell, so
 # ``|dx*N - A_M| = 3.5e-18``, ``b/dx`` stays integral (32 / 64 cells) and the
