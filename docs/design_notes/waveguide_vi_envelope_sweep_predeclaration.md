@@ -137,12 +137,19 @@ Neither is an assumption, and both are free from data every case already produce
    identical). Any difference at a shared bin is pure float32 arithmetic: over the 162
    reflection pairs, median 1.0e-8, p90 6.0e-8, max 1.5e-7. So the arithmetic floor on
    `|S|` is ≤ 1.5e-7 and on `asy` ≤ 7.5e-8.
-2. **The two-port reciprocity residual `||S01| − |S10||`**, exactly zero for any correct
-   reciprocal discretization, so whatever it reads is precision. Measured 1.23e-7 against
-   a float32 eps of 1.19e-7.
+2. **The two-port reciprocity residual `||S01| − |S10||`** — but only where it has bottomed
+   out, and this document's first draft got that wrong. It is exactly zero in the
+   continuous problem, so it was taken as a pure precision gauge; the smoke run measured it
+   at **1.21e-4 at N=9** in the committed band, a thousand times the float32 floor. Across
+   rungs it reads 1.21e-4 / 2.945e-7 / 1.227e-7 at N = 9 / 72 / 144 — falling at order
+   **2.89** and then flattening onto 1.19e-7. So it is a **discretization** quantity at
+   coarse rungs and a precision gauge only at the fine end where it stops falling. Reported
+   at every case, used as a floor only where flat.
 
-The smallest antisymmetric band mean in the four bands is 1.5638e-5, i.e. **208 floors**;
-the median per-bin value is 593 floors. Storage adds a separate 5e-9 quantum (the archive
+**Witness 1 is the one the precision claim rests on**, because it isolates arithmetic by
+construction: the two twins solve the identical problem and differ only in how many DFT
+bins are evaluated. Against its 7.5e-8 floor on `asy`, the smallest antisymmetric band mean
+in the four bands is 1.5638e-5, i.e. **208 floors**; the median per-bin value is 593 floors. Storage adds a separate 5e-9 quantum (the archive
 writes 8 decimals) and exactly one bin of 144 sits on it — [1.030,1.080] N=36 bin 2, at
 5.0e-9; the second smallest is 6.2e-7, or 124 quanta. **The precision explanation is dead
 on this evidence**, and it is recorded here so it is not reopened.
@@ -257,9 +264,18 @@ which is Stage 0's job.
 where λ_g reaches ~250 mm. The near-cutoff evidence that exists is thin and does not
 confirm it: the only case above 3.0 λ_g anywhere near cutoff is the low-frequency
 archive's 4.0 λ_g lane at [1.010,1.030] (N = 9/18/36), and against its 2.5 λ_g twin the
-headline moves **−1.38 / −2.56 / +2.45 %** with no trend. So two nominally converged
-absorbers already disagree by 1.4–2.6 % near cutoff. **That scatter, not a committed-band
-tolerance, is what every absorber threshold below is sized against.**
+headline moves **−1.38 / −2.56 / +2.45 %** with no trend, and on the per-bin statistic
+Stage 0 actually uses the same pair is over its bar by 17–59× (§1.3's table). So two
+nominally converged absorbers already disagree substantially near cutoff.
+
+**How the Stage-0 bar must be read, given that.** Its statistic
+`Δ = max_i |h_i(thin) − h_i(deep)| / mean_band h(deep)` has a numerator that is a CPML leak
+difference, falling at ~1st order, over a denominator falling at ~2nd. So **`Δ ∝ N` by
+construction**: a fixed bar is not a fixed demand, it is roughly twice as strict at each
+halving of dx. That is the right behaviour for a *plateau* test, because the plateau
+requirement itself grows (+0.2 λ_g per halving) — but it means the bar cannot be carried
+between rungs silently, and it means Stage 0 failing near cutoff is a live outcome rather
+than a formality. §1.3.1 writes that branch out.
 
 ### 1.3 Stage 0 — runs first, and can stop the sweep
 
@@ -288,8 +304,48 @@ from §4.1's rotation trace. That is not redundancy: Stage 0 needs a deep contro
 which case belongs to which purpose so neither reads as the other's evidence.
 
 S0-c is unconditional because the N_f = 72 boundary is read at N=72 and §1.2's own law puts
-the absorber requirement at its largest there. If any Stage-0 case fails, **K becomes
-band-dependent and is re-derived at that band's own λ_g before any headline case runs.**
+the absorber requirement at its largest there.
+
+**What the archive predicts about these cases, honestly: nothing decisive, and failure is a
+live outcome.** Applying this exact criterion to every thickness pair the archive contains
+gives, at N = 9/18/36:
+
+| band | 1.5 vs 2.5 λ_g | 2.5 vs 4.0 λ_g |
+|---|---|---|
+| [1.030, 1.080] | 0.003 / 0.013 / 0.054 | — |
+| [1.023, 1.060] | 0.006 / **0.102** / **0.319** | — |
+| [1.017, 1.045] | 0.069 / 0.123 / 0.167 | — |
+| [1.010, 1.030] | 0.219 / 0.054 / 0.281 | **0.168 / 0.245 / 0.594** |
+
+Every near-cutoff entry is over the 0.01 bar, several by more than an order of magnitude.
+But **none of these is the pair Stage 0 runs**: all sit at or below 2.5 λ_g except one,
+while the committed-band plateau is already 2.218 λ_g at N=36 and 2.625 at N=72 — so the
+archive holds almost no near-cutoff case above plateau at all. K = 3.0 against 4.5 is
+genuinely unmeasured there, and S0-b and S0-c measure it first. Predicting a pass from this
+table would be as wrong as predicting a failure from it.
+
+### 1.3.1 The failure branch, written out because it is a live outcome
+
+If **S0-a** fails, stop: the recipe does not hold where it was derived and nothing
+downstream is readable. If **S0-b or S0-c** fails:
+
+1. **Extend that band's ladder upward at the failing rung** — K = 6.0, then 9.0, the same
+   doubling the absorber archive used to find its own plateau — and take the plateau as the
+   smallest K whose Δ against the next deeper K clears the bar. Cost at R2/N=36 is about
+   70 s and 105 s; at R2/N=72, about 1.4 min and 2.1 min.
+2. **Stop after K = 9.0.** If Δ still fails there, the near-cutoff absorber does not plateau
+   at any thickness this campaign can afford, and *that is the result*: the reflection leg is
+   reported **absorber-limited below `f/f_c` = 1.08**, sentence 1's low boundary is withdrawn
+   rather than filled, and only the interior and ceiling legs run. Declared now precisely so
+   it cannot later be avoided by loosening the bar.
+3. **If a deeper K does plateau, K becomes band-dependent**: each band runs at its own
+   plateau K, every headline case for that band is re-run at it, and the envelope sentence
+   names K per band instead of a single 3.0. Re-running R1 and R2 deeper roughly doubles
+   their cost — about 50 min of the ~85 in §8 — so **this branch, not the cut list, is the
+   real budget risk**, and it is named here rather than discovered mid-sweep.
+4. **The bar is not touched in any branch.** Loosening a convergence threshold to whatever
+   the runs happen to scatter by turns the test into a description of the runs. The repo's
+   rule against silent gate loosening binds a pre-declaration as much as a committed test.
 
 ### 1.4 Refused, with reasons on the record
 
@@ -495,7 +551,7 @@ at {18,36,72} and excludes it.
 | R4 | [1.080, 1.160] | 9 | no | 9/18/36/72 | K=3.0 | bridges near-cutoff to the committed band |
 | R5 | [1.281, 1.769] | 17 | no | 9/18/36/72 | K=3.0 (+K=4.5 at N=72 = S0-a) | **the anchor**; sets the M2 bar |
 | R6 | [1.80, **0.999 × the rung's discrete TE20 cutoff**] | 9 | yes (TE20) | 9/18/36/72 | K=3.0 | upper interior, **to the ceiling** |
-| R7 | [2.05, **2.18**] `f_c` | 9 | yes (TE20) | 18/36/72 | K=3.0 | empty guide **above** the TE20 cutoff |
+| R7 | [2.05, **2.18**] `f_c` | 9 | **no — fixed in f_c** | 18/36/72 | K=3.0 | empty guide **above** the TE20 cutoff |
 | F1 | [1.023, 1.060] | 9 | yes | 36 | K=3.0 | mechanism test, three variants (§4.2) |
 | F2 | [1.281, 1.769] | 17 | no | 72 | K=3.0, **float64, own process** | is the fine-rung floor precision |
 
@@ -554,8 +610,13 @@ R6's top is now 0.999 of that cutoff. R7 was declared [2.05, 2.40] `f_c` = 13.44
 which crosses `fc_TE01` = c/2b = 14.754 GHz = **2.2500** `f_c` and reaches within 2.6 % of
 TE11 at 2.4622. Its discrete values are 2.1926 / 2.2356 / 2.2464 / 2.2491 `f_c` at
 N = 9/18/36/72 (`fc01·sinc(π/2·b_cells)`, b_cells = 4/8/16/32), so at N=9 the TE01 ceiling
-is already 2.19 — another reason R7 excludes that rung. **R7 is re-declared [2.05, 2.18],**
-which leaves 2.5 / 3.0 / 3.2 % margin to each running rung's own discrete TE01 cutoff.
+is already 2.19 — another reason R7 excludes that rung. **R7 is re-declared [2.05, 2.18] fixed in `f_c`, NOT TE20-locked,**
+which leaves 2.49 / 3.03 / 3.2 % margin to each running rung's own discrete TE01 cutoff.
+The lock and the margin are incompatible here and the margin wins: under a TE20 lock the
+N=18 top lands at 2.213 `f_c`, 0.9 % from that rung's discrete TE01 at 2.2356 — breaking
+the very margin this paragraph declares. R6 keeps mixed endpoints (bottom fixed at
+1.80 `f_c`, top at 0.999 × the rung's own discrete TE20 cutoff: 1.80–1.95767 at N=9,
+1.80–1.99737 at N=72), because there the ceiling is the thing being approached.
 
 ### 4.2 F1 and F2, with thresholds and a null control
 
@@ -597,11 +658,18 @@ process-global in this repo and has contaminated whole shards before.
 
 ### 5.1 Rungs
 
-`N = a/dx ∈ {9, 18, 36, 72}`. `DX_LADDER` gains the **literal** `0.0003175`, never `A_M/N`:
-the literal value gives `|dx·N − A_M| = 3.5e-18`, `b/dx = 32` integral, and reference and
-probe planes on integer cell counts, while `A_M/N` moves the N=9 grid from (65,10,5) to
-(66,10,6) and the band-bottom bin by 19 % at a thin absorber. `0.00015875` is not added:
-R5-X is dropped (§4.1).
+`N = a/dx ∈ {9, 18, 36, 72}`, from the **literal** cell sizes, never `A_M/N`: the literal
+`0.0003175` gives `|dx·N − A_M| = 3.5e-18`, `b/dx = 32` integral, and reference and probe
+planes on integer cell counts, while `A_M/N` moves the N=9 grid from (65,10,5) to (66,10,6)
+and the band-bottom bin by 19 % at a thin absorber.
+
+**They go in a NEW tuple, `DX_LADDER_SWEEP`, not into `DX_LADDER`.** Growing the committed
+one reddens committed gates: a frozen chain-battery artifact's `dx_ladder_m` is compared
+against `list(DX_LADDER)`, and four geometry suites parametrize over it with per-dx
+expectation dicts that have no N=72 entry. The battery keeps its ladder; the sweep reads
+its own. `0.00015875` (N=144) sits in that tuple **unused** — R5-X is dropped (§4.1), no
+emitted case names it — so the tuple stays a complete statement of the literal lattice
+rather than a list edited per campaign.
 
 ### 5.2 The ceiling
 
@@ -740,7 +808,12 @@ away.
 
 ## 7. Preflight, witnesses and the zero-FDTD artifacts
 
-**Two zero-FDTD checks run before any case; both are milliseconds.**
+**Two zero-FDTD checks run before any case. Both are zero-FDTD; neither is instant.**
+Their arithmetic is milliseconds, but the index audit reads the *compiled* port config —
+which is the point, since it audits what the solver will actually use — and that carries
+the discrete aperture mode solve: about 0.7 s / 3 s / 75 s / 145 s at N = 9/18/36/72 on
+CPU, cached so the two artifacts pay it once. Re-deriving the indices from the grid would
+be instant and would only restate the script's own arithmetic.
 
 1. **Mirror-covariance index audit.** Assert `x_index_L + x_index_R = nx−1`,
    `ref_x_L + ref_x_R = nx−1`, `probe_x_L + probe_x_R = nx−1`, TFSF H-plane sum `nx−2`, and
@@ -777,10 +850,19 @@ floor does not scale with the number being measured — at [1.030,1.080] N=72 th
 −55.0 dB while the headline is 2.8e-4 — which is why §4.1's run-length twins are mandatory
 at the coarse rungs of the low bracket.
 
-**Per-case noise floor, recorded for every case (§0.4).** The per-bin reciprocity residual
-`||S01| − |S10||`, its band mean and max, and the ratio of the band-mean antisymmetric term
-to it. **No antisymmetric number is reported as a measurement unless it exceeds its own
-case's reciprocity floor by at least 10×; below that it is reported as a bound.**
+**Per-case floors, recorded for every case (§0.4).** Two numbers, and they measure
+different things:
+
+1. The **arithmetic floor**, 7.5e-8 on `asy` from the 9-bin/33-bin twins (§0.4 witness 1).
+   **This is the resolution rule: no antisymmetric number is reported as a measurement
+   unless it exceeds 7.5e-8 by at least 10×; below that it is a bound.**
+2. The per-bin **reciprocity residual** `||S01| − |S10||`, its band mean and max, and the
+   ratio of the band-mean antisymmetric term to it — reported as a *discretization*
+   diagnostic, **not** as the resolution rule. The smoke run settles why: it reads 1.21e-4
+   at N=9 and 1.2e-7 at N=144, falling at order 2.89, so a 10× rule against it would void
+   the coarse-rung antisymmetric numbers for a reason that has nothing to do with whether
+   they are resolved. Where it has flattened (N ≥ 72 in the committed band) it agrees with
+   witness 1 and is a second reading of the same floor.
 
 ---
 
