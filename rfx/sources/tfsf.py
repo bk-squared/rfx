@@ -39,7 +39,32 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
 
+from rfx.boundaries.cpml import _cpml_profile
 from rfx.core.yee import EPS_0, MU_0
+
+
+# ---------------------------------------------------------------------------
+# Auxiliary-grid absorber (#888)
+# ---------------------------------------------------------------------------
+# See rfx/sources/tfsf_2d.py for the finding.  The 1-D grid is the normal-
+# incidence path (cv04's); it shipped at 20 cells with
+# sigma_max = 0.8 * 4 / (eta dx_1d) and reflected |B/A| ~ 4e-02.  The 1-D CPML
+# update carries no kappa (TFSFConfig has b and c only), so kappa_max stays 1
+# and an override to anything else is refused rather than silently ignored.
+# Read off the measured depth law in
+# docs/design_notes/20260904_aux_absorber_depth_derivation.md section 2, on cv04's
+# own rig and band.  This path is normal incidence only (oblique dispatches to the
+# 2-D grid), so its worst declared angle is 0 deg and the target that minimises the
+# echo there is 1e-6 -- TIGHTENING it makes the echo worse at every depth, because a
+# tighter target steepens sigma and the absorber reflects off its own grading.
+# Measured echo/inc on cv04's band: 4.427e-02 as shipped (n = 20), 9.355e-05 at
+# n = 140, 9.430e-06 here.
+AUX_N_CPML_1D = 200         # was 20
+AUX_CPML_ORDER_1D = 3       # rfx/boundaries/cpml.py _cpml_profile default
+AUX_CPML_KAPPA_MAX_1D = 1.0
+AUX_CPML_R_ASYMPTOTIC_1D = 1e-6
+AUX_N_MARGIN_1D = 10
+AUX_SRC_OFFSET_1D = 3       # source sits this many cells inside the absorber's inner edge
 
 
 def is_tfsf_2d(cfg) -> bool:
@@ -119,6 +144,10 @@ def init_tfsf(
     nz: int | None = None,
     waveform: str = "differentiated_gaussian",
     method: str = "bloch",
+    aux_n_cpml: int | None = None,
+    aux_cpml_order: int | None = None,
+    aux_cpml_kappa_max: float | None = None,
+    aux_cpml_r_asymptotic: float | None = None,
 ) -> tuple:
     """Initialize TFSF source.
 
@@ -261,30 +290,40 @@ def init_tfsf(
         )
 
     # 1D auxiliary grid: spans x_lo..x_hi + margins for source + CPML
-    n_cpml_1d = 20
+    n_cpml_1d = AUX_N_CPML_1D if aux_n_cpml is None else int(aux_n_cpml)
     n_tfsf = x_hi - x_lo + 2   # +2 for the correction at x_hi+1
     # Normal incidence only reaches this code path (oblique dispatches to 2D above).
-    n_margin = 10
+    n_margin = AUX_N_MARGIN_1D
     n_1d = n_cpml_1d + n_margin + n_tfsf + n_margin + n_cpml_1d
 
     # i0: 1D index that maps to 3D x_lo
     i0 = n_cpml_1d + n_margin
     if direction == "+x":
         # Launch from the left margin so the right-going wave enters the mapped region.
-        src_idx = n_cpml_1d + 3
+        src_idx = n_cpml_1d + AUX_SRC_OFFSET_1D
     else:
         # Launch from the right margin so the left-going wave enters the mapped region.
-        src_idx = n_1d - n_cpml_1d - 4
+        src_idx = n_1d - n_cpml_1d - AUX_SRC_OFFSET_1D - 1
 
-    # 1D CPML profile (polynomial grading) — uses dx_1d for oblique matching
-    eta = np.sqrt(MU_0 / EPS_0)
-    sigma_max = 0.8 * 4.0 / (eta * dx_1d)
-    rho = 1.0 - np.arange(n_cpml_1d, dtype=np.float64) / max(n_cpml_1d - 1, 1)
-    sigma_prof = sigma_max * rho**3
-    alpha_prof = 0.05 * (1.0 - rho)
-    denom = sigma_prof + alpha_prof
-    b_prof = np.exp(-(sigma_prof + alpha_prof) * dt / EPS_0)
-    c_prof = np.where(denom > 1e-30, sigma_prof * (b_prof - 1.0) / denom, 0.0)
+    # 1D CPML profile.  sigma_max is DERIVED from a target reflection through the
+    # same law the 3-D absorber uses (rfx/boundaries/cpml.py::_cpml_profile), on
+    # dx_1d so the oblique dispersion match is preserved -- see AUX_*_1D above
+    # and #888.
+    _kappa_1d = (AUX_CPML_KAPPA_MAX_1D if aux_cpml_kappa_max is None
+                 else float(aux_cpml_kappa_max))
+    if _kappa_1d != 1.0:
+        raise ValueError(
+            "the 1-D auxiliary CPML update carries no kappa (TFSFConfig has b and c "
+            f"only), so kappa_max must stay 1.0; got {_kappa_1d}"
+        )
+    _prof = _cpml_profile(
+        n_cpml_1d, dt, dx_1d,
+        order=AUX_CPML_ORDER_1D if aux_cpml_order is None else int(aux_cpml_order),
+        kappa_max=_kappa_1d,
+        R_asymptotic=(AUX_CPML_R_ASYMPTOTIC_1D if aux_cpml_r_asymptotic is None
+                      else float(aux_cpml_r_asymptotic)),
+    )
+    b_prof, c_prof = _prof.b, _prof.c
 
     # Source waveform parameters.
     # For differentiated Gaussian (legacy rfx): tau = 1/(π·f0·bandwidth),
