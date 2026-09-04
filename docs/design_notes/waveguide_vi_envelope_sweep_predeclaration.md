@@ -273,14 +273,19 @@ Criterion, per case, stated in the sweep's own statistic and taken from the abso
 archive's **primary** rule rather than its secondary one:
 
 ```
-max_i | h_i(K=3.0) − h_i(K=4.5) |  ≤  0.01 · mean_band h(K=4.5)
-h_i = per-bin max(|S11|, |S22|)
+max_i | h_i(K=3.0) − h_i(K_deep) |  ≤  0.01 · mean_band h(K_deep)
+h_i = per-bin max(|S11|, |S22|);  K_deep = the deep control named in the row above
 ```
 
 The band-mean form is explicitly **not** used: the absorber archive's own declaration says
 of it, verbatim, *"a band-mean-only rule cannot see it -- it would certify 1.5 lambda_g,
 which is what the critic rejected."* The mean averages the notch away, and the notch is
 what the thickness rule exists to bound.
+
+**R2 at N=36 therefore runs FOUR thicknesses** — 3.0 and 4.5 from S0-b, plus 4.0 and 5.0
+from §4.1's rotation trace. That is not redundancy: Stage 0 needs a deep control against
+3.0, and the trace needs equal one-λ_g spacing, and the union serves both. The record names
+which case belongs to which purpose so neither reads as the other's evidence.
 
 S0-c is unconditional because the N_f = 72 boundary is read at N=72 and §1.2's own law puts
 the absorber requirement at its largest there. If any Stage-0 case fails, **K becomes
@@ -335,11 +340,15 @@ at [1.010,1.030] on a continuous axis `max|S11|` fits −0.043 against the mean'
 A case is readable iff all of:
 1. Settling witness ≤ −40 dB on **both** drives.
 2. The rasterization guard (§7) passes.
-3. The mirror-covariance index audit (§7) reproduces **exactly** the declared signature:
-   `x_index`, `ref_x` and `probe_x` sums each `nx−1`, the TFSF **H**-plane sum `nx−2`, and
-   the TFSF **E**-plane sum `nx` — the last being the known shipped defect, `+1` from
-   covariant. Any other deviation voids the case. *(The audit is expected to show that one
-   non-covariance at every rung; requiring it to "pass" would make every case unreadable.)*
+3. The mirror-covariance index audit (§7) reproduces **exactly the signature declared for
+   that case's port variant**: `x_index`, `ref_x` and `probe_x` sums each `nx−1` and the
+   TFSF **H**-plane sum `nx−2` in every case, with the TFSF **E**-plane sum equal to `nx`
+   for shipped code, `nx−1` for F1-`plane` and `nx−2` for F1-`anti` (§4.2). Any other
+   deviation voids the case. *(Two ways to get this wrong, and a draft of this document
+   contained both. Requiring the audit to "pass" makes every case unreadable, because
+   shipped code is non-covariant by construction. Requiring the E-plane sum to be `nx`
+   unconditionally makes F1's own two controls unreadable — they are non-covariant on
+   purpose, and voiding them deletes the discriminator the mechanism test is built on.)*
 4. Every preflight finding is one of the two expected advisories in §7.
 
 ### 3.2 M2 — order, on a named rung set, with a margin
@@ -362,21 +371,44 @@ of statistic. Nor does an unnamed rung set: the headline LSQ for [1.017,1.045] i
 Without the margin the published low edge could be decided by 0.009 in order — 0.5 %, less
 than the sweep's own lane-to-lane reproducibility.
 
-### 3.3 M3 — absorber, order only, and only where two lanes exist
+### 3.3 M3 — absorber, per-bin plateau, calibrated to the anchor
 
-> **M3 applies only at R1 and R2, the two bands that run more than one thickness.** There
-> it requires the K = 3.0 and K = 4.5 lanes to agree in **LSQ order to within 0.05**.
-> Elsewhere the absorber question is answered by Stage 0 and §3.5, and M3 is not a
-> condition.
+An LSQ order needs at least two rungs per lane, and the case list gives each band's deep
+lane **one** rung at R1 above N=36 and no two rungs at a single K anywhere. So a
+lane-versus-lane order comparison has no input at R1 and only a single pairwise order at
+R2 — where the comparison target is itself ambiguous (R2's K=3.0 side reads 1.760 as an
+LSQ over {18,36,72} but 1.699 as its 36→72 pair, a 0.061 spread that on its own exceeds a
+0.05 tolerance, so the choice of target would decide the verdict). An order-based M3 is
+therefore not evaluable, and this replaces it:
+
+> **M3 applies at every band and rung that runs more than one thickness** — R1 at N=36
+> (3.0/4.0/5.0) and N=72 (3.0/4.5), R2 the same, R5 at N=72 (3.0/4.5, the S0-a pair). Write
+> `K_deep` for the deepest lane that band and rung runs. M3 is the same per-bin plateau
+> statistic Stage 0 uses (§1.3):
 >
-> **There is no level clause.** The two lanes' band means are reported side by side and are
-> not a gate: the measured deep-lane scatter near cutoff (2.5 vs 4.0 λ_g at [1.010,1.030]:
-> −1.38 / −2.56 / +2.45 %) already exceeds any level tolerance a verdict could use, so a
-> level gate would report every near-cutoff band absorber-limited for a reason unrelated to
-> the order claim M2 makes.
+> ```
+> Δ(band, N) = max_i | h_i(K=3.0) − h_i(K_deep) |  /  mean_band h(K_deep)
+> ```
+>
+> A band is **not absorber-limited at that rung iff `Δ ≤ 3 · Δ(R5, 72)`**, where `Δ(R5,72)`
+> is the same quantity measured at the anchor in this same sweep (`K_deep` = 4.5 there) —
+> the one place K = 3.0 is already known converged — with a floor of 0.01 so a freakishly small anchor value cannot
+> make the test unpassable. **The factor 3 is fixed now and is not tuned afterwards.**
+>
+> Where no such pair exists the band's absorber status is **inherited from Stage 0** and
+> reported as inherited; M3 is not a condition there.
+>
+> The two lanes' band means and their orders are reported side by side throughout, and
+> neither is a gate.
 
-Revision 1 gated every band on a two-lane comparison that six of eight bands cannot run —
-including the anchor — and on a 1 % level clause that two converged absorbers already fail.
+Two things this fixes, both of which earlier drafts got wrong in opposite directions.
+Revision 1 gated every band on a two-lane comparison six of eight bands cannot run —
+including the anchor — with a flat 1 % level clause that two nominally converged absorbers
+already fail near cutoff (2.5 vs 4.0 λ_g at [1.010,1.030]: −1.38 / −2.56 / +2.45 %). The
+first repair removed the level clause and kept an order clause with no inputs. Calibrating
+a per-bin level statistic to the anchor measured in the same sweep is the same construction
+M2 uses, and for the same reason: a threshold carried in from another band or another
+statistic decides verdicts it was never measured against.
 
 ### 3.4 The boundary is an interval, indexed by the finest rung
 
@@ -394,10 +426,32 @@ archive, discrete lock, 1.5 / 2.5 λ_g lanes):
 | [1.023, 1.060] | 1.748 | 1.729 | 1.760 | 1.699 |
 | [1.030, 1.080] | 1.760 | 1.761 | 1.808 | 1.780 |
 
-So on evidence in hand, **[1.017,1.045] is the declared-failure bracket** and
-**[1.023,1.060] is the expected lowest claiming point** — written down now so that a sweep
-agreeing with it cannot be presented as a discovery. The two absorber lanes agree to
-0.008–0.020 in order, which is where the M2 margin comes from.
+**Applying §3.2's own margin to that table makes the expectation rung-set dependent, and
+the first draft of this document stated a rung-independent one.** Headline anchor LSQ from
+the converged committed-band ladder: **1.9021** on {9,18,36} and **1.9521** on {18,36,72},
+so the bar is 1.7119 / 1.7569 and CHARACTERIZED needs 1.7319 / 1.7769.
+
+| band, headline LSQ | {9,18,36} | vs 1.7319 | {18,36,72} | vs 1.7769 |
+|---|---|---|---|---|
+| [1.017, 1.045] | 1.6713 | **fails** | 1.4990 | **fails** |
+| [1.023, 1.060] | 1.7478 | clears | 1.7598 | **INDETERMINATE** — above the bar, inside the margin |
+| [1.030, 1.080] | 1.7599 | clears | 1.8056 | clears |
+
+So on evidence in hand: **[1.017,1.045] is the declared-failure bracket at both rung
+sets**; **[1.023,1.060] is the expected lowest claiming point at `N_f = 36` only** — at
+`N_f = 72` it lands 0.003 above the bar and inside the margin, so it is expected
+INDETERMINATE and the expected `r_pass` there is **[1.030,1.080]**. Written now so that a
+sweep returning 1.030 on the finer ladder reads as the prediction it is rather than as a
+disagreement with this document.
+
+**Even that is not a pre-call.** §3.5 permits the in-sweep anchor to differ from the
+archive by 0.03 in order, which moves the bar by 0.027 — larger than the 0.02 margin. So
+[1.023,1.060] at `N_f = 72` cannot be called either way before the anchor is measured.
+That is the honest state, and it is the reason §3.4 delivers an interval rather than a
+point.
+
+The two absorber lanes agree to 0.008–0.020 in order, which is where the margin comes
+from.
 
 ### 3.5 What stops the sweep
 
@@ -436,8 +490,8 @@ at {18,36,72} and excludes it.
 |---|---|---|---|---|---|---|
 | R0 | [1.010, 1.030] | 9 | yes + continuous twin | 9/18/36 | K=3.0 | out-of-scope, **measured** not asserted |
 | R1 | [1.017, 1.045] | 9 | yes | 9/18/36/72 | **K=3.0, 4.0, 5.0 at N=36; K=3.0, 4.5 at N=72** | the declared-failure bracket |
-| R2 | [1.023, 1.060] | 9 | yes | 9/18/36/72 | same three/two-lane pattern | expected lowest claiming point; N=72 pair is S0-c |
-| R3 | [1.030, 1.080] | 9 | yes + continuous twin | 9/18/36/72 | K=3.0 | near-cutoff anchor |
+| R2 | [1.023, 1.060] | 9 | yes | 9/18/36/72 | same three/two-lane pattern | expected lowest claiming point **at N_f = 36**; expected INDETERMINATE at N_f = 72 (§3.4); its N=72 pair is S0-c |
+| R3 | [1.030, 1.080] | 9 | yes + continuous twin | 9/18/36/72 | K=3.0 | near-cutoff anchor; **the expected lowest claiming point at N_f = 72** (§3.4) |
 | R4 | [1.080, 1.160] | 9 | no | 9/18/36/72 | K=3.0 | bridges near-cutoff to the committed band |
 | R5 | [1.281, 1.769] | 17 | no | 9/18/36/72 | K=3.0 (+K=4.5 at N=72 = S0-a) | **the anchor**; sets the M2 bar |
 | R6 | [1.80, **0.999 × the rung's discrete TE20 cutoff**] | 9 | yes (TE20) | 9/18/36/72 | K=3.0 | upper interior, **to the ceiling** |
