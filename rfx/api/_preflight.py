@@ -6179,9 +6179,19 @@ class _PreflightMixin:
            each mesh point actually solves (Hammerstad-Jensen on the
            REALIZED h/W from ``fidelity_report()``; see the sibling
            ``msl_z0_bias_floor_sweep_realized_anchor.json`` artifact next
-           to the pre-declared sweep JSON), the extractor tracks
-           Hammerstad-Jensen to within 0.4% at EVERY point in the sweep,
-           aligned or misaligned alike. The "2.56-2.94x worse" ratio and
+           to the pre-declared sweep JSON), the extractor tracks the
+           realized-board Hammerstad-Jensen anchor closely at every point
+           in the sweep, aligned or misaligned alike (that sibling
+           artifact carries the per-point deviations). NOTE (audit
+           2026-09-02): the artifact's ALIGNED rows are the pre-#802 f32
+           as-solved record — main's exact-coordinate rasterizer
+           (#802/#834) moves three aligned points' realized trace width
+           (h_sub/3 677.3→592.7µm, h_sub/5 609.6→558.8µm, h_sub/6
+           592.7→635.0µm), so those rows' realized-board deviations are
+           RE-SOLVE-OWED before any specific "within X%" bound may be
+           quoted as a LIVE extractor property; run
+           ``scripts/diagnostics/msl_z0_bias_floor_sweep.py`` to refresh
+           them. The "2.56-2.94x worse" ratio and
            the "+20.2%/+11.0% Z0 bias" framing are RETRACTED as
            extractor-bias claims (the pre-declared sweep JSON and its
            as-run verdict block are left untouched — they remain the
@@ -6510,9 +6520,14 @@ class _PreflightMixin:
             # each point actually solves (Hammerstad-Jensen on the
             # REALIZED h/W; see the sibling
             # ``msl_z0_bias_floor_sweep_realized_anchor.json`` next to
-            # the pre-declared sweep JSON), the extractor tracks
-            # Hammerstad-Jensen to within 0.4% at every one of the six
-            # sweep points, aligned or misaligned. The "2.56-2.94x worse"
+            # the pre-declared sweep JSON), the extractor tracks the
+            # realized-board Hammerstad-Jensen anchor closely at every one
+            # of the six sweep points, aligned or misaligned (that sibling
+            # artifact carries the per-point deviations; audit 2026-09-02:
+            # its aligned rows are the pre-#802 f32 as-solved record and
+            # are re-solve-owed before a specific "within X%" bound may be
+            # quoted live — main's #802/#834 rasterizer moves three aligned
+            # points' realized trace width). The "2.56-2.94x worse"
             # / "+20.2%/+11.0%" framing is RETRACTED as an extractor-bias
             # claim (the pre-declared JSON and its as-run verdict are
             # left untouched as the auditable record; only this reading
@@ -6626,11 +6641,14 @@ class _PreflightMixin:
                         f"declared-board Z0 comparison used to attribute "
                         f"to 'misalignment' (retracted: see "
                         f"msl_z0_bias_floor_sweep_realized_anchor.json — "
-                        f"the extractor tracks Hammerstad-Jensen on the "
-                        f"board it actually solves to within 0.4% at every "
-                        f"point in scripts/diagnostics/"
-                        f"msl_z0_bias_floor_sweep.py's sweep, aligned or "
-                        f"not). {_snap_txt}",
+                        f"scored against the board each mesh point actually "
+                        f"solves rather than the declared board, the "
+                        f"extractor tracks the realized-board Hammerstad-"
+                        f"Jensen anchor closely; that artifact carries the "
+                        f"per-point deviations, which must be re-solved "
+                        f"(scripts/diagnostics/msl_z0_bias_floor_sweep.py) "
+                        f"after any rasterization change — its aligned rows "
+                        f"are the pre-#802 as-solved record). {_snap_txt}",
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),
@@ -6711,8 +6729,12 @@ class _PreflightMixin:
                         f"{_MSL_REALIZED_THICKNESS_Z0_SENSITIVITY:.3f} = "
                         f"{_MSL_REALIZED_THICKNESS_TOL*100:.1f}%; it is NOT "
                         f"a claim about extractor bias (scored against the "
-                        f"board it actually solves, the extractor tracks "
-                        f"Hammerstad-Jensen to within 0.4%). {_fix}; or "
+                        f"board it actually solves rather than the declared "
+                        f"board, the extractor tracks the realized-board "
+                        f"Hammerstad-Jensen anchor closely; see "
+                        f"msl_z0_bias_floor_sweep_realized_anchor.json for "
+                        f"the per-point deviations, re-solve-owed after a "
+                        f"rasterization change). {_fix}; or "
                         f"accept the realized board and quote its "
                         f"{_h_real_m*1e6:.1f}µm thickness rather than the "
                         f"declared one.",

@@ -130,6 +130,29 @@ realized-board anchor to within 0.4% at all six points, aligned or not
 same directory). See ``rfx/api/_preflight.py``'s
 ``_check_msl_port_geometry`` class docstring and checks 2/2b for the
 corrected advisory text this drives.
+
+POST-RUN REVIEW NOTE (2026-09-02, audit finding A1; appended after the
+fact, pre-declared body/JSON untouched)
+--------------------------------------------------------------------------
+The "within 0.4% at all six points" reading just above is a PRE-#802
+result. The realized-board anchor reused each point's z0_measured_ohm
+from THIS file's JSON, solved on the pre-#802 f32 rasterization. Main's
+exact-coordinate rasterizer (#802/#834) moves three of the six aligned
+points' realized trace width (h_sub/3 677.3->592.7um, h_sub/5
+609.6->558.8um, h_sub/6 592.7->635.0um), so both the measured Z0 and the
+realized-board HJ anchor on those points change and the 0.4% figure is no
+longer a live bound for them. The misaligned pair (dx=80/60um) did not
+move (realized W unchanged), so its ~0.2% agreement is still
+representative. The user-facing preflight advisories were corrected
+(finding A1) to state only the qualitative realized-board claim and to
+point here for the OWED re-solve. RE-SOLVE: run this script (6 FDTD
+points) on main, then regenerate the anchor with
+``msl_z0_bias_floor_sweep_realized_anchor.py``; a single-point check of
+the h_sub/3 re-solve (2026-09-02, jax_enable_x64=False, settling
+-110.0/-113.1 dB) read Z0=48.16 ohm against HJ(592.7um,254um)=48.27 ohm,
+dev -0.23% -- consistent with the 0.4% band still holding on the
+post-#802 board, but the full six-point re-solve is what a live bound
+requires.
 """
 
 from __future__ import annotations

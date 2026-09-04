@@ -229,8 +229,11 @@ def test_mixed_cell_warning_fires_at_dx_80():
 # (the misaligned dx=80/60µm points realize a 320µm/300µm substrate, not
 # the declared 254µm), so they measure board rasterization, not extractor
 # bias. Scored against the board each point actually solves, the extractor
-# tracks Hammerstad-Jensen to within 0.4% everywhere in the sweep
-# (msl_z0_bias_floor_sweep_realized_anchor.json). What survives is the
+# tracks the realized-board Hammerstad-Jensen anchor closely across the
+# sweep (msl_z0_bias_floor_sweep_realized_anchor.json). Audit 2026-09-02
+# (finding A1): the specific "within 0.4%" figure the advisory used to
+# quote is RETIRED as a live bound -- the anchor's aligned rows are the
+# pre-#802 as-solved record and are re-solve-owed. What survives is the
 # board-thickening effect itself, which is real, measured, and now gated on
 # its own axis by check 2c (realized-vs-declared substrate thickness).
 #
@@ -311,7 +314,11 @@ def test_mixed_cell_warning_names_z0_bias_magnitude():
     assert "-3.8%" not in mixed[0], mixed[0]
     # What survives: the (cited, not remeasured) |S21|^2 > 1 override risk,
     # the measured board-thickening figure, and a pointer to the sibling
-    # realized-board artifact and its <=0.4% agreement.
+    # realized-board artifact. Audit 2026-09-02 (finding A1): the specific
+    # "within 0.4% at every point" figure was RETIRED from the advisory --
+    # its only evidence (the anchor JSON) is stale for three aligned points
+    # post-#802, so the advisory now makes the qualitative realized-board
+    # claim and points at the owed re-solve instead.
     assert "pec_occupancy_override" in mixed[0], mixed[0]
     # #766 review B3: this used to pin "no subpixel eps assembly", which is
     # false -- 'kottke_pec' builds the inv-eps tensor over PEC shapes and the
@@ -334,7 +341,12 @@ def test_mixed_cell_warning_names_z0_bias_magnitude():
     assert "realizes 4 cell(s) of substrate = 320µm" in mixed[0], mixed[0]
     assert "+26%" in mixed[0], mixed[0]
     assert "msl_z0_bias_floor_sweep_realized_anchor.json" in mixed[0], mixed[0]
-    assert "within 0.4%" in mixed[0], mixed[0]
+    # Audit A1: qualitative realized-board claim replaces the stale 0.4%
+    # figure, and the owed re-solve is named.
+    assert "within 0.4%" not in mixed[0], mixed[0]
+    assert "realized-board Hammerstad-Jensen anchor closely" in mixed[0], mixed[0]
+    assert "must be re-solved" in mixed[0], mixed[0]
+    assert "pre-#802 as-solved record" in mixed[0], mixed[0]
     assert "msl_z0_bias_floor_sweep.py" in mixed[0], mixed[0]
 
 

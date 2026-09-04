@@ -138,11 +138,32 @@ def test_realized_anchor_matches_fidelity_report_directly():
 
 
 def test_realized_board_deviation_tolerances_hold():
-    """Pin the exact tolerances the corrected preflight advisories now
-    cite ("within 0.4%" for all six points, used implicitly to justify
-    the class docstring's correction). Measured max|dev_real| = 0.377%
-    over all six, 0.197% over the misaligned pair (dx=80,60um) -- both
-    asserted here with a stated derivation, not an unbound constant."""
+    """STALE-ARTIFACT REGRESSION LOCK on the FROZEN committed JSON — NOT a
+    live-extractor bound (audit 2026-09-02, finding A1).
+
+    This asserts max|dev_vs_realized_board_pct| over the committed rows
+    (0.377% all six, 0.197% misaligned pair). It reads the frozen column
+    out of the artifact; it does NOT re-solve, so it does NOT measure the
+    live extractor. That is fine as a lock that the committed file has not
+    silently drifted, but it MUST NOT be read as proof the extractor still
+    tracks within 0.4% on main:
+
+      The artifact's ALIGNED rows were solved on the pre-#802 f32
+      rasterization. Main (#802/#834) rasterizes three of the six aligned
+      sweep points to DIFFERENT trace widths (h_sub/3 677.3->592.7um,
+      h_sub/5 609.6->558.8um, h_sub/6 592.7->635.0um -- see
+      ``_post_802_w_um`` above, re-derived live), so both the measured Z0
+      and the realized-board HJ anchor on those points move, and this
+      column is a frozen PRE-#802 record. A LIVE bound requires
+      RE-SOLVING the sweep on main's rasterization:
+      ``scripts/diagnostics/msl_z0_bias_floor_sweep.py`` (6 FDTD points),
+      then regenerating the anchor with
+      ``msl_z0_bias_floor_sweep_realized_anchor.py``. That re-solve is
+      OWED; the preflight advisories were corrected (audit A1) to make
+      only the QUALITATIVE realized-board claim until it is done. The
+      misaligned pair (dx=80,60um) did NOT move at #802 (W unchanged), so
+      its 0.197% row is the one part still live-representative.
+    """
     out = json.loads(ANCHOR_JSON.read_text(encoding="utf-8"))
     rows = out["rows"]
     devs_all = [abs(r["dev_vs_realized_board_pct"]) for r in rows]
@@ -180,3 +201,72 @@ def test_declared_board_column_unchanged_from_source():
         src = src_by_label[row["label"]]
         assert row["z0_measured_ohm"] == src["z0_measured_ohm"]
         assert row["z0_hj_declared_board_ohm"] == src["z0_hj_ohm"]
+
+
+def test_committed_aligned_rows_are_a_pre802_record_not_live():
+    """Audit 2026-09-02 (finding A1) -- demonstrates WHY the tolerance
+    lock above is a frozen record, not a live bound. Re-derive each
+    point's realized trace width live (fidelity_report(), no FDTD solve)
+    and confirm three aligned rows in the committed artifact no longer
+    match main's rasterization. This is the staleness the corrected
+    preflight advisories now disclose instead of the old absolute 0.4%
+    claim; it is documentation of a known post-#802 drift, so it passes
+    on any tree that carries #802/#834 -- its job is to fail loudly if a
+    future rasterizer change moves these points AGAIN without the
+    artifact and advisories being refreshed."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "msl_z0_bias_floor_sweep_realized_anchor",
+        REPO / "scripts" / "diagnostics"
+        / "msl_z0_bias_floor_sweep_realized_anchor.py",
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    out = json.loads(ANCHOR_JSON.read_text(encoding="utf-8"))
+    by_label = {r["label"]: r for r in out["rows"]}
+    dx_by_label = dict(mod.DX_GRID)
+
+    # Pre-#802 committed widths that main's exact-coordinate rasterizer
+    # (#802/#834) has moved -- proving the committed realized-board
+    # deviation column is stale for these points.
+    for label in ("aligned h_sub/3", "aligned h_sub/5", "aligned h_sub/6"):
+        _, w_live_um = mod.realized_h_w_um(dx_by_label[label])
+        w_committed_um = by_label[label]["w_trace_realized_um"]
+        assert abs(w_live_um - w_committed_um) > 1.0, (
+            f"{label}: live realized W {w_live_um}um now equals the "
+            f"committed {w_committed_um}um -- if the sweep has been "
+            "re-solved on main's rasterization, refresh this test and "
+            "restore a live 'within X%' bound in the preflight advisories"
+        )
+
+
+def test_preflight_advisories_make_no_stale_absolute_realized_bound():
+    """Anti-overclaim regression lock (audit 2026-09-02, finding A1).
+
+    The MSL-port-geometry advisories in ``rfx/api/_preflight.py`` used to
+    quote a specific "within 0.4% at every point" realized-board bound
+    whose ONLY evidence was the committed anchor JSON -- stale for three
+    aligned points post-#802 (see the test above). Until the sweep is
+    RE-SOLVED on main, the advisories must state only the QUALITATIVE
+    realized-board claim, not a specific unverified percentage. This locks
+    the retired phrasings out of the module source."""
+    src = (REPO / "rfx" / "api" / "_preflight.py").read_text(encoding="utf-8")
+    for retired in (
+        "to within 0.4% at every",
+        "within 0.4% at EVERY",
+        "within 0.4% at every one",
+        "Hammerstad-Jensen to within 0.4%",
+    ):
+        assert retired not in src, (
+            f"retired A1 overclaim phrasing {retired!r} is back in "
+            "rfx/api/_preflight.py -- the realized-board 0.4% figure is a "
+            "pre-#802 frozen record and must be re-solved "
+            "(scripts/diagnostics/msl_z0_bias_floor_sweep.py) before being "
+            "quoted as a live extractor bound"
+        )
+    # The honest replacement must be present: qualitative anchor language
+    # plus an explicit re-solve pointer.
+    assert "realized-board Hammerstad-Jensen anchor" in src
+    assert "re-solve" in src.lower()
+    assert "pre-#802" in src
