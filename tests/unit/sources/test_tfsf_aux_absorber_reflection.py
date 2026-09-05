@@ -56,15 +56,16 @@ SHIPPED_2D = {"aux_n_cpml": 30, "aux_cpml_order": 4, "aux_cpml_kappa_max": 7.0,
 SHIPPED_1D = {"aux_n_cpml": 20, "aux_cpml_order": 3,
               "aux_cpml_r_asymptotic": math.exp(-2 * 0.8 * 20)}
 
-# MEASURED maxima of the DECLARED absorber at the FAST rig, and the fit residual
+# MEASURED maxima of the DECLARED absorber (n = 200, R_asym = 1e-28, re-derived at
+# 82 deg -- see the module comment) at the FAST rig, and the fit residual
 # each came with. Reproduced by the tests below; the gate is derived from the
 # measurement through gate_from_envelope, so widening it means editing a shared,
 # reviewer-visible object rather than a local literal (#528).
 FAST_MEASURED = {
-    0.0:  {"max": 3.0382e-06, "resid": 3.2e-07, "quantum": 1e8},
-    30.0: {"max": 7.6721e-05, "resid": 5.7e-04, "quantum": 1e7},
-    45.0: {"max": 7.2586e-05, "resid": 6.8e-04, "quantum": 1e7},
-    60.0: {"max": 3.2100e-04, "resid": 2.0e-03, "quantum": 1e6},
+    0.0:  {"max": 6.4413e-06, "resid": 3.2e-07, "quantum": 1e7},
+    30.0: {"max": 7.8540e-05, "resid": 5.7e-04, "quantum": 1e6},
+    45.0: {"max": 7.5086e-05, "resid": 6.8e-04, "quantum": 1e6},
+    60.0: {"max": 3.1941e-04, "resid": 2.0e-03, "quantum": 1e5},
 }
 # The angle the FAST rig cannot resolve, and what it reads when asked to.
 FAST_UNRESOLVED_DEG = 70.0
@@ -72,8 +73,8 @@ FAST_UNRESOLVED_RESID = 0.24
 
 # MEASURED maxima at the FULL rig, which does resolve 70 degrees.
 FULL_MEASURED = {
-    60.0: {"max": 4.6153e-05, "quantum": 1e7},
-    70.0: {"max": 2.3357e-04, "quantum": 1e6},
+    60.0: {"max": 5.1338e-05, "quantum": 1e6},
+    70.0: {"max": 1.2186e-04, "quantum": 1e5},
 }
 
 # The 1-D path on cv04's own rig and band.
@@ -101,7 +102,7 @@ def test_the_declared_constants_are_the_derived_ones():
     """Both paths carry the depth and target read off the derivation table,
     and both use the SAME law the 3-D absorber uses."""
     assert (AUX_N_CPML, AUX_CPML_ORDER, AUX_CPML_KAPPA_MAX, AUX_CPML_R_ASYMPTOTIC) \
-        == (200, 3, 1.0, 1e-14)
+        == (200, 3, 1.0, 1e-28)
     assert (AUX_N_CPML_1D, AUX_CPML_ORDER_1D, AUX_CPML_KAPPA_MAX_1D,
             AUX_CPML_R_ASYMPTOTIC_1D) == (200, 3, 1.0, 1e-6)
 
@@ -110,7 +111,7 @@ def test_the_deep_tight_absorber_is_GENTLER_than_the_shallow_one_it_replaces():
     """The reason a tighter reflection target is not a tighter absorber.
 
     sigma_max = -ln(R) (m+1) / (2 eta n dx) falls with depth, so the 200-cell
-    R = 1e-14 layer carries LESS sigma than a 30-cell R = 1e-6 one, and two
+    R = 1e-28 layer carries LESS sigma than a 30-cell R = 1e-6 one, and two
     orders less than the 148.6 that shipped. Long and gentle beats short and
     steep -- which is why tightening R at fixed depth made the measured echo
     WORSE at every depth in the derivation table.
@@ -121,7 +122,7 @@ def test_the_deep_tight_absorber_is_GENTLER_than_the_shallow_one_it_replaces():
     # kappa_max = 7. At dx = 1 mm that is 74.32; the #888 note's 148.647 is the
     # SAME expression at the dx/2 rung, which is where it was measured.
     shipped = 0.8 * (4 + 1) / (376.730313668 * 1e-3) * 7.0
-    assert declared == pytest.approx(0.856, rel=1e-2)
+    assert declared == pytest.approx(1.711, rel=1e-2)
     assert shallow == pytest.approx(2.445, rel=1e-2)
     assert shipped == pytest.approx(74.32, rel=1e-2)
     assert 0.8 * (4 + 1) / (376.730313668 * 0.5e-3) * 7.0 == pytest.approx(148.6, rel=1e-2)
@@ -244,3 +245,44 @@ def test_the_full_rig_resolves_sixty_and_seventy(theta_deg):
     assert r["fit_resid_max"] < FIT_RESID_LIMIT
     assert r["max"] == pytest.approx(m["max"], rel=0.05)
     assert r["max"] <= bar(m["max"], m["quantum"])
+
+
+# ==========================================================================
+# 6. The validity DOMAIN, in both directions (note section 12.5)
+# ==========================================================================
+# The first derivation took 70 deg as the worst declared angle; cv26's grazing
+# arms are declared at 82. Measured on a 40000-step rig so the grazing bands
+# carry bins. The absorber meets LEAK_BAR through 80 deg (10 % in hand) and does
+# NOT at 82. Both halves are asserted: a domain that is only checked from the
+# inside is a claim, not a gate.
+LEAK_BAR = 1.0e-3
+GRAZE_RIG = {"nx": 400, "n_steps": 40000, "n_samp": 96}
+DOMAIN_MEASURED = {
+    70.0: {"max": 1.2462e-04, "inside": True},
+    80.0: {"max": 9.0631e-04, "inside": True},
+    82.0: {"max": 1.2282e-03, "inside": False},
+}
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("theta_deg", sorted(DOMAIN_MEASURED))
+def test_the_domain_edge_is_where_the_note_says(theta_deg):
+    from tests._aux_absorber_reflection import bandwidth_for
+    m = DOMAIN_MEASURED[theta_deg]
+    r = measure_aux_reflection_2d(theta_deg, bw=bandwidth_for(theta_deg), **GRAZE_RIG)
+    assert r["fit_resid_max"] < FIT_RESID_LIMIT, (theta_deg, r["fit_resid_max"])
+    assert r["max"] == pytest.approx(m["max"], rel=0.10), (theta_deg, r["max"])
+    if m["inside"]:
+        assert r["max"] <= LEAK_BAR, f"{theta_deg} deg is declared INSIDE the domain and reads {r['max']:.3e}"
+    else:
+        assert r["max"] > LEAK_BAR, (
+            f"{theta_deg} deg is declared OUTSIDE the domain but reads {r['max']:.3e} <= LEAK_BAR: "
+            "either the absorber improved (re-derive the domain) or the instrument lost resolution")
+
+
+def test_the_target_was_rederived_at_grazing_not_at_seventy():
+    """sigma_max = 1.711 is the 82-deg optimum (note 12.2). The 70-deg-derived
+    1e-14 would read 0.856 here; asserting the value pins the correction."""
+    assert AUX_CPML_R_ASYMPTOTIC == 1e-28
+    assert sigma_max_of(AUX_N_CPML, AUX_CPML_R_ASYMPTOTIC) == pytest.approx(1.711, rel=1e-2)
+    assert sigma_max_of(AUX_N_CPML, 1e-14) == pytest.approx(0.856, rel=1e-2)
