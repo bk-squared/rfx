@@ -455,7 +455,18 @@ def main(argv=None) -> int:
             lk = O.evaluate_leakage(run["freqs_hz"], run["R_rfx"], spec)
             e2["leak"] = lk
             gates_line["G_leak"] = lk["G_leak"]
-            arm_ok = lk["G_leak"] and e2["gates"]["G3_tail"]      # the vacuum arm has no R/T oracle to pass
+            # The vacuum arm has no R/T oracle to pass: pre-declaration section 4.5
+            # makes it the injection witness ALONE. Those four gates are therefore
+            # NOT judged here -- and they are marked N/A, not left reading False
+            # beside a PASS. The raw booleans stay in e2["gates"] for the replay
+            # test; the DECLARED exclusion is what a reviewer must be able to see.
+            NOT_JUDGED = ("G1_R", "G1_T", "G2_R", "G2_T")
+            for g in NOT_JUDGED:
+                gates_line[g] = "N/A"
+            e2["gates_not_applicable"] = list(NOT_JUDGED)
+            e2["gates_not_applicable_reason"] = ("vacuum arm: no R/T oracle exists (R = 0, T = 1 trivially); "
+                                                 "declared as the injection witness alone, pre-declaration section 4.5")
+            arm_ok = lk["G_leak"] and e2["gates"]["G3_tail"]
             e2["e2_ok"] = arm_ok
             print(f"  leakage witness: max |scat/inc| gated {lk['max_leak_gated']:.2e} vs {O.LEAK_BAR:g} -> {'ok' if lk['G_leak'] else 'FAIL'}")
         if arm == "graze_pec":
