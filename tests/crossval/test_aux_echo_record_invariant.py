@@ -40,6 +40,7 @@ def _load(name: str, rel: str):
 
 G = _load("ae_cv22_gates", "validation/crossval/comparators/cv22_dispersive_gates.py")
 import rfx.sources.tfsf as T  # noqa: E402  -- the module that OWNS the aux layout
+import rfx.sources.tfsf_2d as T2  # noqa: E402  -- and the 2-D one
 LW = _load("ae_lattice_witness", "validation/crossval/comparators/lattice_witness.py")
 
 # The rig's dt at dx = 1 mm (Courant 0.700); the same constant
@@ -71,14 +72,30 @@ CV04_MEASURED_ARRIVAL_AT_20_CELLS = {"trans": 1230, "refl": 1350}
 # cv26 te_45 at its declared dx/2 rung: the arrival the #888 diagnosis tabulates
 # for the reflection probe (note section 0, "Records against echo arrival:
 # ... te_45 18083 vs 9358").
-CV26_TE45_ARRIVAL_REFL = 9358
-# The 2-D Bloch auxiliary grid at te_45 (#888 note sections 0 and 3): n2x =
-# 3092 with a 30-cell CFS-CPML, source at 33, the phase-slope fit localising
-# the reflector at index 3070 = 8.0 cells inside the layer, and the reflection
-# probe's auxiliary reference index 1475. The speed is the lattice group
-# velocity v_gx(f0) = 0.7071 c the note itself uses, in cells per step.
-CV26_TE45 = dict(n_aux=3092, src_idx=33, aux_n_cpml=30, reflector_depth_cells=8.0,
-                 probe_aux_index=1475, v_cells=0.4949954837618946)
+CV26_TE45_ARRIVAL_REFL_AT_30_CELLS = 9358   # the #888 note's number, on the 30-cell aux grid
+# The 2-D Bloch auxiliary grid at te_45, dx/2 rung. Two numbers are the RIG's and
+# do not change with the absorber: the TF/SF span n_tfsf = x_hi - x_lo + 2 = 2982
+# (nx_interior 1500 at dx/2 with N_CPML 20, TFSF_MARGIN 5) and the reflection
+# probe's offset from x_lo, 1420 cells. Everything else -- n_aux, src_idx,
+# aux_n_cpml, probe_aux_index -- is the auxiliary LAYOUT and is derived from
+# rfx.sources.tfsf_2d, the module that owns it. It used to be pinned as
+# n_aux = 3092, src_idx = 33, aux_n_cpml = 30, probe 1475 (the 30-cell layout of
+# the #888 note), which is a grid that no longer exists. The speed is the lattice
+# group velocity v_gx(f0) = 0.7071 c the note itself uses, in cells per step.
+CV26_N_TFSF = 2982
+CV26_PROBE_REFL_OFFSET = 1420
+CV26_TE45 = dict(
+    n_aux=2 * T2.AUX_N_CPML + 2 * T2.AUX_N_MARGIN_X + CV26_N_TFSF,
+    src_idx=T2.AUX_N_CPML + T2.AUX_SRC_OFFSET,
+    aux_n_cpml=T2.AUX_N_CPML,
+    # the reflector is a BOUND at the absorber's inner edge on the derived
+    # absorber (2026-09-04 note section 4), as for the 1-D path
+    reflector_depth_cells=0.0,
+    probe_aux_index=T2.AUX_N_CPML + T2.AUX_N_MARGIN_X + CV26_PROBE_REFL_OFFSET,
+    v_cells=0.4949954837618946,
+)
+CV26_TE45_AT_30_CELLS = dict(n_aux=3092, src_idx=33, aux_n_cpml=30, reflector_depth_cells=8.0,
+                             probe_aux_index=1475, v_cells=0.4949954837618946)
 
 
 def _witness_docs():
@@ -160,16 +177,31 @@ def test_the_computed_arrival_bounds_the_measured_cv04_arrival_from_below(probe)
 def test_the_computed_arrival_reproduces_the_cv26_te45_number():
     """The same helper, driven with the 2-D Bloch auxiliary geometry of #888.
 
-    cv26 is not on main, so its geometry is supplied as the numbers the
-    diagnosis note states; what is tested is that the arrival arithmetic --
-    source to reflector, reflector back to the probe's auxiliary reference,
-    divided by the propagation speed -- reproduces the note's 9358 steps
-    exactly. That is the second, independent rig this quantity has to describe.
+    cv26 is not on main, so its RIG constants are supplied as numbers; its
+    auxiliary LAYOUT is derived from the module. On the 30-cell layout the note
+    fitted, the helper reproduces the note's 9358 exactly -- that is the
+    instrument check. On the layout that ships it gives a different, LIVE number,
+    which is what cv26's records must be held against.
     """
-    got = G.aux_echo_arrival(**CV26_TE45)
-    assert got["reflector_index"] == 3070.0
-    assert got["path_cells"] == 4632.0
-    assert got["arrival_centre_steps"] == CV26_TE45_ARRIVAL_REFL
+    old = G.aux_echo_arrival(**CV26_TE45_AT_30_CELLS)
+    assert old["reflector_index"] == 3070.0
+    assert old["path_cells"] == 4632.0
+    assert old["arrival_centre_steps"] == CV26_TE45_ARRIVAL_REFL_AT_30_CELLS
+    live = G.aux_echo_arrival(**CV26_TE45)
+    # 200-cell layout: n_aux 3432, source 203, probe 1645, reflector at the inner edge 3232
+    assert CV26_TE45["n_aux"] == 3432 and CV26_TE45["src_idx"] == 203 and CV26_TE45["probe_aux_index"] == 1645
+    assert live["reflector_index"] == 3232.0
+    assert live["path_cells"] == (3232 - 203) + (3232 - 1645)
+    # the deeper absorber pushes the reflector out by 162 cells but the source in
+    # by 170 and the probe by 170: the echo arrives EARLIER, not later
+    assert live["arrival_centre_steps"] < old["arrival_centre_steps"]
+
+
+def test_a_stale_copy_of_the_cv26_layout_would_be_caught():
+    """FALSIFIER: the pinned 30-cell tuple must now DISAGREE with the live one."""
+    assert CV26_TE45["n_aux"] != CV26_TE45_AT_30_CELLS["n_aux"]
+    assert CV26_TE45["src_idx"] != CV26_TE45_AT_30_CELLS["src_idx"]
+    assert CV26_TE45["aux_n_cpml"] != CV26_TE45_AT_30_CELLS["aux_n_cpml"]
 
 
 def test_the_arrival_is_geometry_and_not_a_measurement_of_the_run_it_guards():
