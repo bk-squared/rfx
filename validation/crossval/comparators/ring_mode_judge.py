@@ -201,17 +201,28 @@ def q_window(ref_freq: float, ref_Q: float, record_length: float
     decay rates; it says nothing about how far apart two *solvers* should be.
     The rfx-vs-Meep Q gap on cv02 is a discretization offset (staircased ring
     boundary, subpixel treatment, hence a slightly different radiation Q), so
-    it is roughly constant in ``T``: measured ``|ln(Q_rfx/Q_ref)| = 0.070``
-    (mode 1) and ``0.123`` (mode 2), while rfx's own Q for these modes moves
-    ~0.2% between a 291 and a 3435 (Meep-unit) record. Consequently, on cv02's
+    it is roughly constant in ``T``, while rfx's own Q for the same modes is
+    stable over every span that was actually measured. Measured ``|ln(Q_rfx/Q_ref)| = 0.070`` (mode 1)
+    and ``0.123`` (mode 2); rfx mode 2 reads ``Q = 357.61 -> 356.83`` (0.22%)
+    between ``T = 291`` and ``T = 1101``
+    (``docs/research_notes/audit-2026-09-02/verify/G2_cv02.md``), and the
+    slowest in-band mode (``f = 0.1753``) reads ``Q = 1787.6 @ T = 1575 ->
+    1757.3 @ T = 3281`` (1.7%) -- both RESOLVED readings, rungs 1-2 of the
+    recorded Meep-absent run
+    ``docs/research_notes/audit-2026-09-02/fix2/i4_PR896_cv02_meep_absent.log``.
+    (That run's bootstrap reading ``Q = 1686.9 @ T = 385`` is deliberately not
+    quoted as invariance evidence: at ``T/tau = 0.126`` this module's own floor
+    calls it UNRESOLVED, i.e. not a measurement.) Consequently, on cv02's
     committed reference/rfx pair this gate PASSES at ``T=291`` (mode-1 window
     0.747) and FAILS at ``T=3385`` (window 0.064) purely because the record got
     longer and better settled. A longer record reds a physically stable case.
     Fixing it needs a floor on the window encoding the expected
     discretization Q gap (or a pre-declared |ln Q| envelope); that is a change
-    to a claims-bearing gate and is NOT done here -- it is filed against the
-    judge, and it is the reason cv02's Meep (verdict) lane keeps its
-    calibrated record length instead of the tau-scaled one.
+    to a claims-bearing gate and is NOT done here -- it is tracked as issue
+    #907 (the ``tau_ref/T`` window shrinks with ``T`` faster than the physics
+    does, so a longer record fails a stable Q), and it is the reason cv02's
+    Meep (verdict) lane keeps its calibrated record length instead of the
+    tau-scaled one.
 
     Returns ``(T/tau, window)``. ``T/tau`` is the number of amplitude
     e-foldings the record observed; a mode is Q-gated only when it reaches
@@ -466,7 +477,8 @@ class RecordPlan:
     present: float                 # the present record's free-decay length
     slowest_tau: float | None      # slowest tau this record actually resolved
     kept: tuple                    # in-band modes whose decay this record saw
-    out_of_band: tuple             # harminv modes the judge never scores
+    out_of_band: tuple             # modes outside [f_min, f_max]
+    below_min_q: tuple             # IN-band modes rejected by the MIN_Q floor
     unresolved: tuple              # in-band modes with tau above the cap
     reason: str
 
@@ -491,7 +503,11 @@ def plan_record(modes, *, f_min: float, f_max: float,
       so the requested band is interior to the search; modes it returns
       outside ``[f_min, f_max]`` are band-edge content no gate ever reads, and
       their Q is the least reproducible thing harminv reports. They are
-      returned in ``out_of_band`` (report them, never scale off them).
+      returned in ``out_of_band`` (report them, never scale off them). An
+      in-band mode that :func:`admit` drops on the ``Q > min_Q`` floor instead
+      is NOT out of band and is not labelled as such: it goes to its own
+      ``below_min_q`` bucket, so a printed rung never calls an in-band mode
+      OUT-OF-BAND. Neither bucket can set a record length.
     * **resolvability** -- a mode enters the tau pool only if the present
       record observed its decay to the published floor, ``tau <=
       resolvable_tau_bound(T)`` (:data:`Q_RECORD_MIN_EFOLDS`). Everything
@@ -515,7 +531,10 @@ def plan_record(modes, *, f_min: float, f_max: float,
     cap = resolvable_tau_bound(record_after_source, min_efolds)
     in_band = admit(modes, f_min, f_max, min_Q=min_Q)
     in_band_ids = {id(m) for m in in_band}
-    out_of_band = tuple(m for m in modes if id(m) not in in_band_ids)
+    out_of_band = tuple(m for m in modes if id(m) not in in_band_ids
+                        and not (f_min <= m.freq <= f_max))
+    below_min_q = tuple(m for m in modes if id(m) not in in_band_ids
+                        and f_min <= m.freq <= f_max)
 
     kept, unresolved = [], []
     for mode in in_band:
@@ -543,14 +562,21 @@ def plan_record(modes, *, f_min: float, f_max: float,
     return RecordPlan(
         length=length, cap=cap, present=float(record_after_source),
         slowest_tau=slowest, kept=tuple(kept), out_of_band=out_of_band,
-        unresolved=tuple(unresolved), reason=reason,
+        below_min_q=below_min_q, unresolved=tuple(unresolved), reason=reason,
     )
 
 
 def format_record_plan(plan: RecordPlan, scale: float = 1.0,
                        unit: str = "") -> str:
-    """The ladder rung, printed: every mode harminv returned, which of the two
-    filters it fell to, and the length that came out."""
+    """The ladder rung, printed: every mode harminv returned, which filter it
+    fell to, and the length that came out.
+
+    Tags: ``pool`` (in band, decay resolved -- the only modes that can set the
+    length), ``UNRESOLVED`` (in band, tau above this record's resolvable
+    bound), ``LOW-Q`` (in band but under the ``MIN_Q`` floor), ``OUT-OF-BAND``
+    (outside ``[f_min, f_max]``). ``LOW-Q`` is printed separately precisely so
+    that an in-band mode is never labelled OUT-OF-BAND.
+    """
     suffix = f" {unit}" if unit else ""
     # ``scale`` converts the modes' TIME unit (1/freq) into the printed one, so
     # a frequency converts by its reciprocal -- getting this backwards printed
@@ -561,6 +587,7 @@ def format_record_plan(plan: RecordPlan, scale: float = 1.0,
         f"{plan.cap * scale:.1f}{suffix}",
     ]
     for tag, group in (("pool", plan.kept), ("UNRESOLVED", plan.unresolved),
+                       ("LOW-Q", plan.below_min_q),
                        ("OUT-OF-BAND", plan.out_of_band)):
         for mode in group:
             tau = amplitude_tau(mode.freq, mode.Q)

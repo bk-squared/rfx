@@ -703,6 +703,30 @@ def test_plan_record_falls_back_when_nothing_is_resolved() -> None:
     assert plan.extend is False
 
 
+def test_in_band_low_q_mode_is_not_labelled_out_of_band() -> None:
+    """An in-band mode dropped on the MIN_Q floor is reported in its own
+    bucket, not as OUT-OF-BAND. The two rejections have different causes (one
+    is outside the band the judge scores, one is inside it and too lossy to be
+    a mode), and the printed rung must not confuse them. Neither can set the
+    record length."""
+    lossy = rmj.SolverMode(0.15, rmj.MIN_Q / 2.0, 1e-8)   # in band, under MIN_Q
+    edge = BAND_EDGE_SPUR[0]                              # f = 0.2027, out of band
+    plan = rmj.plan_record(list(RFX_TODAY) + [lossy, edge],
+                           record_after_source=385.0, target_efolds=1.0,
+                           **BAND)
+    assert lossy in plan.below_min_q and lossy not in plan.out_of_band
+    assert edge in plan.out_of_band and edge not in plan.below_min_q
+    assert lossy not in plan.kept and lossy not in plan.unresolved
+    text = rmj.format_record_plan(plan)
+    low_q_line = [ln for ln in text.splitlines() if "LOW-Q" in ln]
+    assert len(low_q_line) == 1 and "0.15" in low_q_line[0]
+    assert "OUT-OF-BAND" in text and "0.2027" in text
+    # and neither rejected mode moved the length
+    clean = rmj.plan_record(list(RFX_TODAY), record_after_source=385.0,
+                            target_efolds=1.0, **BAND)
+    assert plan.length == pytest.approx(clean.length)
+
+
 def test_format_record_plan_prints_every_mode_and_its_verdict() -> None:
     """The rejected modes are printed, not swallowed -- an out-of-band mode
     that shortens the run must be visible in the log."""
@@ -726,8 +750,16 @@ def test_verdict_lane_q_gate_is_run_length_contingent() -> None:
     not. So on the very same (frozen) mode pair the q gate passes at the
     committed record and fails at a longer, better-settled one, with the
     frequency gates and the |ln Q| values unchanged. That is a comparator
-    defect filed against the judge, NOT a licence to lengthen this lane's
-    record, and NOT something this witness change fixed."""
+    defect tracked as issue #907 -- the tau_ref/T window shrinks with T faster
+    than the physics does, so a longer record fails a stable Q -- NOT a licence
+    to lengthen this lane's record, and NOT something this witness change
+    fixed.
+
+    CHARACTERIZATION TEST. It pins the CURRENT, DEFECTIVE behaviour: the
+    assertion ``longer.gates["q"] is False`` is the bug, not the requirement.
+    When #907 is fixed this test must be INVERTED (a longer, better-settled
+    record has to keep the PASS) or deleted along with it -- do not "repair"
+    the judge to keep this assertion green."""
     committed = _judge(RFX_TODAY)                      # T = RECORD_T = 291
     longer = rmj.judge(MEEP_REFERENCE, RFX_TODAY, 3385.0,
                        f_min=0.1, f_max=0.2)           # 1 e-fold of tau_slow

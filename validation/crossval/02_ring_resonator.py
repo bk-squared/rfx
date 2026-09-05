@@ -209,16 +209,26 @@ source_off_time = 2.0 * wf_main.t0
 #         T = 291  (committed): gate q PASS  (mode-1 |lnQ| 0.070 vs window 0.747)
 #         T = 3385 (1 e-fold of the slowest mode): gate q FAIL (window 0.064)
 #         T = 15600 (-40 dB record): modes 1 AND 2 FAIL (windows 0.014 / 0.044)
-#     while the physics is invariant over the same range (rfx mode-2 Q 357.6 ->
-#     356.8, 0.22%; measured mode-3 Q 1686.9 @ T=385 -> 1756.5 @ T=3435, 4%).
+#     while rfx's own Q is stable on every RESOLVED span that was actually
+#     recorded (they cover 291 -> 3281 of the range above):
+#         mode 2 (f=0.1472): Q 357.61 -> 356.83 (0.22%) for T = 291 -> 1101
+#             (docs/research_notes/audit-2026-09-02/verify/G2_cv02.md)
+#         slowest in-band mode (f=0.1753): Q 1787.6 @ T=1575 -> 1757.3 @ T=3281
+#             (1.7%), rungs 1-2 of the recorded Meep-absent run
+#             docs/research_notes/audit-2026-09-02/fix2/
+#             i4_PR896_cv02_meep_absent.log
+#     (That run's bootstrap Q=1686.9 @ T=385 is NOT quoted as invariance
+#     evidence: at T/tau=0.126 the judge's own floor calls it UNRESOLVED, i.e.
+#     not a measurement.)
 #     So a LONGER, better-settled record would red a physically sound case.
 #     That is a comparator defect, not an rfx defect, and fixing it means
 #     giving the Q window a floor that encodes the expected discretization Q
 #     gap -- a change to a claims-bearing gate, with its own root cause and
-#     evidence. It is NOT done in this change; it is filed against the judge
-#     (see ring_mode_judge.q_window "Known limitation"). Until it is fixed the
-#     verdict lane's PASS is contingent on the record staying short, and this
-#     comment is the record of that.
+#     evidence. It is NOT done in this change; it is tracked as issue #907 --
+#     the tau_ref/T window shrinks with T faster than the physics does, so a
+#     longer record fails a stable Q (see ring_mode_judge.q_window "Known
+#     limitation"). Until it is fixed the verdict lane's PASS is contingent on
+#     the record staying short, and this comment is the record of that.
 #
 #   * Meep ABSENT (exit 2, inconclusive -- there is NO verdict to preserve):
 #     the record is scaled at runtime to the slowest RESOLVED in-band mode's
@@ -248,10 +258,19 @@ SETTLE_TARGET_EFOLDS = 1.0
 #: ladder may re-run to re-measure a tau it could not resolve. This is a
 #: wall-clock budget, not a physics tolerance -- each rung's LENGTH is derived
 #: (ring_mode_judge.plan_record clamps every rung at the present record's
-#: resolvable-tau bound T/0.25, so a rung can at most quadruple the record and
-#: the whole ladder is bounded by 4**(1+budget) x the bootstrap free decay).
-#: If the budget runs out before the ladder converges the script says so and
-#: the witness reports the remaining modes as truncation-suspect.
+#: resolvable-tau bound T/0.25, so a rung can at most quadruple the record).
+#: Bound, stated precisely: the loop RUNS at most 1 + budget records, the
+#: longest of which is at most 4**budget x the bootstrap free decay (16x here);
+#: the plan printed on the last rung may ask for up to 4**(1+budget) x, but it
+#: is printed, never run. If the budget runs out before the ladder converges
+#: the script says so and the witness reports the remaining modes as
+#: truncation-suspect.
+#: DISCLOSURE: 2 is also exactly what this board needs -- in the recorded run
+#: (docs/research_notes/audit-2026-09-02/fix2/i4_PR896_cv02_meep_absent.log)
+#: the ladder converged on rung 2 (385 -> 1575 -> 3281 Meep units of free
+#: decay). It gates nothing either way (this lane exits 2, inconclusive, with
+#: or without convergence); a smaller budget would print "budget spent"
+#: instead of "converged".
 RECORD_LADDER_BUDGET = 2
 
 if HAVE_MEEP:
