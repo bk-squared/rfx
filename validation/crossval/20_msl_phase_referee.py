@@ -632,6 +632,19 @@ with their derivations, in EXTERNAL_PHASE_REFERENCE_PREDECLARATION and
 docs/design_notes/issue812_phase_identity_predeclaration.md; no existing
 gate was widened.
 
+  E2-signed (issue #830, audit G1) -- ADDED, REPORTED, NOT GATED. The
+      E2 leg above is unchanged: it still gates max(|dev|) <= 2.0%, and
+      nothing below replaces or narrows it. Alongside it, each solver's
+      SIGNED deviation is compared with the ASYMMETRIC band a correct
+      quasi-static line may occupy, derived at runtime from the realized
+      board (``_signed_beta_envelope_terms``). It records pass/fail and
+      prints to stderr; it is NOT in sanity_passed. What it is and is
+      not entitled to say -- in particular that exceeding the positive
+      bound is a MAGNITUDE statement, not a sign claim, and that an
+      excess smaller than this mesh's half-cell rasterization band is
+      not attributable to solver physics without a second dx -- is set
+      out in the SIGNED analytic-beta envelope block below.
+
 GATE-BUDGET DERIVATION (M1 fix -- ``B_PHASE_TOL_DEG``): the 30 deg
 value this script originally shipped with admits a plane-position
 error of 3.372mm (67% of L12=5mm) at this fixture's own measured beta
@@ -952,6 +965,7 @@ import numpy as np
 # unreadable by any reviewer outside the machine that ran the job).
 # ---------------------------------------------------------------------------
 _C0 = 2.998e8  # m/s -- matches the coax/notch precedent's own constant
+_MU0 = 4.0e-7 * np.pi  # H/m -- free-space permeability (Getsinger f_p = Z0/(2*mu0*h))
 
 # Stage A tutorial geometry (RO4350B) -- same substrate/trace/stub the
 # repo's own cv06b/msl_notch_e4 comparison already validates a closed form
@@ -1305,7 +1319,13 @@ EXTERNAL_PHASE_REFERENCE_PREDECLARATION: dict = {
 
 
 def _hammerstad_jensen_eps_eff(w_m: float, h_m: float, eps_r: float) -> float:
-    """Hammerstad quasi-static microstrip eps_eff (Pozar eq. 3.195).
+    """Quasi-static microstrip eps_eff, Pozar eq. 3.195.
+
+    ATTRIBUTION (review2 P1-2): eq. 3.195 is the Hammerstad 1975 / Schneider
+    quasi-static form, NOT the 0.2%-class Hammerstad-Jensen 1980 model. The
+    symbol keeps its ``_hammerstad_jensen_`` name only because the artifact
+    key ``eps_eff_hammerstad_jensen`` is committed in published run JSON and
+    in the tests that read it; the docstring, not the name, states the form.
 
     The SAME closed form ``_A_EPS_EFF`` already uses for Stage A's notch
     oracle, factored out so Stage B can evaluate it on the fixture's
@@ -1313,12 +1333,277 @@ def _hammerstad_jensen_eps_eff(w_m: float, h_m: float, eps_r: float) -> float:
     on purpose: this module's scope fence forbids importing rfx (see the
     module docstring's SCOPE FENCE) -- ``tests/test_msl_phase_referee_
     header.py`` pins this function against ``rfx.microstrip.
-    microstrip_eps_eff`` instead, so the duplication cannot drift.
+    microstrip_eps_eff`` instead, so the duplication cannot drift. That pin
+    is why the ``u < 1`` thin-line term below is present: ``rfx.microstrip``
+    carries it, so the duplicate must too, or the two silently differ for any
+    narrow strip (review2 P2-4 -- the anti-pinning test feeds a u = 0.47
+    board).
     """
     if not (w_m > 0.0 and h_m > 0.0):
         raise ValueError(f"w_m and h_m must be positive, got {w_m!r}, {h_m!r}")
     u = w_m / h_m
-    return float((eps_r + 1.0) / 2.0 + (eps_r - 1.0) / 2.0 * (1.0 + 12.0 / u) ** -0.5)
+    f_u = (1.0 + 12.0 / u) ** -0.5
+    if u < 1.0:
+        f_u += 0.04 * (1.0 - u) ** 2
+    return float((eps_r + 1.0) / 2.0 + (eps_r - 1.0) / 2.0 * f_u)
+
+
+# ===========================================================================
+# ISSUE #830 (audit G1) -- the SIGNED analytic-beta envelope, DERIVED AT
+# RUNTIME from the realized board (NO pinned per-board fractions).
+# ===========================================================================
+# ``_analytic_beta_witness`` above gates ``max(|beta/beta_HJ - 1|) <=
+# B_BETA_ANALYTIC_TOL_FRAC`` -- a SYMMETRIC magnitude budget that sums three
+# physical corrections AS MAGNITUDES. Two of those three are SIGN-DEFINITE, so
+# the band a CORRECT QUASI-STATIC line may occupy is NOT symmetric:
+#
+#   term                        eps_eff sign    enters hi   enters lo
+#   Hammerstad/Schneider model  +- (two-sided)  yes         yes
+#   Bahl-Garg finite thickness  -  (lowers)     NO          yes
+#   Getsinger dispersion        +  (raises)     yes         NO
+#
+#   hi = sqrt(1 + m + d_eps_getsinger/eps0) - 1     (positive-capable terms)
+#   lo = sqrt(1 - m + d_eps_thickness/eps0) - 1     (negative-capable terms)
+#
+# Terms are composed in eps_eff space and converted to beta ONCE, because
+# beta ~ sqrt(eps_eff): summing already-square-rooted beta fractions is not the
+# same composition. A strictly POSITIVE term (Getsinger) cannot deepen the
+# NEGATIVE floor, so it is omitted from ``lo`` exactly as the strictly NEGATIVE
+# thickness term is omitted from ``hi``. (The first version of this block added
+# Getsinger to ``lo`` as "conservative" padding; that is a pre-loosened
+# negative side -- review2 P2-3 -- and it is gone.)
+#
+# WHAT THIS ENVELOPE IS, AND WHAT IT IS NOT (review2 P1-1 / P1-2). The
+# statements below are all recomputed at runtime and recorded in the witness
+# dict; none of them is a stored per-board number:
+#
+#  * ``hi`` is POSITIVE. A positive deviation is therefore ADMISSIBLE physics
+#    by this very derivation. Exceeding ``hi`` is a MAGNITUDE finding on the
+#    positive side, NOT a "wrong sign" finding, and nothing in this file calls
+#    it one.
+#  * The envelope bounds a CORRECT QUASI-STATIC LINE. It does NOT predict where
+#    a Yee-realized 6-cell line lands, and this file makes NO claim that the
+#    referee solver sits on the thickness side: on the committed run-2 artifact
+#    openEMS spans -0.31%..+0.08% in band (two bins POSITIVE), about +1.01%
+#    ABOVE its own thickness+dispersion-corrected prediction (-1.15%). Neither
+#    solver reproduces the Bahl-Garg shift for a one-cell PEC strip, so the
+#    thickness term is used only as what it provably is -- a bound on the
+#    admissible NEGATIVE excursion -- never as an expected value. The witness
+#    records that offset (``offset_from_thickness_corrected_prediction_frac``)
+#    so the claim stays falsifiable on the next board.
+#  * RASTERIZATION is deliberately NOT inside the envelope, but IS reported
+#    beside it: half a cell of effective-interface ambiguity in h and w moves
+#    the closed-form beta by ``_half_cell_rasterization_beta_dev_frac``
+#    (0.495% on this board), which is LARGER than rfx's 0.31-0.38% excess over
+#    ``hi`` on the committed run-2 artifact. An excursion inside that band
+#    therefore cannot be attributed to
+#    solver physics rather than mesh realization without a mesh-refinement rung
+#    (a second dx). The witness says exactly that and no more. It is reported
+#    rather than folded into ``hi`` because folding it in would widen a
+#    reported bound until the finding disappeared, which is the loosening this
+#    file forbids.
+#  * The MESH-INDEPENDENT statement available in the same data is the
+#    cross-solver one: rfx is +0.85%..+1.18% above openEMS on the SAME realized
+#    board at the SAME 50um mesh, a comparison the shared rasterization
+#    ambiguity largely cancels out of. That -- not the envelope excursion -- is
+#    the robust #830 signal; it is recorded as
+#    ``signed_beta_envelope_cross_solver_summary`` and it is what a follow-up
+#    should chase (see the extractor lead in the #830 notes:
+#    ``rfx/probes/msl_wave_decomp.py::_estimate_beta`` refines a scan whose
+#    node step is ~1.75% of beta0).
+#
+# The ONE pinned number is the closed form's own MODEL accuracy -- a property
+# of the formula versus full-wave, not of any particular board:
+HJ_MODEL_ACCURACY_EPS_EFF_FRAC = 0.010
+# Pozar (Microwave Engineering 4e, sec. 3.8) states these closed-form
+# microstrip expressions are accurate to "about 1%" WITHOUT naming the
+# quantity, and rfx/microstrip.py's Accuracy note carries the same unqualified
+# figure. Applying it to eps_eff is the TIGHTER of the two readings: 1% in
+# eps_eff is 0.5% in beta, whereas 1% read directly on beta would roughly
+# DOUBLE hi (to ~+1.06% on this board) and admit rfx's residual outright. The
+# outcome of this leg therefore depends on that reading, so instead of leaving
+# the margin implicit the witness reports
+# ``required_model_eps_eff_frac_for_admissibility`` -- the eps_eff model error
+# that WOULD be needed to admit the observed deviation (1.76% here, vs the
+# ~1% cited) -- next to this constant. Two-sided and board-independent; every
+# other term in the envelope is recomputed from (eps_r, w, h, t, f, dx).
+
+
+def _beta_frac_from_eps_eff_frac(eps_eff_frac: float) -> float:
+    """Fractional beta deviation produced by a fractional eps_eff deviation.
+
+    beta = 2*pi*f*sqrt(eps_eff)/c0, so exactly beta'/beta = sqrt(1 +
+    d_eps/eps) and the fractional beta change is sqrt(1 + eps_eff_frac) - 1.
+    Sign-preserving (a negative eps_eff_frac returns a negative beta_frac);
+    reduces to 0.5*eps_eff_frac to first order in the small correction.
+    """
+    return float(np.sqrt(1.0 + eps_eff_frac) - 1.0)
+
+
+def _hammerstad_z0(eps_eff: float, w_m: float, h_m: float) -> float:
+    """Hammerstad characteristic impedance of a microstrip (Pozar eq. 3.196).
+
+    Both u = w/h branches, so it generalizes to narrow AND wide strips rather
+    than pinning the wide-strip form to this board's u = 2.0. Used only to
+    drive the Getsinger dispersion pole f_p and its G factor below.
+    """
+    u = w_m / h_m
+    if u <= 1.0:
+        return float(60.0 / np.sqrt(eps_eff) * np.log(8.0 / u + u / 4.0))
+    return float(
+        120.0 * np.pi
+        / (np.sqrt(eps_eff) * (u + 1.393 + 0.667 * np.log(u + 1.444)))
+    )
+
+
+def _getsinger_eps_eff_dev_frac(eps_r: float, w_m: float, h_m: float,
+                                f_hz: float) -> float:
+    """Sign-definite POSITIVE fractional eps_eff deviation from quasi-static
+    dispersion at ``f_hz`` (Getsinger 1973, IEEE T-MTT 21(1) pp. 34-39).
+
+    eps_eff(f) = eps_r - (eps_r - eps_eff_0)/(1 + G*(f/f_p)^2), with
+    f_p = Z0/(2*mu0*h) and G = 0.6 + 0.009*Z0. eps_eff rises toward eps_r
+    with frequency, so a physically-correct line's beta sits ABOVE the
+    zero-frequency closed form -> a strictly POSITIVE deviation. Computed
+    from (eps_r, w, h, f) at call time; no pinned fraction.
+    """
+    eps_eff0 = _hammerstad_jensen_eps_eff(w_m, h_m, eps_r)
+    z0 = _hammerstad_z0(eps_eff0, w_m, h_m)
+    f_p = z0 / (2.0 * _MU0 * h_m)
+    g = 0.6 + 0.009 * z0
+    eps_eff_f = eps_r - (eps_r - eps_eff0) / (1.0 + g * (f_hz / f_p) ** 2)
+    return float((eps_eff_f - eps_eff0) / eps_eff0)
+
+
+def _getsinger_beta_dev_frac(eps_r: float, w_m: float, h_m: float, f_hz: float) -> float:
+    """``_getsinger_eps_eff_dev_frac`` expressed as a beta fraction (> 0)."""
+    return _beta_frac_from_eps_eff_frac(
+        _getsinger_eps_eff_dev_frac(eps_r, w_m, h_m, f_hz))
+
+
+def _bahl_garg_thickness_eps_eff_dev_frac(eps_r: float, w_m: float, h_m: float,
+                                          t_m: float) -> float:
+    """Sign-definite NEGATIVE fractional eps_eff deviation from finite
+    conductor thickness (Bahl-Garg; Garg et al., Microstrip Lines and
+    Slotlines, 3e).
+
+    d_eps_eff = -(eps_r - 1)*(t/h)/(4.6*sqrt(w/h)) < 0 for any t > 0: a
+    finite-thickness strip LOWERS eps_eff. Computed from (eps_r, w, h, t) at
+    call time; NOT a pinned fraction. ``t_m`` here is the realized metal
+    thickness Stage B actually builds -- the pec feed box is one Yee cell (dx)
+    thick (see ``_build_stage_b_thru``'s ``h_sub + dx`` box), and the rfx
+    fixture's own PEC trace spans exactly one cell too -- a grid-derived
+    quantity, so it moves with the mesh, not a board-pinned constant.
+
+    SCOPE (review2 P1-1): this term bounds how far BELOW the zero-thickness
+    closed form an admissible line may sit. It is NOT used, here or anywhere
+    in this file, as a prediction of where a Yee-realized one-cell PEC strip
+    actually lands -- on the committed run-2 board neither solver shows a
+    shift of this size (openEMS sits ~+1.0% above it), and the witness records
+    that offset rather than asserting the model.
+    """
+    eps_eff0 = _hammerstad_jensen_eps_eff(w_m, h_m, eps_r)
+    d_eps = -(eps_r - 1.0) * (t_m / h_m) / (4.6 * np.sqrt(w_m / h_m))
+    return float(d_eps / eps_eff0)
+
+
+def _bahl_garg_thickness_beta_dev_frac(eps_r: float, w_m: float, h_m: float,
+                                       t_m: float) -> float:
+    """``_bahl_garg_thickness_eps_eff_dev_frac`` as a beta fraction (< 0)."""
+    return _beta_frac_from_eps_eff_frac(
+        _bahl_garg_thickness_eps_eff_dev_frac(eps_r, w_m, h_m, t_m))
+
+
+def _half_cell_rasterization_beta_dev_frac(eps_r: float, w_m: float, h_m: float,
+                                           dx_m: float) -> float:
+    """Magnitude (>= 0) of the beta shift produced by HALF A CELL of
+    effective-interface ambiguity in h and in w, on the realized mesh.
+
+    A staircased Yee realization does not pin the electrical h and w to the
+    nominal dims to better than roughly half a cell: the effective substrate
+    interface and the effective strip edge each sit somewhere inside their
+    cell. This evaluates the SAME closed form at h +- dx/2 and w +- dx/2,
+    takes the worse side of each, and sums the two as magnitudes -- the same
+    sum-of-magnitudes convention the file's committed cross-solver budget
+    already uses for its +-1-cell h and w terms.
+
+    This is a RASTERIZATION ambiguity, not admissible model physics, so it is
+    NOT part of ``_signed_beta_envelope``. It is reported next to the envelope
+    so that an excursion smaller than this band is never attributed to solver
+    physics without a mesh-refinement rung (review2 P1-2).
+    """
+    eps0 = _hammerstad_jensen_eps_eff(w_m, h_m, eps_r)
+    half = 0.5 * dx_m
+
+    def _mag(w_alt: float, h_alt: float) -> float:
+        return abs(np.sqrt(_hammerstad_jensen_eps_eff(w_alt, h_alt, eps_r) / eps0) - 1.0)
+
+    d_h = max(_mag(w_m, h_m + half), _mag(w_m, h_m - half))
+    d_w = max(_mag(w_m + half, h_m), _mag(w_m - half, h_m))
+    return float(d_h + d_w)
+
+
+def _signed_beta_envelope_terms(eps_r: float, w_m: float, h_m: float, t_m: float,
+                                f_band_top_hz: float, dx_m: float) -> dict:
+    """Every term of the signed envelope, DERIVED AT RUNTIME from the realized
+    board, plus the rasterization band reported beside it.
+
+    Composition is done in eps_eff space and square-rooted ONCE (beta ~
+    sqrt(eps_eff)):
+      hi = sqrt(1 + m + getsinger_eps) - 1      -- positive-capable terms only
+      lo = sqrt(1 - m + thickness_eps) - 1      -- negative-capable terms only
+    ``m`` is ``HJ_MODEL_ACCURACY_EPS_EFF_FRAC``, the only constant; the
+    dispersion, thickness and rasterization terms are all functions of
+    (eps_r, w, h, t, f, dx), so the whole block moves with the board.
+    """
+    m = HJ_MODEL_ACCURACY_EPS_EFF_FRAC
+    getsinger_eps = _getsinger_eps_eff_dev_frac(eps_r, w_m, h_m, f_band_top_hz)  # > 0
+    thickness_eps = _bahl_garg_thickness_eps_eff_dev_frac(eps_r, w_m, h_m, t_m)  # < 0
+    hi = _beta_frac_from_eps_eff_frac(m + getsinger_eps)
+    lo = _beta_frac_from_eps_eff_frac(-m + thickness_eps)
+    return {
+        "lo_frac": float(lo),
+        "hi_frac": float(hi),
+        "model_eps_eff_frac": float(m),
+        "getsinger_eps_eff_frac": float(getsinger_eps),
+        "thickness_eps_eff_frac": float(thickness_eps),
+        # Where a line carrying BOTH sign-definite corrections would sit. Not a
+        # bound: reported so the witness can say how far each solver is from it.
+        "thickness_corrected_prediction_frac": float(
+            _beta_frac_from_eps_eff_frac(thickness_eps + getsinger_eps)),
+        "half_cell_rasterization_band_frac": _half_cell_rasterization_beta_dev_frac(
+            eps_r, w_m, h_m, dx_m),
+        "inputs": {
+            "eps_r": float(eps_r), "w_m": float(w_m), "h_m": float(h_m),
+            "t_m": float(t_m), "f_band_top_hz": float(f_band_top_hz),
+            "dx_m": float(dx_m),
+        },
+    }
+
+
+def _signed_beta_envelope(eps_r: float, w_m: float, h_m: float, t_m: float,
+                          f_band_top_hz: float) -> tuple[float, float]:
+    """The SIGNED beta-deviation envelope [lo, hi] a CORRECT QUASI-STATIC line
+    may occupy, DERIVED AT RUNTIME from the realized board.
+
+    hi: the only POSITIVE-capable terms (model accuracy + Getsinger dispersion
+        at the band top). It is POSITIVE, so a positive deviation is
+        admissible; exceeding it is a magnitude statement on the positive
+        side, not a statement about sign.
+    lo: the only NEGATIVE-capable terms (model accuracy + Bahl-Garg finite
+        thickness). Getsinger is strictly positive and cannot deepen a
+        negative floor, so it is NOT added here (review2 P2-3).
+
+    Rasterization is NOT included -- see
+    ``_half_cell_rasterization_beta_dev_frac`` and
+    ``_signed_beta_envelope_terms``, which report it separately. ``t_m`` is
+    the mesh-realized one-cell metal thickness, so pass dx there.
+    """
+    # dx_m only feeds the rasterization band, which this two-value wrapper does
+    # not return; t_m is passed for it because on any board whose metal is one
+    # cell thick they are the same number.
+    terms = _signed_beta_envelope_terms(eps_r, w_m, h_m, t_m, f_band_top_hz, t_m)
+    return terms["lo_frac"], terms["hi_frac"]
 
 
 # ---------------------------------------------------------------------------
@@ -1605,6 +1890,130 @@ def _analytic_beta_witness(freqs_hz: np.ndarray, beta: np.ndarray, *,
             f"{max_dev:.6f} > {tol_frac:.6f}. The reference here contains NO "
             f"quantity from the run, so -- unlike the self-consistency witness -- "
             f"a coherent phase-velocity error cannot satisfy it. Full result: {result}"
+        )
+    return result
+
+
+def _signed_analytic_beta_envelope_witness(freqs_hz: np.ndarray, beta: np.ndarray, *,
+                                           eps_eff: float, envelope: dict,
+                                           label: str, solver: str,
+                                           provenance: str) -> dict:
+    """REPORTED (issue #830): one solver's SIGNED beta deviation from the
+    quasi-static closed form, against the ASYMMETRIC admissible band
+    ``[lo_frac, hi_frac]`` that ``_signed_beta_envelope_terms`` DERIVES AT
+    RUNTIME from the realized board.
+
+    ``_analytic_beta_witness`` above gates ``max(|dev|) <=
+    B_BETA_ANALYTIC_TOL_FRAC`` -- a SYMMETRIC magnitude budget that sums three
+    corrections as magnitudes. Two of the three are sign-definite, so the band
+    a correct quasi-static line may occupy is asymmetric (+0.56% / -1.72% on
+    the committed board): the symmetric gate admits a positive residual four
+    times larger than the positive-side physics allows. This leg reports the
+    signed deviation of every in-band bin against that asymmetric band.
+
+    WHAT A FAILURE HERE DOES AND DOES NOT MEAN (review2 P1-1 / P1-2):
+      * ``hi`` is POSITIVE, so a positive deviation is admissible physics. A
+        reading above ``hi`` is a MAGNITUDE excursion on the positive side.
+        This witness does not call it a "wrong sign" and does not assert which
+        side a correct line "should" be on.
+      * The band describes a CORRECT QUASI-STATIC line, not a Yee realization.
+        ``half_cell_rasterization_band_frac`` is reported next to it: when the
+        excess over ``hi`` is smaller than that band, the excursion cannot be
+        attributed to solver physics rather than mesh realization without a
+        mesh-refinement rung (a second dx), and ``attribution`` says so.
+      * ``required_model_eps_eff_frac_for_admissibility`` records the closed
+        form's model error that WOULD be needed to admit the observed
+        deviation, so the reader can weigh the outcome against the one pinned
+        constant instead of taking it on faith.
+      * ``offset_from_thickness_corrected_prediction_frac`` records how far the
+        solver sits from a line carrying BOTH sign-definite corrections. On the
+        committed board both solvers sit ~+1.0% above it, which is the evidence
+        that the Bahl-Garg shift is not observable on a one-cell PEC strip --
+        hence its use as a bound only.
+      * ``beta_provenance`` records where this solver's beta came from. cv20
+        never runs rfx: the rfx leg replays a committed fixture, so a re-run of
+        cv20 re-reads the same rfx numbers and can confirm nothing about rfx
+        (review2 P2-2).
+
+    NON-FATAL by construction: it records ``passed`` and prints a loud FAIL to
+    stderr, but NEVER raises and is NOT wired into ``sanity_passed``. cv20's
+    sanity_passed is consumed by the committed test suite and #830 is an OPEN
+    question; reddening it would break CI for an unresolved finding. Matches
+    the manifest's existing "REPORTED, NOT GATED" openEMS legs. Landing a
+    HARD-GATE version is a PI / #830 decision.
+    """
+    lo_frac = float(envelope["lo_frac"])
+    hi_frac = float(envelope["hi_frac"])
+    raster = float(envelope["half_cell_rasterization_band_frac"])
+    freqs = np.asarray(freqs_hz, dtype=np.float64)
+    mask = _gate_band_mask(freqs)
+    beta_re = np.real(np.asarray(beta, dtype=np.complex128))
+    beta_analytic = 2.0 * np.pi * freqs * np.sqrt(eps_eff) / _C0
+    dev = (beta_re[mask] / beta_analytic[mask]) - 1.0
+    min_dev, max_dev = float(np.min(dev)), float(np.max(dev))
+    passed = bool(min_dev >= lo_frac and max_dev <= hi_frac)
+    excess_hi = max(0.0, max_dev - hi_frac)
+    excess_lo = max(0.0, lo_frac - min_dev)
+    worst_excess = max(excess_hi, excess_lo)
+    # The eps_eff model error that would have to be admitted for the WORST bin
+    # to sit inside the band: solve sqrt(1 + m + getsinger) - 1 = max_dev (or
+    # the mirror on the negative side with the thickness term).
+    if excess_hi >= excess_lo:
+        required_model = (1.0 + max_dev) ** 2 - 1.0 - float(envelope["getsinger_eps_eff_frac"])
+    else:
+        required_model = float(envelope["thickness_eps_eff_frac"]) - ((1.0 + min_dev) ** 2 - 1.0)
+    if worst_excess <= 0.0:
+        attribution = "inside the quasi-static envelope -- nothing to attribute"
+    elif worst_excess <= raster:
+        attribution = (
+            f"excess {worst_excess:.6f} is SMALLER than the half-cell rasterization "
+            f"band {raster:.6f}: NOT attributable to solver physics vs mesh "
+            f"realization without a mesh-refinement rung (a second dx)"
+        )
+    else:
+        attribution = (
+            f"excess {worst_excess:.6f} EXCEEDS the half-cell rasterization band "
+            f"{raster:.6f}: larger than the mesh-realization ambiguity of this board"
+        )
+    result = {
+        "solver": solver,
+        "beta_provenance": provenance,
+        "eps_eff_hammerstad_jensen": float(eps_eff),
+        "signed_dev_frac": dev.tolist(),
+        "min_signed_dev_frac": min_dev,
+        "max_signed_dev_frac": max_dev,
+        "envelope_lo_frac": lo_frac,
+        "envelope_hi_frac": hi_frac,
+        "envelope_terms": envelope,
+        "excess_above_hi_frac": excess_hi,
+        "excess_below_lo_frac": excess_lo,
+        "half_cell_rasterization_band_frac": raster,
+        "excess_within_half_cell_rasterization_band": bool(0.0 < worst_excess <= raster),
+        "required_model_eps_eff_frac_for_admissibility": float(required_model),
+        "model_eps_eff_frac_used": float(envelope["model_eps_eff_frac"]),
+        "offset_from_thickness_corrected_prediction_frac": float(
+            float(np.mean(dev)) - float(envelope["thickness_corrected_prediction_frac"])),
+        "attribution": attribution,
+        "gated": False,
+        "reported_only_issue": 830,
+        "evidence_level": "E2 (analytic oracle -- SIGNED quasi-static envelope; REPORTED, not gated, #830)",
+        "passed": passed,
+    }
+    if not passed:
+        side = "ABOVE hi" if excess_hi >= excess_lo else "BELOW lo"
+        print(
+            f"[{label}] #830 SIGNED-ENVELOPE WITNESS FAILED (REPORTED, non-fatal) for "
+            f"solver '{solver}': the SIGNED beta deviation from the quasi-static closed "
+            f"form is [{min_dev:.6f}, {max_dev:.6f}], OUTSIDE the runtime-derived "
+            f"admissible band [{lo_frac:.6f}, {hi_frac:.6f}] ({side} by "
+            f"{worst_excess:.6f}). This is a MAGNITUDE statement on that side of the "
+            f"band, NOT a claim that the deviation has the wrong sign -- hi is itself "
+            f"positive. Admitting it would require a closed-form eps_eff model error of "
+            f"{required_model:.6f} against the {float(envelope['model_eps_eff_frac']):.6f} "
+            f"used. ATTRIBUTION: {attribution}. beta provenance: {provenance}. This leg "
+            f"is intentionally NOT in sanity_passed (see the SIGNED analytic-beta "
+            f"envelope block). Full result: {result}",
+            file=sys.stderr,
         )
     return result
 
@@ -2440,11 +2849,73 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float,
         exc.partial_stage_b_data = partial_data
         raise
 
+    # --- Issue #830 (audit G1): the SIGNED analytic-beta envelope. REPORTED,
+    # non-fatal, and deliberately NOT in sanity_passed (see the SIGNED
+    # analytic-beta envelope block). Every term is DERIVED HERE, at runtime,
+    # from THIS run's REALIZED board -- w_trace/h_sub as the fixture meta
+    # reports them (not the declared dims), the one-cell realized metal
+    # thickness, which is what BOTH solvers build (openEMS's pec box spans
+    # h_sub..h_sub+dx and the rfx fixture's PEC trace spans exactly one cell),
+    # eps_r, the band top and dx -- so the whole block moves with the board
+    # rather than pinning per-fixture fractions. It never raises, so it is
+    # computed AFTER the gated (raising) witnesses above and simply recorded.
+    signed_beta_envelope_terms = _signed_beta_envelope_terms(
+        B_EPS_R, layout["w_trace_realized_m"], layout["h_sub_realized_m"],
+        B_DX_M, B_GATE_F_HI_HZ, B_DX_M)
+    beta_dev_lo = signed_beta_envelope_terms["lo_frac"]
+    beta_dev_hi = signed_beta_envelope_terms["hi_frac"]
+    signed_beta_envelope_openems = _signed_analytic_beta_envelope_witness(
+        freqs_hz, beta_openems, eps_eff=eps_eff_hj,
+        envelope=signed_beta_envelope_terms,
+        label="stage_b_signed_beta_envelope", solver="openems",
+        provenance="solved by openEMS in THIS cv20 run")
+    signed_beta_envelope_rfx = _signed_analytic_beta_envelope_witness(
+        freqs_hz, beta_rfx, eps_eff=eps_eff_hj,
+        envelope=signed_beta_envelope_terms,
+        label="stage_b_signed_beta_envelope", solver="rfx",
+        provenance=(
+            "REPLAYED from the committed rfx fixture (beta_first_port) -- cv20 "
+            "never runs rfx (module SCOPE FENCE), so re-running cv20 re-reads "
+            "these same numbers and confirms NOTHING about rfx; reproducing the "
+            "rfx residual requires re-running scripts/diagnostics/"
+            "build_msl_thru_phase_dx50um_reference.py, ideally at a second dx"))
+
+    # The MESH-INDEPENDENT half of the same data: rfx vs openEMS on the SAME
+    # realized board at the SAME dx, which the shared rasterization ambiguity
+    # largely cancels out of. Reported, not gated.
+    _band = _gate_band_mask(freqs_hz)
+    _ratio_in_band = (np.real(beta_rfx)[_band] / np.real(beta_openems)[_band]) - 1.0
+    signed_beta_envelope_cross_solver = {
+        "definition": (
+            "in-band (beta_rfx - beta_openems)/beta_openems, both solvers on the "
+            "SAME realized board and the SAME dx -- the statement the half-cell "
+            "rasterization ambiguity largely cancels out of, and the robust part "
+            "of the #830 signal"
+        ),
+        "min_frac": float(np.min(_ratio_in_band)),
+        "max_frac": float(np.max(_ratio_in_band)),
+        "half_cell_rasterization_band_frac":
+            signed_beta_envelope_terms["half_cell_rasterization_band_frac"],
+        "caveat": (
+            "the rfx side is a committed-fixture replay, so this comparison is "
+            "as old as the fixture; it is not a fresh rfx measurement"
+        ),
+        "gated": False,
+        "reported_only_issue": 830,
+    }
+
     cross_solver_report = {
         "l12_m": layout["l12_m"],
         "eps_eff_hammerstad_jensen": float(eps_eff_hj),
         "analytic_beta_witness_openems": analytic_beta_openems,
         "analytic_beta_witness_rfx": analytic_beta_rfx,
+        # Issue #830 (audit G1): REPORTED, NOT GATED -- runtime-derived signed envelope.
+        "signed_beta_envelope_lo_frac": float(beta_dev_lo),
+        "signed_beta_envelope_hi_frac": float(beta_dev_hi),
+        "signed_beta_envelope_terms": signed_beta_envelope_terms,
+        "signed_beta_envelope_witness_openems": signed_beta_envelope_openems,
+        "signed_beta_envelope_witness_rfx": signed_beta_envelope_rfx,
+        "signed_beta_envelope_cross_solver_summary": signed_beta_envelope_cross_solver,
         "cross_solver_phase_witness": cross_solver_phase,
         "beta_rfx_real": np.real(beta_rfx).tolist(),
         "beta_openems_real": np.real(beta_openems).tolist(),
