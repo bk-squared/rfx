@@ -6,6 +6,17 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Changed — MSL preflight advisories no longer quote a pinned realized-board bound
+
+The MSL preflight messages (`rfx/api/_preflight.py`, checks 2/2b) quoted a
+realized-board bound ("within 0.4% at EVERY point") and a declared-board Z0
+sequence (-7.9/-3.8/-1.2/+0.7 %) measured before the rasterizer change moved
+the realized trace width at h_sub/3 across the declared 635 um (677.3 → 592.7
+um; the re-solve reads +0.56 %, so the deviation changed sign). The advisories
+now describe the mechanism qualitatively. No trigger, threshold, severity or
+code changed; the frozen-artifact locks keep their values, re-labelled as a
+stale-artifact lock. PR #895.
+
 ### Added — finite-region `add_flux_monitor(size=...)` on the graded mesh
 
 A finite-region flux monitor now runs on the non-uniform (graded) mesh; it
