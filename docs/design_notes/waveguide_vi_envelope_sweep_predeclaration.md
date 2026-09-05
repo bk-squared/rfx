@@ -13,7 +13,13 @@
 > and `"grid_extent"`; the plateau is rung-dependent because the criterion is relative and
 > the remnant is absolute (N=18 at T/τ≈3, N=36 at ≈5, N=72 deeper). The measured boundary is
 > NOT yet converged; see `docs/research_notes/20260904_vi_envelope_predeclaration.md`. This
-> document is kept as written so the prediction and the outcome can be compared. Every number
+> document is kept as written so the prediction and the outcome can be compared.
+> **Second annotation (2026-09-05, later).** §3.1's layout rule — every clearance a fixed
+> multiple of λ_g(f_low) — is itself a defect: a box sized for a band's low edge serves that
+> band's lowest bins worst (slowest v_g, no margin), which is why Stage 0 failed at the bottom
+> two bins of every band and why R3 [1.030,1.080] does not converge with record in its own
+> box (±13 %) but does in R2's larger one (+3 %, bin0 within 2 % of R2's own reading at the
+> same frequency). Size the layout from below the band's low edge. Every number
 below is either (a) prior scouting evidence, labelled with its source, or (b) a threshold
 or verdict rule that binds the sweep. No sentence here is a gate, a fixture, or a
 validated result.
