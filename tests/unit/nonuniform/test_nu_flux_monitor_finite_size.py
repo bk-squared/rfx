@@ -11,14 +11,17 @@ edits it concurrently). These tests pin, from strongest to most physical:
       non-zero spectrum (guards against silent re-introduction of the raise).
   T2  RELATIVE oracle: the finite monitor equals the full-plane NU integrand
       summed over the SAME lo:hi window to machine precision (x64-scoped).
-  T3  ABSOLUTE oracle (reviewer defect P1): the selected window and its
+  T3  WINDOW oracle (reviewer defect P1): the selected window and its
       cumulative dA are compared against a span recomputed from the realized
       edge array — the pad offset and the node->cell (#868) decision that T2 is
       structurally blind to (it applies the same possibly off-by-one window on
-      both sides). Sub-check (e) is the one that leaves the window entirely: the
-      selected physical extent against the REQUESTED size, within the
-      edge-snapping bound (review2 F4 — (a)-(d) all read the monitor's own
-      lo/hi, so none of them can see a snap to the wrong edge).
+      both sides). Sub-check (e) is the one that leaves the window entirely: it
+      compares each REQUESTED endpoint against the edge the runner actually
+      chose for it, PER ENDPOINT, within that endpoint's own half-cell argmin
+      bound (review2 F4 + fix2b verify nit 2 — (a)-(d) all read the monitor's
+      own lo/hi, so none of them can see a snap to the wrong edge; the earlier
+      size-only form of (e) could not see a one-cell error at ONE endpoint,
+      because that error lands exactly ON a whole-cell tolerance).
   T4  GENERALITY / anti-hardcode: the SAME physical size/center on two DIFFERENT
       gradings must yield DIFFERENT lo/hi and DIFFERENT dA (the monitor tracks
       the mesh), while the recovered physical power agrees across gradings within
@@ -27,10 +30,14 @@ edits it concurrently). These tests pin, from strongest to most physical:
       O(1) prefactor is empirical, NOT a derived error bound (review2 F6; Yee
       dispersion carries 1/12). A monitor returning identical dA regardless of
       grading FAILS. Carries the open-CPML ring-down settling witness.
-  T5  CLAMPING is documented and non-silent (review2 F7): an oversize or
-      off-edge window is CLAMPED to the interior — the helper never claimed
-      correctly that it "never clamps" — and that clamp now emits a
-      UserWarning, while an exactly-representable window does not.
+  T5  CLAMPING is documented and non-silent (review2 F7 + fix2b verify nit 1):
+      an oversize or off-edge window is CLAMPED to the interior — the helper
+      never claimed correctly that it "never clamps" — and that clamp emits a
+      UserWarning. (d) pins the case the old size-difference PROXY missed: a
+      clamp SMALLER than one cell, which only the per-endpoint clamp test sees.
+      (e) pins the documented silent case (a clamp of half an end cell or less,
+      indistinguishable from ordinary snapping); (c) pins that an
+      exactly-representable window does not warn.
 
 Every tolerance printed in-assertion is ``f(dA, dt, dx/dy/dz, eps, freq)``.
 x64 is scoped per-test via ``jax.enable_x64`` (never a module-level
@@ -247,26 +254,49 @@ def test_nu_finite_flux_absolute_aperture_and_dA():
         "graded fixture must make the off-by-one detectable (extra coarse cell "
         "strictly enlarges the aperture); choose a coarser tail")
 
-    # (e) REQUESTED vs SELECTED — the only check here that reads the REQUESTED
-    #     size at all. (a)-(d) all compare against a window; the runner resolves
-    #     each requested endpoint by argmin against the cumulative edges, and the
-    #     nearest edge to a point lying inside a cell of width d is at most d/2
-    #     away, so the two-endpoint worst case is (d_lo + d_hi)/2 <= max(d) over
-    #     the cells touching the window. Anything larger is a snap to the wrong
-    #     edge (or a clamp), which no window-vs-window comparison can see.
-    for label, d_full, lo, hi, requested in (
-            ("y", dy_full, mon.lo1, mon.hi1, size_y),
-            ("z", dz_full, mon.lo2, mon.hi2, size_z)):
-        selected = float(np.sum(d_full[lo:hi]))
-        tol_snap = float(np.max(d_full[max(lo - 1, 0):hi + 1]))   # (d_lo+d_hi)/2
-        err = abs(selected - requested)
-        print(f"[T3 requested] {label}: requested={requested:.6e} "
-              f"selected={selected:.6e} err={err:.3e} snap_bound={tol_snap:.3e}")
-        assert err <= tol_snap, (
-            f"{label} window [{lo}:{hi}] spans {selected:.6e} m but "
-            f"{requested:.6e} m was REQUESTED — off by {err:.3e} m, beyond the "
-            f"edge-snapping bound {tol_snap:.3e} m (max cell touching the "
-            "window): the endpoints did not snap to the nearest cumulative edge")
+    # (e) REQUESTED vs SELECTED, PER ENDPOINT — the only check here that reads
+    #     the REQUESTED center/size at all. (a)-(d) all compare against a
+    #     window. The runner resolves each requested endpoint by argmin against
+    #     the cumulative interior edges, and the nearest edge to a point is at
+    #     most half a local cell away, so each endpoint carries its OWN bound:
+    #       |edges[lo_local] - (c - s/2)| <= max(d[lo_local-1], d[lo_local])/2
+    #     and likewise at hi_local. Both the request and the bound come from the
+    #     realized grid — no literal.
+    #     WHY PER ENDPOINT (fix2b, verify nit 2): the previous form compared the
+    #     SUMMED extent against max(d) over the window. A one-cell error at ONE
+    #     endpoint moves the summed extent by exactly one cell, i.e. exactly ONTO
+    #     that tolerance, and passed under `<=`. Split across the two endpoints
+    #     the same error is one WHOLE cell against a HALF-cell bound, so it
+    #     fails. What (e) now catches: a one-cell (or larger) mis-snap of either
+    #     endpoint, and any clamp that moves an endpoint more than half a cell.
+    #     What it still cannot catch: a request landing exactly mid-cell, where
+    #     both neighbouring edges are equidistant and either is a correct argmin.
+    for label, d_full_, edges_, pad_lo_, pad_hi_, lo, hi, c_req, s_req in (
+            ("y", dy_full, edges_y, pad_y_lo, pad_y_hi, mon.lo1, mon.hi1, cy, size_y),
+            ("z", dz_full, edges_z, pad_z_lo, pad_z_hi, mon.lo2, mon.hi2, cz, size_z)):
+        int_d = np.asarray(interior_cells(d_full_, pad_lo_, pad_hi_))
+        n_int = int(len(int_d))
+        for end, node, requested in (("lo", lo - pad_lo_, c_req - s_req / 2.0),
+                                     ("hi", hi - pad_lo_, c_req + s_req / 2.0)):
+            # half the larger of the (at most two) interior cells that the
+            # chosen edge node separates: the argmin bound at THIS endpoint.
+            neigh = ([float(int_d[node - 1])] if node > 0 else []) + \
+                    ([float(int_d[node])] if node < n_int else [])
+            tol_end = max(neigh) / 2.0
+            err = abs(float(edges_[node]) - requested)
+            print(f"[T3 requested] {label}.{end}: requested={requested:.6e} "
+                  f"edge={float(edges_[node]):.6e} err={err:.3e} "
+                  f"half_cell_bound={tol_end:.3e}")
+            assert err <= tol_end, (
+                f"{label} {end} endpoint: the runner chose interior edge node "
+                f"{node} at {float(edges_[node]):.6e} m but {requested:.6e} m "
+                f"was REQUESTED — off by {err:.3e} m, beyond this endpoint's "
+                f"half-cell argmin bound {tol_end:.3e} m: that endpoint did not "
+                "snap to the nearest cumulative edge (a one-cell mis-snap, or a "
+                "clamp)")
+        selected = float(np.sum(d_full_[lo:hi]))
+        print(f"[T3 requested] {label}: requested_size={s_req:.6e} "
+              f"selected_size={selected:.6e} err={abs(selected - s_req):.3e}")
 
 
 # --------------------------------------------------------------------------
@@ -471,15 +501,20 @@ def test_nu_finite_flux_oversize_window_clamps_and_warns():
         "an oversize window clamped SILENTLY — the review2 F7 warning is gone; "
         f"caught={[str(c.message) for c in caught]}")
 
-    # (b) off-edge window: requested [-2, +4] mm of a 0.5 mm-celled axis ->
-    #     [0, 4] mm, i.e. the requested extent is NOT delivered; warn.
+    # (b) off-edge window: the requested span reaches below the interior, so
+    #     the low face clamps to edge 0 and the delivered extent is the clamped
+    #     intersection [max(c-s/2, 0), min(c+s/2, axis_len)] — computed here
+    #     from the request and the realized axis length, not written out as a
+    #     number (fix2b, verify nit 4: the old form asserted a literal 4.0e-3).
+    c_b, s_b = 1.0e-3, 6.0e-3
     with _warnings.catch_warnings(record=True) as caught:
         _warnings.simplefilter("always")
-        lo, hi = _nu_flux_tangential_bounds(d_full, pad, pad, 1.0e-3, 6.0e-3)
+        lo, hi = _nu_flux_tangential_bounds(d_full, pad, pad, c_b, s_b)
     delivered = float(np.sum(interior[lo - pad:hi - pad]))
-    assert abs(delivered - 4.0e-3) < 1e-12, (
+    expected_b = min(c_b + s_b / 2.0, axis_len) - max(c_b - s_b / 2.0, 0.0)
+    assert abs(delivered - expected_b) < 1e-12, (
         f"off-edge window delivered {delivered:.6e} m, expected the clamped "
-        "[0, 4] mm intersection")
+        f"intersection {expected_b:.6e} m")
     assert any("CLAMPED" in str(c.message) for c in caught), (
         "an off-edge window clamped SILENTLY")
 
@@ -500,4 +535,61 @@ def test_nu_finite_flux_oversize_window_clamps_and_warns():
     assert abs(float(np.sum(interior[lo - pad:hi - pad])) - size_in) < 1e-12
     assert not [c for c in caught if "CLAMPED" in str(c.message)], (
         f"an exactly-representable window raised the clamp warning: "
+        f"{[str(c.message) for c in caught]}")
+
+    # (d) SUB-BOUND CLAMP — the case the old size-difference PROXY missed
+    #     (fix2b, verify nit 1: the verifier measured requested [-0.5, 3.5] mm
+    #     on this axis clamping to 3.5 mm with warned=False). The low face is
+    #     requested three quarters of an END CELL below the interior; the high
+    #     face is an exact interior edge. The clamp therefore shortens the
+    #     extent by LESS than one cell, so |realized - size| never exceeds the
+    #     largest cell touching the window and the size-difference test alone
+    #     stays silent. Only the PER-ENDPOINT clamp test (endpoint outside the
+    #     interior by more than half the end cell) can see it. Every quantity
+    #     below is read off the realized interior profile.
+    k_hi = n_int // 2 - 2
+    lo_req_d = -0.75 * float(interior[0])
+    hi_req_d = float(edges[k_hi])
+    s_d = hi_req_d - lo_req_d
+    c_d = 0.5 * (hi_req_d + lo_req_d)
+    with _warnings.catch_warnings(record=True) as caught:
+        _warnings.simplefilter("always")
+        lo, hi = _nu_flux_tangential_bounds(d_full, pad, pad, c_d, s_d)
+    assert (lo, hi) == (pad, pad + k_hi), (
+        f"sub-bound clamp resolved to ({lo},{hi}), expected the clamped "
+        f"({pad},{pad + k_hi})")
+    delivered_d = float(np.sum(interior[lo - pad:hi - pad]))
+    size_gap = abs(delivered_d - s_d)
+    proxy_bound = float(np.max(interior[max(lo - pad - 1, 0):hi - pad + 1]))
+    # fixture guard: this case MUST stay invisible to the size-difference test,
+    # otherwise it is not testing the per-endpoint detector.
+    assert size_gap < proxy_bound, (
+        f"fixture no longer exercises a SUB-bound clamp: size gap {size_gap:.3e} "
+        f"m >= the {proxy_bound:.3e} m size-difference bound, so the old proxy "
+        "would have caught it too — shrink the requested overhang")
+    assert any(issubclass(c.category, UserWarning) and "CLAMPED" in str(c.message)
+               for c in caught), (
+        f"a clamp of {abs(lo_req_d):.3e} m (< one {proxy_bound:.3e} m cell) was "
+        f"SILENT — the per-endpoint clamp test is gone and only the size-"
+        f"difference proxy is left; caught={[str(c.message) for c in caught]}")
+
+    # (e) the DOCUMENTED silent case: a clamp of a QUARTER end cell, i.e. less
+    #     than the half-cell threshold. An endpoint anywhere in the interior may
+    #     move that far by ordinary snapping, so such a clamp is not
+    #     distinguishable from snapping and the docstring says it stays silent.
+    #     Pin that, so the threshold cannot drift unnoticed in either direction.
+    lo_req_e = -0.25 * float(interior[0])
+    hi_req_e = float(edges[k_hi])
+    s_e = hi_req_e - lo_req_e
+    c_e = 0.5 * (hi_req_e + lo_req_e)
+    with _warnings.catch_warnings(record=True) as caught:
+        _warnings.simplefilter("always")
+        lo, hi = _nu_flux_tangential_bounds(d_full, pad, pad, c_e, s_e)
+    assert (lo, hi) == (pad, pad + k_hi), (
+        f"quarter-cell clamp resolved to ({lo},{hi}), expected "
+        f"({pad},{pad + k_hi})")
+    assert not [c for c in caught if "CLAMPED" in str(c.message)], (
+        f"a clamp of {abs(lo_req_e):.3e} m (below the "
+        f"{float(interior[0]) / 2.0:.3e} m half-end-cell threshold the "
+        f"docstring documents as silent) warned: "
         f"{[str(c.message) for c in caught]}")

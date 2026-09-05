@@ -60,9 +60,10 @@ short ~ 0.667 — both explained by the live series plate-interior layer.)
   The gap, restated 2026-09-05 (PR #900 review2): finite-region
   `add_flux_monitor(size=...)` now RUNS on the NU lane, so the original
   reason (`runners/nonuniform.py` raised NotImplementedError) is obsolete —
-  but both the monitor plane and its tangential window edges snap to E-node
-  index planes, and the pre-declared faces at x = y = 4.75 mm lie half a
-  cell off that lattice. Since the driven column (5.0 mm) and the four load
+  but both the monitor plane and its tangential window edges snap to integer
+  index planes (E at x_i, H read at x_{i+1/2} un-averaged), and the
+  pre-declared faces at x = y = 4.75 mm lie half a cell off that lattice.
+  Since the driven column (5.0 mm) and the four load
   columns (4.5 / 5.5 mm) sit on the same 0.5 mm node lattice, NO expressible
   box encloses the driven column alone. Expressing it needs a dual/H-plane
   (half-index-offset) flux monitor, which no lane has. Consequence: the
@@ -213,8 +214,9 @@ uniform-flip attempt:
   its "amperes" docstring, section 3) deserves its own issue; it cancels
   in S-parameters.
 - F7b's finite-region NU flux monitors were implemented by PR #900, but F7b
-  is still NOT-RUN: the plumbing gap is now E-node-plane snapping (the
-  pre-declared half-cell box needs a dual/H-plane monitor), not the missing
+  is still NOT-RUN: the plumbing gap is now integer-index-plane snapping (E at
+  x_i, H read at x_{i+1/2} un-averaged; the pre-declared half-cell box needs a
+  dual/H-plane monitor), not the missing
   finite-region monitor. See the F7 bullet above.
 - L_short of the built FIX-A short: committed geometric estimate 0.1 nH;
   the measured F2 phase walk (13.2 deg at 2 GHz) corresponds to
