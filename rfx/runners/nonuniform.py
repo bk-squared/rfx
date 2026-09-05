@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import jax.numpy as jnp
 
@@ -380,8 +382,23 @@ def _nu_flux_tangential_bounds(d_arr, pad_lo: int, pad_hi: int,
     ``size`` -- NOT the ``hi_local - lo_local + 1`` NODES the argmin brackets.
     We build the node span and narrow it with the shipped, tested
     ``_node_span_to_cell_span`` (the same conversion the NU waveguide builder
-    applies to its aperture), which also raises on a degenerate (<1 cell) span
-    rather than silently clamping.
+    applies to its aperture), which also raises on a degenerate (<1 cell) span.
+
+    SNAPPING AND CLAMPING (review2 F7 — an earlier wording claimed this helper
+    "never clamps", which is false). ``argmin`` is taken over the interior edge
+    array, so a requested endpoint outside ``[0, edges[-1]]`` snaps to the first
+    or last edge: ``size`` larger than the axis, or a ``center`` that pushes the
+    window off an end, silently yields the CLAMPED intersection with the
+    interior (e.g. ``size=30 mm`` on a 10 mm axis -> the whole axis;
+    ``center=1 mm, size=6 mm`` -> ``[0, 4] mm``). Inside the interior the
+    endpoints still snap by up to half a local cell each. That is the same
+    behaviour as the uniform lane, and it is deliberate; only the degenerate
+    (<1 cell) case raises. To make it non-silent, a ``UserWarning`` is emitted
+    whenever the realized extent differs from the requested ``size`` by more
+    than the snapping bound (the largest cell touching the window, which
+    envelopes the (d_lo + d_hi)/2 two-endpoint worst case) — i.e. exactly when
+    the window was clamped or snapped to a non-adjacent edge, never for ordinary
+    sub-cell snapping.
     """
     d_np = np.asarray(d_arr)
     interior = interior_cells(d_np, pad_lo, pad_hi)
@@ -400,6 +417,17 @@ def _nu_flux_tangential_bounds(d_arr, pad_lo: int, pad_hi: int,
             f"degenerate aperture on the NU grid (edge nodes "
             f"lo_local={lo_local}, hi_local={hi_local}); it spans no "
             f"interior cell -- widen size= or move center=")
+    realized = float(edges[hi_local] - edges[lo_local])
+    snap_bound = float(np.max(interior[max(lo_local - 1, 0):hi_local + 1]))
+    if abs(realized - float(size)) > snap_bound:
+        warnings.warn(
+            f"flux monitor center={center!r} size={size!r} resolves to a "
+            f"{realized:.6g} m extent on this graded axis (interior "
+            f"[0, {float(edges[-1]):.6g}] m): the requested window was CLAMPED "
+            f"or snapped past an adjacent edge (difference {abs(realized - float(size)):.3g} m "
+            f"exceeds the {snap_bound:.3g} m one-cell snapping bound). The "
+            "monitor integrates the realized extent, not the requested one.",
+            UserWarning, stacklevel=2)
     node_span = (lo_local + pad_lo, hi_local + pad_lo + 1)
     return _node_span_to_cell_span(node_span)
 

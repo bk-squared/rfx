@@ -105,7 +105,10 @@ non-uniform (graded) mesh as well as the uniform mesh. On the graded lane the
 physical `size`/`center` is converted to a tangential CELL window against the
 realized cumulative cell edges by `_nu_flux_tangential_bounds`
 (`rfx/runners/nonuniform.py`) — an argmin-on-edges lookup with a NODE→CELL
-narrowing (#868), never a cubic-cell `size/dx`. See
+narrowing (#868), never a cubic-cell `size/dx`. Each endpoint snaps to the
+nearest cumulative cell edge, and a window that reaches outside the interior is
+clamped to it (as on the uniform lane) with a `UserWarning`; only a degenerate
+(<1 cell) window raises. See
 `tests/unit/nonuniform/test_nu_flux_monitor_finite_size.py` and the graded-z row
 of `docs/guides/support_matrix.md`.
 
