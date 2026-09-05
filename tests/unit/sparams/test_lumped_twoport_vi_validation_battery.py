@@ -261,13 +261,17 @@ _THRU_S11_ALIVE_MIN = 0.02
 # Band edges are PHYSICS-derived, not envelope-tuned: lower 0.90 from the
 # external-anchor closure window (net-through fraction >= 0.90 with the
 # measured diagonal — the F-A2 window of the #770 pre-declaration);
-# upper 1.0 + 1e-3 (physical passivity bound + headroom for the same
-# systematic, monotone-in-frequency excess gated below by
-# _THRU_MAX_SINGULAR_VALUE — 1.0032 at 3 GHz -> 0.9874 at 7 GHz,
-# mechanism unidentified, NOT float noise; measured max 0.9954). A
-# collapse back to the per-cell 0.55-0.61 class or to the pre-#308
-# near-null fails the lower edge loudly.
-_THRU_S21_BAND = (0.90, 1.0 + 1e-3)
+# upper 1.0 = the physical passivity bound, TIGHTENED from 1.0 + 1e-3 by
+# item B2 (2026-09-04): the +1e-3 headroom existed only to admit the
+# systematic over-unity excess that _THRU_MAX_SINGULAR_VALUE also carried
+# ("1.0032 at 3 GHz -> 0.9874 at 7 GHz, mechanism unidentified"). B2
+# identifies that excess as the uncorrected Yee half-step on the H-derived
+# port current and removes it, so |S21| now sits strictly below the
+# physical bound (measured max 0.9954 at 3 GHz, unchanged in magnitude —
+# the correction is a per-frequency PHASE advance, so |S21| barely moves
+# while the singular value drops below 1). A collapse back to the per-cell
+# 0.55-0.61 class or to the pre-#308 near-null fails the lower edge loudly.
+_THRU_S21_BAND = (0.90, 1.0)
 
 # Measured signed per-bin phase deviation arg(S21) - (-2*pi*f*L/c),
 # wrapped: -0.8125..-0.3516 rad (issue #770 whole-port off-diagonal
@@ -291,14 +295,22 @@ _THRU_S21_BAND = (0.90, 1.0 + 1e-3)
 # differs per bin).
 _THRU_PHASE_DEV_BAND_RAD = (-1.1, -0.1)
 
-# Measured reciprocity max|S21 - S12| = 2.6678e-4 (rel 2.78e-4) on the
-# whole-port frame (issue #770 re-measure 2026-08-29 — IMPROVED 28x
-# from the per-cell 7.53e-3 / rel 0.013581, itself improved from the
-# post-#308 1.043e-2: the physical incident wave is a drive-only
-# constant, so per-column normalization asymmetry collapses). Abs gate
-# KEPT at 1.5e-2 and rel at 0.10 (scale-free) — both now carry ~56x /
-# ~360x margin; a break catches an asymmetric edit to the shared
-# decomposers or per-port Z0 bookkeeping.
+# Measured reciprocity max|S21 - S12| = 1.1233e-4 (rel 1.21e-4) on the
+# whole-port frame AFTER the item B2 half-step current correction
+# (2026-09-04; pre-B2 whole-port 2.6678e-4 / rel 2.78e-4, itself 28x
+# better than the per-cell 7.53e-3).
+# NOT EVIDENCE FOR B2 (corrected 2026-09-05): for a geometrically
+# symmetric two-port both drive runs are mirror images, so S21 = S12 up
+# to grid asymmetry regardless of any COMMON rotation of the port
+# current. The 2.4x move is an incidental shift of a noise-level
+# residual, not a discriminating witness — a kappa sweep put a broad
+# shallow minimum at kappa ~1.1-1.2 with the wrong sign (kappa = -1)
+# still landing 4.59e-4, the same order. Do not cite it as corroboration;
+# the matched-port Ohm-law phase table is the discriminating witness.
+# Abs gate KEPT at 1.5e-2 and rel at 0.10 (scale-free numerical
+# tolerances, geometry-independent) — both now carry ~130x / ~830x
+# margin; a break catches an asymmetric edit to the shared decomposers or
+# per-port Z0 bookkeeping.
 _THRU_RECIP_ABS_MAX = 1.5e-2
 _THRU_RECIP_REL_MAX = 0.10
 
@@ -324,6 +336,19 @@ _THRU_RECIP_REL_MAX = 0.10
 # the monotone excess is not yet isolated (see the drafted follow-up
 # issue in the PR body).
 _THRU_MAX_SINGULAR_VALUE = 1.01
+
+# PHYSICAL passivity bound (item B2, 2026-09-04). A passive scattering
+# matrix has every singular value <= 1 exactly (energy conservation) — a
+# board-independent, derived bound, not a fitted envelope. The pre-B2
+# extractor read a SYSTEMATIC over-unity (sv_max 1.003227) because the
+# H-derived port current (H^{n+1/2}) was DFT-accumulated with the
+# E-field's phase (E^{n+1}), uncorrected for the Yee leapfrog half-step.
+# The B2 half-step current correction removes it: this exact fixture now
+# measures sv_max 0.998896 (< 1.0, physically passive). This is the LIVE
+# passivity gate; _THRU_MAX_SINGULAR_VALUE above is retained unchanged only
+# because the frozen dx-ladder replay imports it as the historical study's
+# declared envelope.
+_THRU_PASSIVITY_PHYSICAL_BOUND = 1.0
 
 # ===========================================================================
 # run<->forward cross-check constants
@@ -720,36 +745,66 @@ def test_thru_reciprocity(thru_smatrix):
 
 @pytest.mark.slow_physics
 def test_thru_passivity_singular_values(thru_smatrix):
-    """Energy sanity: max per-freq singular value <= 1 + extraction noise.
+    """Energy sanity: max per-freq singular value obeys strict passivity.
 
-    RE-BASELINED 2026-08-29 for issue #770 (whole-port off-diagonal
-    frame, measured provenance --battery-provenance): the matrix is now
-    NEAR-UNITARY — measured per-bin sv 0.9874..1.0032 (max 1.003227 at
-    3 GHz where |S21| = 0.9954); the 0.32% excess over the physical
-    bound is SYSTEMATIC and monotone in frequency (1.0032 at 3 GHz ->
-    0.9874 at 7 GHz), mechanism unidentified. It is NOT float noise:
-    f64 fields give 1.0032250 vs f32 1.0032275, 4000/8000/16000 steps
-    are bit-identical at 1.0032275433727436, and complex128 algebra
-    matches complex64 to 16 digits — the repo's 1.02 column-power
-    ceilings are kept only as a plausibility anchor, not a causal
-    explanation. Gate 1.01 (~2x the measured excess, strictly below
-    1.02; the binding magnitude gate for this excess is the S21 band's
-    1.001 edge, see below). History: the 0.85 gate was bindable only
-    while the per-cell frame deflated |S21| (sv 0.632587 post-#318,
-    0.6934 post-#683-flip, interim 3.2061 in the keyed-envelope era;
-    0.687410 post-#308) — a strictly-below-1 gate cannot bind a
-    physically ~unity singular value. Catches over-unity extraction
-    artefacts; the transmission magnitude itself is gated by the S21
-    band lock.
+    RE-BASELINED 2026-09-04 (item B2, Yee half-step current correction):
+    the "mechanism unidentified" 0.32% over-unity excess documented below
+    is now ATTRIBUTED and REMOVED. (Attribution credit, corrected
+    2026-09-05: the same mechanism, factor and sign were already
+    identified and applied to the REFERENCE-PLANE path in issue #313
+    Phase 0 — ``refplane.refplane_centered_current``, whose note records
+    collapsing the receive-cell Ohm-law phase from +0.008..+0.018 rad to
+    ~0, i.e. w*dt/2 on this dt. B2 extends that known fix to the
+    port-cell wire channel; it does not discover it.)
+    Its cause was a discretization
+    artefact, not physics: the port DFT accumulated the E-derived voltage
+    (E^{n+1}) and the H-derived Ampere-loop current (H^{n+1/2}) against the
+    SAME phase kernel exp(-j*2*pi*f*step*dt), leaving the current
+    over-phased by exactly one Yee half-step (dt/2). The B2 fix multiplies
+    the current sample's DFT phase by exp(+j*2*pi*f*dt/2)
+    (rfx/core/dft_utils.half_step_current_phase; dt read at runtime, exact
+    for every frequency and geometry — NOT a fixture patch). SCOPE: the
+    WIRE-port lane only, which is the lane this fixture drives. The lumped
+    single-cell lane is deliberately left uncorrected — its V is sampled
+    pre-injection at a driven cell (#72/#683), so the E = E^{n+1} premise
+    that fixes the offset at dt/2 does not hold there. See the SCOPE
+    paragraph in rfx/core/dft_utils.half_step_current_phase. On this exact
+    fixture the same run now measures per-bin sv 0.9816..0.9989 (max
+    0.998896 at 3 GHz), STRICTLY BELOW the physical passivity bound of 1.0
+    with a ~1.1e-3 loss margin (radiation + feed-post loss). The earlier
+    "NOT float noise" evidence (f64 1.0032250 vs f32 1.0032275,
+    step-count-invariant at 1.0032275433727436) was correct — the excess
+    was systematic because the half-step phase error is systematic, and it
+    was monotone in frequency because the phase error grows linearly with
+    f. The pre-fix artefact 1.003227 is preserved as the historical record
+    in tests/fixtures/thru_singular_value_dx_ladder/.
+
+    NOT CLAIMED (corrected 2026-09-05): that this correction "closes" the
+    dx-ladder's verdict C. No post-B2 rung has been run (the ladder's
+    generator is GPU-only), and the ladder is NOT explained by a pure
+    dt/2 artefact alone: its recorded 3 GHz excess goes
+    +3.2e-3 -> +3.2e-4 -> -8.5e-4 across dx, dx/2, dx/4, whereas a pure
+    dt/2 artefact would halve per rung — and the fixture's radiation loss
+    also moves across rungs (|S11| at 7 GHz 0.29 -> 0.39 -> 0.49). B2
+    plausibly removes the ~+0.004 offset at the coarsest rung; the ladder
+    verdict stays OPEN pending a post-B2 GPU rung.
+
+    Gate: the EXACT physical passivity bound 1.0 — a passive scattering
+    matrix has every singular value <= 1 by energy conservation. This is
+    board-independent and derived (not fitted), and the removed artefact
+    (1.003227) fails it, so this is the fail-before/pass-after tripwire for
+    B2. The historical numerical envelope ``_THRU_MAX_SINGULAR_VALUE``
+    (1.01) is retained only for the frozen dx-ladder replay import; the
+    live physics gate is the physical bound here.
     """
     sv_max = max(
         np.linalg.svd(thru_smatrix[:, :, k], compute_uv=False)[0]
         for k in range(thru_smatrix.shape[2])
     )
-    assert sv_max < _THRU_MAX_SINGULAR_VALUE, (
-        f"thru singular value above the passivity bound + noise "
-        f"allowance: {sv_max:.4f} (measured 1.003227 on the #770 "
-        f"whole-port frame, gate {_THRU_MAX_SINGULAR_VALUE})")
+    assert sv_max < _THRU_PASSIVITY_PHYSICAL_BOUND, (
+        f"thru singular value exceeds the physical passivity bound: "
+        f"{sv_max:.6f} >= {_THRU_PASSIVITY_PHYSICAL_BOUND} (post-B2 measured "
+        f"0.998896; the pre-fix Yee-half-step artefact read 1.003227)")
 
 
 # ===========================================================================

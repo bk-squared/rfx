@@ -1491,6 +1491,8 @@ def make_core_step(ctx: _StepContext):
         if ctx.use_wire_sparams or ctx.use_lumped_sparams:
             from rfx.probes.probes import _ampere_loop
         if ctx.use_wire_sparams:
+            # WIRE lane only — see the scope note at the lumped block below.
+            from rfx.core.dft_utils import half_step_current_phase as _half_i_phase
             new_wire_refs = []
             for accs, wp_meta in zip(carry["wire_sparam_accs"], ctx.wire_sparam_meta):
                 v_ref_dft = accs[4]
@@ -1514,6 +1516,15 @@ def make_core_step(ctx: _StepContext):
                     st, (li, lj, lk), lp_meta.component, dx, periodic)
                 t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
                 phase_l = jnp.exp(-1j * 2.0 * jnp.pi * lp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
+                # NOTE (item B2, 2026-09-05): NO half-step current phase
+                # correction on this LUMPED lane — same reason the #683
+                # sampling flip above stopped at the wire family. The
+                # correction's premise is E = E^{n+1} at the sample; here V
+                # is the PRE-injection sample at a DRIVEN cell, which #683
+                # measured is not a field time level of the discrete update,
+                # so the V/I stagger is not established to be dt/2. Deciding
+                # it needs a lumped known-load run, not a wire-port one
+                # (see rfx/probes/probes.py::update_sparam_probe).
                 new_lumped_accs.append((
                     v_dft_l + v_l * phase_l,
                     i_dft_l + i_val_l * phase_l,
@@ -1605,9 +1616,15 @@ def make_core_step(ctx: _StepContext):
                 # as EXACTLY the pre/post lane difference.)
                 i_val = _ampere_loop(
                     st, (mi, mj, mk), wp_meta.component, dx, periodic)
+                # Yee half-step: I is H-derived (H^{n+1/2}) while V/V_port are
+                # E-derived (E^{n+1}); advance the current sample by dt/2 so
+                # both DFT channels share a reference time (dft_utils). The
+                # E-derived channels keep the uncorrected `phase`.
+                i_phase = phase * _half_i_phase(
+                    wp_meta.freqs.astype(jnp.float64), dt).astype(jnp.complex64)
                 new_wire_accs.append((
                     v_dft + v * phase,
-                    i_dft + i_val * phase,
+                    i_dft + i_val * i_phase,
                     vinc_dft,
                     v_port_dft + v_port * phase,
                     v_ref_new,

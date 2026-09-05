@@ -1496,6 +1496,7 @@ def _build_nu_scan(
         t = step_idx.astype(jnp.float32) * dt
         new_wire_sp = None
         if use_wire_ports:
+            from rfx.core.dft_utils import half_step_current_phase as _half_i_phase
             new_wire_sp = []
             for (v_dft, i_dft, vinc_dft, v_port_dft), \
                 (mi, mj, mk, comp, z0, dxi, dyj,
@@ -1523,9 +1524,14 @@ def _build_nu_scan(
                     dual_xi, dual_yj, dual_zk)
                 t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
                 phase = jnp.exp(-1j * 2.0 * jnp.pi * sp_freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
+                # Yee half-step: I is H-derived (H^{n+1/2}) while V/V_port are
+                # E-derived (E^{n+1}); advance the current sample by dt/2 so
+                # both DFT channels share a reference time (dft_utils).
+                i_phase = phase * _half_i_phase(
+                    sp_freqs.astype(jnp.float64), dt).astype(jnp.complex64)
                 new_wire_sp.append((
                     v_dft + v * phase,
-                    i_dft + i_val * phase,
+                    i_dft + i_val * i_phase,
                     vinc_dft,
                     v_port_dft + v_port * phase,
                 ))

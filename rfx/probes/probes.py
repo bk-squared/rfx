@@ -13,6 +13,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.dft_utils import dft_window_weight as _dft_window_weight
+from rfx.core.dft_utils import half_step_current_phase as _half_step_current_phase
 from rfx.grid import Grid
 from rfx.sources.sources import LumpedPort
 
@@ -432,6 +433,21 @@ def update_sparam_probe(
     v_inc = port.excitation(t)
 
     phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
+    # SCOPE NOTE (item B2, 2026-09-05): the Yee half-step current phase
+    # `rfx.core.dft_utils.half_step_current_phase` is applied on the WIRE
+    # lane only (``update_wire_sparam_probe`` and the wire blocks in
+    # simulation.py / nonuniform.py), NOT here. Its derivation requires
+    # E = E^{n+1} at the sample so that the E/H offset is exactly dt/2. On
+    # the wire lane that holds because #683 moved the physical channels
+    # post-injection. Here V is sampled PRE-injection at a DRIVEN cell (the
+    # #72 contract kept above), and #683 measured that sample is "not any
+    # field time level of the discrete update" — so the V/I time offset is
+    # NOT established to be dt/2 and no correction is derivable without a
+    # lumped known-load decision run. Applying the wire-lane factor here
+    # would be exactly the align-first-decide-later move the #673/#672
+    # ledger entry warns against; it also shifted every lumped |S11| bin
+    # (max 2.3% on tests/fixtures/golden_forward_no_rlc_s11.npy) with no
+    # lumped-side oracle behind it.
     weight = _dft_window_weight(state.step, probe.total_steps, probe.window, probe.window_alpha)
     new_v = probe.v_dft + v * phase * dt * weight
     new_i = probe.i_dft + i * phase * dt * weight
@@ -1024,9 +1040,13 @@ def update_wire_sparam_probe(
     v_inc = port.excitation(t) / n_live
 
     phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
+    # Yee half-step: H (hence the Ampere-loop current) is at n+1/2 while E
+    # (voltage / gap voltage) is at n+1; advance the current sample by dt/2
+    # so both DFT channels share the same reference time (rfx/core/dft_utils).
+    i_phase = phase * _half_step_current_phase(probe.freqs, dt)
     weight = _dft_window_weight(state.step, probe.total_steps, probe.window, probe.window_alpha)
     new_v = probe.v_dft + v * phase * dt * weight
-    new_i = probe.i_dft + i_val * phase * dt * weight
+    new_i = probe.i_dft + i_val * i_phase * dt * weight
     new_vinc = probe.v_inc_dft + v_inc * phase * dt * weight
     old_vp = probe.v_port_dft if probe.v_port_dft is not None else 0.0
     new_vport = old_vp + v_port * phase * dt * weight
