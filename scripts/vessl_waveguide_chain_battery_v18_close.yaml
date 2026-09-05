@@ -15,10 +15,10 @@ env:
   JAX_ENABLE_X64: "0"
   # RFX_BRANCH is informational; the fetch is keyed by RFX_EXPECT_SHA alone.
   RFX_BRANCH: "v18/battery-remeasure-run"
-  RFX_EXPECT_SHA: "FILL_AFTER_PUSH"
+  RFX_EXPECT_SHA: "f914a7caf1ff8c63cac6f5f8c975b7f9f420a0c7"
   # The commit the re-measurement pre-declaration landed in (PR #891), recorded
   # in the artifact as predeclaration_sha; it must predate RFX_EXPECT_SHA.
-  RFX_PREDECLARATION_SHA: "68c8c340"
+  RFX_PREDECLARATION_SHA: "10b39787"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
