@@ -17,6 +17,20 @@ now describe the mechanism qualitatively. No trigger, threshold, severity or
 code changed; the frozen-artifact locks keep their values, re-labelled as a
 stale-artifact lock. PR #895.
 
+### Added — finite-region `add_flux_monitor(size=...)` on the graded mesh
+
+A finite-region flux monitor now runs on the non-uniform (graded) mesh; it
+previously raised `NotImplementedError`. The physical `size`/`center` resolves
+to a tangential CELL window against the realized cumulative cell edges, and the
+face-area weight is the realized per-cell `dA` of that window — never a
+cubic-cell `dx^2`. What the monitor integrates is the REALIZED window, not the
+requested one: each endpoint snaps to the nearest cumulative cell edge, and a
+window reaching outside the interior is clamped to the interior, with a
+`UserWarning` when a clamp exceeds half an end cell or the extent snaps past an
+adjacent edge. The uniform lane does not behave this way — it saturates at the
+padded array bounds and integrates absorber cells with no warning. That
+discrepancy is issue #910 and is not fixed here.
+
 ### Changed — the rectangular-waveguide family is chain-closed (v1.8): criterion 1 and 3(a) read under x64 on the flux lane
 
 The third pre-declared run of the WR-90 chain battery (VESSL run 369367258638,
