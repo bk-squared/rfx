@@ -1745,9 +1745,13 @@ def _matched_through_witness(freqs_hz: np.ndarray, s21: np.ndarray, *, L_m: floa
     noise). This is Yee-staircasing of the coax's a-to-b PTFE annulus:
     only ~3.8 cells span (2.055-0.635mm)/dx=0.375mm -- the SAME class of
     effect this repo's own MSL preflight already documents for a
-    comparably coarse dielectric gap ("Yee staircase at dielectric
-    interface is O(dx) -- Z0 staircase error >5% expected"), not a
-    solver defect. Using the measured beta collapsed the phase
+    comparably coarse dielectric gap ("Yee staircase at the dielectric
+    interface is O(dx), not O(dx**2), for inhomogeneous eps, so Z0
+    accuracy degrades linearly as the substrate is under-resolved" --
+    that advisory used to add "Z0 staircase error >5% expected", a
+    prediction retired by audit 2026-09-02 as a pre-#802 artefact; the
+    O(dx) ORDER, which is the only part this sentence leans on, stands),
+    not a solver defect. Using the measured beta collapsed the phase
     deviation from 111.38 deg (max, analytic assumption -- the reported
     run-3 failure) to under 1.04 deg across the WHOLE 4-12 GHz band
     (under 0.44 deg inside the gated central band) -- confirmed by
