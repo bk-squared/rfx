@@ -482,14 +482,16 @@ The per-family contract in
 [`docs/design_notes/chain_closure_contract.md`](../design_notes/chain_closure_contract.md)
 defines four criteria and states that failure of any single pass condition means
 the family is not chain-closed. The battery — dx rungs `a/9`, `a/18`, `a/36`
-(2.54 / 1.27 / 0.635 mm), DUTs thru (non-vacuity control only), PEC short and
+(2.54 / 1.27 / 0.635 mm; `a/36` is the claims rung, the one the gates are
+drawn at, the coarser two report-only), DUTs thru (the control that shows the
+gates are not vacuous), PEC short and
 `eps_r = 4` slab, both differentiable lanes, 185 stored verdicts — was measured
 three times, each run pre-declared and committed before its first S-parameter,
 and no gate, tolerance or pin was moved between them:
 
 - **Run 1** (VESSL run 369367257823, solve wall `1157.6 s`, float32;
   [`waveguide_chain_battery_predeclaration.md`](../design_notes/waveguide_chain_battery_predeclaration.md),
-  artifact `fixture.json`, frozen): 24 of 185 red in four families. The
+  artifact `fixture.json`, retained for history and no longer gated): 24 of 185 red in four families. The
   reference-plane rotation (12 keys, `6.602 degrees` against a `3 degree` gate)
   was traced to the port's transverse eigenproblem being solved on N+1 cells
   for an N-cell guide (issue #868, corrected in PR #889); three dx ladders were
@@ -505,10 +507,12 @@ and no gate, tolerance or pin was moved between them:
 - **Run 3** (VESSL run 369367258638, solve wall `1350.5 s`, float32 forward,
   commit `f914a7ca`;
   [`20260905_v18_close_predeclaration.md`](../design_notes/20260905_v18_close_predeclaration.md),
-  artifact `fixture_v18_close.json`, live): the same port and cells (bit-identical
-  to run 2's on all 18), with contract criterion 1 (forward identity) and 3(a)
-  (AD-vs-FD) **read under x64 on the flux lane** — the PI decision of
-  2026-09-05, the float32 reading stored beside the x64 one on every leg — and
+  artifact `fixture_v18_close.json`, the artifact the replay test gates against):
+  the same port and cells (bit-identical to run 2's on all 18), with contract
+  criterion 1 (forward identity: the reverse-mode-traced result equals the
+  untraced one) and 3(a) (AD-vs-FD) **read under x64 (JAX 64-bit mode) on the
+  flux lane** — per that pre-declaration, the float32 reading stored beside the
+  x64 one on every leg — and
   the pre-declared zero-derivative leg carried as report-only. Census
   **134 pass / 51 report_only / 0 fail / 0 not interpretable**. The 51 report_only verdicts are the 36 coarse- and mid-rung physics gates and referees (report-only below the claims rung by pre-declaration), the 12 ungated power-closure keys, and the 3 zero-derivative legs (1 AD-vs-FD, 2 gradient-invariance); the 134 pass are the claims-rung gates, the AD legs, the plane-shift and ladder gates. The declaration's
   own falsifier holds: the same AD stage with the float32 primary reproduces run
@@ -537,9 +541,11 @@ Per criterion, on run 3:
   reciprocity `0.0309`, three times the gate. Power closure is report-only here
   and bounded by the WP3 witness below.
 - **Criterion 3(a) (AD vs central FD) — 15 of 16 legs green, 1 report-only.**
-  The fifteen pass at `rel` `1.22e-4` to `1.07e-2` against `0.05`, with FD ULP
-  spans `8.7e13` to `4.8e15` on fourteen of them and `3.44e11` on the
-  zero-derivative leg's `normalize=False` sibling. The PEC-short `|S11|^2`
+  The fifteen pass at `rel` `1.22e-4` to `1.07e-2` against `0.05`; the
+  central-difference step resolves `8.7e13` to `4.8e15` units in the last place
+  (ULP) of the objective on fourteen of them and `3.44e11` on the
+  zero-derivative leg's `normalize=False` sibling, all far above the `1e4`
+  floor below which a leg is skipped. The PEC-short `|S11|^2`
   objective under `eps_override` on the flux lane is a zero-derivative
   objective (`|S11| = 1` in front of a PEC) pre-declared as an expected ULP-floor
   skip; its FD resolved `-5.154e-8` above the floor, its x64 AD reads
@@ -563,9 +569,8 @@ Per criterion, on run 3:
   `0.0317 degrees` against the Yee-discrete beta (gate `3 degrees`) and
   `0.0407 degrees` against the continuous beta (gate `6 degrees`), the
   wrong-sign discriminator reads `64.05 degrees` against a `10 degree` floor
-  with the sign-discriminating shift pair (5.08 / 2.54 mm), and the cheap
-  refute (shift sign flipped) reds the rotation gate by `117.27 degrees` at
-  minimum.
+  with the sign-discriminating shift pair (5.08 / 2.54 mm), and flipping the
+  shift sign fails the rotation gate by at least `117.27 degrees`.
 - **Criterion 3(c) (mesh refinement) — 10 of 10 ladders interpretable and
   non-increasing** on the pre-declared `[0.15, 0.70]` successive-delta-ratio
   guard, Richardson and monotone pins carried unchanged from run 2.
@@ -610,7 +615,7 @@ term in the V/I lane's own normalization rather than lost power, and not gated.
 
 Artifacts: replays `tests/oracle/test_waveguide_chain_battery.py` (run 1),
 `tests/oracle/test_waveguide_chain_battery_guide_cell_aperture.py` (run 2),
-`tests/oracle/test_waveguide_chain_battery_v18_close.py` (run 3, live layer)
+`tests/oracle/test_waveguide_chain_battery_v18_close.py` (run 3; also re-runs the coarse and mid cells live against the artifact)
 and `tests/unit/geometry/test_waveguide_chain_battery_geometry.py`; fixtures
 `tests/fixtures/waveguide_chain_battery/{fixture,fixture_guide_cell_aperture,fixture_v18_close}.json`
 with their schema in the README beside them; the three pre-declarations named
