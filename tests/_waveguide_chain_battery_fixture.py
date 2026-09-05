@@ -70,9 +70,40 @@ B_M = 0.01016   # WR-90 narrow wall (z), metres
 DX_COARSE = 0.00254
 DX_LADDER: tuple[float, ...] = (0.00254, 0.00127, 0.000635)
 N_LADDER: tuple[int, ...] = (9, 18, 36)
+# The finer rungs the VI-envelope sweep adds
+# (``docs/design_notes/waveguide_vi_envelope_sweep_predeclaration.md`` §5.1).
+# That section adds 0.0003175 (N=72) and says of the next one, verbatim,
+# "0.00015875 is not added: R5-X is dropped". It is carried here anyway,
+# unused by any emitted case, so the literal value and its integrality assert
+# stay on the record rather than being re-derived by hand if R5-X is ever
+# revived — recomputing it as A_M/144 is the mistake this block exists to stop.
+# They are LITERAL cell sizes, never ``A_M / N``: 0.0003175 = DX_COARSE / 8 and
+# 0.00015875 = DX_COARSE / 16 are exact binary halvings of the coarse cell, so
+# ``|dx*N - A_M| = 3.5e-18``, ``b/dx`` stays integral (32 / 64 cells) and the
+# reference/probe planes land on integer cell counts. Recomputing ``dx = A_M/N``
+# lands one ULP low and moves the N=9 grid from (65,10,5) to (66,10,6) — a whole
+# extra z node, i.e. a different guide.
+#
+# They are a SEPARATE tuple, not an extension of ``DX_LADDER``: the committed
+# chain-battery artifacts record ``dx_ladder_m`` and
+# ``tests/oracle/test_waveguide_chain_battery.py::test_fixture_constants_match_builder``
+# compares that frozen record against ``list(DX_LADDER)``. Growing ``DX_LADDER``
+# in place would redden a committed measurement gate and silently add N=72/144
+# rungs to every ``@pytest.mark.parametrize("dx", F.DX_LADDER)`` in the battery's
+# geometry suite. The sweep reads ``DX_LADDER_SWEEP``; the battery keeps its own.
+DX_LADDER_SWEEP: tuple[float, ...] = DX_LADDER + (0.0003175, 0.00015875)
+N_LADDER_SWEEP: tuple[int, ...] = N_LADDER + (72, 144)
 for _dx, _n in zip(DX_LADDER, N_LADDER):
     assert abs(_dx * _n - A_M) < 1e-15, (_dx, _n)
     assert abs(_dx * _n * 4 / 9 - B_M) < 1e-15, (_dx, _n)
+for _dx, _n in zip(DX_LADDER_SWEEP, N_LADDER_SWEEP):
+    assert abs(_dx * _n - A_M) < 1e-15, (_dx, _n)
+    assert abs(_dx * _n * 4 / 9 - B_M) < 1e-15, (_dx, _n)
+    # b/dx integral at every rung, checked here rather than trusted downstream:
+    # a non-integral b/dx puts the narrow wall between nodes and fires the
+    # declared-vs-rasterized z-width notice (#729 site 2).
+    _b_cells = B_M / _dx
+    assert abs(_b_cells - round(_b_cells)) < 1e-9, (_dx, _n, _b_cells)
 
 # --- x layout, in coarse cells (integers) -----------------------------------
 # Every position is ``k * DX_COARSE``; the integers are the source of truth
@@ -237,8 +268,8 @@ def build_simulation(
     """
     if dut not in DUTS:
         raise ValueError(f"unknown dut {dut!r}; expected one of {DUTS}")
-    if not any(abs(dx - d) < 1e-15 for d in DX_LADDER):
-        raise ValueError(f"dx={dx} is not a ladder rung {DX_LADDER}")
+    if not any(abs(dx - d) < 1e-15 for d in DX_LADDER_SWEEP):
+        raise ValueError(f"dx={dx} is not a ladder rung {DX_LADDER_SWEEP}")
     if cpml_layers is None:
         probe = _build(dut, dx, cpml_layers=8, reference_planes=(None, None),
                        precision=precision)
