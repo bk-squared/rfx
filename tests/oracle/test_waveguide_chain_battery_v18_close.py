@@ -90,9 +90,9 @@ RUN2_RED = {
 }
 
 # Every stored verdict at the value this run measured. 134 pass / 51 report_only.
-# The 36 keys that differ from run 2's dict: the 8 flux forward-identity legs
-# (fail → pass), the zero-derivative AD leg (fail → report_only), and 27 pass ↔
-# report_only that are the pin step's own bookkeeping (identical pins to run 2).
+# Against run 2's committed (pinned) dict exactly 9 keys differ: the 8 flux
+# forward-identity legs (fail → pass) and the zero-derivative AD leg
+# (fail → report_only). No key moves between pass and report_only.
 ADJUDICATED_VERDICTS: dict[str, str] = {
     "ad_vs_fd|pec_short|false|eps|im_s11": "pass",
     "ad_vs_fd|pec_short|false|eps|re_s11": "pass",
@@ -342,6 +342,19 @@ def test_identity_stamp(fx):
     assert (REPO / p["recapture_vessl_yaml"]).exists() and (REPO / p["recapture_entry_point"]).exists()
     # Strings written after the pod's assemble step are named, and are strings only.
     assert "run_id" in p["post_run_edits"] and "supersedes" in p["post_run_edits"]
+    assert p["recapture_command"].endswith("--fixture-out tests/fixtures/waveguide_chain_battery/fixture_v18_close.json")
+    # every provenance.run_id anywhere in the artifact carries the run id (the cheap-refute
+    # per-case records had kept the pod's placeholder; corrected post-run and listed)
+    def _run_ids(node):
+        if isinstance(node, dict):
+            if "run_id" in node and isinstance(node["run_id"], str):
+                yield node["run_id"]
+            for v in node.values():
+                yield from _run_ids(v)
+        elif isinstance(node, list):
+            for v in node:
+                yield from _run_ids(v)
+    assert set(_run_ids(fx)) == {RUN_ID}
     assert RUN_ID in p["run_id_note"]
     assert fx["legs_rung"] == "fine"
 
@@ -629,6 +642,29 @@ def test_section_4_falsifier_float32_primary_reproduces_run_2s_nine_red(fx):
             red.add(f"forward_identity|{key}")
     assert red == RUN2_RED
     assert len(red) == 9
+
+
+def test_section_4_falsifier_as_run_in_the_pod_matches_the_replay(fx):
+    """The pod ran the same AD stage with RFX_CHAIN_PRIMARY=float32; its record is
+    attached as ``section_4_falsifier`` (independent review of PR #908, finding 7:
+    the count alone is coarse — the leg-by-leg identity with the float32 readings
+    stored on the primary legs is the evidence)."""
+    f = fx["section_4_falsifier"]
+    assert f["n_legs"] == 16 and f["n_red"] == 9
+    assert set(f["red_keys"]) == RUN2_RED
+    assert f["provenance"]["commit"] == COMMIT and f["provenance"]["precision"] == "float32"
+    assert f["provenance"]["jax_devices"] == ["cuda:0"]
+    for entry in fx["ad_vs_fd"]:
+        key = f"{entry['dut']}|{entry['lane']}|{entry['theta_kind']}|{entry['objective']}"
+        pod = f["legs"][key]
+        f32 = entry["ad_vs_fd_float32"]
+        assert pod["primary_precision"] == "float32"
+        assert pod["g_ad"] == f32["g_ad"], key
+        assert pod["g_fd"] == f32["g_fd"], key
+        assert pod["rel"] == f32["rel"], key
+        assert pod["verdict"] == f32["verdict"], key
+        assert pod["forward_identity_max_scaled_diff"] == entry["forward_identity_float32"]["max_scaled_diff"], key
+        assert pod["forward_identity_pass"] == G.forward_identity_pass(pod["forward_identity_max_scaled_diff"])
 
 
 # ---------------------------------------------------------------------------

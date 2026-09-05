@@ -707,6 +707,46 @@ def _ladder_block(cells: list[dict]) -> dict:
     return out
 
 
+def attach_section_4_falsifier(fx: dict, out_dir: Path) -> dict:
+    """Closing pre-declaration section 4: the ad_fd stage re-run with
+    ``RFX_CHAIN_PRIMARY=float32`` (the VESSL YAML writes it to ``<out-dir>/falsifier_float32``)
+    must reproduce run 2's 9 red. Attach a compact, checkable record of that stage — the
+    float32 verdict, rel, g_ad and identity metric per leg plus the red key set — so the
+    replay can compare it leg by leg with the float32 readings stored on the primary legs
+    (``tests/oracle/test_waveguide_chain_battery_v18_close.py``). No-op when the directory
+    is absent (a run without the falsifier stage) or when the block is already attached.
+    """
+    fdir = out_dir / "falsifier_float32"
+    files = sorted(fdir.glob("ad_fd__*.json")) if fdir.is_dir() else []
+    if not files or "section_4_falsifier" in fx:
+        return fx
+    legs, red, prov = {}, [], None
+    for p in files:
+        rec = json.loads(p.read_text())
+        prov = prov or {k: rec["provenance"].get(k) for k in ("commit", "jax_version", "jax_devices",
+                                                                "precision", "jax_enable_x64")}
+        for leg in rec["legs"]:
+            key = f"{leg['dut']}|{leg['lane']}|{leg['theta_kind']}|{leg['objective']}"
+            legs[key] = {
+                "primary_precision": leg.get("primary_precision", "float32"),
+                "verdict": leg["verdict"], "rel": leg["rel"], "g_ad": leg["g_ad"], "g_fd": leg["g_fd"],
+                "forward_identity_max_scaled_diff": leg["forward_identity"]["max_scaled_diff"],
+                "forward_identity_pass": bool(leg["forward_identity"]["pass"]),
+            }
+            if leg["verdict"] == "fail":
+                red.append(f"ad_vs_fd|{key}")
+            if not leg["forward_identity"]["pass"]:
+                red.append(f"forward_identity|{key}")
+    fx["section_4_falsifier"] = {
+        "what": "the ad_fd stage re-run in the same pod with RFX_CHAIN_PRIMARY=float32 "
+                "(closing pre-declaration section 4); must reproduce run 2's 9 red",
+        "stage_dir": "falsifier_float32", "n_legs": len(legs), "n_red": len(red),
+        "red_keys": sorted(red), "legs": legs, "provenance": prov,
+    }
+    _log(f"section-4 falsifier attached: {len(legs)} legs, {len(red)} red")
+    return fx
+
+
 def assemble(args, out_dir: Path, prov: dict) -> Path:
     cells = [json.loads(p.read_text()) for p in sorted(out_dir.glob("cell__*.json"))]
     legs = []
@@ -932,6 +972,7 @@ def main() -> int:
         target = Path(args.fixture_out) if args.fixture_out else out_dir / "fixture.json"
         fx = json.loads(target.read_text())
         fx = G.rebase_gradient_invariance_float32(fx)   # no-op once the plane stage writes float32 bases
+        fx = attach_section_4_falsifier(fx, out_dir)     # the pod's float32-primary stage, if it ran
         fx = G.pin_fixture(fx)
         _write(target, fx)
         _log(f"pinned {target}: {fx['pins']}")

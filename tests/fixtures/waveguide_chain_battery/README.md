@@ -53,6 +53,7 @@ Units: metres, hertz, seconds, S/m, decibels, degrees. Complex values are writte
 | `port_cutoff` | object | report-only mechanism witness: the port config's `f_cutoff` (the β / Z_TE the extractor uses) against the guide's cutoff fitted from the thru's S21 phase, per rung and lane (see below) |
 | `legs_rung` | string | the rung the AD/FD and plane-shift legs ran at (`"fine"`, the claims rung) |
 | `readme` | string | this file's path |
+| `section_4_falsifier` | object | schema_version ≥ 3, when the run's VESSL YAML ran the ad_fd stage a second time with `RFX_CHAIN_PRIMARY=float32` (the closing pre-declaration's section 4): attached by the pin step from `<out-dir>/falsifier_float32/ad_fd__*.json` — `n_legs`, `n_red`, `red_keys` (must equal run 2's 9), per-leg `{primary_precision, verdict, rel, g_ad, g_fd, forward_identity_max_scaled_diff, forward_identity_pass}` and the stage's provenance; the replay compares it leg by leg with the `ad_vs_fd_float32` readings on the primary legs |
 | `pins` | object | written by the pin step (`--stages pin`): `gradient_invariance_envelope` / `gradient_invariance_gate` (quantum 1000), `richardson_quantum` (100 for magnitudes, 10 for degrees), `monotone_quantum` (100), `policy` |
 | `verdicts` | object | per gate: `"pass"`, `"fail"`, `"report_only"`, `"skipped"`, `"not_interpretable"` |
 

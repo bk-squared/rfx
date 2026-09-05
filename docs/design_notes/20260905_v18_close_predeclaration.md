@@ -151,10 +151,10 @@ checkout). Reader: `scripts/diagnostics/waveguide_chain_battery_v18_close_read.p
 | row | measured | branch |
 |---|---|---|
 | flux forward identity (8 legs, x64 primary) | worst scaled 1.051e-8 (`slab\|flux`), 1.738e-10 / 2.835e-10 (`pec_short\|flux` eps / sigma); abs 1.76e-15 / 2.31e-15 / 2.24e-14 | as predicted (≤ 1e-7); the float32 reading beside it is run 2's to the last digit (1.083215 / 1.514875 / 1.760720) |
-| `normalize=False` identity (8 legs) | 0 on all, GPU, claims rung | as predicted |
+| `normalize=False` identity (8 legs — §3's row says 4; the `false` lane carries 8 AD legs, 4 PEC-short + 4 slab, and the prediction applies to each) | 0 on all, GPU, claims rung | as predicted |
 | zero-derivative leg | `report_only`; x64 g_ad −2.943e-7, FD −5.154e-8, same sign, ratio 5.709 (outside the factor-3 band, written so report_only is not read as pass); float32 g_ad +2.786e-5, rel 541.5 | as predicted |
 | other 15 AD-vs-FD legs | all pass, rel 1.22e-4 … 1.074e-2; FD spans 8.7e13 … 4.8e15 ULP on fourteen legs and 3.44e11 on the zero-derivative leg's `false`-lane sibling (its own number, as in run 2); no leg's rel rose above the noise floor under x64 | as predicted |
-| everything else (152) | 18 cells bit-identical to run 2 (max\|ΔS\| = 0 on every cell, settling and column power identical); plane-shift rotations and the wrong-sign witness identical; all 10 ladders identical | as predicted, with one exception below |
+| everything else (153 non-AD verdicts; §3's row says 152 — 185 − 16 − 16 = 153) | 18 cells bit-identical to run 2 (max\|ΔS\| = 0 on every cell, settling and column power identical); plane-shift rotations and the wrong-sign witness identical; all 10 ladders identical | as predicted, with one exception below |
 | §3.1 NaN watch | no non-finite float32 gradient at the claims rung on the GPU (the four NaN legs were the coarse rung on CPU) | as predicted |
 
 §4 falsifier: the same ad_fd stage with `RFX_CHAIN_PRIMARY=float32` gives **exactly 9 red**

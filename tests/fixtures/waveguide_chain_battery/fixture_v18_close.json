@@ -25,11 +25,11 @@
   "rfx_version": "1.7.0",
   "wall_time_s": 1350.4885160923004,
   "wall_time_note": "sum of the per-case solve wall times (cells incl. settling reruns, AD legs, FD pairs, shifted planes); JIT compile included",
-  "recapture_command": "PYTHONPATH=. python scripts/diagnostics/waveguide_chain_battery_measure.py --out-dir <run-dir> --run-id <id> --run-lane <lane>; then --stages assemble --fixture-out tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json",
+  "recapture_command": "PYTHONPATH=. python scripts/diagnostics/waveguide_chain_battery_measure.py --out-dir <run-dir> --run-id <id> --run-lane <lane>; then --stages assemble --fixture-out tests/fixtures/waveguide_chain_battery/fixture_v18_close.json",
   "recapture_entry_point": "scripts/diagnostics/waveguide_chain_battery_measure.py",
   "recapture_vessl_yaml": "scripts/vessl_waveguide_chain_battery_v18_close.yaml",
   "run_id_note": "VESSL_RUN_ID was unset in the pod (same as run 2, 369367258205); the id is written in from the backed-up log filename docs/vessl-logs/waveguide_chain_battery_v18_close_369367258638_completed.log",
-  "post_run_edits": "three strings written after the run, before the pin step: provenance.run_id (from the backed-up log filename), supersedes and supersedes_reason (the pod ran the script with run 2's constants; the constants in scripts/diagnostics/waveguide_chain_battery_measure.py now say what this artifact says); predeclaration_sha 10b39787 -> f914a7ca (independent review of PR #908): the pod fetched f914a7ca and the note at that commit is the binding version \u2014 10b39787 was the note's first commit, whose section 2 still declared the zero-derivative branch as a gate; report_only entered at 04c42a57 (14:24 UTC), the CPU-smoke section at f914a7ca (14:38), the run started 14:39; the reader commit ba463005 (14:41, after the start, before the first stage finished at 14:42) edited section 3 row 2 and section 3.1 \u2014 every revision is listed in the note's section 6"
+  "post_run_edits": "three strings written after the run, before the pin step: provenance.run_id (from the backed-up log filename), supersedes and supersedes_reason (the pod ran the script with run 2's constants; the constants in scripts/diagnostics/waveguide_chain_battery_measure.py now say what this artifact says); predeclaration_sha 10b39787 -> f914a7ca (independent review of PR #908): the pod fetched f914a7ca and the note at that commit is the binding version \u2014 10b39787 was the note's first commit, whose section 2 still declared the zero-derivative branch as a gate; report_only entered at 04c42a57 (14:24 UTC), the CPU-smoke section at f914a7ca (14:38), the run started 14:39; the reader commit ba463005 (14:41, after the start, before the first stage finished at 14:42) edited section 3 row 2 and section 3.1 \u2014 every revision is listed in the note's section 6; recapture_command --fixture-out corrected from run 2's filename to this artifact's (the pod ran with run 2's ARTIFACT constant); plane_shift.cheap_refute.per_case[*].provenance.run_id (4 entries) set from UNSET-see-log-filename to 369367258638 like the top level; section_4_falsifier attached by the pin step from the pod's falsifier_float32/ stage files (independent review of PR #908, findings 7 and minor)"
  },
  "fixture": {
   "a_m": 0.02286,
@@ -17682,7 +17682,7 @@
      ],
      "provenance": {
       "commit": "f914a7caf1ff8c63cac6f5f8c975b7f9f420a0c7",
-      "run_id": "UNSET-see-log-filename",
+      "run_id": "369367258638",
       "run_lane": "vessl",
       "jax_default_backend": "gpu"
      }
@@ -17702,7 +17702,7 @@
      ],
      "provenance": {
       "commit": "f914a7caf1ff8c63cac6f5f8c975b7f9f420a0c7",
-      "run_id": "UNSET-see-log-filename",
+      "run_id": "369367258638",
       "run_lane": "vessl",
       "jax_default_backend": "gpu"
      }
@@ -17724,7 +17724,7 @@
      ],
      "provenance": {
       "commit": "f914a7caf1ff8c63cac6f5f8c975b7f9f420a0c7",
-      "run_id": "UNSET-see-log-filename",
+      "run_id": "369367258638",
       "run_lane": "vessl",
       "jax_default_backend": "gpu"
      }
@@ -17746,7 +17746,7 @@
      ],
      "provenance": {
       "commit": "f914a7caf1ff8c63cac6f5f8c975b7f9f420a0c7",
-      "run_id": "UNSET-see-log-filename",
+      "run_id": "369367258638",
       "run_lane": "vessl",
       "jax_default_backend": "gpu"
      }
@@ -21186,5 +21186,177 @@
   },
   "monotone_quantum": 100,
   "policy": "tests/_gate_policy.py gate_from_envelope (x ENVELOPE_GATE_MULTIPLIER, rounded up); lower bounds rounded down by the same multiplier"
+ },
+ "section_4_falsifier": {
+  "what": "the ad_fd stage re-run in the same pod with RFX_CHAIN_PRIMARY=float32 (closing pre-declaration section 4); must reproduce run 2's 9 red",
+  "stage_dir": "falsifier_float32",
+  "n_legs": 16,
+  "n_red": 9,
+  "red_keys": [
+   "ad_vs_fd|pec_short|flux|eps|s11_mag2",
+   "forward_identity|pec_short|flux|eps|im_s11",
+   "forward_identity|pec_short|flux|eps|re_s11",
+   "forward_identity|pec_short|flux|eps|s11_mag2",
+   "forward_identity|pec_short|flux|sigma|s11_mag2",
+   "forward_identity|slab|flux|eps|im_s21",
+   "forward_identity|slab|flux|eps|re_s21",
+   "forward_identity|slab|flux|eps|s11_mag2",
+   "forward_identity|slab|flux|eps|s21_mag2"
+  ],
+  "legs": {
+   "pec_short|false|eps|s11_mag2": {
+    "primary_precision": "float32",
+    "verdict": "pass",
+    "rel": 0.008651278362129002,
+    "g_ad": 0.0007709434721618891,
+    "g_fd": 0.0007643310316463037,
+    "forward_identity_max_scaled_diff": 0.0,
+    "forward_identity_pass": true
+   },
+   "pec_short|false|eps|re_s11": {
+    "primary_precision": "float32",
+    "verdict": "pass",
+    "rel": 0.01073658371737267,
+    "g_ad": -1.4919252395629883,
+    "g_fd": -1.4760772129923894,
+    "forward_identity_max_scaled_diff": 0.0,
+    "forward_identity_pass": true
+   },
+   "pec_short|false|eps|im_s11": {
+    "primary_precision": "float32",
+    "verdict": "pass",
+    "rel": 0.0037055424975255347,
+    "g_ad": 2.685720920562744,
+    "g_fd": 2.675805609162874,
+    "forward_identity_max_scaled_diff": 0.0,
+    "forward_identity_pass": true
+   },
+   "pec_short|false|sigma|s11_mag2": {
+    "primary_precision": "float32",
+    "verdict": "pass",
+    "rel": 0.00049391281532699,
+    "g_ad": -6.428282737731934,
+    "g_fd": -6.431459317910304,
+    "forward_identity_max_scaled_diff": 0.0,
+    "forward_identity_pass": true
+   },
+   "pec_short|flux|eps|s11_mag2": {
+    "primary_precision": "float32",
+    "verdict": "fail",
+    "rel": 541.5391634488263,
+    "g_ad": 2.786023287626449e-05,
+    "g_fd": -5.1541562129386875e-08,
+    "forward_identity_max_scaled_diff": 1.0832146062634656,
+    "forward_identity_pass": false
+   },
+   "pec_short|flux|eps|re_s11": {
+    "primary_precision": "float32",
+    "verdict": "pass",
+    "rel": 0.010696216238188394,
+    "g_ad": -1.478940725326538,
+    "g_fd": -1.4632890690252665,
+    "forward_identity_max_scaled_diff": 1.0832146062634656,
+    "forward_identity_pass": false
+   },
+   "pec_short|flux|eps|im_s11": {
+    "primary_precision": "float32",
+    "verdict": "pass",
+    "rel": 0.0037430827452993374,
+    "g_ad": 2.6881139278411865,
+    "g_fd": 2.678089616806154,
+    "forward_identity_max_scaled_diff": 1.0832146062634656,
+    "forward_identity_pass": false
+   },
+   "pec_short|flux|sigma|s11_mag2": {
+    "primary_precision": "float32",
+    "verdict": "pass",
+    "rel": 0.0004900433466020363,
+    "g_ad": -6.4214372634887695,
+    "g_fd": -6.424585588911291,
+    "forward_identity_max_scaled_diff": 1.5148748027237617,
+    "forward_identity_pass": false
+   },
+   "slab|false|eps|s11_mag2": {
+    "primary_precision": "float32",
+    "verdict": "pass",
+    "rel": 0.00012303569612997145,
+    "g_ad": 0.313778817653656,
+    "g_fd": 0.3137402164077263,
+    "forward_identity_max_scaled_diff": 0.0,
+    "forward_identity_pass": true
+   },
+   "slab|false|eps|s21_mag2": {
+    "primary_precision": "float32",
+    "verdict": "pass",
+    "rel": 0.00012249369816438543,
+    "g_ad": -0.31374168395996094,
+    "g_fd": -0.31370325728784954,
+    "forward_identity_max_scaled_diff": 0.0,
+    "forward_identity_pass": true
+   },
+   "slab|false|eps|re_s21": {
+    "primary_precision": "float32",
+    "verdict": "pass",
+    "rel": 0.0033669818801201003,
+    "g_ad": 0.09743057191371918,
+    "g_fd": 0.09710362576527354,
+    "forward_identity_max_scaled_diff": 0.0,
+    "forward_identity_pass": true
+   },
+   "slab|false|eps|im_s21": {
+    "primary_precision": "float32",
+    "verdict": "pass",
+    "rel": 0.00020689531796880658,
+    "g_ad": 0.44848573207855225,
+    "g_fd": 0.44857854087840127,
+    "forward_identity_max_scaled_diff": 0.0,
+    "forward_identity_pass": true
+   },
+   "slab|flux|eps|s11_mag2": {
+    "primary_precision": "float32",
+    "verdict": "pass",
+    "rel": 0.00012811362018319986,
+    "g_ad": 0.3149757981300354,
+    "g_fd": 0.3149354506093338,
+    "forward_identity_max_scaled_diff": 1.7607200487636583,
+    "forward_identity_pass": false
+   },
+   "slab|flux|eps|s21_mag2": {
+    "primary_precision": "float32",
+    "verdict": "pass",
+    "rel": 0.0001294609664066482,
+    "g_ad": -0.3149767816066742,
+    "g_fd": -0.3149360096865039,
+    "forward_identity_max_scaled_diff": 1.7607200487636583,
+    "forward_identity_pass": false
+   },
+   "slab|flux|eps|re_s21": {
+    "primary_precision": "float32",
+    "verdict": "pass",
+    "rel": 0.003386973108420135,
+    "g_ad": 0.09770140051841736,
+    "g_fd": 0.09737160550903456,
+    "forward_identity_max_scaled_diff": 1.7607200487636583,
+    "forward_identity_pass": false
+   },
+   "slab|flux|eps|im_s21": {
+    "primary_precision": "float32",
+    "verdict": "pass",
+    "rel": 0.00020364516474360742,
+    "g_ad": 0.4507231116294861,
+    "g_fd": 0.4508149179077123,
+    "forward_identity_max_scaled_diff": 1.7607200487636583,
+    "forward_identity_pass": false
+   }
+  },
+  "provenance": {
+   "commit": "f914a7caf1ff8c63cac6f5f8c975b7f9f420a0c7",
+   "jax_version": "0.4.33.dev20241023+e3c6d6430",
+   "jax_devices": [
+    "cuda:0"
+   ],
+   "precision": "float32",
+   "jax_enable_x64": false
+  }
  }
 }
