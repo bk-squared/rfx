@@ -391,8 +391,10 @@ def _nu_flux_tangential_bounds(d_arr, pad_lo: int, pad_hi: int,
     window off an end, yields the CLAMPED intersection with the interior (e.g.
     ``size=30 mm`` on a 10 mm axis -> the whole axis; ``center=1 mm,
     size=6 mm`` -> ``[0, 4] mm``). Inside the interior the endpoints still snap
-    by up to half a local cell each. That is the same behaviour as the uniform
-    lane, and it is deliberate; only the degenerate (<1 cell) case raises.
+    by up to half a local cell each. That is deliberate; only the degenerate
+    (<1 cell) case raises. It is NOT what the uniform lane does: that lane
+    saturates at the padded array bounds and integrates absorber cells with no
+    warning (issue #910).
 
     To make it non-silent a ``UserWarning`` is emitted when EITHER of two
     runtime-derived conditions holds (fix2b, verify nit 1 — the previous single

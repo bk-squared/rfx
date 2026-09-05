@@ -6,6 +6,20 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — finite-region `add_flux_monitor(size=...)` on the graded mesh
+
+A finite-region flux monitor now runs on the non-uniform (graded) mesh; it
+previously raised `NotImplementedError`. The physical `size`/`center` resolves
+to a tangential CELL window against the realized cumulative cell edges, and the
+face-area weight is the realized per-cell `dA` of that window — never a
+cubic-cell `dx^2`. What the monitor integrates is the REALIZED window, not the
+requested one: each endpoint snaps to the nearest cumulative cell edge, and a
+window reaching outside the interior is clamped to the interior, with a
+`UserWarning` when a clamp exceeds half an end cell or the extent snaps past an
+adjacent edge. The uniform lane does not behave this way — it saturates at the
+padded array bounds and integrates absorber cells with no warning. That
+discrepancy is issue #910 and is not fixed here.
+
 ### Fixed — the waveguide settling witness no longer scores port records that underflowed float32
 
 `settling_db` is the mandated ring-down witness for every claims-bearing
