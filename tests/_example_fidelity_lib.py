@@ -336,7 +336,8 @@ CLASSIFICATION: dict[str, Entry] = {
         "no_simulation",
         "pure-numpy oblique Fresnel oracle, Meep k_point mapping, exact "
         "2-D Yee-lattice / CPML model, windows and falsifiers for cv26 -- "
-        "no rfx import"),
+        "no rfx Simulation (it imports tfsf_2d's auxiliary-grid constants, "
+        "#888, rather than restating them)"),
     "validation/crossval/comparators/ring_mode_judge.py": Entry(
         "no_simulation",
         "plain numpy/scipy mode-list comparator for cv02 (#812) -- compares "

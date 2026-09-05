@@ -2,9 +2,15 @@
 convention, the Meep k_point mapping, the Yee-lattice terms, the derived
 windows, records and falsifiers.
 
-Pure numpy (scipy for the banded solve). Importing this module does not
-import rfx, jax or meep, so the case script, the Meep leg and the tests all
-read the same constants. Everything numeric is fixed by
+Pure numpy (scipy for the banded solve), except that the 2-D auxiliary grid's
+layout and absorber constants are imported from ``rfx.sources.tfsf_2d`` -- the
+module that OWNS them -- rather than restated here, so importing this module
+does import rfx and jax (it does not import meep). #888: the restated copy had
+drifted a full absorber redesign behind the module it claimed to mirror; the
+same precedent is set by ``comparators/cv22_dispersive_gates.py``. The case
+script, the Meep leg and the tests all read the same constants.
+
+Everything numeric is fixed by
 ``docs/design_notes/20260902_cv26_oblique_fresnel_predeclaration.md``;
 change the note (append-only) before changing a number here.
 
@@ -377,6 +383,55 @@ def cpml_continuum_reflection(theta_rad, R_asymptotic: float = CPML_R_ASYMPTOTIC
     return R_asymptotic ** np.cos(np.asarray(theta_rad, dtype=float))
 
 
+# ---------------------------------------------------------------------------
+# The 2-D auxiliary grid's layout and absorber (#888)
+# ---------------------------------------------------------------------------
+# READ FROM the module that owns it rather than restated here. Until #888 these
+# were copies of literals in rfx/sources/tfsf_2d.py, and the copy is what let
+# the two drift: the module now carries a 200-cell absorber whose sigma_max is
+# DERIVED from a target reflection (AUX_CPML_R_ASYMPTOTIC) through the same law
+# the 3-D absorber uses, while this file still described the shipped-30-cell,
+# order-4, kappa_max-7, sigma-factor-0.8 heuristic. ``aux_cells`` and
+# ``aux_cpml_profile_np`` build the auxiliary grid's geometry and CFS profile
+# from these, so a stale copy models an auxiliary grid that does not exist.
+# Derivation and the measured |B/A|:
+# docs/design_notes/20260904_aux_absorber_depth_derivation.md
+#
+# These constants do NOT scale with dx_div (cv04 note section 6.1) -- tfsf_2d
+# fixes them in cells, whatever dx the 3-D rig runs at.
+from rfx.sources.tfsf_2d import (  # noqa: E402
+    AUX_CPML_KAPPA_MAX, AUX_CPML_ORDER, AUX_CPML_R_ASYMPTOTIC, AUX_N_CPML,
+    AUX_N_MARGIN_X as AUX_N_MARGIN, AUX_SRC_OFFSET,
+)
+
+# init_tfsf_2d: i0_x = AUX_N_CPML + AUX_N_MARGIN maps to the 3-D x_lo, and the
+# soft source sits at src_x = AUX_N_CPML + AUX_SRC_OFFSET, so the auxiliary
+# source-to-x_lo run is the difference -- independent of the absorber depth.
+AUX_SRC_TO_X_LO = AUX_N_MARGIN - AUX_SRC_OFFSET
+
+# ``init_tfsf_2d`` takes the auxiliary absorber as four overrides (#888); the
+# comparator names them the SAME way, so a rig modelled here with a different
+# auxiliary absorber is described exactly as the module would be asked for one.
+# ``None`` anywhere means "the shipped constant".  Only the absorber moves --
+# AUX_N_MARGIN and AUX_SRC_OFFSET are fixed in the module.
+AUX_DEFAULTS = {"aux_n_cpml": AUX_N_CPML, "aux_cpml_order": AUX_CPML_ORDER,
+                "aux_cpml_kappa_max": AUX_CPML_KAPPA_MAX,
+                "aux_cpml_r_asymptotic": AUX_CPML_R_ASYMPTOTIC}
+
+
+def aux_overrides(aux_kwargs: dict | None = None) -> dict:
+    """Resolve ``init_tfsf_2d``'s auxiliary-absorber overrides against the
+    shipped constants.  Unknown keys raise: a typo must not silently model the
+    shipped grid."""
+    out = dict(AUX_DEFAULTS)
+    for k, v in (aux_kwargs or {}).items():
+        if k not in AUX_DEFAULTS:
+            raise ValueError(f"unknown auxiliary override {k!r}; init_tfsf_2d takes {sorted(AUX_DEFAULTS)}")
+        if v is not None:
+            out[k] = v
+    return out
+
+
 def rig_cells(nx_interior: int, n_cpml: int = N_CPML, d_slab_m: float = D_SLAB_M,
               dx: float = DX_M, margin: int = TFSF_MARGIN, probe_off: int = PROBE_OFFSET_CELLS,
               dx_div: int = 1) -> dict:
@@ -398,58 +453,77 @@ def rig_cells(nx_interior: int, n_cpml: int = N_CPML, d_slab_m: float = D_SLAB_M
     return {"nx": nx, "n_cpml": n_cpml, "dx": dx, "dx_div": K, "x_lo": x_lo, "x_hi": x_hi, "slab_lo": slab_lo,
             "slab_hi": slab_hi, "probe_refl": slab_lo - probe_off, "probe_trans": slab_hi + probe_off,
             "dist_cpml_hi": nx - n_cpml - (slab_hi + probe_off), "dist_cpml_lo": (slab_lo - probe_off) - n_cpml,
-            "aux_src_to_x_lo": 55 - 33}   # tfsf_2d: i0_x = 30 + 25 maps to x_lo; src_x = 30 + 3
+            "aux_src_to_x_lo": AUX_SRC_TO_X_LO}   # tfsf_2d: i0_x - src_x (see AUX_SRC_TO_X_LO)
 
 
-AUX_N_CPML = 30          # rfx/sources/tfsf_2d.py:181  n_cpml_2d
-AUX_N_MARGIN = 25        # tfsf_2d.py:183  n_margin_x
-AUX_SRC_OFFSET = 3       # tfsf_2d.py:193  src_x = n_cpml_2d + 3
-AUX_CPML_ORDER = 4       # tfsf_2d.py:198
-AUX_CPML_KAPPA_MAX = 7.0  # tfsf_2d.py:199
-AUX_SIGMA_FACTOR = 0.8   # tfsf_2d.py:201  sigma_max = 0.8 (m+1)/(eta dx) kappa_max
+def aux_cells(cells: dict, *, aux_kwargs: dict | None = None) -> dict:
+    """The 2-D auxiliary grid's x bookkeeping (init_tfsf_2d): n2x = n_cpml +
+    margin + (x_hi - x_lo + 2) + margin + n_cpml, i0_x = n_cpml + margin maps
+    to x_lo, source at n_cpml + AUX_SRC_OFFSET -- every number from
+    rfx/sources/tfsf_2d.py (200 + 25 + ... + 25 + 200 as it ships today).
+    ``aux_kwargs={"aux_n_cpml": n}`` follows the module's own override: the
+    layout grows with the absorber, exactly as init_tfsf_2d makes it."""
+    n = int(aux_overrides(aux_kwargs)["aux_n_cpml"])
+    n2x = n + AUX_N_MARGIN + (cells["x_hi"] - cells["x_lo"] + 2) + AUX_N_MARGIN + n
+    return {"n2x": n2x, "i0_x": n + AUX_N_MARGIN, "src_x": n + AUX_SRC_OFFSET, "n_cpml": n}
 
 
-def aux_cells(cells: dict) -> dict:
-    """The 2-D auxiliary grid's x bookkeeping (init_tfsf_2d): n2x = 30 + 25 +
-    (x_hi - x_lo + 2) + 25 + 30, i0_x = 55 maps to x_lo, source at 33."""
-    n2x = AUX_N_CPML + AUX_N_MARGIN + (cells["x_hi"] - cells["x_lo"] + 2) + AUX_N_MARGIN + AUX_N_CPML
-    return {"n2x": n2x, "i0_x": AUX_N_CPML + AUX_N_MARGIN, "src_x": AUX_N_CPML + AUX_SRC_OFFSET, "n_cpml": AUX_N_CPML}
+def aux_cpml_profile_np(dt: float, dx: float, *, aux_kwargs: dict | None = None):
+    """The auxiliary grid's CFS-CPML profile (init_tfsf_2d, #888): the SAME law
+    the 3-D absorber uses -- rfx/boundaries/cpml.py::_cpml_profile, already
+    transcribed here as ``cpml_profile_np`` -- evaluated at the auxiliary
+    grid's own constants, which are imported from tfsf_2d rather than restated.
+    sigma_max is DERIVED from AUX_CPML_R_ASYMPTOTIC, never from a standalone
+    factor. float64; rfx rounds to float32 at the CPMLParams boundary, and
+    ``test_cpml_profile_transcription_equals_rfx`` holds these arrays against a
+    live ``init_tfsf_2d`` config's cfg.b_cpml / cfg.c_cpml / cfg.kappa_cpml.
+    Index 0 is the OUTER cell (the lo-face order); the hi face is the flip."""
+    ax = aux_overrides(aux_kwargs)
+    return cpml_profile_np(int(ax["aux_n_cpml"]), dt, dx, order=int(ax["aux_cpml_order"]),
+                           kappa_max=float(ax["aux_cpml_kappa_max"]),
+                           R_asymptotic=float(ax["aux_cpml_r_asymptotic"]))
 
 
-def aux_cpml_profile_np(dt: float, dx: float):
-    """tfsf_2d.py:197-208 verbatim in numpy: 4th order, kappa_max 7,
-    sigma_max = 0.8 (m+1)/(eta dx) kappa_max, alpha = 0.05 (1 - rho); index 0 outer."""
-    n = AUX_N_CPML
-    sigma_max = AUX_SIGMA_FACTOR * (AUX_CPML_ORDER + 1) / (ETA_0 * dx) * AUX_CPML_KAPPA_MAX
-    rho = 1.0 - np.arange(n, dtype=float) / max(n - 1, 1)
-    sigma = sigma_max * rho ** AUX_CPML_ORDER
-    kappa = 1.0 + (AUX_CPML_KAPPA_MAX - 1.0) * rho ** AUX_CPML_ORDER
-    alpha = CPML_ALPHA_MAX * (1.0 - rho)
-    denom = sigma * kappa + kappa ** 2 * alpha
-    b = np.exp(-(sigma / kappa + alpha) * dt / EPS_0)
-    c = np.where(denom > 1e-30, sigma * (b - 1.0) / denom, 0.0)
-    return {"sigma": sigma, "kappa": kappa, "alpha": alpha, "b": b, "c": c}
-
-
-def aux_lattice_field(f_hz, ky: float, cells: dict, *, dx: float = DX_M, dt: float = DT_S) -> np.ndarray:
+def aux_lattice_field(f_hz, ky: float, cells: dict, *, dx: float = DX_M, dt: float = DT_S,
+                      echo_free: bool = False, aux_kwargs: dict | None = None) -> np.ndarray:
     """EXACT time-harmonic field of the 2-D auxiliary grid (tfsf_2d.py) at
     fixed k_y: the same TMz lattice with its OWN CFS-CPML on both x ends and
     a unit soft source at src_x (shape (n_freq, n2x)). This is the incident
     field the Bloch TFSF actually injects -- the +x plane wave PLUS the aux
     absorber's own echoes (a -x component from its hi end), which the compact
-    box does not time-gate out."""
+    box does not time-gate out.
+
+    ``echo_free=True`` is the ECHO-FREE CONTROL (#888 fix candidate 2): the
+    SAME grid, the same layout, the same soft source at the same src_x, with
+    the auxiliary CFS-CPML replaced by an outgoing-wave termination on the
+    lattice at both ends -- the identical construction ``yee_lattice_full``
+    uses for its own ends under ``ideal_absorber=True``. The auxiliary grid is
+    then reflectionless by construction, so the injected field is the pure
+    outgoing lattice wave of that source and nothing else. It is NOT
+    ``aux="plane"``: the source, its amplitude and its phase reference are
+    untouched, so only the echo is removed and the normalisation is not
+    changed.
+
+    ``aux_kwargs`` takes ``init_tfsf_2d``'s auxiliary-absorber overrides
+    (``aux_n_cpml`` / ``aux_cpml_order`` / ``aux_cpml_kappa_max`` /
+    ``aux_cpml_r_asymptotic``), so a deliberately worse -- or better --
+    auxiliary absorber can be modelled here exactly as the module would build
+    it."""
     from scipy.linalg import solve_banded
-    ac = aux_cells(cells)
+    ac = aux_cells(cells, aux_kwargs=aux_kwargs)
     n2x, n = ac["n2x"], ac["n_cpml"]
     f = np.atleast_1d(np.asarray(f_hz, dtype=float))
     wh = yee_omega_hat(f, dt)
     Ky = yee_Ky(ky, dx)
     z = np.exp(1j * TWO_PI * f * dt)
-    prof = aux_cpml_profile_np(dt, dx)
+    kx = yee_kx(f, ky, 1.0, 1.0, dx, dt)          # the auxiliary grid's vacuum lattice wavenumber
     kappa = np.ones(n2x); b = np.zeros(n2x); c = np.zeros(n2x)
-    kappa[:n], b[:n], c[:n] = prof["kappa"], prof["b"], prof["c"]
-    kappa[n2x - n:], b[n2x - n:], c[n2x - n:] = prof["kappa"][::-1], prof["b"][::-1], prof["c"][::-1]
-    in_pml = (np.arange(n2x) < n) | (np.arange(n2x) >= n2x - n)
+    if not echo_free and n > 0:
+        prof = aux_cpml_profile_np(dt, dx, aux_kwargs=aux_kwargs)
+        kappa[:n], b[:n], c[:n] = prof["kappa"], prof["b"], prof["c"]
+        kappa[n2x - n:], b[n2x - n:], c[n2x - n:] = prof["kappa"][::-1], prof["b"][::-1], prof["c"][::-1]
+    in_pml = ((np.arange(n2x) < n) | (np.arange(n2x) >= n2x - n)) if (not echo_free and n > 0) \
+        else np.zeros(n2x, bool)
     out = np.empty((f.size, n2x), complex)
     for m in range(f.size):
         Sinv = np.where(in_pml, 1.0 / kappa + c / (1.0 - b / z[m]), 1.0 + 0j)
@@ -460,6 +534,17 @@ def aux_lattice_field(f_hz, ky: float, cells: dict, *, dx: float = DX_M, dt: flo
         diag = jw * eps_t + Sinv * (a + a_prev) / dx
         sub = -Sinv[1:] * a_prev[1:] / dx
         sup = -Sinv[:-1] * a[:-1] / dx
+        if echo_free:
+            # outgoing-wave termination on the auxiliary lattice at both ends --
+            # yee_lattice_full's ideal_absorber branch, on this grid: beyond node
+            # 0 a -x wave, E_{-1} = E_0 e^{-j kx dx}; beyond node n2x-1 a +x wave,
+            # E_n2x = E_{n2x-1} e^{-j kx dx}; both fold into the diagonal.  Below
+            # the cutoff k_x is on the Im k_x <= 0 branch, so the same expression
+            # is the decaying evanescent termination.
+            ph = np.exp(-1j * kx[m] * dx)
+            a_m1 = 1.0 / (jw * MU_0 * dx)
+            diag[0] = jw * eps_t + Sinv[0] * (a[0] + a_m1 * (1.0 - ph)) / dx
+            diag[-1] = jw * eps_t + Sinv[-1] * (a[-1] * (1.0 - ph) + a_prev[-1]) / dx
         rhs = np.zeros(n2x, complex); rhs[ac["src_x"]] = 1.0
         ab = np.zeros((3, n2x), complex); ab[0, 1:] = sup; ab[1, :] = diag; ab[2, :-1] = sub
         out[m] = solve_banded((1, 1), ab, rhs)
@@ -469,7 +554,8 @@ def aux_lattice_field(f_hz, ky: float, cells: dict, *, dx: float = DX_M, dt: flo
 def yee_lattice_full(f_hz, ky: float, cells: dict, *, eps_slab: float = 1.0, mu_slab: float = 1.0,
                      dx: float = DX_M, dt: float = DT_S, n_cpml: int | None = None,
                      cpml_kwargs: dict | None = None, ideal_absorber: bool = False,
-                     pec: bool = False, aux: str = "model") -> dict:
+                     pec: bool = False, aux: str = "model", aux_echo_free: bool = False,
+                     aux_kwargs: dict | None = None) -> dict:
     """EXACT time-harmonic solution of the rfx 2-D TMz Yee lattice at fixed
     k_y on the cv04 rig -- E nodes 0..nx-1 (E_nx = 0, the zero-padded forward
     difference), Hy links i+1/2 (Hy_{-1/2} = 0), Hx at the nodes, the slab's
@@ -498,7 +584,16 @@ def yee_lattice_full(f_hz, ky: float, cells: dict, *, eps_slab: float = 1.0, mu_
     default) drives the faces with the aux grid's EXACT field
     (``aux_lattice_field``: the injected incident includes the aux absorber's
     own echoes) and normalizes by that field at the probes, as the run does;
-    ``aux="plane"`` uses the ideal unit +x lattice plane wave."""
+    ``aux="plane"`` uses the ideal unit +x lattice plane wave.
+
+    ``aux_echo_free=True`` (with ``aux="model"``) keeps the auxiliary grid,
+    its source and its normalisation and removes only its ECHO, by giving the
+    auxiliary lattice the same outgoing-wave termination ``ideal_absorber``
+    gives this one (#888 fix candidate 2).  ``ideal_absorber=True,
+    aux_echo_free=True`` is therefore the control in which BOTH grids are
+    reflectionless -- the only control against which an "absorber echo
+    amplitude" is not partly self-cancelling.  ``aux_kwargs`` passes
+    ``init_tfsf_2d``'s auxiliary-absorber overrides straight through."""
     from scipy.linalg import solve_banded
 
     nx = cells["nx"]
@@ -527,11 +622,16 @@ def yee_lattice_full(f_hz, ky: float, cells: dict, *, eps_slab: float = 1.0, mu_
 
     kx = yee_kx(f, ky, 1.0, 1.0, dx, dt)          # the aux grid's vacuum lattice wavenumber
     if aux == "model":
-        E_aux = aux_lattice_field(f, ky, cells, dx=dx, dt=dt)
-        ac = aux_cells(cells)
+        E_aux = aux_lattice_field(f, ky, cells, dx=dx, dt=dt, echo_free=aux_echo_free,
+                                  aux_kwargs=aux_kwargs)
+        ac = aux_cells(cells, aux_kwargs=aux_kwargs)
         off = ac["i0_x"] - x_lo                   # aux index of 3-D node i is i + off
     elif aux != "plane":
         raise ValueError(aux)
+    elif aux_echo_free or aux_kwargs:
+        # aux="plane" has no auxiliary grid at all: silently ignoring an
+        # auxiliary-absorber argument here would model a grid nobody asked for
+        raise ValueError('aux_echo_free / aux_kwargs are meaningless with aux="plane"')
     R = np.empty(f.size); T = np.empty(f.size)
     E_pr = np.empty(f.size, complex); E_pt = np.empty(f.size, complex)
     Ei_pr = np.empty(f.size, complex); Ei_pt = np.empty(f.size, complex)
@@ -700,14 +800,20 @@ RECORD_AMP_FLOOR = 1e-9      # source bins kept (relative amplitude); 1e-9 is 6 
 
 def record_probe_series(spec: dict, *, nx_interior: int | None = None, dx_div: int = 1,
                         n_cpml: int = N_CPML, nfft: int = RECORD_NFFT,
-                        amp_floor: float = RECORD_AMP_FLOOR, ideal_absorber: bool = False) -> dict:
+                        amp_floor: float = RECORD_AMP_FLOOR, ideal_absorber: bool = False,
+                        aux_echo_free: bool = False, aux_kwargs: dict | None = None) -> dict:
     """The four probe time series the case records (total / incident at both
     probes), computed EXACTLY from the lattice: ifft(S(f) H(f)) with S the aux
     source spectrum and H the lattice transfer function at that probe.
 
     The case DFTs ``conj(x)`` so that the carrier lands at +f0; everything
     here is built in that conjugated domain, which is why the source is
-    ``exp(+j 2 pi f0 (t - t0))`` and only positive-frequency bins are kept."""
+    ``exp(+j 2 pi f0 (t - t0))`` and only positive-frequency bins are kept.
+
+    ``ideal_absorber`` terminates the MAIN grid, ``aux_echo_free`` the
+    AUXILIARY one; a control that is meant to carry no absorber echo at all
+    needs both (#888).  ``aux_kwargs`` are init_tfsf_2d's auxiliary-absorber
+    overrides."""
     K = int(dx_div)
     dt = DT_S / K
     nx_int = int(spec["nx_interior"] if nx_interior is None else nx_interior)
@@ -722,7 +828,8 @@ def record_probe_series(spec: dict, *, nx_interior: int | None = None, dx_div: i
     keep = (fr > 0) & (np.abs(S) > amp_floor * np.abs(S).max())
     lat = yee_lattice_full(fr[keep], spec["ky"], cells, eps_slab=eps_s, mu_slab=mu_s,
                            dx=cells["dx"], dt=dt, n_cpml=n_cpml, pec=bool(spec["pec"]),
-                           ideal_absorber=ideal_absorber)
+                           ideal_absorber=ideal_absorber, aux_echo_free=aux_echo_free,
+                           aux_kwargs=aux_kwargs)
     out = {}
     for name, H in (("tot_r", lat["E_probe_refl"]), ("tot_t", lat["E_probe_trans"]),
                     ("inc_r", lat["E_inc_refl"]), ("inc_t", lat["E_inc_trans"])):
@@ -781,21 +888,35 @@ def absorber_window(spec: dict, e_absorber: float) -> dict:
 
 def predict_settling(spec: dict, *, nx_interior: int | None = None, dx_div: int = 1,
                      n_cpml: int = N_CPML, nfft: int = RECORD_NFFT,
-                     with_absorber_term: bool = True) -> dict:
+                     with_absorber_term: bool = True, aux_kwargs: dict | None = None) -> dict:
     """The DERIVED record of one arm at one rung: the first step at which all
     three witnesses sit under their (unchanged) bars, plus the a-priori
     absorber-echo term of that record.
 
     ``e_absorber`` is the largest probe-field difference over the record
-    between the rig with its CPML and the same lattice with an outgoing-wave
-    termination, relative to the incident peak -- the echo AMPLITUDE the
-    record actually contains.  It enters R through the same coherent-addition
-    bound the injection term uses (``injection_term``), and the record is
-    admissible only where that term stays inside the declared bin window
-    W_BIN: no window is widened, the arrival cap is simply replaced by the
-    amplitude statement it was standing in for."""
+    between the rig and a control in which BOTH absorbers are replaced by an
+    outgoing-wave termination -- the 3-D grid's CPML (``ideal_absorber``) AND
+    the auxiliary grid's own (``aux_echo_free``) -- relative to the incident
+    peak: the echo AMPLITUDE the record actually contains.  It enters R
+    through the same coherent-addition bound the injection term uses
+    (``injection_term``), and the record is admissible only where that term
+    stays inside the declared bin window W_BIN: no window is widened, the
+    arrival cap is simply replaced by the amplitude statement it was standing
+    in for.
+
+    #888 fix candidate 2.  Until then the control was built with the DEFAULT
+    ``aux="model"`` on both sides, so both solutions carried the auxiliary
+    grid's own echo in ``Einc`` and in the total field, and the dominant term
+    subtracted out exactly: ``e_absorber`` was blind to the very absorber it
+    is named after, and the arm's own ``aux_echo_term_R_gated_max`` -- 0.2431
+    at te_45 in round 2 -- was never answered for.  That old quantity is not
+    discarded: it is the 3-D CPML term alone, reported here as
+    ``e_absorber_main_only`` so the two terms stay separable.  The control is
+    NOT ``aux="plane"``: the auxiliary grid, its source and the normalisation
+    are unchanged, only its echo is removed."""
     K = int(dx_div)
-    ser = record_probe_series(spec, nx_interior=nx_interior, dx_div=K, n_cpml=n_cpml, nfft=nfft)
+    ser = record_probe_series(spec, nx_interior=nx_interior, dx_div=K, n_cpml=n_cpml, nfft=nfft,
+                              aux_kwargs=aux_kwargs)
     w = record_witnesses(ser, K)
     ok = (w["purity"] < TAIL_PURITY_LIMIT) & (w["refl"] < SETTLING_LIMIT) & (w["trans"] < SETTLING_LIMIT)
     ok[:w["peak_step"]] = False       # before the pulse arrives the probes are trivially quiet
@@ -819,10 +940,21 @@ def predict_settling(spec: dict, *, nx_interior: int | None = None, dx_div: int 
         out["v_eff_cells_per_step"] = float(v_eff)
         out["theta_eff_deg"] = float(np.degrees(np.arccos(np.clip(v_eff / v0, -1.0, 1.0))))
     if with_absorber_term and n is not None:
-        ser_i = record_probe_series(spec, nx_interior=nx_interior, dx_div=K, n_cpml=n_cpml,
-                                    nfft=nfft, ideal_absorber=True)
-        e = max(float(np.abs(ser[k][:n] - ser_i[k][:n]).max()) / w["inc_peak"] for k in ("tot_r", "tot_t"))
+        def _e(other):
+            return max(float(np.abs(ser[k][:n] - other[k][:n]).max()) / w["inc_peak"]
+                       for k in ("tot_r", "tot_t"))
+        # the control: BOTH absorbers replaced by an outgoing-wave termination
+        ser_clean = record_probe_series(spec, nx_interior=nx_interior, dx_div=K, n_cpml=n_cpml,
+                                        nfft=nfft, ideal_absorber=True, aux_echo_free=True,
+                                        aux_kwargs=aux_kwargs)
+        # the pre-#888 control, kept as a REPORTED decomposition, never as the gate:
+        # it shares the rig's auxiliary absorber, so it isolates the 3-D CPML term
+        ser_main = record_probe_series(spec, nx_interior=nx_interior, dx_div=K, n_cpml=n_cpml,
+                                       nfft=nfft, ideal_absorber=True, aux_kwargs=aux_kwargs)
+        e = _e(ser_clean)
         out["e_absorber"] = e
+        out["e_absorber_main_only"] = _e(ser_main)
+        out["e_absorber_control"] = "ideal_absorber + aux_echo_free"
         out.update(absorber_window(spec, e))
     return out
 
@@ -832,30 +964,78 @@ def predict_settling(spec: dict, *, nx_interior: int | None = None, dx_div: int 
 # step at which the case's three witnesses sit under their UNCHANGED bars
 # (TAIL_PURITY_LIMIT on the incident, SETTLING_LIMIT on the scattered and the
 # transmitted), and ``e_absorber`` is the largest probe-field difference over that
-# record between the rig with its CPML and the same lattice with an outgoing-wave
-# termination, relative to the incident peak.  ``theta_eff_deg`` is the realized
-# angle whose x group velocity the record implies -- the physics readout: the record
-# is set by content far outside the gated band, close to the cutoff.
+# record between the rig and the control in which BOTH absorbers are replaced by an
+# outgoing-wave termination -- the 3-D CPML AND the auxiliary grid's own (#888) --
+# relative to the incident peak.  ``theta_eff_deg`` is the realized angle whose x
+# group velocity the record implies -- the physics readout: the record is set by
+# content far outside the gated band, close to the cutoff.
 # Reproduced by tests/crossval/test_cv26_oblique_fresnel_comparator.py (slow marks).
+#
+# RE-DERIVED 2026-09-04 on the SHIPPED rig, entry by entry, at exactly these keys.
+# What moved, and why:
+#   * the auxiliary grid is the post-#888 one (AUX_N_CPML = 200 at
+#     AUX_CPML_R_ASYMPTOTIC = 1e-14, the layout following the depth), so the
+#     injected incident field -- and with it the settling step -- moved on every
+#     arm.  The oblique slab records at dx SHORTENED (te_45 7362 -> 6048), the two
+#     compact-box records LENGTHENED (22008 -> 24784);
+#   * ``e_absorber`` is now measured against a control that carries no absorber on
+#     EITHER grid.  Where the 3-D CPML term dominates the number barely moved
+#     (te_45 at dx 6.664e-02 -> 6.674e-02); where it does not, the old number was
+#     the cancellation bug and nothing else: graze_vac 2.7e-14 -> 1.375e-02, which
+#     is the AUXILIARY absorber's echo alone (its ``e_absorber_main_only`` is
+#     3.5e-14) and is 13.8x the vacuum arm's own LEAK_BAR of 1e-3.
+#
+# DERIVED AT nfft = 2**19, NOT at the RECORD_NFFT = 2**17 default, and that is a
+# measurement, not a convenience.  ``record_probe_series`` builds the record by an
+# inverse DFT, so its tail is periodic: content that has not decayed by nfft wraps
+# back onto the witness.  At the default length the wrap is INSIDE the answer --
+# te_45 and tm_45 at dx/2 never settle at all (te_45's incident-purity witness
+# floors at 1.002e-03 against a 1e-03 bar), and te_30 at dx reads 4584, 49 % long, which
+# pushes that record past its own t_safe of 3420 and inflates ``e_absorber`` from
+# 4.0e-06 to 5.0e-02.  The nfft ladder (2**17 / 2**18 / 2**19 / 2**20):
+# te_30 dx 4584 / 3296 / 3076 / 3101, te_45 dx 6047 / 6049 / 6048 / 6048,
+# graze_pec 24625 / 24692 / 24784 / 24771 -- converged to about 1 % by 2**19.
+# The one exception is 60 deg at dx: 9622 / 12153 / 9818 (te_60 and tm_60 alike).
+# There the purity witness grazes its bar over a long stretch, so the FIRST crossing
+# jitters by 26 % with the transform length; 12153 is the declared value because it
+# is the crossing at the table's own derivation length AND every tested length has
+# all three witnesses under their bars from 12153 on.  Anything that re-derives this
+# table must pass nfft explicitly; the default is too short for it.
+#
+# What the table now says out loud, and does not hide:
+#   * every arm except the two normal-incidence controls carries a record that
+#     OUTLIVES its own auxiliary-echo arrival (the earliest aux echo reaches the
+#     refl probe at ~1835 steps on te_30 at dx against a record of 3076, and at
+#     ~7348 on the compact box against 24784).  The arrival cap is gone on those
+#     arms; only the AMPLITUDE statement -- ``e_absorber`` inside W_BIN -- stands;
+#   * te_45, tm_45 and tm_60 at dx, and every compact-box arm except graze_vac,
+#     have ``absorber_ok`` FALSE: their echo term does not fit inside W_BIN.  For
+#     the slab arms that is what picks dx/2 (section 13.4); for the compact box it
+#     is the G6/G7 term the grazing gates judge explicitly, not a window;
+#   * the closed form still under-predicts the record everywhere, but by less than
+#     round 2 recorded: 1.42x (te_30 at dx) to 2.54x (tm_60 at dx), and only
+#     1.84-1.97x on the four oblique dx/2 rungs, where round 2 read 2.3-2.8x.  The
+#     records at 45 and 60 deg came down when the auxiliary absorber stopped
+#     echoing, and the closed form did not move with them.
 RECORD_DECLARED: dict[tuple[str, int, int, int], dict] = {
-    ("te_00", 1, 20, 1500): {"n_settle": 1512, "e_absorber": 1.4737376641852275e-06, "theta_eff_deg": 14.13},
-    ("tm_00", 1, 20, 1500): {"n_settle": 1512, "e_absorber": 1.5244516563353113e-06, "theta_eff_deg": 14.13},
-    ("te_30", 1, 20, 1500): {"n_settle": 3094, "e_absorber": 6.554616968592558e-06, "theta_eff_deg": 64.64},
-    ("te_30", 2, 20, 1500): {"n_settle": 6387, "e_absorber": 4.790797487325276e-06, "theta_eff_deg": 65.97},
-    ("te_45", 1, 20, 1500): {"n_settle": 7362, "e_absorber": 0.06663583135586092, "theta_eff_deg": 80.13},
-    ("te_45", 2, 20, 1500): {"n_settle": 14283, "e_absorber": 0.029841546179688764, "theta_eff_deg": 79.93},
-    ("te_60", 1, 20, 1500): {"n_settle": 12811, "e_absorber": 0.03690936622405856, "theta_eff_deg": 84.22},
-    ("te_60", 2, 20, 1500): {"n_settle": 26438, "e_absorber": 0.01788762793520409, "theta_eff_deg": 84.5},
-    ("tm_45", 1, 20, 1500): {"n_settle": 7362, "e_absorber": 0.047689691056383224, "theta_eff_deg": 80.13},
-    ("tm_45", 2, 20, 1500): {"n_settle": 14283, "e_absorber": 0.02246093995265182, "theta_eff_deg": 79.93},
-    ("tm_60", 1, 20, 1500): {"n_settle": 12811, "e_absorber": 0.056103069518629214, "theta_eff_deg": 84.22},
-    ("tm_60", 2, 20, 1500): {"n_settle": 26438, "e_absorber": 0.026598550957916182, "theta_eff_deg": 84.5},
-    ("graze_vac", 1, 20, 100): {"n_settle": 22008, "e_absorber": 2.743083609229469e-14, "theta_eff_deg": 87.22},
-    ("graze_pec", 1, 20, 100): {"n_settle": 22008, "e_absorber": 0.06697031182708263, "theta_eff_deg": 87.22},
-    ("graze_te", 1, 20, 100): {"n_settle": 22008, "e_absorber": 0.05644219130054219, "theta_eff_deg": 87.22},
-    ("graze_pec", 1, 8, 100): {"n_settle": 22008, "e_absorber": 0.2797267820174598, "theta_eff_deg": 87.22},
-    ("graze_pec", 1, 16, 100): {"n_settle": 22008, "e_absorber": 0.09216001043621881, "theta_eff_deg": 87.22},
-    ("graze_pec", 1, 32, 100): {"n_settle": 22008, "e_absorber": 0.03550201937209352, "theta_eff_deg": 87.22},
+    ("te_00", 1, 20, 1500): {"n_settle": 1511, "e_absorber": 1.393891508634971e-06, "theta_eff_deg": 13.94},
+    ("tm_00", 1, 20, 1500): {"n_settle": 1512, "e_absorber": 1.391265590619891e-06, "theta_eff_deg": 14.13},
+    ("te_30", 1, 20, 1500): {"n_settle": 3076, "e_absorber": 4.03672757524891e-06, "theta_eff_deg": 64.46},
+    ("te_30", 2, 20, 1500): {"n_settle": 6238, "e_absorber": 1.4155619937184452e-05, "theta_eff_deg": 65.26},
+    ("te_45", 1, 20, 1500): {"n_settle": 6048, "e_absorber": 0.0667355161458998, "theta_eff_deg": 77.68},
+    ("te_45", 2, 20, 1500): {"n_settle": 11082, "e_absorber": 0.029900040860177408, "theta_eff_deg": 76.56},
+    ("te_60", 1, 20, 1500): {"n_settle": 12153, "e_absorber": 0.0367692980434444, "theta_eff_deg": 83.87},
+    ("te_60", 2, 20, 1500): {"n_settle": 18614, "e_absorber": 0.017835682109265335, "theta_eff_deg": 81.75},
+    ("tm_45", 1, 20, 1500): {"n_settle": 6123, "e_absorber": 0.04795089251015183, "theta_eff_deg": 77.85},
+    ("tm_45", 2, 20, 1500): {"n_settle": 11395, "e_absorber": 0.022389798664306904, "theta_eff_deg": 76.99},
+    ("tm_60", 1, 20, 1500): {"n_settle": 12153, "e_absorber": 0.05612854031285014, "theta_eff_deg": 83.87},
+    ("tm_60", 2, 20, 1500): {"n_settle": 18614, "e_absorber": 0.02652962052475824, "theta_eff_deg": 81.75},
+    ("graze_vac", 1, 20, 100): {"n_settle": 24784, "e_absorber": 0.013751585162277324, "theta_eff_deg": 88.55},
+    ("graze_pec", 1, 20, 100): {"n_settle": 24784, "e_absorber": 0.07637134237496736, "theta_eff_deg": 88.55},
+    ("graze_te", 1, 20, 100): {"n_settle": 24784, "e_absorber": 0.06602613270085005, "theta_eff_deg": 88.55},
+    ("graze_pec", 1, 8, 100): {"n_settle": 24784, "e_absorber": 0.3056116969641457, "theta_eff_deg": 88.55},
+    ("graze_pec", 1, 16, 100): {"n_settle": 24784, "e_absorber": 0.10366420129621712, "theta_eff_deg": 88.55},
+    ("graze_pec", 1, 32, 100): {"n_settle": 24784, "e_absorber": 0.04096824964426426, "theta_eff_deg": 88.55},
 }
 
 
@@ -921,7 +1101,7 @@ def derive_record(spec: dict, dt: float | None = None, *, n_cpml: int = N_CPML, 
     t_safe = n_arrive_fast + int(2 * min(cells["dist_cpml_hi"], cells["dist_cpml_lo"]) / v_fast * 0.95)
     # --- the DECLARED record (note section 13): the exact settling step of this
     # lattice, from ``predict_settling``.  The closed form above is kept only as a
-    # diagnostic -- it under-predicts by 2.0x (30 deg) to 2.7x (60 deg) because the
+    # diagnostic -- it under-predicts by 1.42x (30 deg) to 2.54x (60 deg) because the
     # witness is broadband and the content that binds it sits near the cutoff, not
     # at the gated band edge.  ``t_safe_cpml_steps`` likewise stays as a reported
     # number; the absorber is gated by ``e_absorber``, its AMPLITUDE over the record. ---

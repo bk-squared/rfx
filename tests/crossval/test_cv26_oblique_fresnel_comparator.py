@@ -209,6 +209,212 @@ def test_cpml_profile_transcription_equals_rfx():
     assert -cfg.k_transverse == pytest.approx(O.ky_from(F0, 45.0), rel=1e-9)
 
 
+# ---------------------------------------------------------------------------
+# The auxiliary layout is the MODULE's, not a copy (#888)
+# ---------------------------------------------------------------------------
+# Before #888 the comparator restated tfsf_2d's auxiliary constants as its own
+# literals (30 / 25 / 3 / order 4 / kappa_max 7 / sigma factor 0.8) and the copy
+# drifted a full absorber redesign behind the module: with the module at 200 /
+# order 3 / kappa_max 1 / sigma_max derived from R = 1e-14, ``aux_cells`` and
+# ``aux_cpml_profile_np`` modelled an auxiliary grid that no longer existed.
+# These two tests fail if the copy is ever reintroduced.
+
+def test_aux_layout_constants_are_the_modules_not_a_copy():
+    """Every auxiliary constant the comparator exposes IS the module's object,
+    and the derived source-to-x_lo run follows from them."""
+    pytest.importorskip("rfx")
+    import rfx.sources.tfsf_2d as T
+    assert O.AUX_N_CPML == T.AUX_N_CPML
+    assert O.AUX_N_MARGIN == T.AUX_N_MARGIN_X
+    assert O.AUX_SRC_OFFSET == T.AUX_SRC_OFFSET
+    assert O.AUX_CPML_ORDER == T.AUX_CPML_ORDER
+    assert O.AUX_CPML_KAPPA_MAX == T.AUX_CPML_KAPPA_MAX
+    assert O.AUX_CPML_R_ASYMPTOTIC == T.AUX_CPML_R_ASYMPTOTIC
+    # the pre-#888 heuristic's sigma factor has no successor: sigma_max is
+    # DERIVED from the reflection target, so a resurrected factor is a defect
+    assert not hasattr(O, "AUX_SIGMA_FACTOR")
+    assert O.AUX_SRC_TO_X_LO == T.AUX_N_MARGIN_X - T.AUX_SRC_OFFSET
+    # and the rig's bookkeeping carries the same number (26_oblique_slab_fresnel
+    # asserts cfg.i0_x - cfg.src_x against it)
+    assert O.rig_cells(100, 20)["aux_src_to_x_lo"] == O.AUX_SRC_TO_X_LO
+
+
+def test_aux_profile_equals_a_live_init_tfsf_2d_config_to_float32():
+    """``aux_cpml_profile_np`` reproduces what the SHIPPED module builds, not a
+    transcription of it: cast to float32 -- the dtype cfg stores -- the arrays
+    are bit-identical, and in float64 they differ only by that rounding."""
+    pytest.importorskip("rfx")
+    from rfx.sources.tfsf_2d import init_tfsf_2d
+    cfg, _ = init_tfsf_2d(141, 45, O.DX_M, O.DT_S, cpml_layers=20, tfsf_margin=5,
+                          f0=F0, bandwidth=0.05, theta_deg=45.0)
+    aux = O.aux_cpml_profile_np(O.DT_S, O.DX_M)
+    for key, live in (("b", cfg.b_cpml), ("c", cfg.c_cpml), ("kappa", cfg.kappa_cpml)):
+        live64 = np.asarray(live, dtype=np.float64)
+        mine = np.asarray(aux[key], dtype=np.float64)
+        assert live64.shape == mine.shape == (O.AUX_N_CPML,), key
+        # bit-identical once rounded the way rfx stores it
+        assert np.array_equal(np.float32(mine), np.asarray(live)), key
+        # and the residual in float64 is float32 round-off (2^-23 = 1.19e-07)
+        scale = float(np.max(np.abs(live64)))
+        assert np.max(np.abs(live64 - mine)) <= 1.2e-7 * max(scale, 1.0), key
+    # and the profile is the DERIVED one, end to end: index 0 is the outer cell
+    # carrying sigma_max = -ln(R_asym)(m+1)/(2 eta d) kappa_max -- from the
+    # reflection target, not a 0.8 (m+1)/(eta dx) factor -- falling to 0 at the
+    # inner edge, kappa flat at kappa_max = 1 (the aux grid carries one
+    # propagating mode, so no stretching), alpha the only term left inside.
+    sigma_max = (-math.log(O.AUX_CPML_R_ASYMPTOTIC) * (O.AUX_CPML_ORDER + 1)
+                 / (2.0 * O.ETA_0 * O.AUX_N_CPML * O.DX_M) * O.AUX_CPML_KAPPA_MAX)
+    assert aux["sigma"][0] == pytest.approx(sigma_max, rel=1e-12)
+    assert aux["sigma"][-1] == 0.0
+    assert O.AUX_CPML_KAPPA_MAX == 1.0 and np.all(aux["kappa"] == 1.0)
+    assert aux["b"][0] == pytest.approx(math.exp(-sigma_max * O.DT_S / O.EPS_0), rel=1e-12)
+    assert aux["b"][-1] == pytest.approx(math.exp(-O.CPML_ALPHA_MAX * O.DT_S / O.EPS_0), rel=1e-12)
+    assert aux["b"][0] < aux["b"][-1]
+    # the pre-#888 heuristic would have put sigma_max ~2 orders of magnitude
+    # higher on a 30-cell layer; nothing here may reproduce it
+    assert sigma_max == pytest.approx(0.8558, rel=1e-3)
+
+
+# ---------------------------------------------------------------------------
+# The auxiliary echo cannot cancel out of e_absorber (#888 fix candidate 2)
+# ---------------------------------------------------------------------------
+# ``predict_settling``'s e_absorber used to difference the rig against a control
+# built with the DEFAULT aux="model", i.e. a control carrying the SAME auxiliary
+# absorber.  Einc was then identical on both sides and the auxiliary echo -- the
+# dominant term, 0.2431 in R at te_45 in round 2 -- subtracted out exactly, so
+# the quantity was blind to the absorber it is named after.  The control is now
+# clean on BOTH grids: ideal_absorber (3-D CPML) AND aux_echo_free (auxiliary
+# CPML).  These three tests fail if the cancellation is ever reintroduced.
+
+# an auxiliary absorber deliberately made terrible, in init_tfsf_2d's own
+# override names: 6 cells at a 0.5 reflection target -> |B/A| ~ 0.4
+AUX_AWFUL = {"aux_n_cpml": 6, "aux_cpml_r_asymptotic": 0.5}
+
+
+def _aux_reflection(cells, ky, aux_kwargs=None, echo_free=False):
+    """|B/A| of the two-mode fit E = A e^{-j kx x} + B e^{+j kx x} over the
+    auxiliary grid's total-field span -- the auxiliary absorber's own amplitude
+    reflection, measured on the comparator's own auxiliary lattice."""
+    f = np.array([9.5e9, 10.0e9, 10.5e9])
+    E = O.aux_lattice_field(f, ky, cells, echo_free=echo_free, aux_kwargs=aux_kwargs)
+    ac = O.aux_cells(cells, aux_kwargs=aux_kwargs)
+    kx = O.yee_kx(f, ky, 1.0, 1.0, O.DX_M, O.DT_S)
+    i = np.arange(ac["i0_x"], ac["i0_x"] + (cells["x_hi"] - cells["x_lo"] + 2))
+    out = []
+    for m in range(f.size):
+        M = np.stack([np.exp(-1j * kx[m] * i * O.DX_M), np.exp(+1j * kx[m] * i * O.DX_M)], axis=1)
+        A, B = np.linalg.lstsq(M, E[m][i], rcond=None)[0]
+        out.append(abs(B / A))
+    return float(np.max(out))
+
+
+def test_the_echo_free_auxiliary_grid_is_reflectionless_and_the_shipped_one_is_not():
+    """``aux_lattice_field(echo_free=True)`` is the same grid, the same source at
+    the same src_x, with an outgoing-wave termination in place of the auxiliary
+    CFS-CPML: beyond the source the field is a PURE +x lattice wave, so the
+    node-to-node ratio is exp(-j kx dx) to round-off and |B/A| is at the solve's
+    floor.  With the absorber it is not."""
+    cells = O.rig_cells(100, 20)
+    f = np.array([9.5e9, 10.0e9, 10.5e9])
+    for th in (0.0, 45.0, 60.0):
+        ky = O.ky_from(F0, th)
+        E = O.aux_lattice_field(f, ky, cells, echo_free=True)
+        ac = O.aux_cells(cells)
+        kx = O.yee_kx(f, ky, 1.0, 1.0, O.DX_M, O.DT_S)
+        for m in range(f.size):
+            seg = E[m][ac["src_x"] + 1:]
+            ratio = seg[1:] / seg[:-1]
+            assert np.max(np.abs(ratio - np.exp(-1j * kx[m] * O.DX_M))) < 1e-12, (th, f[m])
+        assert _aux_reflection(cells, ky, echo_free=True) < 1e-12, th
+        # the shipped 200-cell absorber is very good but NOT reflectionless, and
+        # the deliberately terrible one is 5 decades worse
+        assert 1e-14 < _aux_reflection(cells, ky) < 1e-4, th
+        assert _aux_reflection(cells, ky, aux_kwargs=AUX_AWFUL) > 0.1, th
+    # the layout follows the absorber, exactly as init_tfsf_2d makes it
+    bad = O.aux_cells(cells, aux_kwargs=AUX_AWFUL)
+    assert (bad["n_cpml"], bad["i0_x"], bad["src_x"]) == (6, 6 + O.AUX_N_MARGIN, 6 + O.AUX_SRC_OFFSET)
+    with pytest.raises(ValueError):
+        O.aux_overrides({"aux_n_cmpl": 6})                    # a typo must not model the shipped grid
+    with pytest.raises(ValueError):
+        O.yee_lattice_full(f, 0.0, cells, aux="plane", aux_echo_free=True)
+    # and the surgical control does the job the note's blunter aux="plane"
+    # suggestion would have done: with both grids terminated the measured R / T
+    # are the ideal-plane-wave ones to round-off, at every angle and on the slab,
+    # WITHOUT replacing the source or the normalisation
+    for th in (0.0, 45.0, 82.0):
+        ky = O.ky_from(F0, th)
+        fp = f[f > 1.01 * O.cutoff_hz(ky)] if th > 0 else f
+        clean = O.yee_lattice_full(fp, ky, cells, eps_slab=4.0, ideal_absorber=True, aux_echo_free=True)
+        plane = O.yee_lattice_full(fp, ky, cells, eps_slab=4.0, ideal_absorber=True, aux="plane")
+        assert np.max(np.abs(clean["R"] - plane["R"])) < 1e-12, th
+        assert np.max(np.abs(clean["T"] - plane["T"])) < 1e-10, th
+        # the identities the control must satisfy on its own
+        vac = O.yee_lattice_full(fp, ky, cells, ideal_absorber=True, aux_echo_free=True)
+        pec = O.yee_lattice_full(fp, ky, cells, ideal_absorber=True, aux_echo_free=True, pec=True)
+        assert np.max(vac["r_amp"]) < 1e-12 and np.allclose(vac["T"], 1.0, atol=1e-12), th
+        assert np.allclose(pec["R"], 1.0, atol=1e-12), th
+
+
+def test_e_absorber_is_blind_to_the_auxiliary_absorber_when_the_control_shares_it():
+    """The defect itself, reproduced: differencing against a control that carries
+    the rig's own auxiliary absorber cancels the auxiliary echo EXACTLY, so the
+    quantity does not move when that absorber is destroyed.  ``predict_settling``
+    still reports this number -- as ``e_absorber_main_only``, the 3-D CPML term
+    alone -- and it must keep being blind, because that is what makes it a
+    decomposition rather than the gate."""
+    spec = O.arm_spec("te_00")
+    kw = dict(nx_interior=100, nfft=1 << 12)
+    good = O.predict_settling(spec, **kw)
+    bad = O.predict_settling(spec, aux_kwargs=AUX_AWFUL, **kw)
+    # the auxiliary absorber really was destroyed
+    cells = O.rig_cells(100, O.N_CPML)
+    assert _aux_reflection(cells, spec["ky"]) < 1e-4
+    assert _aux_reflection(cells, spec["ky"], aux_kwargs=AUX_AWFUL) > 0.1
+    # ... and the shared-aux quantity does not notice: under 20 % either way
+    ratio = bad["e_absorber_main_only"] / good["e_absorber_main_only"]
+    assert 0.8 < ratio < 1.2, ratio
+    # it is exactly the pre-#888 expression, recomputed here from the series
+    for r, k in ((good, None), (bad, AUX_AWFUL)):
+        ser = O.record_probe_series(spec, aux_kwargs=k, **kw)
+        ctl = O.record_probe_series(spec, ideal_absorber=True, aux_kwargs=k, **kw)
+        n = r["n_settle"]
+        e = max(float(np.abs(ser[q][:n] - ctl[q][:n]).max()) / r["inc_peak"] for q in ("tot_r", "tot_t"))
+        assert e == pytest.approx(r["e_absorber_main_only"], rel=1e-12)
+
+
+def test_e_absorber_tracks_the_auxiliary_absorber_and_is_not_the_shared_aux_quantity():
+    """The gate quantity. ``e_absorber`` is measured against a control with no
+    absorber on EITHER grid, so destroying the auxiliary absorber moves it by
+    almost an order of magnitude on a rig where the blind quantity moves by 1 %.
+    Reverting the control to the rig's own auxiliary grid makes ``e_absorber``
+    equal ``e_absorber_main_only`` and fails every assertion here."""
+    spec = O.arm_spec("te_00")
+    kw = dict(nx_interior=100, nfft=1 << 12)
+    good = O.predict_settling(spec, **kw)
+    bad = O.predict_settling(spec, aux_kwargs=AUX_AWFUL, **kw)
+    assert good["e_absorber_control"] == "ideal_absorber + aux_echo_free"
+    # it tracks: >= 5x on an absorber 5 decades worse
+    assert bad["e_absorber"] / good["e_absorber"] > 5.0, (good["e_absorber"], bad["e_absorber"])
+    # and it is NOT the shared-aux quantity -- that is the cancellation itself
+    assert bad["e_absorber"] > 5.0 * bad["e_absorber_main_only"], bad
+    # the control really is clean on both grids: the auxiliary term alone is what
+    # separates the two controls, and it is the whole of the difference
+    ser = O.record_probe_series(spec, aux_kwargs=AUX_AWFUL, **kw)
+    shared = O.record_probe_series(spec, ideal_absorber=True, aux_kwargs=AUX_AWFUL, **kw)
+    clean = O.record_probe_series(spec, ideal_absorber=True, aux_echo_free=True,
+                                  aux_kwargs=AUX_AWFUL, **kw)
+    n = bad["n_settle"]
+    aux_only = max(float(np.abs(shared[q][:n] - clean[q][:n]).max()) / bad["inc_peak"]
+                   for q in ("tot_r", "tot_t"))
+    e_clean = max(float(np.abs(ser[q][:n] - clean[q][:n]).max()) / bad["inc_peak"]
+                  for q in ("tot_r", "tot_t"))
+    assert e_clean == pytest.approx(bad["e_absorber"], rel=1e-12)
+    assert aux_only > 5.0 * bad["e_absorber_main_only"], (aux_only, bad["e_absorber_main_only"])
+    # the a-priori R / T term the record has to answer for follows it
+    assert bad["W_absorber_R_max"] > good["W_absorber_R_max"] > 0.0
+    assert not bad["absorber_ok"]
+
+
 def test_continuum_pml_reflection():
     assert O.cpml_continuum_reflection(0.0) == pytest.approx(1e-15)
     assert O.cpml_continuum_reflection(math.radians(82.0)) == pytest.approx(8.17e-3, rel=1e-2)
