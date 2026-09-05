@@ -574,3 +574,61 @@ every `path.json::key = value` span above should be re-pointed and the note opte
 
 All numbers in this note were produced at `commit 97e845ef` **plus the three uncommitted
 working-tree files**, i.e. at a tree state that exists nowhere in git history.
+
+
+---
+
+## 8. nfft: the settling step is a property of the transform length, and the witness definition is not the fix (2026-09-05)
+
+The workflow's re-derived table carried te_60 / tm_60 at dx as 12153 with a 26 % spread
+across nfft and called 12153 "conservative". Two things were measured after the absorber
+was re-derived to R_asym = 1e-28.
+
+**A sustained-window criterion changes nothing.** Hypothesis: the jitter comes from the
+purity witness grazing its 1e-3 bar, so requiring all three witnesses to stay under their
+bars for W consecutive steps would remove it. Measured on te_60 dx, `record_probe_series`
+at four lengths, W in {1 (current), 50, 100, 200}:
+
+| nfft | W = 1 | W = 50 | W = 100 | W = 200 |
+|---|---|---|---|---|
+| 2^17 | 9627 | 9627 | 9627 | 9627 |
+| 2^18 | 9623 | 9623 | 9623 | 9623 |
+| 2^19 | 10258 | 10258 | 10258 | 10258 |
+| 2^20 | 9632 | 9632 | 9632 | 9632 |
+
+Identical in every row. Once the witnesses cross they stay crossed; the jitter is not
+dips, it is the witness CURVE moving with the transform length (undecayed content wraps
+in the inverse DFT). The criterion is refuted as a fix and is not changed.
+
+tm_60 dx, same ladder (W = 1): 9619 / 9512 / **10258** / 9524. The same outlier at the
+same length. Both 60-degree keys are now carried in `RECORD_DECLARED` with
+`nfft_converged = False` and their four-length ladder, so the table says which of its
+entries it cannot vouch for to better than 7 percent.
+
+**2^19 is the outlier, not the conservative choice.** 2^17, 2^18 and 2^20 agree to 0.1 %
+(9623-9632); 2^19 alone reads 10258. The table's derivation length lands on the unlucky
+wrap for this key. The spread is 6.6 % on the derived absorber (26 % on the 1e-14 one).
+So `RECORD_DECLARED_NFFT = 2**19` is a name for where the table was derived, not a
+statement that it converged there -- for te_60 / tm_60 at dx it did not.
+
+**What follows.** A declared record needs a convergence witness of its own: the value at
+the derivation length must agree with the value at an adjacent length within one
+extension quantum (`RECORD_EXTEND_STEPS`), or the key is declared NON-CONVERGED and
+carries its spread. This is a derivation rule, not a window, and it is put to the PI
+with the numbers above rather than applied here.
+
+**Measured settling on the absorber that ships**, from the case itself run FROM the
+re-derived declared record ("record: derived N -> M (k ext)"): te_00 dx 1511 (0 ext),
+te_30 dx 3099 -> 3199 (1 ext of 100), te_30 dx/2 6238 (0 ext), te_60 dx 10258 (0 ext),
+graze_pec 21735 -> 21835 (1 ext of 100). Every re-derived record brackets its measured
+settle inside one extension quantum. The round-1 bracket test is re-anchored to these; its
+old anchors (1597 / 3172 / 6496 / 22001) were the 30-cell absorber's. Note the grazing
+record moved 24784 -> 21735 (-12 %) and the FDTD confirms it: it settles at 21835, where
+round 1 on the broken absorber needed 22001.
+
+**The re-derived table, in one line each** (R_asym 1e-28, nfft 2**19): te_00 1511, tm_00
+1512, te_30 3076 -> 3099 / 6238, te_45 6047 / 11087, tm_45 6124 / 11405, te_60 12153 ->
+**10258** / 18448, tm_60 12153 -> **10258** / 18448, all six compact-box keys 24784 ->
+21735. The compact-box `e_absorber` on graze_vac fell 1.38e-02 -> 8.32e-04 (the auxiliary
+echo, now under LEAK_BAR); the primary-rig `e_absorber` at 45 / 60 deg did not move
+(6.7e-02 / 3.7e-02) -- that term is the MAIN grid's 20-cell CPML, not the auxiliary one.

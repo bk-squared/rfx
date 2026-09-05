@@ -466,23 +466,40 @@ def test_records_are_the_declared_lattice_settling_steps():
             assert r["record_source"].startswith("declared"), (arm, K, r["record_source"])
             assert r["n_steps"] == O.RECORD_DECLARED[(arm, K, O.N_CPML, O.NX_INTERIOR)]["n_settle"]
             if O.ARM_THETA0_DEG[arm] > 0:
-                # the closed form is an UNDER-estimate at every oblique rung, and the
-                # record is set by content far outside the gated band
+                # the closed form is an UNDER-estimate at every oblique rung (the
+                # physical claim), and the record is set by content far outside the
+                # gated band. The SIZE of the under-estimate is pinned per rung from
+                # the derived table, not asserted as a round bar: round 2's "2.4-2.8x
+                # at 45 and 60 deg" was the 30-cell auxiliary absorber's number.
                 ratio = r["n_steps"] / r["n_closed_form"]
-                assert ratio > (2.3 if O.ARM_THETA0_DEG[arm] >= 45 else 1.4), (arm, K, ratio)
+                assert ratio > 1.0, (arm, K, ratio)
+                assert ratio == pytest.approx(O.RECORD_DECLARED_CLOSED_FORM_RATIO[(arm, K)], rel=0.02), (arm, K, ratio)
                 assert r["theta_eff_deg"] > r["theta_gate_hi_deg"] + 10.0, (arm, K, r["theta_eff_deg"])
     for arm in O.GRAZE_ARMS:
         r = O.derive_record(O.arm_spec(arm))
-        assert r["record_source"].startswith("declared") and r["n_steps"] == 22008
+        decl = O.RECORD_DECLARED[(arm, 1, O.N_CPML, O.NX_INTERIOR_GRAZE)]["n_settle"]
+        assert r["record_source"].startswith("declared") and r["n_steps"] == decl, (arm, r["n_steps"], decl)
 
 
 def test_the_record_of_round_1s_settled_arms_is_reproduced():
-    """The two arms round 1 actually settled bracket the declared record: each
-    settled inside one RECORD_EXTEND_STEPS quantum of it.  ``rfx_baseline.log``
-    of run cv26-oblique-r1-20260902T162340Z: te_00 1597 (0 ext), te_30 3172
-    (10 ext of 100) and 6496 (11 ext of 200), graze_pec 22001 (5 ext of 100)."""
-    for arm, K, measured, quantum in (("te_00", 1, 1597, 100), ("te_30", 1, 3172, 100),
-                                      ("te_30", 2, 6496, 200), ("graze_pec", 1, 22001, 100)):
+    """The arms the rig actually settles bracket the declared record: each settled
+    inside one RECORD_EXTEND_STEPS quantum of it.
+
+    Re-anchored 2026-09-05/06 to settling MEASURED on the absorber that ships
+    (R_asym = 1e-28, 200 cells; lane A dc597063), each arm run by the case itself
+    FROM its new declared record and read off "record: derived N -> M (k ext)":
+    te_00 dx 1511 (0 ext), te_30 dx 3099 -> 3199 (1 ext of 100), te_30 dx/2 6238
+    (0 ext), te_60 dx 10258 (0 ext -- the 2**19 record, the largest of its nfft
+    ladder, was enough), graze_pec 21735 -> 21835 (1 ext of 100). The round-1
+    anchors -- te_00 1597, te_30 3172 / 6496, graze_pec 22001
+    (cv26-oblique-r1-20260902T162340Z) -- were the 30-cell auxiliary absorber's
+    numbers and are not this rig's. Logs: scratchpad settle_<arm>_dx<K>/ and
+    settle2_<arm>/. This is the only cross-check that the modelled record matches
+    a record an FDTD actually settled at, so it is re-anchored, not removed.
+    """
+    for arm, K, measured, quantum in (("te_00", 1, 1511, 100), ("te_30", 1, 3199, 100),
+                                      ("te_30", 2, 6238, 200), ("te_60", 1, 10258, 100),
+                                      ("graze_pec", 1, 21835, 100)):
         n = O.derive_record(O.arm_spec(arm), dx_div=K)["n_steps"]
         assert measured - 2 * quantum < n <= measured + quantum, (arm, K, n, measured)
 
@@ -522,7 +539,8 @@ def test_yee_group_velocity_along_x_vanishes_at_the_cutoff():
 @pytest.mark.slow
 def test_predict_settling_reproduces_a_declared_record():
     """The declared table is not a pinned guess: re-derive one entry."""
-    got = O.predict_settling(O.arm_spec("te_00"), dx_div=1)
+    # at the length the table was derived at -- the 2**17 default is too short for it
+    got = O.predict_settling(O.arm_spec("te_00"), dx_div=1, nfft=O.RECORD_DECLARED_NFFT)
     decl = O.RECORD_DECLARED[("te_00", 1, O.N_CPML, O.NX_INTERIOR)]
     assert got["n_settle"] == decl["n_settle"]
     assert abs(got["e_absorber"] - decl["e_absorber"]) <= 1e-3 * decl["e_absorber"]
@@ -547,7 +565,18 @@ def test_every_declared_falsifier_has_an_analytic_margin(name):
     if name.startswith("graze"):
         assert p["predicted_fails_G6"]
         assert p["bins_beyond_window"] >= (60 if name == "graze_pec_depth_half" else 20)
-        assert p["max_ratio_excess_def_over_decl"] > 10
+        # The pre-declaration (2026-09-02 note, line 383) declares F5b by |dR| max
+        # against the window and bins beyond it -- both asserted above. The ">10"
+        # ratio bar that used to sit here was an extra this file added, and it was
+        # met (16.6) only because the pre-#888 auxiliary echo and the 3-D CPML's
+        # grazing error happened to cancel at one bin, giving a near-zero
+        # denominator. On the absorber that ships the ratio is 2.15 for sigma_half
+        # and 18.2 for depth_half. The falsifier still FIRES (predicted_fails_G6,
+        # 38 / 69 bins); what is asserted now is that it fires and by how much,
+        # pinned, so a further collapse is visible.
+        assert p["max_ratio_excess_def_over_decl"] > 1.0
+        assert p["max_ratio_excess_def_over_decl"] == pytest.approx(
+            {"graze_pec_sigma_half": 2.154, "graze_pec_depth_half": 18.234}[name], rel=0.05)
     else:
         assert p["predicted_fails"]
         assert p["ratio_mean_R"] >= 2.9, (name, p["ratio_mean_R"])
@@ -651,3 +680,28 @@ def test_a_declared_falsifier_still_reaches_the_e4_gate():
     assert "REJECTED" in O.meep_unavailable_reason(doc, "x")
     assert O.meep_unavailable_reason(dict(doc, falsifier="k_2pi"), "x") is None
     assert set(O.MEEP_FALSIFIERS) == {"k_2pi"}
+
+
+def test_the_records_the_table_cannot_vouch_for_say_so():
+    """The settling step is a property of the inverse-DFT length: undecayed content
+    wraps, and at 60 degrees on dx the first crossing lands 6-7 % apart between
+    adjacent lengths (2**17..2**20 = 9627 / 9623 / 10258 / 9632 for te_60, 9619 /
+    9512 / 10258 / 9524 for tm_60 -- the derivation length 2**19 is the outlier
+    both times). A sustained-window criterion was measured to change nothing.
+    So those two keys carry ``nfft_converged = False`` and their ladder; every
+    other key must NOT carry the flag, and a flagged key's declared value must be
+    one of its own ladder values. The table states what it cannot vouch for."""
+    flagged = {k for k, v in O.RECORD_DECLARED.items() if v.get("nfft_converged") is False}
+    assert flagged == {("te_60", 1, O.N_CPML, O.NX_INTERIOR), ("tm_60", 1, O.N_CPML, O.NX_INTERIOR)}, flagged
+    for k in flagged:
+        v = O.RECORD_DECLARED[k]
+        ladder = v["n_settle_ladder_2e17_to_2e20"]
+        assert len(ladder) == 4 and v["n_settle"] in ladder
+        spread = (max(ladder) - min(ladder)) / min(ladder)
+        assert 0.05 < spread < 0.10, (k, ladder, spread)          # measured 6.6 % / 7.8 %; a collapse or a blow-up is news
+        # the derivation length is the odd one out: the other three agree to 1 %
+        others = [ladder[i] for i in (0, 1, 3)]
+        assert (max(others) - min(others)) / min(others) < 0.02, (k, ladder)
+    for k, v in O.RECORD_DECLARED.items():
+        if k not in flagged:
+            assert "nfft_converged" not in v, k
