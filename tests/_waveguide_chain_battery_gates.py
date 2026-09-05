@@ -110,8 +110,15 @@ LEGS_RUNG_DEFAULT = "fine"                               # AD / FD / plane legs
 D_PLANE_TO_PEC_FACE_M = F.PEC_SHORT_X_M[0] - F.REF_LEFT_DEFAULT_M     # 0.03810
 D_PLANE_TO_SLAB_FACE_M = F.SLAB_X_M[0] - F.REF_LEFT_DEFAULT_M         # 0.03556
 SLAB_THICKNESS_M = F.SLAB_X_M[1] - F.SLAB_X_M[0]                      # 0.01016
-SHIFT_LEFT_M = F.REF_LEFT_SHIFTED_M - F.REF_LEFT_DEFAULT_M            # +0.01016
-SHIFT_RIGHT_M = F.REF_RIGHT_SHIFTED_M - F.REF_RIGHT_DEFAULT_M         # −0.01270
+# The ACTIVE shift pair, i.e. the one the builder currently realizes and the one
+# a new measurement runs at. A replayed artifact is read against the pair IT was
+# measured with (``plane_shift[key]["shift_m"]``), never against this one — the
+# two artifacts in tests/fixtures/waveguide_chain_battery/ carry different pairs.
+SHIFT_LEFT_M = F.REF_LEFT_SHIFTED_M - F.REF_LEFT_DEFAULT_M            # +0.00508
+SHIFT_RIGHT_M = F.REF_RIGHT_SHIFTED_M - F.REF_RIGHT_DEFAULT_M         # −0.00254
+SHIFT_PAIRS_M = {name: (l - F.REF_LEFT_DEFAULT_M, r - F.REF_RIGHT_DEFAULT_M)
+                 for name, (l, r) in F.SHIFT_PAIRS_M.items()}
+DEFAULT_SHIFT_PAIR_NAME = "half_turn_pair"   # what a schema_version 1 artifact was measured with
 FC_TE10_HZ = C0_LOCAL / (2.0 * F.A_M)
 
 OBJECTIVES = {
@@ -339,13 +346,22 @@ def referee_slab_phase_pass(r: dict) -> bool:
 
 # --- plane shift (§5(b)) ----------------------------------------------------
 
-def rotation_predictions_deg(beta: np.ndarray) -> dict[str, np.ndarray]:
+def rotation_predictions_deg(beta: np.ndarray, shift_left_m: float | None = None,
+                             shift_right_m: float | None = None) -> dict[str, np.ndarray]:
+    """Pre-declared rotation per entry for a shift pair.
+
+    The pair defaults to the ACTIVE one (what a live measurement runs at). Replay
+    passes the pair the artifact under test was measured with, so an artifact
+    written under one pair is never scored against another.
+    """
     b = np.asarray(beta)
+    dl = SHIFT_LEFT_M if shift_left_m is None else float(shift_left_m)
+    dr = SHIFT_RIGHT_M if shift_right_m is None else float(shift_right_m)
     return {
-        "S11": wrap_deg(np.degrees(2.0 * b * SHIFT_LEFT_M)),
-        "S22": wrap_deg(np.degrees(2.0 * b * abs(SHIFT_RIGHT_M))),
-        "S21": wrap_deg(np.degrees(b * (SHIFT_LEFT_M + abs(SHIFT_RIGHT_M)))),
-        "S12": wrap_deg(np.degrees(b * (SHIFT_LEFT_M + abs(SHIFT_RIGHT_M)))),
+        "S11": wrap_deg(np.degrees(2.0 * b * dl)),
+        "S22": wrap_deg(np.degrees(2.0 * b * abs(dr))),
+        "S21": wrap_deg(np.degrees(b * (dl + abs(dr)))),
+        "S12": wrap_deg(np.degrees(b * (dl + abs(dr)))),
     }
 
 
@@ -353,7 +369,9 @@ _ENTRY = {"S11": (0, 0), "S22": (1, 1), "S21": (1, 0), "S12": (0, 1)}
 
 
 def plane_shift_rotation(S_base: np.ndarray, S_shift: np.ndarray, freqs_hz,
-                         dt_s: float, dx_m: float, fc_port_hz: float | None = None) -> dict:
+                         dt_s: float, dx_m: float, fc_port_hz: float | None = None,
+                         shift_left_m: float | None = None,
+                         shift_right_m: float | None = None) -> dict:
     """Rotation of every entry under the shift, against the pre-declared
     prediction (β of the guide's TE10 cutoff c/2a: Yee-discrete and
     continuous) and, when ``fc_port_hz`` is given, against the extractor's
@@ -361,9 +379,10 @@ def plane_shift_rotation(S_base: np.ndarray, S_shift: np.ndarray, freqs_hz,
     S_base = np.asarray(S_base, dtype=complex)
     S_shift = np.asarray(S_shift, dtype=complex)
     f = np.asarray(freqs_hz, dtype=float)
-    pred_yee = rotation_predictions_deg(beta_yee(f, dt_s, dx_m))
-    pred_cont = rotation_predictions_deg(beta_continuous(f))
-    pred_port = (rotation_predictions_deg(beta_yee_fc(f, fc_port_hz, dt_s, dx_m))
+    pred_yee = rotation_predictions_deg(beta_yee(f, dt_s, dx_m), shift_left_m, shift_right_m)
+    pred_cont = rotation_predictions_deg(beta_continuous(f), shift_left_m, shift_right_m)
+    pred_port = (rotation_predictions_deg(beta_yee_fc(f, fc_port_hz, dt_s, dx_m),
+                                          shift_left_m, shift_right_m)
                  if fc_port_hz is not None else None)
     out = {
         "abs_s_max_diff": float(np.max(np.abs(np.abs(S_shift) - np.abs(S_base)))),

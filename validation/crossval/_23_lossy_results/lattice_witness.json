@@ -3136,6 +3136,7 @@
    "gates": {
     "precond_cpml_gate": true,
     "precond_tail_witness": true,
+    "precond_aux_echo_record": true,
     "GL1_R": true,
     "GL1_T": true,
     "GL1_A": true,
@@ -3245,6 +3246,32 @@
      "mean_dT_gated": 0.0022302260929712146,
      "mean_dA_gated": 0.0012543652237165309
     }
+   },
+   "aux_echo": {
+    "schema": "aux-echo-record-invariant/v1",
+    "issue": 888,
+    "nx_interior": 1000,
+    "dx_div": 1,
+    "aux_n_1d": 1052,
+    "aux_n_cpml": 20,
+    "aux_src_idx": 23,
+    "aux_reflector_depth_cells": 6.88,
+    "aux_reflector_index": 1038.88,
+    "v_cells": 0.7000357133746821,
+    "pulse_lead_steps": 81.79031557522546,
+    "echo_arrival_probe": "trans",
+    "echo_arrival_steps": 2053,
+    "echo_arrival_centre_steps": 2135,
+    "limit": 1.0,
+    "path_cells_refl": 1564.7600000000002,
+    "arrival_steps_refl": 2153,
+    "arrival_centre_steps_refl": 2235,
+    "path_cells_trans": 1494.7600000000002,
+    "arrival_steps_trans": 2053,
+    "arrival_centre_steps_trans": 2135,
+    "record_steps": 1067,
+    "record_over_echo_arrival": 0.5197272284461764,
+    "ok": true
    }
   },
   "tand1": {
@@ -6379,6 +6406,7 @@
    "gates": {
     "precond_cpml_gate": true,
     "precond_tail_witness": true,
+    "precond_aux_echo_record": true,
     "GL1_R": true,
     "GL1_T": true,
     "GL1_A": true,
@@ -6488,6 +6516,32 @@
      "mean_dT_gated": 0.0002989230631358549,
      "mean_dA_gated": 0.0007280158554183129
     }
+   },
+   "aux_echo": {
+    "schema": "aux-echo-record-invariant/v1",
+    "issue": 888,
+    "nx_interior": 1000,
+    "dx_div": 1,
+    "aux_n_1d": 1052,
+    "aux_n_cpml": 20,
+    "aux_src_idx": 23,
+    "aux_reflector_depth_cells": 6.88,
+    "aux_reflector_index": 1038.88,
+    "v_cells": 0.7000357133746821,
+    "pulse_lead_steps": 81.79031557522546,
+    "echo_arrival_probe": "trans",
+    "echo_arrival_steps": 2053,
+    "echo_arrival_centre_steps": 2135,
+    "limit": 1.0,
+    "path_cells_refl": 1564.7600000000002,
+    "arrival_steps_refl": 2153,
+    "arrival_centre_steps_refl": 2235,
+    "path_cells_trans": 1494.7600000000002,
+    "arrival_steps_trans": 2053,
+    "arrival_centre_steps_trans": 2135,
+    "record_steps": 1158,
+    "record_over_echo_arrival": 0.5640526059425232,
+    "ok": true
    }
   },
   "tand3": {
@@ -9577,6 +9631,7 @@
    "gates": {
     "precond_cpml_gate": true,
     "precond_tail_witness": true,
+    "precond_aux_echo_record": true,
     "GL1_R": true,
     "GL1_T": true,
     "GL1_A": true,
@@ -9686,6 +9741,32 @@
      "mean_dT_gated": 9.663696626686802e-06,
      "mean_dA_gated": 0.0002380765066004697
     }
+   },
+   "aux_echo": {
+    "schema": "aux-echo-record-invariant/v1",
+    "issue": 888,
+    "nx_interior": 2000,
+    "dx_div": 2,
+    "aux_n_1d": 2042,
+    "aux_n_cpml": 20,
+    "aux_src_idx": 23,
+    "aux_reflector_depth_cells": 6.88,
+    "aux_reflector_index": 2028.88,
+    "v_cells": 0.7000357133746821,
+    "pulse_lead_steps": 163.58063115045093,
+    "echo_arrival_probe": "trans",
+    "echo_arrival_steps": 4043,
+    "echo_arrival_centre_steps": 4207,
+    "limit": 1.0,
+    "path_cells_refl": 3084.76,
+    "arrival_steps_refl": 4242,
+    "arrival_centre_steps_refl": 4407,
+    "path_cells_trans": 2944.76,
+    "arrival_steps_trans": 4043,
+    "arrival_centre_steps_trans": 4207,
+    "record_steps": 2362,
+    "record_over_echo_arrival": 0.5842196388820183,
+    "ok": true
    }
   },
   "tand0p1_dx2": {
@@ -12775,6 +12856,7 @@
    "gates": {
     "precond_cpml_gate": true,
     "precond_tail_witness": true,
+    "precond_aux_echo_record": true,
     "GL1_R": true,
     "GL1_T": true,
     "GL1_A": true,
@@ -12884,6 +12966,32 @@
      "mean_dT_gated": 0.0021582219605248898,
      "mean_dA_gated": 0.0012243415082352877
     }
+   },
+   "aux_echo": {
+    "schema": "aux-echo-record-invariant/v1",
+    "issue": 888,
+    "nx_interior": 2000,
+    "dx_div": 2,
+    "aux_n_1d": 2042,
+    "aux_n_cpml": 20,
+    "aux_src_idx": 23,
+    "aux_reflector_depth_cells": 6.88,
+    "aux_reflector_index": 2028.88,
+    "v_cells": 0.7000357133746821,
+    "pulse_lead_steps": 163.58063115045093,
+    "echo_arrival_probe": "trans",
+    "echo_arrival_steps": 4043,
+    "echo_arrival_centre_steps": 4207,
+    "limit": 1.0,
+    "path_cells_refl": 3084.76,
+    "arrival_steps_refl": 4242,
+    "arrival_centre_steps_refl": 4407,
+    "path_cells_trans": 2944.76,
+    "arrival_steps_trans": 4043,
+    "arrival_centre_steps_trans": 4207,
+    "record_steps": 2134,
+    "record_over_echo_arrival": 0.5278258718773188,
+    "ok": true
    }
   },
   "tand0p1_dx4": {
@@ -15991,6 +16099,7 @@
    "gates": {
     "precond_cpml_gate": true,
     "precond_tail_witness": true,
+    "precond_aux_echo_record": true,
     "GL1_R": true,
     "GL1_T": true,
     "GL1_A": true,
@@ -16100,6 +16209,32 @@
      "mean_dT_gated": 0.002144270626706601,
      "mean_dA_gated": 0.0012158591954266728
     }
+   },
+   "aux_echo": {
+    "schema": "aux-echo-record-invariant/v1",
+    "issue": 888,
+    "nx_interior": 4000,
+    "dx_div": 4,
+    "aux_n_1d": 4022,
+    "aux_n_cpml": 20,
+    "aux_src_idx": 23,
+    "aux_reflector_depth_cells": 6.88,
+    "aux_reflector_index": 4008.88,
+    "v_cells": 0.7000357133746821,
+    "pulse_lead_steps": 327.16126230090185,
+    "echo_arrival_probe": "trans",
+    "echo_arrival_steps": 8022,
+    "echo_arrival_centre_steps": 8349,
+    "limit": 1.0,
+    "path_cells_refl": 6124.76,
+    "arrival_steps_refl": 8422,
+    "arrival_centre_steps_refl": 8749,
+    "path_cells_trans": 5844.76,
+    "arrival_steps_trans": 8022,
+    "arrival_centre_steps_trans": 8349,
+    "record_steps": 4267,
+    "record_over_echo_arrival": 0.5319122413363251,
+    "ok": true
    }
   },
   "tand1_dx2": {
@@ -19189,6 +19324,7 @@
    "gates": {
     "precond_cpml_gate": true,
     "precond_tail_witness": true,
+    "precond_aux_echo_record": true,
     "GL1_R": true,
     "GL1_T": true,
     "GL1_A": true,
@@ -19298,6 +19434,32 @@
      "mean_dT_gated": 0.0003188477573008642,
      "mean_dA_gated": 0.0007208279459118891
     }
+   },
+   "aux_echo": {
+    "schema": "aux-echo-record-invariant/v1",
+    "issue": 888,
+    "nx_interior": 2000,
+    "dx_div": 2,
+    "aux_n_1d": 2042,
+    "aux_n_cpml": 20,
+    "aux_src_idx": 23,
+    "aux_reflector_depth_cells": 6.88,
+    "aux_reflector_index": 2028.88,
+    "v_cells": 0.7000357133746821,
+    "pulse_lead_steps": 163.58063115045093,
+    "echo_arrival_probe": "trans",
+    "echo_arrival_steps": 4043,
+    "echo_arrival_centre_steps": 4207,
+    "limit": 1.0,
+    "path_cells_refl": 3084.76,
+    "arrival_steps_refl": 4242,
+    "arrival_centre_steps_refl": 4407,
+    "path_cells_trans": 2944.76,
+    "arrival_steps_trans": 4043,
+    "arrival_centre_steps_trans": 4207,
+    "record_steps": 2315,
+    "record_over_echo_arrival": 0.5725946079643829,
+    "ok": true
    }
   },
   "tand1_dx4": {
@@ -22405,6 +22567,7 @@
    "gates": {
     "precond_cpml_gate": true,
     "precond_tail_witness": true,
+    "precond_aux_echo_record": true,
     "GL1_R": true,
     "GL1_T": true,
     "GL1_A": true,
@@ -22514,6 +22677,32 @@
      "mean_dT_gated": 0.00032323150195041813,
      "mean_dA_gated": 0.0007188032948927958
     }
+   },
+   "aux_echo": {
+    "schema": "aux-echo-record-invariant/v1",
+    "issue": 888,
+    "nx_interior": 4000,
+    "dx_div": 4,
+    "aux_n_1d": 4022,
+    "aux_n_cpml": 20,
+    "aux_src_idx": 23,
+    "aux_reflector_depth_cells": 6.88,
+    "aux_reflector_index": 4008.88,
+    "v_cells": 0.7000357133746821,
+    "pulse_lead_steps": 327.16126230090185,
+    "echo_arrival_probe": "trans",
+    "echo_arrival_steps": 8022,
+    "echo_arrival_centre_steps": 8349,
+    "limit": 1.0,
+    "path_cells_refl": 6124.76,
+    "arrival_steps_refl": 8422,
+    "arrival_centre_steps_refl": 8749,
+    "path_cells_trans": 5844.76,
+    "arrival_steps_trans": 8022,
+    "arrival_centre_steps_trans": 8349,
+    "record_steps": 4629,
+    "record_over_echo_arrival": 0.5770381451009723,
+    "ok": true
    }
   },
   "tand3_dx2": {
@@ -25603,6 +25792,7 @@
    "gates": {
     "precond_cpml_gate": true,
     "precond_tail_witness": true,
+    "precond_aux_echo_record": true,
     "GL1_R": true,
     "GL1_T": true,
     "GL1_A": true,
@@ -25712,6 +25902,32 @@
      "mean_dT_gated": 9.663696626686802e-06,
      "mean_dA_gated": 0.0002380765066004697
     }
+   },
+   "aux_echo": {
+    "schema": "aux-echo-record-invariant/v1",
+    "issue": 888,
+    "nx_interior": 2000,
+    "dx_div": 2,
+    "aux_n_1d": 2042,
+    "aux_n_cpml": 20,
+    "aux_src_idx": 23,
+    "aux_reflector_depth_cells": 6.88,
+    "aux_reflector_index": 2028.88,
+    "v_cells": 0.7000357133746821,
+    "pulse_lead_steps": 163.58063115045093,
+    "echo_arrival_probe": "trans",
+    "echo_arrival_steps": 4043,
+    "echo_arrival_centre_steps": 4207,
+    "limit": 1.0,
+    "path_cells_refl": 3084.76,
+    "arrival_steps_refl": 4242,
+    "arrival_centre_steps_refl": 4407,
+    "path_cells_trans": 2944.76,
+    "arrival_steps_trans": 4043,
+    "arrival_centre_steps_trans": 4207,
+    "record_steps": 2362,
+    "record_over_echo_arrival": 0.5842196388820183,
+    "ok": true
    }
   },
   "tand3_dx4": {
@@ -28819,6 +29035,7 @@
    "gates": {
     "precond_cpml_gate": true,
     "precond_tail_witness": true,
+    "precond_aux_echo_record": true,
     "GL1_R": true,
     "GL1_T": true,
     "GL1_A": true,
@@ -28928,6 +29145,32 @@
      "mean_dT_gated": 9.969133235343418e-06,
      "mean_dA_gated": 0.00024047324973254264
     }
+   },
+   "aux_echo": {
+    "schema": "aux-echo-record-invariant/v1",
+    "issue": 888,
+    "nx_interior": 4000,
+    "dx_div": 4,
+    "aux_n_1d": 4022,
+    "aux_n_cpml": 20,
+    "aux_src_idx": 23,
+    "aux_reflector_depth_cells": 6.88,
+    "aux_reflector_index": 4008.88,
+    "v_cells": 0.7000357133746821,
+    "pulse_lead_steps": 327.16126230090185,
+    "echo_arrival_probe": "trans",
+    "echo_arrival_steps": 8022,
+    "echo_arrival_centre_steps": 8349,
+    "limit": 1.0,
+    "path_cells_refl": 6124.76,
+    "arrival_steps_refl": 8422,
+    "arrival_centre_steps_refl": 8749,
+    "path_cells_trans": 5844.76,
+    "arrival_steps_trans": 8022,
+    "arrival_centre_steps_trans": 8349,
+    "record_steps": 4723,
+    "record_over_echo_arrival": 0.5887559212166542,
+    "ok": true
    }
   }
  },

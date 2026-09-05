@@ -2,9 +2,10 @@
 """WR-90 chain battery — the measurement driver (v1.8 WP2).
 
 Runs the pre-declared battery of
-``docs/design_notes/waveguide_chain_battery_predeclaration.md`` on the fixture
-set built by ``tests/_waveguide_chain_battery_fixture.py`` and writes
-``tests/fixtures/waveguide_chain_battery/fixture.json`` (schema:
+``docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md`` (run 2;
+the parent note ``waveguide_chain_battery_predeclaration.md`` governed run 1) on
+the fixture set built by ``tests/_waveguide_chain_battery_fixture.py`` and writes
+``tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json`` (schema:
 ``tests/fixtures/waveguide_chain_battery/README.md``). Gate arithmetic lives in
 ``tests/_waveguide_chain_battery_gates.py`` and is shared with the replay test
 ``tests/oracle/test_waveguide_chain_battery.py``; this file only builds, runs,
@@ -42,7 +43,7 @@ Usage (from a clean checkout; the rfx import must resolve to this tree)::
         --out-dir <run-dir> --run-id <vessl run id> --run-lane vessl
     PYTHONPATH=. python scripts/diagnostics/waveguide_chain_battery_measure.py \
         --out-dir <run-dir> --stages assemble \
-        --fixture-out tests/fixtures/waveguide_chain_battery/fixture.json
+        --fixture-out tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json
 
 Lanes ``normalize=False`` and ``normalize="flux"`` only (``normalize=True``
 never enters). Nothing from ``rfx/probes/refplane.py`` is imported.
@@ -79,8 +80,16 @@ from tests import _waveguide_chain_battery_gates as G  # noqa: E402
 from tests._x64_compat import enable_x64  # noqa: E402
 
 SCHEMA = "rfx.waveguide_chain_battery"
-SCHEMA_VERSION = 1
-PREDECLARATION = "docs/design_notes/waveguide_chain_battery_predeclaration.md"
+# Identity stamp of the SECOND run's artifact (re-measurement pre-declaration §7).
+# The first run's artifact stays at schema_version 1 and keeps pointing at the
+# parent note; nothing here rewrites it.
+SCHEMA_VERSION = 2
+PREDECLARATION = "docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md"
+ARTIFACT = "tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json"
+SUPERSEDES = "tests/fixtures/waveguide_chain_battery/fixture.json"
+SUPERSEDES_REASON = (
+    "the frozen artifact records a port whose transverse eigenproblem was solved on N+1 "
+    "cells for an N-cell guide; this artifact is the same battery on the corrected port")
 README = "tests/fixtures/waveguide_chain_battery/README.md"
 DRIVER = "scripts/diagnostics/waveguide_chain_battery_measure.py"
 SETTLING_RERUN_NUM_PERIODS = 2.0 * F.NUM_PERIODS      # §2.5 record-length doubling
@@ -790,7 +799,7 @@ def assemble(args, out_dir: Path, prov: dict) -> Path:
                                   "AD legs, FD pairs, shifted planes); JIT compile included")
     run_prov["recapture_command"] = (
         f"PYTHONPATH=. python {DRIVER} --out-dir <run-dir> --run-id <id> --run-lane <lane>; "
-        f"then --stages assemble --fixture-out tests/fixtures/waveguide_chain_battery/fixture.json")
+        f"then --stages assemble --fixture-out {ARTIFACT}")
     run_prov["recapture_entry_point"] = DRIVER
     if args.vessl_yaml:
         run_prov["recapture_vessl_yaml"] = args.vessl_yaml
@@ -798,6 +807,8 @@ def assemble(args, out_dir: Path, prov: dict) -> Path:
     fx = {
         "schema": SCHEMA, "schema_version": SCHEMA_VERSION,
         "predeclaration": PREDECLARATION, "predeclaration_sha": args.predeclaration_sha,
+        "shift_pair_name": F.SHIFT_PAIR_NAME,
+        "supersedes": SUPERSEDES, "supersedes_reason": SUPERSEDES_REASON,
         "readme": README,
         "generated_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
         "provenance": run_prov,

@@ -42,6 +42,7 @@ from rfx.materials.thin_conductor import (
 from rfx.nonuniform import NonUniformGrid  # noqa: F401
 from rfx.sources.waveguide_port import (
     WaveguidePort,
+    _node_span_to_cell_span,
     init_waveguide_port,
     init_multimode_waveguide_port,
 )
@@ -647,6 +648,7 @@ class _CompileMixin:
         else:
             u_slice, a_span = self._range_to_slice(entry.x_range, self._domain[0], grid.dx, grid.nx, grid.axis_pads[0])
             v_slice, b_span = self._range_to_slice(entry.y_range, self._domain[1], grid.dx, grid.ny, grid.axis_pads[1])
+        u_slice, v_slice = _node_span_to_cell_span(u_slice), _node_span_to_cell_span(v_slice)
         port = WaveguidePort(
             x_index=x_index,
             y_slice=None,

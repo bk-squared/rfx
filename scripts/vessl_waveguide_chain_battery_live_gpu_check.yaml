@@ -1,0 +1,38 @@
+name: rfx-waveguide-chain-battery-live-gpu-check
+description: "Verification lane, NOT a measurement: runs the gpu-marked live test of the second chain-battery artifact (tests/oracle/test_waveguide_chain_battery_guide_cell_aperture.py::test_live_cells_reproduce_the_fixture_fine_rung) against tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json. That test's xfail(strict=True) came off in the measurement commit because the corrected-port artifact is what it now reads, and strict xfail requires the mark to come off the moment a test passes — this job is how that is established on a GPU, since the authoring box has none. It writes no artifact and re-measures nothing that is claims-bearing: the assertion is max|S_live - S_fixture| <= LIVE_ABS_S_TOL = 1e-4, a committed pin that is not moved."
+tags: [rfx, waveguide, chain-battery, v18, wp2, verification]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_ENABLE_X64: "0"
+  RFX_BRANCH: "v18/battery-remeasure-run"
+  RFX_EXPECT_SHA: "b6985164971e47285eefd5ef5a7dc4c1e791c8b6"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx chain-battery live GPU check (verification, not a measurement) ==="
+  date
+  echo "pinned commit: $RFX_EXPECT_SHA"
+  ROOT=/tmp/rfx-chain-battery-live-check
+  rm -rf "$ROOT"; mkdir -p "$ROOT"; cd "$ROOT"
+  git init -q
+  git fetch -q --depth 1 https://github.com/bk-squared/rfx.git "$RFX_EXPECT_SHA"
+  git checkout -q FETCH_HEAD
+  test -f tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json || { echo "FATAL: artifact missing"; exit 3; }
+  test -f tests/oracle/test_waveguide_chain_battery_guide_cell_aperture.py || { echo "FATAL: replay module missing"; exit 3; }
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  export PYTHONPATH="$ROOT"
+  python -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| devices', jax.devices(), '| x64', jax.config.x64_enabled)"
+  echo "===== gpu-marked live fine-rung test ====="
+  python -m pytest tests/oracle/test_waveguide_chain_battery_guide_cell_aperture.py \
+    -q -p no:randomly -m "slow and gpu" -s -rA
+  echo "===== full replay layer on the GPU box (fast, no FDTD) ====="
+  python -m pytest tests/oracle/test_waveguide_chain_battery_guide_cell_aperture.py \
+    tests/oracle/test_waveguide_chain_battery.py -q -p no:randomly -m "not slow"
