@@ -214,7 +214,7 @@ def layout(r_lo: float, domain_mult: float = 1.0) -> dict:
 
 
 def num_periods_for(case: dict, lay: dict, fc_hz: float, f_lo: float,
-                    f_hi: float) -> tuple[float, dict]:
+                    f_hi: float, pad_m: float | None = None) -> tuple[float, dict]:
     """Record length = 2*t0 (full modulated-gaussian support) + n_trav domain
     traversals at the slowest in-band group velocity, expressed in periods of
     freq_max (``grid.num_timesteps``' own convention).
@@ -233,13 +233,33 @@ def num_periods_for(case: dict, lay: dict, fc_hz: float, f_lo: float,
     # would double-count the domain-length twin's own factor.
     L = lay["k_domain"] * DX_COARSE
     fc_vg = float(case.get("v_group_cutoff_hz") or fc_hz)
-    t_trav = L / v_group(f_lo, fc_vg)
-    T = 2.0 * t0 + float(case["n_trav"]) * t_trav
+    vg = v_group(f_lo, fc_vg)
+    t_trav = L / vg
+    # The far-boundary round trip from the LEFT port: through the interior to the
+    # far edge, through the far pad to its outer wall, and back. This is the
+    # arrival that #894's order collapse turned out to be (2026-09-05): on the
+    # empty guide near cutoff, ||S11|-|S22||/2 is a step function of T/tau alone,
+    # clipped low below T/tau = 1 and saturated at ~4.3e-5 from T/tau ~ 3, with the
+    # absorber thickness entering only through tau. The interior-only rule above
+    # does not know the pad exists and under-runs tau whenever the pad is thick.
+    pad = float(pad_m or 0.0)
+    far = (L - lay["k_port"] * DX_COARSE) + pad
+    tau_far = 2.0 * far / vg
+    rule = case.get("record_rule", "interior")
+    if rule == "far_boundary":
+        margin = float(case.get("record_margin", 3.0))
+        T = 2.0 * t0 + margin * tau_far
+    elif rule == "interior":
+        T = 2.0 * t0 + float(case["n_trav"]) * t_trav
+    else:
+        raise ValueError(f"unknown record_rule {rule!r}")
     return T * f_hi, dict(t0_s=t0, t_traverse_s=t_trav, t_record_s=T,
-                          fwidth_hz=fwidth, v_group_low_m_s=v_group(f_lo, fc_vg),
+                          fwidth_hz=fwidth, v_group_low_m_s=vg,
                           v_group_cutoff_hz=fc_vg,
                           v_group_mode=("TE20" if case.get("v_group_cutoff_hz")
-                                        else "TE10"))
+                                        else "TE10"),
+                          record_rule=rule, pad_m=pad, far_path_m=far,
+                          tau_far_s=tau_far, T_over_tau=T / tau_far)
 
 
 # --------------------------------------------------------------------------
@@ -522,7 +542,8 @@ def run_case(case: dict) -> dict:
     sim, meta = _build(case, freqs, lay, absorber["cpml_layers"])
     out.update(meta)
     grid = sim._build_grid()
-    npp, timing = num_periods_for(case, lay, fc_num, float(freqs[0]), float(freqs[-1]))
+    npp, timing = num_periods_for(case, lay, fc_num, float(freqs[0]), float(freqs[-1]),
+                                  pad_m=absorber["cpml_layers"] * DX_BY_N[N])
     num_periods = float(case.get("num_periods") or math.ceil(npp))
     n_steps = int(grid.num_timesteps(num_periods))
     out.update(num_periods=num_periods, n_steps=n_steps, dt_s=float(grid.dt),
