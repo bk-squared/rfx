@@ -20,6 +20,41 @@ adjacent edge. The uniform lane does not behave this way — it saturates at the
 padded array bounds and integrates absorber cells with no warning. That
 discrepancy is issue #910 and is not fixed here.
 
+### Changed — the rectangular-waveguide family is chain-closed (v1.8): criterion 1 and 3(a) read under x64 on the flux lane
+
+The third pre-declared run of the WR-90 chain battery (VESSL run 369367258638,
+`tests/fixtures/waveguide_chain_battery/fixture_v18_close.json`, replay
+`tests/oracle/test_waveguide_chain_battery_v18_close.py`, pre-declaration
+`docs/design_notes/20260905_v18_close_predeclaration.md`) closes the family
+under `docs/design_notes/chain_closure_contract.md`: 134 pass / 51 report_only /
+0 fail / 0 not interpretable of the 185 stored verdicts (the 51 report_only
+are the 36 coarse- and mid-rung physics gates and referees, report-only below
+the claims rung by pre-declaration, the 12 ungated power-closure keys, and the
+3 zero-derivative legs), with contract
+criterion 1 (forward identity, traced = untraced) and 3(a) (AD vs central FD)
+**read under x64 on the `normalize="flux"` lane**
+(`tests/_waveguide_chain_battery_gates.py::X64_DECLARED_LANES`) and the
+forward default still `precision="float32"`. Forward identity on that lane is
+at most `1.051e-8` of the `rtol=1e-5, atol=1e-7` allowance under x64 (1.0
+sits at the bound); the float32 reading of the same legs, stored beside the
+x64 one on every leg of the artifact, stays run 2's red (`1.083` / `1.515` /
+`1.761` of the allowance — float32
+reassociation of the Poynting DFT under the reverse-mode tape), so **a float32
+gradient pipeline on the flux lane is outside the declaration**; the same
+stage under float32 still reds, so this is a declared precision scope and
+not a fix. The pre-declared zero-derivative AD leg (PEC-short `|S11|^2` under
+`eps_override`, flux) is `report_only`, not pass: its x64 AD `-2.943e-7` and
+FD `-5.154e-8` share the sign and sit a factor `5.7` apart, outside the
+factor-3 band. The 18 cells, every reference-plane rotation and every dx
+ladder are bit-identical to run 2's (VESSL run 369367258205, PR #893). `docs/guides/support_matrix.md`,
+`sparameter_support_matrix.{md,json}`, `docs/agent/recipe-waveguide-sparams.mdx`
+and `docs/agent/port-selection.mdx` now say "chain-closed (v1.8)" for uniform
+single-mode S on the two differentiable lanes and keep "limited"; junctions,
+multimode, nonuniform meshes and the `normalize=True` two-run lane stay
+outside, the phase referee is analytic Airy only, and "chain-closed" is not
+"supported". The two entries below that say "not chain-closed" describe runs 1
+and 2 and are superseded by this one.
+
 ### Fixed — the waveguide settling witness no longer scores port records that underflowed float32
 
 `settling_db` is the mandated ring-down witness for every claims-bearing
@@ -65,12 +100,13 @@ per-record peaks — `-113.91` / `-114.48 dB` per drive on `normalize=False`,
 `-106.14` / `-106.03 dB` on `normalize="flux"`, on the claims-bearing
 80-period record — and are green, so the family census is now **24 of 185 red
 in four families** — this supersedes the "26 red in five families" count in the
-WP7 entry below. The rectangular-waveguide family is still **not**
-chain-closed (criteria 1, 3(a), 3(b) and 3(c) remain red). Regression cover:
+WP7 entry below. The rectangular-waveguide family was at that point still **not**
+chain-closed (criteria 1, 3(a), 3(b) and 3(c) remained red; superseded by the
+v1.8 close entry above). Regression cover:
 `tests/unit/sparams/test_settling_witness.py` section 4 replays the stored
 records through the corrected witness — no FDTD. Addresses issue #869.
 
-### Changed — the rectangular-waveguide support rows now carry the chain-battery verdict: measured, gates red, family NOT chain-closed (v1.8 WP7)
+### Changed — the rectangular-waveguide support rows now carry the chain-battery verdict: measured, gates red, family NOT chain-closed (v1.8 WP7; superseded by the v1.8 close entry above)
 
 `docs/guides/support_matrix.md`, `docs/guides/sparameter_support_matrix.md`
 and `docs/guides/sparameter_support_matrix.json` previously described the

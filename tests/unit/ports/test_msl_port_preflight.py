@@ -214,11 +214,25 @@ def test_mixed_cell_warning_fires_at_dx_80():
 # ---------------------------------------------------------------------------
 # Issue #487: the "<5% Z0 bias at 4+ cells" promise (check 2) and the
 # mixed-cell danger zone (check 2b) both got a sweep-grounded correction —
-# the promise holds only on an ALIGNED mesh. Numbers come from the committed
+# the promise holds only on an ALIGNED mesh. Numbers came from the committed
 # scripts/diagnostics/msl_z0_bias_floor_sweep.py artifact, NOT a derived
 # per-mesh formula (leg-1 expectation (a) broke at the finest aligned point,
 # so no continuous dB advisory was added — see that script's docstring and
 # _check_msl_port_geometry's class docstring).
+#
+# AUDIT 2026-09-02 (finding A1, second pass): check 2's message no longer
+# quotes ANY of those artifact numbers. The declared-board deviations
+# -7.9%/-3.8%/-1.2%/+0.7% and the ">5% expected below 4 cells" prediction
+# were the DECLARED-board column of the same frozen pre-#802 rows whose
+# realized-board "within 0.4%" reading was retired first; #802/#834 moved
+# the realized trace width at three of the four aligned points, so their
+# measured Z0 is not main's. A re-solve of aligned h_sub/3 on this branch
+# (settling -110.0/-113.1 dB, mean|S11|raw=0.00686) read Z0=48.162 Ω =
+# +0.56% vs the declared-board anchor 47.895 Ω, where the retired sequence
+# said -7.9% and the message said ">5%". The tests below therefore assert
+# the QUALITATIVE claim (O(dx) order, aligned-refinement target, the
+# re-solve pointer) and positively assert the retired percentages are gone;
+# they must NOT be re-pinned until the six-point sweep is re-solved.
 #
 # Issue #752 (#766 review N2): this header used to read "misalignment is
 # 2.56-2.94x worse in Z0-bias magnitude than refinement alone predicts",
@@ -229,8 +243,11 @@ def test_mixed_cell_warning_fires_at_dx_80():
 # (the misaligned dx=80/60µm points realize a 320µm/300µm substrate, not
 # the declared 254µm), so they measure board rasterization, not extractor
 # bias. Scored against the board each point actually solves, the extractor
-# tracks Hammerstad-Jensen to within 0.4% everywhere in the sweep
-# (msl_z0_bias_floor_sweep_realized_anchor.json). What survives is the
+# tracks the realized-board Hammerstad-Jensen anchor closely across the
+# sweep (msl_z0_bias_floor_sweep_realized_anchor.json). Audit 2026-09-02
+# (finding A1): the specific "within 0.4%" figure the advisory used to
+# quote is RETIRED as a live bound -- the anchor's aligned rows are the
+# pre-#802 as-solved record and are re-solve-owed. What survives is the
 # board-thickening effect itself, which is real, measured, and now gated on
 # its own axis by check 2c (realized-vs-declared substrate thickness).
 #
@@ -240,8 +257,8 @@ def test_mixed_cell_warning_fires_at_dx_80():
 # ---------------------------------------------------------------------------
 def test_substrate_resolution_warning_names_alignment_requirement():
     """Check 2's fix must fire only for an ALIGNED refinement target, and
-    must cite the sweep-measured ALIGNED-class deviations (declared-board
-    anchor), not just the bare '<5%'.
+    must state WHY (O(dx) staircase order + declared-board normalization),
+    without quoting any measured Z0-bias percentage.
 
     Issue #752 (2026-08-27) retired the "+11% (h_sub/dx=4.233)" comparison
     this message used to add: that number was the misaligned dx=60um
@@ -249,20 +266,37 @@ def test_substrate_resolution_warning_names_alignment_requirement():
     without alignment "does not reach" the aligned-class figure -- but
     the misaligned point realizes a DIFFERENT, thicker board (300um vs
     the declared 254um), so the comparison conflated board rasterization
-    with extraction quality. This test pins the fix target (:.1f, not
-    :.0f -- 63.5um is h_sub/4, not 64um) and the correction text, and
-    positively asserts the retired figures no longer appear."""
+    with extraction quality.
+
+    AUDIT 2026-09-02 (finding A1, second pass) retired the rest of the
+    numbers in this message for the reason given in the header comment
+    above: -3.8%/-1.2%/+0.7% and ">5% expected" are the declared-board
+    column of pre-#802 rows, and a re-solve of aligned h_sub/3 on the
+    current rasterizer read +0.56% where they predicted -7.9%/">5%".
+    This test used to PIN those three percentages; it now asserts they are
+    ABSENT, together with the qualitative replacement and the re-solve
+    pointer. Re-pinning a percentage here requires re-solving the sweep
+    first. The fix target (:.1f, not :.0f -- 63.5um is h_sub/4, not 64um)
+    stays pinned: it is computed from h_sub at runtime, not measured."""
     sim = _build_sim(dx=100e-6, ly=W_TRACE + 8 * H_SUB)
     msgs = _msl_warnings(sim)
     sub = [m for m in msgs if "substrate cell" in m]
     assert len(sub) == 1, f"expected 1 substrate-cell warning, got: {sub}"
     assert "an integer (aligned)" in sub[0], sub[0]
-    assert "-3.8%" in sub[0], sub[0]
-    assert "-1.2%" in sub[0], sub[0]
-    assert "+0.7%" in sub[0], sub[0]
+    # Qualitative replacement (audit A1 second pass): the convergence ORDER
+    # and the normalization anchor, not a measured deviation.
+    assert "O(dx), not O(dx²)" in sub[0], sub[0]
     assert "63.5µm" in sub[0], sub[0]  # h_sub/4 = 63.5, not the old "64µm"
-    assert "vs the DECLARED-board" in sub[0], sub[0]
+    assert "DECLARED-board Hammerstad-Jensen anchor" in sub[0], sub[0]
     assert "msl_z0_bias_floor_sweep.py" in sub[0], sub[0]
+    # ... and the staleness disclosure that replaces the retired numbers.
+    assert "pre-#802" in sub[0], sub[0]
+    assert "No specific measured bias percentage is quoted" in sub[0], sub[0]
+    # RETIRED (audit A1 second pass): the pre-#802 declared-board column and
+    # the ">5% expected" prediction a re-solve of aligned h_sub/3 (+0.56%)
+    # contradicts. These must not come back without a six-point re-solve.
+    for retired in ("-3.8%", "-1.2%", "+0.7%", "-7.9%", ">5%"):
+        assert retired not in sub[0], (retired, sub[0])
     # This mesh (dx=100) is misaligned (h_sub/dx=2.54): the realized-board
     # disclosure must be present and must state the cell count/height READ
     # OFF THE RUN GRID (3 cells = 300um, +18%), which here coincides with
@@ -311,7 +345,11 @@ def test_mixed_cell_warning_names_z0_bias_magnitude():
     assert "-3.8%" not in mixed[0], mixed[0]
     # What survives: the (cited, not remeasured) |S21|^2 > 1 override risk,
     # the measured board-thickening figure, and a pointer to the sibling
-    # realized-board artifact and its <=0.4% agreement.
+    # realized-board artifact. Audit 2026-09-02 (finding A1): the specific
+    # "within 0.4% at every point" figure was RETIRED from the advisory --
+    # its only evidence (the anchor JSON) is stale for three aligned points
+    # post-#802, so the advisory now makes the qualitative realized-board
+    # claim and points at the owed re-solve instead.
     assert "pec_occupancy_override" in mixed[0], mixed[0]
     # #766 review B3: this used to pin "no subpixel eps assembly", which is
     # false -- 'kottke_pec' builds the inv-eps tensor over PEC shapes and the
@@ -334,7 +372,12 @@ def test_mixed_cell_warning_names_z0_bias_magnitude():
     assert "realizes 4 cell(s) of substrate = 320µm" in mixed[0], mixed[0]
     assert "+26%" in mixed[0], mixed[0]
     assert "msl_z0_bias_floor_sweep_realized_anchor.json" in mixed[0], mixed[0]
-    assert "within 0.4%" in mixed[0], mixed[0]
+    # Audit A1: qualitative realized-board claim replaces the stale 0.4%
+    # figure, and the owed re-solve is named.
+    assert "within 0.4%" not in mixed[0], mixed[0]
+    assert "realized-board Hammerstad-Jensen anchor closely" in mixed[0], mixed[0]
+    assert "must be re-solved" in mixed[0], mixed[0]
+    assert "pre-#802 as-solved record" in mixed[0], mixed[0]
     assert "msl_z0_bias_floor_sweep.py" in mixed[0], mixed[0]
 
 

@@ -43,7 +43,7 @@ guard. An absent warning therefore cannot be compared across port families.
 | Wire `add_port(..., extent=...)` | `run(compute_s_params=True, s_param_freqs=...)` | `Result.s_params`, `Result.freqs` | **limited** — multi-cell discrete feed across `extent`; magnitude evidence is stronger than absolute calibration evidence; nonuniform use is experimental |
 | Wire `add_port(..., extent=...)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited** — uniform, single-device AD path |
 | `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable` | **limited** — E5-narrow / eigenmode-blocked; external notch agreement is characterized, not tight; `eps_override` AD checked against an f64 referee on the band-mean `\|S21\|^2` objective (rel_err 0.0026 at the gate's num_periods=20 fixture, threshold 0.03; issue #530, superseding the pre-#530 `sum\|S_ij\|^2` objective and its 0.0331/0.10 figures); nonuniform mode is experimental |
-| `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | **limited** — broad magnitude evidence for documented uniform single-mode rectangular guides; phase and junction evidence are narrower; nonuniform configurations outside the passed Palace `normalize=flux` WR-90 cases remain experimental; the v1.8 chain battery is measured with four families of gates red, so this family is not chain-closed |
+| `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | **limited** — broad magnitude evidence for documented uniform single-mode rectangular guides; phase and junction evidence are narrower; nonuniform configurations outside the passed Palace `normalize=flux` WR-90 cases remain experimental; chain-closed (v1.8) for uniform single-mode S on the differentiable lanes after three pre-declared chain-battery runs (VESSL run 369367257823 / 369367258205 / 369367258638; criterion 1 and 3(a) read under x64 on the flux lane, forward default float32; a float32 gradient pipeline on the flux lane is outside the declaration) — still limited, not supported |
 | `add_waveguide_port(...)` | `run(...)` | `Result.waveguide_sparams[name]` | **limited diagnostic** — per-port output, not the full multi-port matrix API |
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | **limited** — exactly one `face="top"` port; broad-E5 analytic and broad-E4 MEEP evidence for the documented TEM-line result |
 | `add_coaxial_port(...)` | `compute_coaxial_s_matrix(...)` | `CoaxialSMatrixResult` | **experimental and deprecated** — older single-plane V/I path; can produce non-physical `\|S11\| > 1` for a lossless short |
@@ -475,138 +475,155 @@ outside the single-dielectric-slab configuration described next.
   mismatch resolved (issue #490 Lane 2) is explicitly OUT of scope for both
   lanes above; the microstrip-line section below is unchanged.
 
-**Chain battery (v1.8): measured, gates red — this family is NOT chain-closed.**
+**Chain battery: chain-closed (v1.8) for uniform single-mode S on the
+`normalize=False` and `normalize="flux"` lanes.**
 
 The per-family contract in
 [`docs/design_notes/chain_closure_contract.md`](../design_notes/chain_closure_contract.md)
 defines four criteria and states that failure of any single pass condition means
-the family is not chain-closed. One pre-declared WR-90 measurement
-(VESSL run 369367257823, whole-battery solve wall `1157.6 s`, float32,
-`JAX_ENABLE_X64=0`) evaluated every one of them on the dx rungs `a/9`, `a/18`
-and `a/36` across the `normalize=False` and `normalize="flux"` lanes, with the
-DUT set thru (non-vacuity control only), PEC short and `eps_r = 4` slab. Of the
-185 stored verdicts, **24 are red — 21 failures plus 3 dx ladders that the
-pre-declared guard reports as *not interpretable*** — grouped in four families
-that account for all 24: forward identity 8, AD-vs-FD 1, reference-plane
-rotation 12, dx ladders 3. The settling witness was a fifth red family at
-measurement time and is now green; its two verdict keys were re-derived from
-the same stored records after the witness itself was fixed (see criterion 2). Every tolerance, position and drive
-setting was fixed in
-[`waveguide_chain_battery_predeclaration.md`](../design_notes/waveguide_chain_battery_predeclaration.md)
-before the first run, and no gate was moved afterwards.
+the family is not chain-closed. The battery — dx rungs `a/9`, `a/18`, `a/36`
+(2.54 / 1.27 / 0.635 mm; `a/36` is the claims rung, the one the gates are
+drawn at, the coarser two report-only), DUTs thru (the control that shows the
+gates are not vacuous), PEC short and
+`eps_r = 4` slab, both differentiable lanes, 185 stored verdicts — was measured
+three times, each run pre-declared and committed before its first S-parameter,
+and no gate, tolerance or pin was moved between them:
 
-- **Criterion 1 (in-graph S) — red on the flux lane, green on `normalize=False`.**
-  All 8 `normalize="flux"` forward-identity legs miss the contract's
-  `rtol=1e-5`, `atol=1e-7` bound by up to `1.09e-5` in `max|dS|`; the
-  `normalize=False` legs are bit-identical at `0.0`, and a concrete (untraced)
-  no-op override is bit-identical on every leg. The cause is float32
-  reassociation of the flux lane's 2849-step Poynting DFT under the
-  reverse-mode tape, not the override channel: the same traced call under a
-  scoped x64 context agrees with the untraced call to `1.5e-15`.
-- **Criterion 2 (physics gates) — green; the settling witness was red at
-  measurement time and the witness, not the run, was the defect.** Column
-  power (max `1.000975` against `1.02`), magnitude reciprocity and complex
-  reciprocity all pass at the claims rung. The energy-based ring-down witness
-  read `settling_db = 0.00 dB` on both drives of the PEC-short fine-rung cells
-  at 40 and again at 80 periods, because the four far-port records behind the
-  short had underflowed float32 to exactly zero (`peak = 0.0`,
-  `n_nonzero = 0`) and `10*log10((end+tiny)/(peak+tiny))` evaluates to `0 dB`
-  on such a record. Witness degeneracy, not truncation: the records that stay
-  in the float32 normal range ring down to `-99.98 dB`, and the 80-period
-  rerun moves S by at most `7.3e-6`. The witness now skips a record whose peak
-  amplitude is below the storage format's smallest normal scaled so the
-  `-40 dB` decision is itself representable (`1.1754944e-36` for float32) and
-  names the records it skipped; the mirror failure it also removes is the
-  mid-rung `-40.85 dB` *pass* carried by float32 subnormals, where the
-  signal-carrying records read `-94.62 dB` (issue #869). Re-derived from the
-  same stored per-record peaks — no re-run, and the `-40 dB` bar unchanged —
-  the PEC-short fine cell reads `-113.91` / `-114.48 dB` per drive on the
-  claims-bearing 80-period record on `normalize=False` and `-106.14` /
-  `-106.03 dB` on `normalize="flux"`, so both verdict keys are green.
-- **Criterion 3(a) (AD vs central FD) — red on 1 of 16 legs.** The PEC-short
-  `|S11|^2` objective under `eps_override` on the flux lane is a zero-derivative
-  objective (`|S11| = 1` in front of a PEC), pre-declared as an expected
-  ULP-floor skip. The float64 FD resolved a residual `-7.245e-7` instead of
-  skipping, and float32 reverse-mode AD returned `+2.683e-5` — its own noise
-  floor — so the accuracy gate applied and failed. The x64 witness of the same
-  reverse-mode call gives `-9.821e-7`: same sign and same order as FD, a
-  relative difference of `0.356` that would not itself pass the `0.05` gate.
-  That is the point rather than a caveat — float32 AD's `+2.683e-5` has the
-  wrong sign and is 37x larger, so the tape is reading a real `O(1e-6)`
-  residual and the float32 noise floor is the limit. The other 15 legs pass at `1e-4` to
-  `1.1e-2` against the `0.05` gate, with FD ULP spans from `6.53e8` upward.
-- **Criterion 3(b) (reference-plane invariance) — `|S|` and both gradient legs
-  green, rotation red.** `|S|` is invariant to `2.22e-7`, well inside
-  `rtol=1e-3, atol=1e-4`; gradient invariance for magnitude objectives and
-  rotation covariance for complex objectives both measure below `1.8e-7` and are
-  pinned at `0.001`. The `angle(S11)` rotation misses both pre-declared bars:
-  `6.602 degrees` against the Yee-discrete beta (gate `3 degrees`) and
-  `6.565 degrees` against the continuous beta (gate `6 degrees`). The mechanism
-  is identified in the artifact: the residual against the port configuration's
-  **own** beta is at most `6.3e-5 degrees`, so the shift itself is an exact unit-modulus
-  `exp(-/+ j*beta*s)`; the de-embedding beta is wrong because the port's discrete
-  TE10 cutoff is solved on an aperture one cell wider than the guide
-  (`6.378 GHz` at the fine rung, against `6.555 GHz` fitted from the thru S21
-  phase at an rms of `0.004 degrees`). Tracked as issue #868. No fix is applied
-  here, and the two candidate fixes — narrow the cutoff aperture to the guide's
-  N cells, or re-declare the gate against the port's own beta — are a pending
-  decision, not a tolerance question. The family is **12 verdict keys**: the Yee
-  and continuous bars on four `(dut, lane)` cases, plus the wrong-sign
-  discriminator, which reads `0.734 degrees` and also fails. That third one is a
-  witness degeneracy rather than a separate defect — at `9.8 GHz` the predicted
-  rotation crosses `+/-180 degrees`, where both sign hypotheses coincide modulo
-  360, so the minimum over bins collapses and the discriminator cannot fire. The
-  binding sign check is the cheap refute, red by `119.49 degrees`. Anyone porting
-  this battery to another port family inherits that blind spot.
-- **Criterion 3(c) (mesh refinement) — 7 of 10 ladders pass, 3 not
-  interpretable.** The non-increase gate passes on all ten observables, but the
-  pre-declared interpretability guard rejects three of them
-  (`slab_s11_mag|false`, `slab_s21_mag|false`, `pec_short_s11_phase_deg|flux`)
-  because their successive-delta ratio falls outside `[0.15, 0.70]` on a
-  conditioned bin, which for a ratio-2 ladder means the coarse rung is still
-  pre-asymptotic. Consistent with preflight, which warns that the coarse slab
-  rung has only `5.1` cells per dielectric wavelength. No pin is written for
-  those three; the next admissible rung is `a/72`.
+- **Run 1** (VESSL run 369367257823, solve wall `1157.6 s`, float32;
+  [`waveguide_chain_battery_predeclaration.md`](../design_notes/waveguide_chain_battery_predeclaration.md),
+  artifact `fixture.json`, retained for history and no longer gated): 24 of 185 red in four families. The
+  reference-plane rotation (12 keys, `6.602 degrees` against a `3 degree` gate)
+  was traced to the port's transverse eigenproblem being solved on N+1 cells
+  for an N-cell guide (issue #868, corrected in PR #889); three dx ladders were
+  not interpretable; the settling witness scored float32-underflowed records
+  (issue #869, fixed in PR #881).
+- **Run 2** (VESSL run 369367258205, solve wall `1218.3 s`, float32, PR #893;
+  [`waveguide_chain_battery_remeasure_predeclaration.md`](../design_notes/waveguide_chain_battery_remeasure_predeclaration.md),
+  artifact `fixture_guide_cell_aperture.json`): the corrected port, 9 of 185
+  red in two families — the 8 `normalize="flux"` forward-identity legs and the
+  zero-derivative AD leg. Rotation `0.0317 degrees` against the Yee-discrete
+  beta; wrong-sign discriminator live at `64.05 degrees` against a `10 degree`
+  floor; all ten ladders interpretable.
+- **Run 3** (VESSL run 369367258638, solve wall `1350.5 s`, float32 forward,
+  commit `f914a7ca`;
+  [`20260905_v18_close_predeclaration.md`](../design_notes/20260905_v18_close_predeclaration.md),
+  artifact `fixture_v18_close.json`, the artifact the replay test gates against):
+  the same port and cells (bit-identical to run 2's on all 18), with contract
+  criterion 1 (forward identity: the reverse-mode-traced result equals the
+  untraced one) and 3(a) (AD-vs-FD) **read under x64 (JAX 64-bit mode) on the
+  flux lane** — per that pre-declaration, the float32 reading stored beside the
+  x64 one on every leg — and
+  the pre-declared zero-derivative leg carried as report-only. Census
+  **134 pass / 51 report_only / 0 fail / 0 not interpretable**. The 51 report_only verdicts are the 36 coarse- and mid-rung physics gates and referees (report-only below the claims rung by pre-declaration), the 12 ungated power-closure keys, and the 3 zero-derivative legs (1 AD-vs-FD, 2 gradient-invariance); the 134 pass are the claims-rung gates, the AD legs, the plane-shift and ladder gates. The declaration's
+  own falsifier holds: the same AD stage with the float32 primary reproduces run
+  2's 9 red exactly.
+
+Per criterion, on run 3:
+
+- **Criterion 1 (in-graph S) — green.** Forward identity (the reverse-mode-traced
+  primal against the untraced call) is at most `1.051e-8` scaled on the eight
+  `normalize="flux"` legs (`1.738e-10` and `2.835e-10` on the PEC-short groups,
+  `1.051e-8` on the slab group; absolute `2.24e-14` at worst) against the bound
+  `rtol=1e-5, atol=1e-7` (scaled 1.0), and exactly `0.0` on the eight
+  `normalize=False` legs, which are not declared under x64 and stay float32.
+  The float32 reading of the same flux legs, stored beside the x64 one, is run
+  2's red to the last printed digit (`1.083`, `1.515`, `1.761` scaled — float32
+  reassociation of the 2849-step Poynting DFT under the tape), which is why the
+  declaration is a precision statement and not a fix: a float32 gradient
+  pipeline on the flux lane is outside it.
+- **Criterion 2 (physics gates) — green.** At the claims rung, column power max
+  `1.000353` against `1.02`, magnitude reciprocity mean at most `2.25e-3` against
+  `0.01`, complex reciprocity at most `4.81e-3` against `0.01`; the energy-based
+  ring-down witness reads `-100.9` to `-102.6 dB` per drive on every fine-rung
+  cell against the `-40 dB` bar, skipping records below the float32 normal range
+  and naming them (issue #869). The coarse and mid rungs are report-only by
+  pre-declaration; the coarse slab reads column power `1.00711` and complex
+  reciprocity `0.0309`, three times the gate. Power closure is report-only here
+  and bounded by the WP3 witness below.
+- **Criterion 3(a) (AD vs central FD) — 15 of 16 legs green, 1 report-only.**
+  The fifteen pass at `rel` `1.22e-4` to `1.07e-2` against `0.05`; the
+  central-difference step resolves `8.7e13` to `4.8e15` units in the last place
+  (ULP) of the objective on fourteen of them and `3.44e11` on the
+  zero-derivative leg's `normalize=False` sibling, all far above the `1e4`
+  floor below which a leg is skipped. The PEC-short `|S11|^2`
+  objective under `eps_override` on the flux lane is a zero-derivative
+  objective (`|S11| = 1` in front of a PEC) pre-declared as an expected ULP-floor
+  skip; its FD resolved `-5.154e-8` above the floor, its x64 AD reads
+  `-2.943e-7` — same sign, a factor `5.7` apart, outside the factor-3 band —
+  and its float32 AD `+2.786e-5` with the wrong sign. Both AD and FD are
+  `O(1e-7)` discretization residuals of a physically zero derivative, so the
+  leg is **report-only**, on the remeasure note's pre-declared exit, and the
+  factor-`5.7` entry is stored beside the verdict. The
+  weight-bearing PEC-short magnitude leg is the `sigma_override` one, green at
+  `rel` `4.9e-4`.
+- **Criterion 3(b) (reference-plane invariance) — green.** `|S|` invariant to
+  `1.76e-7` against `rtol=1e-3, atol=1e-4`; gradient invariance for magnitude
+  objectives and rotation covariance for complex objectives measure below
+  `2.33e-7` on the ten pinned legs (float32 on both sides; criterion 3(b) is
+  not under the x64 declaration — the artifact's x64-base companion reading,
+  `gradient_invariance_x64_base`, measures this lane's float32 gradient error,
+  not plane invariance, and is not part of this criterion) and are pinned at
+  `0.001`; the two zero-derivative legs (`2.7e-4`, `6.5e-3`) are report-only on
+  the same pre-declared exit as 3(a); the `angle(S11)` rotation and the
+  wrong-sign discriminator are unchanged from run 2 (the cells are
+  bit-identical) at `0.0317 degrees` against the Yee-discrete beta (gate
+  `3 degrees`), `0.0407 degrees` against the continuous beta (gate `6 degrees`)
+  and `64.05 degrees` against a `10 degree` floor with the sign-discriminating
+  shift pair (5.08 / 2.54 mm); flipping the shift sign fails the rotation gate
+  by at least `117.27 degrees`.
+- **Criterion 3(c) (mesh refinement) — 10 of 10 ladders interpretable and
+  non-increasing**, unchanged from run 2 on the pre-declared `[0.15, 0.70]`
+  successive-delta-ratio guard, Richardson and monotone pins carried unchanged.
 - **Criterion 3(d) (referee) — green at the claims rung.** PEC-short `|S11|`
-  stays within `0.999967`--`1.000008` over both lanes at that rung
-  (`normalize=False` `0.999967`--`1.000005`, `normalize="flux"`
-  `0.999992`--`1.000008`; the gate reads each lane separately) against the
-  `0.99`--`1.03` window, and the
-  slab against the analytic Airy oracle differs by at most `0.02072` in
-  magnitude and `7.37 degrees` in phase against `0.05` and `15.0 degrees`. The
-  referee set is this battery's Airy slab and PEC short **plus** the five
-  broad-E5 replay bands (WR-340, WR-62, WR-28, WR-15, WR-10), which are replayed
-  by `tests/crossval/test_waveguide_broad_e5.py` at zero run cost. The
-  phase referee is analytic Airy only; cv18, cv19 and the Meep T-junction are
-  magnitude-only flux gates with no AD leg, so they can support 3(d) and can
-  never carry criterion 1 or 3(a).
+  within `0.999715`--`1.000143` on `normalize=False` and
+  `0.999995`--`1.000007` on `normalize="flux"` against the `0.99`--`1.03`
+  window; the slab against the analytic Airy oracle differs by at most
+  `0.01262` (`normalize=False`) / `0.00903` (`normalize="flux"`) in magnitude
+  against `0.05` and `6.10` / `6.15 degrees` in phase against `15.0 degrees`.
+  The coarse rung is report-only and outside both referee gates (slab vs Airy
+  `0.1487` in magnitude, `16.94 degrees` in phase). The referee set is this battery's Airy slab and PEC short **plus** the five
+  broad-E5 replay bands (WR-340, WR-62, WR-28, WR-15, WR-10), replayed by
+  `tests/crossval/test_waveguide_broad_e5.py` at zero run cost. The phase
+  referee is analytic Airy only; cv18, cv19 and the Meep T-junction are
+  magnitude-only flux gates with no AD leg, so they support 3(d) and never
+  carry criterion 1 or 3(a).
+- **Criterion 4 (artifacts) — met.** Each run's artifact carries the
+  pre-declaration path and the commit it was read at, the tracked driver and
+  the tracked VESSL YAML it ran under; the replay tests re-derive every stored
+  verdict from the stored numbers through the shared gate module.
 
-Scope of the battery, stated rather than assumed: it covers the **uniform
+Scope of the declaration: the **uniform
 single-mode** rectangular guide on the two differentiable lanes. Junctions,
-multimode extraction and nonuniform meshes are outside it, and the
+multimode extraction and nonuniform meshes are outside it, the
 `normalize=True` two-run lane is outside the differentiable chain by
-construction. Power closure has a witness that **bounds** the disagreement
-rather than resolving it: at the coarse rung two interior `add_flux_monitor`
-planes reproduce `1 - |S11|^2 - |S21|^2` to within `2.146e-05` of the port
-route against a `0.02` gate, but both routes sit at about `1e-05`, the float32
-field-noise floor of that rung, so the number caps the disagreement instead of
-demonstrating closure. That witness is independent in the **plane index only**:
-both routes integrate the same transverse window with the same uniform `dA`
-through the same flux kernel, so an area-weighting or shared-kernel error
-cancels in both ratios, and neither route sees the reference-plane de-embedding,
-which is phase-only; that measurement is under
-landed on `main` in PR #870 (`1bccdfba`). A separate observation from the same
-comparison is open as issue #873: the `normalize=False` extractor reports
-`1.825e-2` column power on an **empty** WR-90 guide at the coarse rung, falling
-about 4x per dx halving (so it is second order in dx), while the flux lane on
-the same solved fields reads `3.33e-5` there — read today as a discretization
+construction, and "chain-closed" is not "supported" — the row keeps "limited"
+until `ROADMAP.md` redefines the matrix. Power closure has a witness that
+**bounds** the disagreement rather than resolving it: at the coarse rung two
+interior `add_flux_monitor` planes reproduce `1 - |S11|^2 - |S21|^2` to within
+`2.146e-05` of the port route against a `0.02` gate, but both routes sit at about
+`1e-05`, the float32 field-noise floor of that rung, so the number caps the
+disagreement instead of demonstrating closure. That witness is independent in
+the **plane index only**: both routes integrate the same transverse window with
+the same uniform `dA` through the same flux kernel, so an area-weighting or
+shared-kernel error cancels in both ratios, and neither route sees the
+reference-plane de-embedding, which is phase-only (PR #870, `1bccdfba`). A
+separate observation from the same comparison is open as issue #873: the
+`normalize=False` extractor reports `1.825e-2` column power on an **empty**
+WR-90 guide at the coarse rung, falling about 4x per dx halving, while the flux
+lane on the same solved fields reads `3.33e-5` there — read as a discretization
 term in the V/I lane's own normalization rather than lost power, and not gated.
 
-Artifacts: `tests/oracle/test_waveguide_chain_battery.py` (replay, fast lane),
-`tests/unit/geometry/test_waveguide_chain_battery_geometry.py`,
-`tests/fixtures/waveguide_chain_battery/fixture.json`,
-`scripts/diagnostics/waveguide_chain_battery_measure.py` and its
-`scripts/vessl_waveguide_chain_battery.yaml`, and the pre-declaration note above.
+Artifacts: replays `tests/oracle/test_waveguide_chain_battery.py` (run 1),
+`tests/oracle/test_waveguide_chain_battery_guide_cell_aperture.py` (run 2),
+`tests/oracle/test_waveguide_chain_battery_v18_close.py` (run 3; also re-runs the coarse and mid cells live against the artifact)
+and `tests/unit/geometry/test_waveguide_chain_battery_geometry.py`; fixtures
+`tests/fixtures/waveguide_chain_battery/{fixture,fixture_guide_cell_aperture,fixture_v18_close}.json`
+with their schema in the README beside them; the three pre-declarations named
+above; the driver `scripts/diagnostics/waveguide_chain_battery_measure.py` with
+`scripts/vessl_waveguide_chain_battery.yaml`,
+`scripts/vessl_waveguide_chain_battery_guide_cell_aperture.yaml` and
+`scripts/vessl_waveguide_chain_battery_v18_close.yaml`; the gate module
+`tests/_waveguide_chain_battery_gates.py` (`X64_DECLARED_LANES`).
 
 **Nonuniform transverse mesh:** single-mode `normalize=True` and
 `normalize="flux"` run. Analytic Airy fixtures cover grading ratios 1--3,
