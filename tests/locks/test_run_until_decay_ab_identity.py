@@ -67,6 +67,16 @@ Sensitivity of the derived floors (see ``_field_reassoc_atols``):
   hx/hy, whose own peaks are below ``k*max|E|``) the margin is smaller and
   is computed at runtime; measured on this fixture 3.1x (hx) / 3.6x (hy), so
   a 0.1% change in H still reds and a 1% change reds at ~30x;
+* what the change COSTS against the retired flat 1e-10 (independent review of
+  PR #899, measured on CPU jax 0.6.2): the H floors land at 1.42e-11, 7x
+  TIGHTER; the probe series loosens 4.3x (4.29e-10), ex/ey 38x (3.84e-9), ez
+  94x (9.36e-9) — the E gate now catches 0.0038% of a component's own peak
+  where the flat floor caught 0.00004% of the ez peak. An injected
+  source-amplitude error of 1e-5 relative is caught by the retired floor and
+  MISSED by the derived floors; at 1e-4 both catch it, so roughly one decade
+  of sensitivity in the 1e-5..1e-4 band is given up. No known
+  harness-divergence class lives there; an off-by-one step reds at
+  3400..5500x the floor on every driven component.
 * for a numerically-null component (hz here) no relative statement exists —
   its floor is the coupled-state roundoff by construction, which is exactly
   what keeps it from redding on pure noise.
@@ -79,9 +89,16 @@ red-lines the previous shared-E-floor behaviour so it cannot come back.
 LOCK_PROVENANCE = {
     "fixture": "none",
     "generator": "hand-derived",
-    "commit": "f019c89",
+    # "unknown" until the squash merge of PR #899 lands; the repo's locks name the
+    # main commit that produced the pinned number (see ed2d09d3), which for a
+    # squash-merged PR is not knowable before the merge. f019c89, the first commit
+    # of the series, carried the shared-E floor this revision retired.
+    "commit": "unknown",
     "date": "2026-09-05",
-    "run_id": "local (CPU derivation) + VESSL 369367258329 / 369367258350 (GPU evidence)",
+    "run_id": ("local (CPU derivation) + VESSL 369367258329 / 369367258350 (GPU evidence "
+               "that the retired flat 1e-10 floor reds on RTX4090, measured against the old "
+               "test and the first revision) + VESSL 369367258656 (GPU, 4 passed on this "
+               "revision's per-component floors)"),
     "host": "linux x86_64 jax 0.11.1 cpu; GPU evidence remilab RTX4090",
     "pinned_until": "2027-03-05",
 }
@@ -545,6 +562,18 @@ def test_field_reassoc_floors_still_red_physical_perturbations():
                 "curl-coupled roundoff of the driven components"
             )
             continue
+        # Premise of the 0.1% perturbation: it exceeds the floor only when
+        # peak/atol > 1000. A component in the band atol < peak <= 1000*atol is
+        # neither numerically null nor probeable at 0.1%; fail on that premise
+        # here (a fixture-scale problem) rather than below with a message that
+        # blames the gate. Measured on this fixture: 26200 for ex/ey/ez,
+        # 3048 for hx, 3585 for hy.
+        assert peak > 1000.0 * atol, (
+            f"{comp}: peak/atol = {peak / atol:.1f} <= 1000 -- the 0.1%-of-peak "
+            "perturbation below cannot exceed this component's floor; this "
+            "fixture cannot probe the {comp} gate at 0.1% (raise the drive or "
+            "the record, do not read the next assertion as a gate verdict)"
+        )
         delta = 1e-3 * peak
         perturbed = a.copy()
         idx = np.unravel_index(int(np.argmax(np.abs(a))), a.shape)
