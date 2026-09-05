@@ -26,16 +26,13 @@ sits at the bound); the float32 reading of the same legs, stored beside the
 x64 one on every leg of the artifact, stays run 2's red (`1.083` / `1.515` /
 `1.761` of the allowance — float32
 reassociation of the Poynting DFT under the reverse-mode tape), so **a float32
-gradient pipeline on the flux lane is outside the declaration** and the
-matrices say so. The pre-declared zero-derivative AD leg (PEC-short `|S11|^2`
-under `eps_override`, flux) is `report_only`, not pass: its x64 AD `-2.943e-7`
-and FD `-5.154e-8` share the sign and sit a factor `5.7` apart, outside the
-factor-3 band; for an AD-vs-FD leg, report_only is admissible only inside
-that pre-declared branch (same sign, both below `1e-5`) — outside it the gate
-module reads the leg as fail. The declaration's own falsifier holds: the same AD stage with the
-float32 primary reproduces run 2's 9 red exactly. The 18 cells, every
-reference-plane rotation and every dx ladder are bit-identical to run 2's
-(VESSL run 369367258205, PR #893). `docs/guides/support_matrix.md`,
+gradient pipeline on the flux lane is outside the declaration**; the same
+stage under float32 still reds, so this is a declared precision scope and
+not a fix. The pre-declared zero-derivative AD leg (PEC-short `|S11|^2` under
+`eps_override`, flux) is `report_only`, not pass: its x64 AD `-2.943e-7` and
+FD `-5.154e-8` share the sign and sit a factor `5.7` apart, outside the
+factor-3 band. The 18 cells, every reference-plane rotation and every dx
+ladder are bit-identical to run 2's (VESSL run 369367258205, PR #893). `docs/guides/support_matrix.md`,
 `sparameter_support_matrix.{md,json}`, `docs/agent/recipe-waveguide-sparams.mdx`
 and `docs/agent/port-selection.mdx` now say "chain-closed (v1.8)" for uniform
 single-mode S on the two differentiable lanes and keep "limited"; junctions,
