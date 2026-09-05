@@ -201,8 +201,9 @@ def q_window(ref_freq: float, ref_Q: float, record_length: float
     decay rates; it says nothing about how far apart two *solvers* should be.
     The rfx-vs-Meep Q gap on cv02 is a discretization offset (staircased ring
     boundary, subpixel treatment, hence a slightly different radiation Q), so
-    it is roughly constant in ``T``, while rfx's own Q for the same modes is
-    stable over every span that was actually measured. Measured ``|ln(Q_rfx/Q_ref)| = 0.070`` (mode 1)
+    it is roughly constant in ``T``, while rfx's own Q for modes 2 and 3 is
+    stable over every RESOLVED span that was measured (mode 1's recorded
+    readings spread ~7% across T=291/561/1101 and are NOT cited as invariance evidence). Measured ``|ln(Q_rfx/Q_ref)| = 0.070`` (mode 1)
     and ``0.123`` (mode 2); rfx mode 2 reads ``Q = 357.61 -> 356.83`` (0.22%)
     between ``T = 291`` and ``T = 1101``
     (``docs/research_notes/audit-2026-09-02/verify/G2_cv02.md``), and the
