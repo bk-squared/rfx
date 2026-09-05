@@ -475,7 +475,7 @@ outside the single-dielectric-slab configuration described next.
   mismatch resolved (issue #490 Lane 2) is explicitly OUT of scope for both
   lanes above; the microstrip-line section below is unchanged.
 
-**Chain battery (v1.8): chain-closed (v1.8) for uniform single-mode S on the
+**Chain battery: chain-closed (v1.8) for uniform single-mode S on the
 `normalize=False` and `normalize="flux"` lanes.**
 
 The per-family contract in
@@ -552,9 +552,8 @@ Per criterion, on run 3:
   `-2.943e-7` — same sign, a factor `5.7` apart, outside the factor-3 band —
   and its float32 AD `+2.786e-5` with the wrong sign. Both AD and FD are
   `O(1e-7)` discretization residuals of a physically zero derivative, so the
-  leg is **report-only**, on the remeasure note's pre-declared exit; widening
-  the band so it passes was the rejected alternative, and the factor-`5.7` entry
-  is stored beside the verdict so report-only is not read as pass. The
+  leg is **report-only**, on the remeasure note's pre-declared exit, and the
+  factor-`5.7` entry is stored beside the verdict. The
   weight-bearing PEC-short magnitude leg is the `sigma_override` one, green at
   `rel` `4.9e-4`.
 - **Criterion 3(b) (reference-plane invariance) — green.** `|S|` invariant to
@@ -565,15 +564,16 @@ Per criterion, on run 3:
   `gradient_invariance_x64_base`, measures this lane's float32 gradient error,
   not plane invariance, and is not part of this criterion) and are pinned at
   `0.001`; the two zero-derivative legs (`2.7e-4`, `6.5e-3`) are report-only on
-  the same pre-declared exit as 3(a); the `angle(S11)` rotation is
-  `0.0317 degrees` against the Yee-discrete beta (gate `3 degrees`) and
-  `0.0407 degrees` against the continuous beta (gate `6 degrees`), the
-  wrong-sign discriminator reads `64.05 degrees` against a `10 degree` floor
-  with the sign-discriminating shift pair (5.08 / 2.54 mm), and flipping the
-  shift sign fails the rotation gate by at least `117.27 degrees`.
+  the same pre-declared exit as 3(a); the `angle(S11)` rotation and the
+  wrong-sign discriminator are unchanged from run 2 (the cells are
+  bit-identical) at `0.0317 degrees` against the Yee-discrete beta (gate
+  `3 degrees`), `0.0407 degrees` against the continuous beta (gate `6 degrees`)
+  and `64.05 degrees` against a `10 degree` floor with the sign-discriminating
+  shift pair (5.08 / 2.54 mm); flipping the shift sign fails the rotation gate
+  by at least `117.27 degrees`.
 - **Criterion 3(c) (mesh refinement) — 10 of 10 ladders interpretable and
-  non-increasing** on the pre-declared `[0.15, 0.70]` successive-delta-ratio
-  guard, Richardson and monotone pins carried unchanged from run 2.
+  non-increasing**, unchanged from run 2 on the pre-declared `[0.15, 0.70]`
+  successive-delta-ratio guard, Richardson and monotone pins carried unchanged.
 - **Criterion 3(d) (referee) — green at the claims rung.** PEC-short `|S11|`
   within `0.999715`--`1.000143` on `normalize=False` and
   `0.999995`--`1.000007` on `normalize="flux"` against the `0.99`--`1.03`
@@ -592,7 +592,7 @@ Per criterion, on run 3:
   the tracked VESSL YAML it ran under; the replay tests re-derive every stored
   verdict from the stored numbers through the shared gate module.
 
-Scope of the declaration, stated rather than assumed: the **uniform
+Scope of the declaration: the **uniform
 single-mode** rectangular guide on the two differentiable lanes. Junctions,
 multimode extraction and nonuniform meshes are outside it, the
 `normalize=True` two-run lane is outside the differentiable chain by
