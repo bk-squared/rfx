@@ -70,7 +70,7 @@ float32 readings stay in the artifact as the recorded envelope of the float32 ta
 | family | legs | predicted | how it could instead fail |
 |---|---|---|---|
 | forward identity, flux, x64 | 8 | all ≤ 1e-7 scaled (three measured 1.7e-10…1.05e-8) | any leg > 1e-3 scaled: reassociation is NOT confined to the DFT; report next to the flux numbers, do not close |
-| forward identity, `normalize=False` | 4 | bit-identical (0), unchanged | — |
+| forward identity, `normalize=False` | 4 | bit-identical (0) on GPU at the claims rung, as run 2 stored; the CPU coarse-rung smoke read 0.23 and is not the claim | > 0 on GPU at the claims rung: the x64 context leaked into the `normalize=False` path |
 | AD-vs-FD zero-derivative, x64 | 1 | **report_only** (declared in §2); stored ratio expected ~3–8, same sign, both |g| ≤ 1e-6 | sign flip, or either |g| above 1e-5: float64 tape and FD disagree on a NON-zero derivative — defect on both precisions, root-cause, do not close |
 | AD-vs-FD, all other legs, x64 | 15 | rel ≤ 0.05, and ≤ run 2's float32 rel (1.0e-4…1.1e-2) | any leg's rel RISES under x64: the float32 pass was noise agreeing with noise — report as a finding |
 | everything else | 152 | unchanged from run 2 to replay tolerance | any drift: the x64 context leaked into a non-AD path |
@@ -84,8 +84,9 @@ per the contract's "How a family is declared chain-closed".
 All eight flux legs read `primary_precision = x64` with a witness each; the zero-derivative
 leg lands `report_only`, the other seven `pass`. x64 forward identity 0.08–0.14 scaled
 against float32's 0.16–4.10 on the same legs — the declared shape. One thing to state ahead
-of the run: **the float32 AD on `pec_short | flux | sigma | s11_mag2` was NaN at the coarse
-rung on CPU** (x64: −6.894 against FD −6.898, rel 7e-4). Both GPU runs at the claims rung
+of the run: **the float32 AD was NaN on all four `pec_short | flux` legs at the coarse rung
+on CPU** (eps s11_mag2 / re_s11 / im_s11 and sigma s11_mag2; e.g. sigma: x64 −6.894 against
+FD −6.898, rel 7e-4). The reader script counted four; my first read of the log tail saw one. Both GPU runs at the claims rung
 read it finite at −6.4214, identical to six digits, so the closing run is not expected to
 see it; if it does, the script's non-finite path (already designed for this) carries the
 verdict on the x64 reading, the float32 NaN is stored beside it, and the row is reported as
