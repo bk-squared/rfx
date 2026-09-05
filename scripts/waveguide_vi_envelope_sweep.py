@@ -214,7 +214,8 @@ def layout(r_lo: float, domain_mult: float = 1.0) -> dict:
 
 
 def num_periods_for(case: dict, lay: dict, fc_hz: float, f_lo: float,
-                    f_hi: float, pad_m: float | None = None) -> tuple[float, dict]:
+                    f_hi: float, pad_m: float | None = None,
+                    grid_extent_m: float | None = None) -> tuple[float, dict]:
     """Record length = 2*t0 (full modulated-gaussian support) + n_trav domain
     traversals at the slowest in-band group velocity, expressed in periods of
     freq_max (``grid.num_timesteps``' own convention).
@@ -249,10 +250,24 @@ def num_periods_for(case: dict, lay: dict, fc_hz: float, f_lo: float,
     if rule == "far_boundary":
         margin = float(case.get("record_margin", 3.0))
         T = 2.0 * t0 + margin * tau_far
+    elif rule == "grid_extent":
+        # The pad-free form a user can size without knowing the pad: the longest
+        # one-way path in the grid is the grid itself, so tau <= 2*L_grid/v_g and
+        #     T >= margin * 2 * L_grid / v_g(f_low, fc_numerical)
+        # needs only the grid extent and the band's low edge. At R2/N=36/K=3.0 it is
+        # 1.70x conservative against the far-boundary rule (149 ns vs 88 ns). It sizes
+        # the FIRST attempt; the T-vs-1.5T witness below is what validates it.
+        margin = float(case.get("record_margin", 3.0))
+        L_grid = float(grid_extent_m) if grid_extent_m else (L + 2.0 * pad)
+        T = 2.0 * t0 + margin * 2.0 * L_grid / vg
     elif rule == "interior":
         T = 2.0 * t0 + float(case["n_trav"]) * t_trav
     else:
         raise ValueError(f"unknown record_rule {rule!r}")
+    # Ship the witness, not the formula: whichever rule sized T, the validating
+    # artifact is a twin at 1.5*T whose PER-BIN headline agrees with this one to the
+    # same 1 % bar section 1.3 uses. Pad-free, path-free, band-free. The generator
+    # emits it via record_witness=True; T_over_tau is recorded either way.
     return T * f_hi, dict(t0_s=t0, t_traverse_s=t_trav, t_record_s=T,
                           fwidth_hz=fwidth, v_group_low_m_s=vg,
                           v_group_cutoff_hz=fc_vg,
