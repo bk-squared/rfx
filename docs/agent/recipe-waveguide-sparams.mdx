@@ -127,15 +127,18 @@ Airy, Meep, OpenEMS, and Palace references). See
 [docs/guides/sparameter_support_matrix.md](../guides/sparameter_support_matrix.md)
 for the full artifact and envelope table.
 
-That status is about magnitude and phase accuracy on the documented setups. It
-is **not** a chain-closure status: the v1.8 chain battery
-(`tests/oracle/test_waveguide_chain_battery.py`,
-`tests/fixtures/waveguide_chain_battery/fixture.json`) measured every criterion
-of [`chain_closure_contract.md`](../design_notes/chain_closure_contract.md) in
-one pre-declared WR-90 run and four families of gates are red, so the
-rectangular-waveguide family is not chain-closed. The support-matrix row lists
-the red criteria and their issues; do not read a green accuracy referee as a
-gradient-chain result.
+That status is about magnitude and phase accuracy on the documented setups. The
+chain-closure status is separate: the v1.8 chain battery measured every
+criterion of [`chain_closure_contract.md`](../design_notes/chain_closure_contract.md)
+in three pre-declared WR-90 runs, and the family is **chain-closed (v1.8)** on
+the third (`tests/oracle/test_waveguide_chain_battery_v18_close.py`,
+`tests/fixtures/waveguide_chain_battery/fixture_v18_close.json`, VESSL run
+369367258638) — with criterion 1 (forward identity) and 3(a) (AD-vs-FD) read
+under x64 on the `normalize="flux"` lane, the forward default still float32.
+The support-matrix row carries the numbers and the scope fences (uniform
+single-mode only; junctions, multimode and nonuniform meshes excluded); do not
+read a green accuracy referee as a gradient-chain result, and do not read
+chain-closed as "supported" — that is a v2.0 word.
 
 ## Analytic reference
 
