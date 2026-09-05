@@ -92,6 +92,14 @@ def test_baseline_replays_and_passes_on_every_arm():
     # grazing arms
     ad = doc["arms"]["graze_vac"]
     assert ad["leak"]["G_leak"] and ad["leak"]["max_leak_gated"] <= O.LEAK_BAR
+    # The four oracle gates are DECLARED not-judged on the vacuum arm (no R/T
+    # oracle), and shown as N/A rather than as False beside a PASS. A gate that
+    # stopped being judged without this declaration is the failure mode this
+    # asserts against.
+    assert ad["gates_not_applicable"] == ["G1_R", "G1_T", "G2_R", "G2_T"]
+    for g in ad["gates_not_applicable"]:
+        assert ad["gates_all"][g] == "N/A", (g, ad["gates_all"][g])
+    assert ad["gates_all"]["G_leak"] is True and ad["gates_all"]["G3_tail"] is True
     ad = doc["arms"]["graze_pec"]
     spec, run, cells, _ = _replay_arm("graze_pec", ad)
     pg = O.evaluate_grazing_pec(ad["freqs_hz"], ad["R_rfx"], spec, run["dt_s"],

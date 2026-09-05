@@ -272,7 +272,9 @@ def test_aux_profile_equals_a_live_init_tfsf_2d_config_to_float32():
     assert aux["b"][0] < aux["b"][-1]
     # the pre-#888 heuristic would have put sigma_max ~2 orders of magnitude
     # higher on a 30-cell layer; nothing here may reproduce it
-    assert sigma_max == pytest.approx(0.8558, rel=1e-3)
+    # -ln(1e-28) * 4 / (2 eta * 200 dx) = 1.7114 S/m: the target re-derived at 82 deg
+    # (lane A dc597063, note section 12). The 70-deg derivation read 0.8558 here.
+    assert sigma_max == pytest.approx(1.7114, rel=1e-3)
 
 
 # ---------------------------------------------------------------------------

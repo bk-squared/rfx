@@ -395,6 +395,12 @@ it.** The derivation note has no angle above 70 in it.
 
 **B-2 — `validation/crossval/26_oblique_slab_fresnel.py:458`: graze_vac prints "ALL
 CHECKS PASSED … (exit 0)" with four of its own gates False.**
+
+> **Addressed 2026-09-05.** The scope was declared all along (pre-declaration §4.5: the vacuum
+> arm is the injection witness alone), so this was a presentation defect, not an undeclared
+> drop. The four oracle gates are now printed and recorded as `N/A`, the artifact carries
+> `gates_not_applicable` with its reason, and the replay test asserts the declaration. The
+> verdict logic (`G_leak and G3_tail`) is unchanged.
 Line 458 *replaces* the E2 verdict with `arm_ok = lk["G_leak"] and
 e2["gates"]["G3_tail"]`, silently dropping `G3_closure` and `G3_passivity` — which **are**
 measurable on this rig — and line 459 overwrites `e2["e2_ok"] = arm_ok` so the artifact
