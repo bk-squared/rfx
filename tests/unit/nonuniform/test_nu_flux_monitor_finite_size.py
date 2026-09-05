@@ -267,8 +267,12 @@ def test_nu_finite_flux_absolute_aperture_and_dA():
     #     endpoint moves the summed extent by exactly one cell, i.e. exactly ONTO
     #     that tolerance, and passed under `<=`. Split across the two endpoints
     #     the same error is one WHOLE cell against a HALF-cell bound, so it
-    #     fails. What (e) now catches: a one-cell (or larger) mis-snap of either
-    #     endpoint, and any clamp that moves an endpoint more than half a cell.
+    #     fails. What (e) now catches: a two-cell-or-larger mis-snap of either
+    #     endpoint; a ONE-cell mis-snap only when the request lies on an edge or
+    #     the neighbouring cells differ by < 2x (at a 2:1 transition a request
+    #     0.1-0.49 cell into the last fine cell can still pass the
+    #     max(neighbours)/2 bound - measured on this fixture's z axis); and any
+    #     clamp that moves an endpoint more than half a cell.
     #     What it still cannot catch: a request landing exactly mid-cell, where
     #     both neighbouring edges are equidistant and either is a correct argmin.
     for label, d_full_, edges_, pad_lo_, pad_hi_, lo, hi, c_req, s_req in (

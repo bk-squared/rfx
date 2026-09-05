@@ -396,7 +396,7 @@ def _nu_flux_tangential_bounds(d_arr, pad_lo: int, pad_hi: int,
 
     To make it non-silent a ``UserWarning`` is emitted when EITHER of two
     runtime-derived conditions holds (fix2b, verify nit 1 — the previous single
-    size-difference test was a PROXY that missed clamps of up to one cell):
+    size-difference test was a PROXY that missed clamps of up to ~1.5 end cells):
 
       (a) CLAMP, tested PER ENDPOINT: the REQUESTED ``center -/+ size/2``
           reaches outside ``[0, edges[-1]]`` by more than half the end cell
