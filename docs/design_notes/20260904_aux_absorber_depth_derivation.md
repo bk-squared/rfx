@@ -682,3 +682,120 @@ lane, not this one.
 (§8.1), and cv04's `eps_continuum` separation is identically zero -- structurally,
 since cv04 is lossless and that defect IS the continuum permittivity there. Both
 are recorded as measured verdicts rather than repaired.
+
+---
+
+## 12. Correction: the worst declared angle is 82 degrees, not 70 (2026-09-05, review)
+
+Section 3 derived the 2-D target at "the worst declared angle, 70 degrees, cv26's gate
+cap", and section 4 said the result was "at the instrument floor at every angle". Both
+statements were true only for the angles measured, and the angles measured stopped at 70.
+`THETA_GATE_MAX_DEG = 70` is cv26's **primary**-rig cap. Three of cv26's ten arms
+(`graze_vac`, `graze_pec`, `graze_te`) are declared at `GRAZE_THETA0_DEG = 82` with
+`GRAZE_THETA_GATE_DEG = (80, 85)`. The derivation never looked there. An independent
+reviewer did, and this section is the re-measurement.
+
+### 12.1 What the 1e-14 absorber does above 70 degrees
+
+Same instrument (`measure_aux_reflection_2d`), full rig, 40000 steps so the grazing band
+carries bins; shipped 30-cell absorber alongside:
+
+| theta | declared (n=200, R=1e-14) mean / max | shipped 30-cell mean / max | gain (max) |
+|---|---|---|---|
+| 70 | 3.769e-05 / 2.297e-04 | 5.263e-02 / 5.300e-02 | x231 |
+| 76 | 5.135e-04 / 2.749e-03 | 5.263e-02 / 5.277e-02 | x19 |
+| 82 | 9.694e-03 / 2.793e-02 | 5.151e-02 / 5.212e-02 | **x1.9** |
+
+At 82 degrees the fix buys a factor of 1.9. The defect #888 exists to remove is still
+present on the arms that run nearest grazing, and no gate in cv26 can see it because the
+grazing gates (G6, G7) carry the same echo on both sides of their difference.
+
+### 12.2 kappa is not the lever; sigma is
+
+The textbook remedy for grazing incidence is real stretching, kappa > 1. Measured at 82
+degrees, n = 200, two series, so the two effects the law couples are pulled apart
+(`_cpml_profile` multiplies sigma_max by kappa_max):
+
+| kappa | R_asym | sigma_max (S/m) | mean / max |
+|---|---|---|---|
+| 1 | 1e-14 | 0.856 | 9.694e-03 / 2.793e-02 |
+| 2 | 1e-14 | 1.711 | 3.915e-04 / 1.288e-03 |
+| 4 | 1e-14 | 3.423 | 8.216e-04 / 1.391e-03 |
+| 7 | 1e-14 | 5.990 | 1.372e-03 / 2.042e-03 |
+| 12 | 1e-14 | 10.268 | 2.076e-03 / 2.811e-03 |
+
+and with sigma_max **held** at 0.856 (R_asym loosened as 1e-14^(1/kappa)):
+
+| kappa | R_asym | sigma_max | mean / max |
+|---|---|---|---|
+| 2 | 1e-07 | 0.856 | 1.091e-02 / 3.152e-02 |
+| 4 | 3.16e-04 | 0.856 | 1.182e-02 / 3.479e-02 |
+| 7 | 1e-02 | 0.856 | 1.211e-02 / 3.493e-02 |
+| 12 | 6.81e-02 | 0.856 | 1.045e-02 / 2.383e-02 |
+
+With sigma held, kappa from 1 to 12 changes nothing. The whole gain in the first table is
+sigma_max going 0.856 -> 1.711. Then sigma alone, kappa = 1:
+
+| R_asym | sigma_max | mean / max at 82 deg |
+|---|---|---|
+| 1e-21 | 1.284 | 1.132e-03 / 3.718e-03 |
+| **1e-28** | **1.711** | **5.760e-04 / 1.228e-03** |
+| 1e-35 | 2.139 | 6.995e-04 / 1.326e-03 |
+| 1e-42 | 2.567 | 8.562e-04 / 1.512e-03 |
+
+The optimum at 82 degrees is sigma_max near 1.7, and it reproduces the kappa = 2 row
+within noise. Physically: at grazing incidence the wave barely penetrates the layer, the
+absorption per unit depth scales with cos(theta), and the way to recover it is more loss
+per unit depth -- not a longer electrical path, which is what kappa buys and which only
+propagating-below-cutoff (evanescent) content needs. Too much sigma and the taper reflects
+off its own gradient again, which is the 1e-35 and 1e-42 rows.
+
+### 12.3 What sigma_max = 1.711 costs below 70 degrees
+
+| theta | R=1e-14 mean / max | R=1e-28 mean / max |
+|---|---|---|
+| 0 | 1.130e-06 / 3.098e-06 | 2.285e-06 / 6.844e-06 |
+| 45 | 2.561e-06 / 1.254e-05 | 4.365e-06 / 1.758e-05 |
+| 70 | 3.832e-05 / 2.336e-04 | **2.920e-05 / 1.219e-04** |
+
+A factor of two at 0 and 45 degrees, three decades under any bar; an improvement at 70.
+So `AUX_CPML_R_ASYMPTOTIC` is re-derived to **1e-28** (sigma_max = 1.711 S/m). The 1-D
+path is unchanged: it is normal incidence only, and section 2's derivation at 0 degrees
+stands.
+
+### 12.4 What it does NOT fix, stated as a domain
+
+At the optimum, 82 degrees reads max 1.228e-03 -- **above LEAK_BAR = 1e-03**. A
+polynomial-graded CPML does not get grazing incidence under that bar at this depth, and
+the sweep above says pushing sigma further makes it worse. So the absorber's validity
+domain is declared, not tuned: it meets LEAK_BAR up to an angle measured in 12.5 below,
+and cv26's grazing arms sit outside it. Those arms already model the echo instead of
+gating it out (their compact box cannot time-gate at all -- section 13); the residual
+they must answer for is the 1.2e-03 measured here, not the 2.8e-02 they were carrying.
+
+### 12.5 The validity domain, measured
+
+`n = 200`, `R_asym = 1e-28`, kappa 1, order 3; full rig at 40000 steps so the grazing bands
+carry bins; every fit residual under `FIT_RESID_LIMIT`:
+
+| theta | bins | fit residual | mean / max | vs LEAK_BAR = 1e-3 |
+|---|---|---|---|---|
+| 70 | 65 | 5.2e-04 | 2.829e-05 / 1.246e-04 | under, x8.0 |
+| 74 | 41 | 4.1e-04 | 5.467e-05 / 1.630e-04 | under, x6.1 |
+| 76 | 32 | 4.6e-04 | 8.257e-05 / 2.239e-04 | under, x4.5 |
+| 78 | 23 | 5.1e-04 | 1.438e-04 / 4.668e-04 | under, x2.1 |
+| **80** | 17 | 4.7e-04 | 2.875e-04 / **9.063e-04** | under, **x1.10** |
+| **82** | 11 | 2.9e-04 | 5.760e-04 / **1.228e-03** | **over**, x0.81 |
+
+**Declared:** the 2-D auxiliary absorber meets `LEAK_BAR` on the gated band for
+incidence angles **up to 80 degrees**, with 10 percent in hand at 80, and does not at 82.
+cv26's grazing arms (theta0 = 82, gate 80-85) are **outside** the absorber's validity
+domain and must keep answering for the residual echo through their model terms
+(`e_absorber`, G6, G7) -- now a 1.2e-03 term, not the 2.8e-02 they carried before this
+section. The domain is gated, not just stated:
+`tests/unit/sources/test_tfsf_aux_absorber_reflection.py::test_the_domain_edge_is_where_the_note_says`
+measures 70, 80 and 82 on this rig and asserts the inside rows under the bar, the 82 row
+OVER it (so the domain claim is checked in both directions), and each within 10 percent
+of the numbers above.
+
+The 1-D path (`AUX_CPML_R_ASYMPTOTIC_1D = 1e-6`) is untouched: normal incidence only.

@@ -68,20 +68,41 @@ from rfx.core.yee import EPS_0, MU_0
 # Measured by tests/unit/sources/test_tfsf_aux_absorber_reflection.py, which
 # gates |B/A| over the declared angle band -- the reflection gate whose absence
 # is why a 6 % absorber shipped.
-# Both constants are READ OFF the measured (depth, target, angle) grid in
-# docs/design_notes/20260904_aux_absorber_depth_derivation.md section 3, at the
-# WORST DECLARED ANGLE of this path (70 deg, cv26's gate cap) -- the optimal
-# target inverts with angle, so a normal-incidence derivation is wrong here.
-# Note sigma_max = -ln(R) (m+1) / (2 eta n dx) = 0.856 S/m, GENTLER than the 2.45
-# a shallow 30-cell absorber at R = 1e-6 would carry and 174x gentler than the
-# 148.6 that shipped: long and gentle beats short and steep.
-# Measured |B/A| (mean / max over the gated band): 1.13e-06 / 3.10e-06 at 0 deg,
-# 2.56e-06 / 1.25e-05 at 45 deg, 5.78e-06 / 4.62e-05 at 60 deg,
-# 3.83e-05 / 2.34e-04 at 70 deg -- at the instrument's own floor at every angle.
+# Both constants are READ OFF measured (depth, target, angle) grids in
+# docs/design_notes/20260904_aux_absorber_depth_derivation.md, sections 3 and 12.
+#
+# The depth (200) comes from section 3: depth is the lever, the reflection falls
+# with it faster than any single power, and 200 is where the 0-70 deg readings
+# reach the instrument's own floor.
+#
+# The target (1e-28, sigma_max = 1.711 S/m) comes from section 12, and it
+# CORRECTS the first derivation, which took 70 deg as "the worst declared angle"
+# because that is cv26's primary-rig gate cap. cv26's three grazing arms are
+# declared at 82 deg, and there the 1e-14 absorber reflected 2.8e-02 -- a factor
+# of 1.9 over the 30-cell layer it replaced, not the 230 it achieved at 70. At
+# grazing incidence the wave barely penetrates the layer and the absorption per
+# unit depth scales with cos(theta); the remedy is MORE loss per unit depth, and
+# that is sigma. kappa (real stretching) was measured inert from 1 to 12 with
+# sigma held -- it buys electrical length, which only evanescent content needs.
+# sigma_max = 1.711 is the 82-deg optimum; more reflects off its own gradient.
+#
+# Note sigma_max is still GENTLER than the 2.45 a 30-cell layer at R = 1e-6 would
+# carry, and 43x gentler than the 74.3 that shipped: long and gentle still beats
+# short and steep.
+#
+# Measured |B/A| (mean / max over the gated band) at this setting:
+#   0 deg  2.29e-06 / 6.84e-06      45 deg  4.37e-06 / 1.76e-05
+#   60 deg 8.35e-06 / 5.13e-05      70 deg  2.92e-05 / 1.22e-04
+#   82 deg 5.76e-04 / 1.23e-03  <- ABOVE LEAK_BAR (1e-3). Not tunable away at
+#                                  this depth: the validity domain is declared in
+#                                  the note (section 12.5) and gated in
+#                                  tests/unit/sources/test_tfsf_aux_absorber_reflection.py.
+#                                  cv26's grazing arms sit outside it and MODEL
+#                                  the residual echo instead of gating it out.
 AUX_N_CPML = 200            # was 30
 AUX_CPML_ORDER = 3          # rfx/boundaries/cpml.py _cpml_profile default
 AUX_CPML_KAPPA_MAX = 1.0    # no stretching: the aux grid carries one propagating mode
-AUX_CPML_R_ASYMPTOTIC = 1e-14
+AUX_CPML_R_ASYMPTOTIC = 1e-28
 AUX_N_MARGIN_X = 25
 AUX_SRC_OFFSET = 3          # source sits AUX_SRC_OFFSET cells inside the absorber's inner edge
 
