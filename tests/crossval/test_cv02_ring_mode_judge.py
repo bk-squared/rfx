@@ -525,28 +525,50 @@ def test_slowest_mode_sets_the_record_length() -> None:
     assert rmj.record_length_for_efolds([], 1.0) is None
 
 
-def test_signal_settling_db_matches_a_known_decay() -> None:
-    """The measured whole-signal witness reproduces an analytic end/peak ratio
-    (same 10*log10(tail_power/peak_power) convention as the S-parameter
-    settling witness)."""
-    n = 20000
-    dt = 1.0
-    t = np.arange(n) * dt
-    tau = 2500.0                                    # amplitude e-folding time
-    sig = np.exp(-t / tau) * np.sin(2 * math.pi * 0.02 * t)
+def test_signal_settling_db_matches_a_closed_form_decay() -> None:
+    """Closed form, not a mirror: for ``exp(-t/tau)`` the peak is the first
+    sample (=1) and the tail mean is a geometric series, so the expected dB is
+    written out in full below and never touches the implementation's array
+    arithmetic."""
+    n, dt, tau = 20000, 1.0, 2500.0
+    sig = np.exp(-np.arange(n) * dt / tau)
     db = rmj.signal_settling_db(sig, tail_fraction=0.1)
-    # tail is the last 10% of samples; its mean power vs the peak power is an
-    # analytic function of the decay -- reproduce it directly from the array.
-    p = sig ** 2
-    expect = 10.0 * np.log10(p[-n // 10:].mean() / p.max())
-    assert db == pytest.approx(expect, rel=1e-9)
-    assert db < -40.0                               # this record IS well settled
-    # A pure tone never decays -> tail power ~ peak power -> ~0 dB (unsettled).
-    pure = np.sin(2 * math.pi * 0.02 * t)
-    assert rmj.signal_settling_db(pure) > -3.5
+
+    # P = exp(-2t/tau); peak = P[0] = 1. Tail = the last n_tail samples,
+    # starting at t0 = (n - n_tail)*dt; sum_{k<n_tail} exp(-2(t0+k dt)/tau)
+    # = exp(-2 t0/tau) * (1 - q**n_tail)/(1 - q) with q = exp(-2 dt/tau).
+    n_tail = n // 10
+    q = math.exp(-2.0 * dt / tau)
+    t0 = (n - n_tail) * dt
+    tail_mean = (math.exp(-2.0 * t0 / tau)
+                 * (1.0 - q ** n_tail) / (1.0 - q) / n_tail)
+    assert db == pytest.approx(10.0 * math.log10(tail_mean), rel=1e-9)
+    assert db < -40.0                          # this record IS well settled
+
     # Empty / dead records are NaN, never a false 0 dB pass.
     assert math.isnan(rmj.signal_settling_db(np.zeros(100)))
     assert math.isnan(rmj.signal_settling_db(np.array([])))
+
+
+def test_signal_settling_db_reads_minus_3dB_on_an_undecayed_tone() -> None:
+    """The documented 3 dB offset against the per-mode column, made
+    executable: the whole-signal witness divides a single-sample max of
+    ``A**2 sin**2`` (~A**2) by a MEAN of ``A**2 sin**2`` (~A**2/2), so a tone
+    that never settles reads 10*log10(1/2) = -3.01 dB, while the per-mode
+    envelope witness reads 0.0 dB for the same non-decaying mode. Comparing the
+    two columns without subtracting 3 dB compares different quantities."""
+    t = np.arange(20000) * 1.0
+    tone = np.sin(2 * math.pi * 0.02 * t)
+    db = rmj.signal_settling_db(tone)
+    assert db == pytest.approx(10.0 * math.log10(0.5), abs=0.05)
+    # same non-decaying mode, per-mode envelope column: exactly 0 dB
+    assert rmj.mode_settling(0.02, 0.0, 20000.0).energy_db == 0.0
+    # and the report says which frame its peak came from
+    text = rmj.format_settling_report([], db, 1.0, peak_offset_after_source=0.0)
+    assert "post-source peak" in text
+    late = rmj.format_settling_report([], db, 1.0,
+                                      peak_offset_after_source=94.0)
+    assert "ALREADY-DECAYED" in late and "optimistic" in late
 
 
 def test_format_settling_report_states_the_physical_limitation() -> None:
@@ -563,17 +585,170 @@ def test_format_settling_report_states_the_physical_limitation() -> None:
 
 def test_script_records_a_per_mode_settling_witness() -> None:
     """Revert-proof: the script must wire the per-mode settling witness and, on
-    the Meep-absent lane, scale the run length off the radiation-limited mode's
-    tau (record_length_for_efolds) rather than the old magic 450 constant."""
+    the Meep-absent lane, take its run length from the BOUNDED planner rather
+    than from the old magic 450 constant or from the unbounded primitive."""
     source = SCRIPT_PATH.read_text(encoding="utf-8")
     assert "mode_settling" in source
-    assert "record_length_for_efolds" in source
     assert "format_settling_report" in source
     assert "SETTLE_TARGET_EFOLDS" in source
     # the driven portion is skipped by the computed source-off time on the
     # tau-scaled lane (the Meep verdict lane keeps its calibrated 40% window).
     assert "source_off_time" in source
-    # the tau-scaled record replaces the old magic 450.0 fallback: 450 may
-    # still seed the *bootstrap* discovery run, but must no longer be the
-    # length the witness/harminv record is taken at.
-    assert "slowest_amplitude_tau" in source or "record_length_for_efolds" in source
+    # The run length comes from plan_record (band-filtered + clamped at the
+    # resolvable-tau bound), NOT from record_length_for_efolds, which is
+    # unbounded over a raw harminv mode list and let a band-edge artefact ask
+    # for a ~2.3e7-step run.
+    assert "plan_record(" in source
+    assert "record_length_for_efolds(" not in source
+    assert "RECORD_LADDER_BUDGET" in source
+
+
+def test_script_does_not_claim_the_tau_scaling_on_the_verdict_lane() -> None:
+    """The tau-scaled record exists ONLY on the Meep-absent, no-verdict lane.
+    The script must say so where the policy is written, and must still hand the
+    verdict lane Meep's own record length and the calibrated 40% skip."""
+    source = SCRIPT_PATH.read_text(encoding="utf-8")
+    assert "the cv02 verdict lane does not use the tau-scaled record" in source
+    assert "meep_total_t = sim_meep.meep_time()" in source
+    assert "skip = int(len(ts) * 0.4)" in source
+
+
+# --- cv02 review2 F1: the record rule must be band-limited and bounded ------
+#
+# The tau-scaled record rule as first written took max(tau) over EVERY mode
+# rfx's harminv returned. harminv deliberately searches a 10%-widened band
+# (rfx/harminv.py: freq <= 1.1*f_max) so the requested band is interior to the
+# search, so that pool contained modes no gate ever reads, at the one place
+# harminv is least reliable. On this board the band edge returns f=0.2027 with
+# a Q that swings between 1.0e3 and 1.0e6 depending on the window; at 1.0e6 the
+# unfiltered rule asks for 1.6e6 Meep units of record (~2.3e7 steps, ~4500x the
+# committed run). These tests pin both guards.
+
+BAND = dict(f_min=0.10, f_max=0.20)          # the judge's band for cv02
+
+# The band-edge mode the live run actually produced, at both Qs it has read.
+BAND_EDGE_SPUR = [rmj.SolverMode(0.202707, 1.03e6, 3.5e-10),
+                  rmj.SolverMode(0.202707, 1006.3, 7.3e-10)]
+
+
+@pytest.mark.parametrize("spur", BAND_EDGE_SPUR)
+def test_out_of_band_mode_cannot_set_the_record_length(spur) -> None:
+    """A mode outside the judge's band is reported, never scaled off."""
+    present = 385.0                                   # bootstrap free decay
+    plan = rmj.plan_record(list(RFX_TODAY) + [spur],
+                           record_after_source=present, target_efolds=1.0,
+                           **BAND)
+    assert spur in plan.out_of_band
+    assert spur not in plan.kept and spur not in plan.unresolved
+    # what the UNFILTERED primitive would have asked for, for contrast
+    unfiltered = rmj.record_length_for_efolds(list(RFX_TODAY) + [spur], 1.0)
+    assert unfiltered >= rmj.amplitude_tau(spur.freq, spur.Q)
+    assert plan.length < unfiltered
+    # and the plan is still clamped by the record in hand
+    assert plan.length <= plan.cap == present / rmj.Q_RECORD_MIN_EFOLDS
+
+
+def test_one_rung_can_never_exceed_the_resolvable_tau_bound() -> None:
+    """The hard bound, over absurd Qs: whatever a mode's Q reads, one rung asks
+    for at most ``T / Q_RECORD_MIN_EFOLDS`` -- the published floor inverted. A
+    tau above that bound was not measured by this record (T/tau < the floor),
+    so it cannot be scaled off; it is re-measured on the next rung instead."""
+    present = 385.0
+    for q in (1.5, 1e2, 1e4, 1e6, 1e12):
+        for target in (0.25, 1.0, 4.61):
+            modes = [rmj.SolverMode(0.147, 355.0), rmj.SolverMode(0.175, q)]
+            plan = rmj.plan_record(modes, record_after_source=present,
+                                   target_efolds=target, **BAND)
+            assert present <= plan.length <= present / rmj.Q_RECORD_MIN_EFOLDS
+            tau_hi = rmj.amplitude_tau(0.175, q)
+            if tau_hi > plan.cap:
+                assert [m for m in plan.unresolved if m.Q == q]
+                assert plan.length == pytest.approx(plan.cap)
+            else:
+                assert [m for m in plan.kept if m.Q == q]
+
+
+def test_ladder_converges_on_the_slowest_in_band_tau_and_stops() -> None:
+    """Driven as the script drives it: rung after rung on a fixed mode set, the
+    ladder climbs by at most 4x, converges on ``target * slowest in-band tau``,
+    and then reports no further extension (``extend`` False) so the caller
+    stops. The out-of-band artefact never enters."""
+    modes = list(RFX_TODAY) + [BAND_EDGE_SPUR[0]]
+    tau_slow = max(rmj.amplitude_tau(m.freq, m.Q)
+                   for m in rmj.admit(modes, **BAND))
+    present, lengths = 385.0, []
+    for _ in range(6):
+        plan = rmj.plan_record(modes, record_after_source=present,
+                               target_efolds=1.0, **BAND)
+        assert plan.length <= present / rmj.Q_RECORD_MIN_EFOLDS
+        lengths.append(plan.length)
+        if not plan.extend:
+            break
+        present = plan.length
+    assert lengths == sorted(lengths)                    # monotone
+    assert present == pytest.approx(tau_slow, rel=1e-9)  # the in-band slowest
+    assert plan.extend is False                          # and it stops
+    assert len(lengths) <= 4                             # 385 -> 1540 -> 3385
+
+
+def test_plan_record_falls_back_when_nothing_is_resolved() -> None:
+    """No in-band resolved mode -> no scaling: keep the record in hand (the
+    caller then reports zero/unresolved modes) rather than invent a length."""
+    present = 10.0
+    plan = rmj.plan_record([rmj.SolverMode(0.5, 1e6)],   # out of band
+                           record_after_source=present, target_efolds=1.0,
+                           **BAND)
+    assert plan.slowest_tau is None
+    assert plan.length == pytest.approx(present)
+    assert plan.extend is False
+
+
+def test_format_record_plan_prints_every_mode_and_its_verdict() -> None:
+    """The rejected modes are printed, not swallowed -- an out-of-band mode
+    that shortens the run must be visible in the log."""
+    text = rmj.format_record_plan(
+        rmj.plan_record(list(RFX_TODAY) + [BAND_EDGE_SPUR[0]],
+                        record_after_source=385.0, target_efolds=1.0, **BAND))
+    assert "OUT-OF-BAND" in text and "0.2027" in text
+    assert "UNRESOLVED" in text
+    assert "resolvable-tau bound" in text
+
+
+# --- cv02 review2 F2: the verdict lane's Q gate is run-length contingent -----
+
+
+def test_verdict_lane_q_gate_is_run_length_contingent() -> None:
+    """Why the Meep (verdict) lane keeps its calibrated record instead of the
+    tau-scaled one -- executable, so the qualification cannot rot.
+
+    The judge's Q window ``tau_ref/T`` is a record-length RESOLUTION bound: it
+    shrinks as 1/T. The rfx-vs-Meep Q gap is a discretization offset and does
+    not. So on the very same (frozen) mode pair the q gate passes at the
+    committed record and fails at a longer, better-settled one, with the
+    frequency gates and the |ln Q| values unchanged. That is a comparator
+    defect filed against the judge, NOT a licence to lengthen this lane's
+    record, and NOT something this witness change fixed."""
+    committed = _judge(RFX_TODAY)                      # T = RECORD_T = 291
+    longer = rmj.judge(MEEP_REFERENCE, RFX_TODAY, 3385.0,
+                       f_min=0.1, f_max=0.2)           # 1 e-fold of tau_slow
+
+    assert committed.gates["q"] is True
+    assert longer.gates["q"] is False
+    # nothing about the physics moved: same modes, same errors, same |ln Q|
+    for gate in ("unmatched", "count", "mean_err", "max_err"):
+        assert committed.gates[gate] is longer.gates[gate] is True
+    assert longer.mean_err_pct == pytest.approx(committed.mean_err_pct)
+    ln_committed = {round(r.ref_freq, 6): r.q_log_ratio
+                    for r in committed.rows if r.q_log_ratio is not None}
+    ln_longer = {round(r.ref_freq, 6): r.q_log_ratio
+                 for r in longer.rows if r.q_log_ratio is not None}
+    for freq, value in ln_committed.items():
+        assert ln_longer[freq] == pytest.approx(value)
+    # the flip is the window alone, and it is the FASTEST mode that flips
+    fast_c = [r for r in committed.rows if r.ref_freq < 0.12][0]
+    fast_l = [r for r in longer.rows if r.ref_freq < 0.12][0]
+    assert fast_l.q_window < fast_c.q_window
+    assert fast_l.q_log_ratio > fast_l.q_window >= 0.0
+    assert fast_c.q_log_ratio < fast_c.q_window
+    # and the limitation is written where the window is derived
+    assert "Known limitation" in rmj.q_window.__doc__

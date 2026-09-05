@@ -195,6 +195,24 @@ def q_window(ref_freq: float, ref_Q: float, record_length: float
     Both inputs are the reference's; no measured rfx quantity appears, so this
     window is not fitted to the agreement it judges.
 
+    **Known limitation -- this window is a RESOLUTION bound, not an accuracy
+    bound, and it therefore shrinks with run length while the physics does
+    not.** ``tau/T`` says how finely a record of length ``T`` can separate two
+    decay rates; it says nothing about how far apart two *solvers* should be.
+    The rfx-vs-Meep Q gap on cv02 is a discretization offset (staircased ring
+    boundary, subpixel treatment, hence a slightly different radiation Q), so
+    it is roughly constant in ``T``: measured ``|ln(Q_rfx/Q_ref)| = 0.070``
+    (mode 1) and ``0.123`` (mode 2), while rfx's own Q for these modes moves
+    ~0.2% between a 291 and a 3435 (Meep-unit) record. Consequently, on cv02's
+    committed reference/rfx pair this gate PASSES at ``T=291`` (mode-1 window
+    0.747) and FAILS at ``T=3385`` (window 0.064) purely because the record got
+    longer and better settled. A longer record reds a physically stable case.
+    Fixing it needs a floor on the window encoding the expected
+    discretization Q gap (or a pre-declared |ln Q| envelope); that is a change
+    to a claims-bearing gate and is NOT done here -- it is filed against the
+    judge, and it is the reason cv02's Meep (verdict) lane keeps its
+    calibrated record length instead of the tau-scaled one.
+
     Returns ``(T/tau, window)``. ``T/tau`` is the number of amplitude
     e-foldings the record observed; a mode is Q-gated only when it reaches
     :data:`Q_RECORD_MIN_EFOLDS`.
@@ -402,15 +420,160 @@ def record_length_for_efolds(modes, target_efolds: float) -> float | None:
     mode).
 
     Returns ``target_efolds * slowest_amplitude_tau(modes)`` in the modes' own
-    time units, or ``None`` when no mode sets a tau. This is cv02's runtime
-    record-length rule: the length scales with the radiation-limited highest-Q
-    mode's *own* tau, recomputed per board from that board's extracted modes,
-    so it replaces a fixed step/period count that generalizes to no other ring.
+    time units, or ``None`` when no mode sets a tau.
+
+    **Unbounded primitive -- do not drive a run length with it directly.**
+    ``max(tau)`` over a raw harminv mode list is exactly the quantity a
+    band-edge artefact corrupts: harminv searches a 10%-widened band, and a
+    mode sitting at the edge of it can report a Q three orders of magnitude
+    away from its value on a different window (measured on cv02: f=0.2027 read
+    Q=1.0e3 on one record and Q=1.0e6 on another), which would ask for a
+    record ~4500x the committed one. Use :func:`plan_record`, which feeds this
+    primitive only modes inside the judge's own :func:`admit` band whose decay
+    the present record actually resolved, and clamps the answer to what that
+    record can justify (:func:`resolvable_tau_bound`).
     """
     tau = slowest_amplitude_tau(modes)
     if tau is None:
         return None
     return float(target_efolds) * tau
+
+
+def resolvable_tau_bound(record_after_source: float,
+                         min_efolds: float = Q_RECORD_MIN_EFOLDS) -> float:
+    """Largest amplitude e-folding time a record of this length can be said to
+    have MEASURED (same units as the record).
+
+    No new number enters. #812 published, and this module gates on,
+    :data:`Q_RECORD_MIN_EFOLDS`: a Q read off a record spanning fewer than that
+    many amplitude e-foldings of the mode has not observed the decay and must
+    not be trusted. Inverting the same inequality ``T/tau >= min_efolds``
+    gives ``tau <= T / min_efolds``. A tau above that bound is a lower bound,
+    not a measurement, so (a) it must not set a run length, and (b) the bound
+    itself is the longest record the present record can justify asking for.
+    """
+    if record_after_source <= 0 or min_efolds <= 0:
+        return 0.0
+    return float(record_after_source) / float(min_efolds)
+
+
+@dataclass(frozen=True)
+class RecordPlan:
+    """One rung of the free-decay record-length ladder (see :func:`plan_record`)."""
+
+    length: float                  # free-decay record to run next
+    cap: float                     # resolvable_tau_bound of the present record
+    present: float                 # the present record's free-decay length
+    slowest_tau: float | None      # slowest tau this record actually resolved
+    kept: tuple                    # in-band modes whose decay this record saw
+    out_of_band: tuple             # harminv modes the judge never scores
+    unresolved: tuple              # in-band modes with tau above the cap
+    reason: str
+
+    @property
+    def extend(self) -> bool:
+        """True when the next record is longer than the present one."""
+        return self.length > self.present
+
+
+def plan_record(modes, *, f_min: float, f_max: float,
+                record_after_source: float, target_efolds: float,
+                min_Q: float = MIN_Q,
+                min_efolds: float = Q_RECORD_MIN_EFOLDS) -> RecordPlan:
+    """Next free-decay record length, derived from THIS record's own modes.
+
+    Two filters stand between raw harminv output and the run length, both
+    derived from values this module already publishes, neither pinned to a
+    geometry:
+
+    * **band** -- the pool is :func:`admit`'s band, i.e. exactly the band the
+      judge scores. ``rfx.harminv`` deliberately searches a 10%-widened band
+      so the requested band is interior to the search; modes it returns
+      outside ``[f_min, f_max]`` are band-edge content no gate ever reads, and
+      their Q is the least reproducible thing harminv reports. They are
+      returned in ``out_of_band`` (report them, never scale off them).
+    * **resolvability** -- a mode enters the tau pool only if the present
+      record observed its decay to the published floor, ``tau <=
+      resolvable_tau_bound(T)`` (:data:`Q_RECORD_MIN_EFOLDS`). Everything
+      above that lands in ``unresolved``.
+
+    The length itself::
+
+        target = target_efolds * max(tau over kept)      # the tau-scaling
+        if unresolved:  target = max(target, cap)        # see below
+        length  = min(max(target, T), cap)
+
+    The ``unresolved`` clause is what lets the ladder climb: if an in-band mode
+    exists whose tau this record could not resolve, the present record does not
+    know the slowest tau, so the run is extended as far as the present record
+    justifies -- the cap -- and the next rung re-measures. The final ``min``
+    is the guarantee that matters: **one rung can never ask for more than
+    ``1/min_efolds`` times the record in hand** (4x at the published floor),
+    whatever a mode's Q happens to read. Termination is the caller's: it runs
+    rungs while ``plan.extend`` and its own step budget both hold.
+    """
+    cap = resolvable_tau_bound(record_after_source, min_efolds)
+    in_band = admit(modes, f_min, f_max, min_Q=min_Q)
+    in_band_ids = {id(m) for m in in_band}
+    out_of_band = tuple(m for m in modes if id(m) not in in_band_ids)
+
+    kept, unresolved = [], []
+    for mode in in_band:
+        tau = amplitude_tau(mode.freq, mode.Q)
+        (kept if math.isfinite(tau) and 0 < tau <= cap else unresolved
+         ).append(mode)
+
+    slowest = slowest_amplitude_tau(kept)
+    if slowest is None:
+        target = float(record_after_source)
+        reason = ("no in-band mode's decay resolved by this record — "
+                  "nothing to scale off")
+    else:
+        target = float(target_efolds) * slowest
+        reason = (f"{target_efolds:g} e-folding(s) of the slowest RESOLVED "
+                  f"in-band tau")
+    if unresolved:
+        target = max(target, cap)
+        reason = (f"{len(unresolved)} in-band mode(s) with tau above this "
+                  f"record's resolvable bound — extending to the bound "
+                  f"(T/{min_efolds:g}) and re-measuring")
+    length = min(max(target, float(record_after_source)), cap)
+    if length >= cap and target >= cap:
+        reason += "; clamped at the resolvable bound"
+    return RecordPlan(
+        length=length, cap=cap, present=float(record_after_source),
+        slowest_tau=slowest, kept=tuple(kept), out_of_band=out_of_band,
+        unresolved=tuple(unresolved), reason=reason,
+    )
+
+
+def format_record_plan(plan: RecordPlan, scale: float = 1.0,
+                       unit: str = "") -> str:
+    """The ladder rung, printed: every mode harminv returned, which of the two
+    filters it fell to, and the length that came out."""
+    suffix = f" {unit}" if unit else ""
+    # ``scale`` converts the modes' TIME unit (1/freq) into the printed one, so
+    # a frequency converts by its reciprocal -- getting this backwards printed
+    # 1.5e28 for a 0.166 c/a mode.
+    lines = [
+        f"  record ladder: present free-decay T = {plan.present * scale:.1f}"
+        f"{suffix}; resolvable-tau bound (T / {Q_RECORD_MIN_EFOLDS:g}) = "
+        f"{plan.cap * scale:.1f}{suffix}",
+    ]
+    for tag, group in (("pool", plan.kept), ("UNRESOLVED", plan.unresolved),
+                       ("OUT-OF-BAND", plan.out_of_band)):
+        for mode in group:
+            tau = amplitude_tau(mode.freq, mode.Q)
+            t_over_tau = (plan.present / tau
+                          if math.isfinite(tau) and tau > 0 else float("inf"))
+            lines.append(
+                f"    {tag:>11}  f={mode.freq / scale:>12.6g}  "
+                f"Q={mode.Q:>10.1f}  tau={tau * scale:>10.4g}{suffix}  "
+                f"T/tau={t_over_tau:>7.3f}"
+            )
+    lines.append(f"    -> next free-decay record {plan.length * scale:.1f}"
+                 f"{suffix}: {plan.reason}")
+    return "\n".join(lines)
 
 
 @dataclass(frozen=True)
@@ -454,12 +617,34 @@ def signal_settling_db(signal, tail_fraction: float = 0.1) -> float:
     Same end/peak arithmetic as the S-parameter settling witness
     (:func:`rfx.sources.waveguide_port.settling_db_from_port_records`):
     ``10*log10(mean(P[last tail_fraction]) / max(P))`` with ``P = |signal|**2``.
-    The peak is the maximum of whatever array it is given; the cv02 caller
-    passes the FREE-DECAY span (the driven portion already skipped by the
-    source-off time), so ``max(P)`` here is the post-source peak the repo rule
-    refers to. On cv02 this single number is dominated by the slowest-decaying
-    mode -- reported next to, never instead of, the per-mode witness, which
-    resolves each mode separately.
+
+    Two things this number is NOT, both of which matter when it is printed
+    beside the per-mode witness:
+
+    * **``max(P)`` is the peak of whatever span the caller passes, not
+      necessarily the post-source peak.** It is the post-source peak only when
+      the caller starts the span AT source-off. cv02 does that on its
+      Meep-absent lane (span starts at the waveform's own ``2*t0``), but its
+      Meep (verdict) lane passes ``ts[int(0.4*len(ts)):]``, which on the
+      committed record begins ~94 Meep units AFTER source-off -- by then
+      mode 2 is already ~1.1 dB down, so the ratio reported there is
+      optimistic by that much. :func:`format_settling_report` takes the
+      offset and prints it; pass it.
+    * **It is 3 dB below the per-mode ``energy_db`` by construction, even for
+      a signal that never settles.** ``max(P)`` is a single-sample maximum of
+      ``A**2 sin**2`` (so ``~A**2``) while the tail is a *mean* of
+      ``A**2 sin**2`` (so ``~A**2/2``): an undecayed pure tone reads
+      ``10*log10(1/2) = -3.01 dB``, not 0 dB. The per-mode
+      :class:`ModeSettling` ``energy_db`` is an envelope quantity and reads
+      0 dB for the same tone. Do not compare the two directly without
+      subtracting the 3 dB.
+
+    On cv02 this single number is also dominated by the largest-amplitude
+    mode's decay rather than by the slowest mode -- on the measured run the
+    whole-signal figure (-26.3 dB) sits 18 dB below the slowest mode's
+    (-8.4 dB), which is the mode-2/mode-3 amplitude ratio (13 dB) plus the
+    3 dB offset plus decay. It is reported next to, never instead of, the
+    per-mode witness, which resolves each mode separately.
     """
     p = np.abs(np.asarray(signal, dtype=float)) ** 2
     if p.size == 0:
@@ -475,7 +660,8 @@ def signal_settling_db(signal, tail_fraction: float = 0.1) -> float:
 
 def format_settling_report(rows, signal_db: float,
                            record_after_source: float,
-                           observe_efolds: float = Q_RECORD_MIN_EFOLDS) -> str:
+                           observe_efolds: float = Q_RECORD_MIN_EFOLDS,
+                           peak_offset_after_source: float = 0.0) -> str:
     """Human-readable per-mode settling table for the crossval script's stdout.
 
     ``rows`` is a list of :class:`ModeSettling`. Prints, per mode, ``tau``, the
@@ -484,13 +670,21 @@ def format_settling_report(rows, signal_db: float,
     statement of the physical limitation: the slowest (radiation-limited) mode
     cannot be run down to the -40 dB rule in feasible time, so its shortfall is
     reported, not gated.
+
+    ``peak_offset_after_source`` is how long AFTER source-off the analysed span
+    begins, in the same units as ``record_after_source``. It is 0 when the
+    caller starts the span at source-off; when it is not, the whole-signal
+    peak is an already-decayed one and the caption says so (see
+    :func:`signal_settling_db`).
     """
     lines: list[str] = []
     lines.append(
-        f"  free-decay record after source-off T = {record_after_source:.3e} "
-        f"(1/freq units); per-mode T/tau and energy end/peak below are computed"
+        f"  analysed span T = {record_after_source:.3e} (1/freq units), "
+        f"starting {peak_offset_after_source:.3e} after source-off; per-mode "
+        f"T/tau and energy"
     )
-    lines.append("  from each mode's own extracted (f, Q) -- no pinned value")
+    lines.append("  end/peak below are computed from each mode's own extracted "
+                 "(f, Q) -- no pinned value")
     lines.append("")
     lines.append(
         f"  {'freq':>16} {'Q':>10} {'tau':>12} {'T/tau':>8} "
@@ -503,9 +697,27 @@ def format_settling_report(rows, signal_db: float,
             f"{row.t_over_tau:>8.3f} {row.energy_db:>10.1f} dB {note:>14}"
         )
     lines.append("")
+    peak_frame = (
+        "peak = post-source peak (span starts at source-off)"
+        if peak_offset_after_source <= 0.0 else
+        f"peak = the ALREADY-DECAYED peak {peak_offset_after_source:.3e} "
+        f"after source-off, so this figure is optimistic by that decay"
+    )
     lines.append(
         f"  measured whole-signal end/peak energy = {signal_db:.1f} dB "
-        f"(post-source peak; tail dominated by the slowest mode)"
+        f"({peak_frame})"
+    )
+    lines.append(
+        "  NOTE the two columns are not the same quantity: the whole-signal "
+        "figure is a single-sample"
+    )
+    lines.append(
+        "  max over a mean, so an UNDECAYED pure tone reads -3.01 dB there and "
+        "0 dB in the per-mode"
+    )
+    lines.append(
+        "  envelope column; and it tracks the largest-amplitude mode, not the "
+        "slowest one."
     )
     lines.append(
         f"  PHYSICAL LIMITATION (not a gate): the -40 dB settling rule needs "
@@ -516,12 +728,16 @@ def format_settling_report(rows, signal_db: float,
         "slowest mode that deep is not"
     )
     lines.append(
-        f"  generally feasible. The record is scaled to give the slowest mode "
-        f">= {observe_efolds:g} e-folding (the judge's"
+        "  generally feasible. On the no-verdict lane the record is scaled at "
+        "runtime to the slowest"
     )
     lines.append(
-        "  Q-gating floor); faster modes settle proportionally deeper. Modes "
-        "marked 'truncation-susp' are"
+        "  in-band mode whose decay the previous record RESOLVED (see "
+        "plan_record); 'truncation-susp' marks"
+    )
+    lines.append(
+        f"  a mode below the judge's {observe_efolds:g}-e-folding Q-gating "
+        f"floor. Faster modes settle deeper. Such modes are"
     )
     lines.append(
         "  reported, and the judge Q-gates only modes whose decay the record "
