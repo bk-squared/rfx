@@ -2,10 +2,11 @@
 """WR-90 chain battery — the measurement driver (v1.8 WP2).
 
 Runs the pre-declared battery of
-``docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md`` (run 2;
-the parent note ``waveguide_chain_battery_predeclaration.md`` governed run 1) on
-the fixture set built by ``tests/_waveguide_chain_battery_fixture.py`` and writes
-``tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json`` (schema:
+``docs/design_notes/20260905_v18_close_predeclaration.md`` (run 3, the v1.8 closing
+run; ``waveguide_chain_battery_remeasure_predeclaration.md`` governed run 2 and the
+parent note ``waveguide_chain_battery_predeclaration.md`` run 1) on the fixture set
+built by ``tests/_waveguide_chain_battery_fixture.py`` and writes
+``tests/fixtures/waveguide_chain_battery/fixture_v18_close.json`` (schema:
 ``tests/fixtures/waveguide_chain_battery/README.md``). Gate arithmetic lives in
 ``tests/_waveguide_chain_battery_gates.py`` and is shared with the replay test
 ``tests/oracle/test_waveguide_chain_battery.py``; this file only builds, runs,
@@ -43,7 +44,7 @@ Usage (from a clean checkout; the rfx import must resolve to this tree)::
         --out-dir <run-dir> --run-id <vessl run id> --run-lane vessl
     PYTHONPATH=. python scripts/diagnostics/waveguide_chain_battery_measure.py \
         --out-dir <run-dir> --stages assemble \
-        --fixture-out tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json
+        --fixture-out tests/fixtures/waveguide_chain_battery/fixture_v18_close.json
 
 Lanes ``normalize=False`` and ``normalize="flux"`` only (``normalize=True``
 never enters). Nothing from ``rfx/probes/refplane.py`` is imported.
@@ -85,11 +86,12 @@ SCHEMA = "rfx.waveguide_chain_battery"
 # parent note; nothing here rewrites it.
 SCHEMA_VERSION = 3
 PREDECLARATION = "docs/design_notes/20260905_v18_close_predeclaration.md"
-ARTIFACT = "tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json"
-SUPERSEDES = "tests/fixtures/waveguide_chain_battery/fixture.json"
+ARTIFACT = "tests/fixtures/waveguide_chain_battery/fixture_v18_close.json"
+SUPERSEDES = "tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json"
 SUPERSEDES_REASON = (
-    "the frozen artifact records a port whose transverse eigenproblem was solved on N+1 "
-    "cells for an N-cell guide; this artifact is the same battery on the corrected port")
+    "same port, same battery: this artifact reads contract criterion 1 (forward identity) and "
+    "3(a) (AD-vs-FD) under x64 on the flux lane per the v1.8 closing declaration, stores the "
+    "float32 reading beside it, and carries the pre-declared zero-derivative leg as report_only")
 README = "tests/fixtures/waveguide_chain_battery/README.md"
 DRIVER = "scripts/diagnostics/waveguide_chain_battery_measure.py"
 SETTLING_RERUN_NUM_PERIODS = 2.0 * F.NUM_PERIODS      # §2.5 record-length doubling
@@ -602,18 +604,28 @@ def stage_plane_shift(args, out_dir: Path, rung: str, prov: dict, *, refute: boo
                     continue
                 grads = ad_grads(sim_shift, dut, kind, lane, resolvable, theta0, cseg,
                                  tag=f"{dut}/{lane_label}/{kind} shifted")
+                # Criterion 3(b) is not under the x64 declaration: the base gradient is the
+                # leg's FLOAT32 reading (``ad_vs_fd_float32`` from schema_version 3, ``g_ad``
+                # itself before), the same precision as the shifted gradient computed here.
+                # The closing run (VESSL 369367258638) read ``g_ad`` here while that key had
+                # become the x64 primary on the flux lane; ``G.rebase_gradient_invariance_float32``
+                # rebuilt its entries from the stored numbers in the pin step.
+                def _g32(n):
+                    return base_legs[n].get("ad_vs_fd_float32", base_legs[n])["g_ad"]
                 for n in resolvable:
                     if G.OBJECTIVES[n][0] == "magnitude":
                         ginv[f"{kind}:{n}"] = G.gradient_invariance_entry(
-                            "magnitude", base_legs[n]["g_ad"], 0.0, grads[n]["g_ad"], 0.0, None)
+                            "magnitude", _g32(n), 0.0, grads[n]["g_ad"], 0.0, None)
+                        ginv[f"{kind}:{n}"].update(base_precision="float32", shift_precision="float32")
                 complex_pairs = {("re_s21", "im_s21"): "s21_complex", ("re_s11", "im_s11"): "s11_complex"}
                 for (re_n, im_n), label in complex_pairs.items():
                     if re_n in resolvable and im_n in resolvable:
                         entry = "S21" if label == "s21_complex" else "S11"
                         ginv[f"{kind}:{label}"] = G.gradient_invariance_entry(
-                            "complex", base_legs[re_n]["g_ad"], base_legs[im_n]["g_ad"],
+                            "complex", _g32(re_n), _g32(im_n),
                             grads[re_n]["g_ad"], grads[im_n]["g_ad"], phi_meas[entry], phi_pre[entry])
                         ginv[f"{kind}:{label}"]["from_objectives"] = [re_n, im_n]
+                        ginv[f"{kind}:{label}"].update(base_precision="float32", shift_precision="float32")
                 for k, e in ginv.items():
                     if k.startswith(kind) and "rel_change" in e:
                         _log(f"  gradient leg {k}: rel_change={e['rel_change']:.3e} (bar {G.GRADIENT_REPORT_BAR})")
@@ -912,6 +924,7 @@ def main() -> int:
         # fields from the measured envelopes, recompute the verdicts, write back
         target = Path(args.fixture_out) if args.fixture_out else out_dir / "fixture.json"
         fx = json.loads(target.read_text())
+        fx = G.rebase_gradient_invariance_float32(fx)   # no-op once the plane stage writes float32 bases
         fx = G.pin_fixture(fx)
         _write(target, fx)
         _log(f"pinned {target}: {fx['pins']}")
