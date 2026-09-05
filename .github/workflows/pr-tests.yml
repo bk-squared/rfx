@@ -84,17 +84,19 @@ jobs:
     # the contexts main's branch protection requires, and a matrix that renames
     # them to `fast-suite (3.10, 1)` leaves every required check permanently
     # unreported, so no PR can merge. The 3.11 entry gets its own suffixed name.
+    # Groups 5 and 6 (added 2026-09-05, #890) produce `fast-suite (5)` / `(6)`,
+    # which are NOT yet in branch protection; (1)-(4) stay required and lighter.
     name: >-
       ${{ matrix.python-version == '3.10'
           && format('fast-suite ({0})', matrix.group)
           || format('fast-suite-py{0} ({1})', matrix.python-version, matrix.group) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11"]
-        group: [1, 2, 3, 4]
+        group: [1, 2, 3, 4, 5, 6]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -110,7 +112,7 @@ jobs:
       - name: Record the resolved JAX/numpy versions (the pin this lane really has)
         run: python -c "import jax, jaxlib, numpy; print('jax', jax.__version__, 'jaxlib', jaxlib.__version__, 'numpy', numpy.__version__)"
 
-      - name: Fast suite — Python ${{ matrix.python-version }}, shard ${{ matrix.group }} of 4
+      - name: Fast suite — Python ${{ matrix.python-version }}, shard ${{ matrix.group }} of 6
         env:
           # issue #594 remedy (a): the same per-test RSS delta/peak reporter +
           # live VmHWM sampler the weekly lane got in PR #592 (issue #545).
@@ -123,7 +125,7 @@ jobs:
           RFX_WEEKLY_RSS: "1"
         run: >
           pytest -q -ra -p no:cacheprovider
-          --splits 4 --group ${{ matrix.group }}
+          --splits 6 --group ${{ matrix.group }}
           --ignore=tests/crossval/test_meep_crossval.py
           --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py
           --ignore=tests/crossval/test_openems_crossval.py
