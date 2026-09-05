@@ -119,7 +119,25 @@ nothing above 3.3e-5 (post-merge review, `20260905_post_merge_review_20_prs.md`)
   an x64 witness already in hand. Not a repeat.
 - Falsifier: §4 — the float32-primary rerun must reproduce the 9 red.
 
-## 6. Outcome (written after the run; nothing above this line was edited)
+## 6. Outcome (written after the run)
+
+**Revision history of this note, so the stamp can be read.** The artifact stamps
+`predeclaration_sha: f914a7ca`, the commit the pod fetched (`RFX_EXPECT_SHA`) and therefore
+the version of §0–§5 that was binding when the run started at 14:39:00 UTC. It was first
+stamped `10b39787` and restamped after the independent review of PR #908, because the note
+was revised three times before the run and once after it started:
+
+| commit | UTC | what changed above this section |
+|---|---|---|
+| `10b39787` | 14:20:08 | first commit. §2 item 2 declared the zero-derivative branch as a **gate** (pass iff same sign and ratio in [1/3, 3]); §3 row 3 predicted "ratio in [0.33, 3], same sign (run 2: 1.36)" — that 1.36 was run 1's number, mislabelled |
+| `04c42a57` | 14:24:08 | §0(b) corrected to run 2's actual ratio 5.71; §2 item 2 rewritten to **report_only** on the remeasure note's exit (c), with the rejected alternative (widen the band) named; §3 row 3 re-predicted as report_only with the fail branch "sign flip, or either \|g\| above 1e-5". Both before the run, both driven by reading run 2's stored numbers, not by any run-3 result |
+| `f914a7ca` | 14:38:34 | §3.1 (CPU smoke) added. **The commit the pod fetched.** |
+| `ba463005` | 14:41:23 | **after the run started** (14:39:00) and before its first stage finished (cells rc 14:42:15): §3 row 2 narrowed from "bit-identical (0), unchanged" to "on GPU at the claims rung" with a fail branch added, and §3.1's NaN count corrected from one leg to four. Informed by the CPU smoke and the reader dry-run, not by the run — no run-3 number existed yet — but it postdates the start and is disclosed as such. The measured row-2 value, 0, satisfies both wordings. |
+
+Nothing above this section was edited by the closing PR itself. The stamp at `10b39787`
+would have pointed at a version whose §2 the measured ratio 5.709 fails; the version that
+was binding at run time is `f914a7ca`, and it is the one that says report_only.
+
 
 Run: VESSL 369367258638, commit `f914a7ca`, gpu-rtx4090, solve wall 1350.5 s, 14:39–15:17 UTC
 2026-09-05. Artifact `tests/fixtures/waveguide_chain_battery/fixture_v18_close.json`

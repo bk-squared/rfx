@@ -1,7 +1,11 @@
 """WR-90 chain battery, THIRD run — the v1.8 closing artifact, replayed.
 
-Pre-declaration (committed before the run, read at ``10b39787``):
-``docs/design_notes/20260905_v18_close_predeclaration.md``; its §6 is the outcome.
+Pre-declaration ``docs/design_notes/20260905_v18_close_predeclaration.md``, first
+committed at ``10b39787`` (14:20 UTC) and revised at ``04c42a57`` (14:24, report_only
+for the zero-derivative leg) and ``f914a7ca`` (14:38, the CPU smoke) before the run
+started at 14:39; ``f914a7ca`` is the commit the pod fetched and the version the
+artifact stamps. ``ba463005`` (14:41, after the start, before any stage finished)
+edited §3 row 2 and §3.1; §6 lists every revision. §6 is the outcome.
 Artifact: ``tests/fixtures/waveguide_chain_battery/fixture_v18_close.json``
 (schema_version 3, VESSL run 369367258638, gpu-rtx4090, 1350.5 s solve wall at
 commit ``f914a7ca``).
@@ -63,7 +67,7 @@ FIXTURE = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture_v18
 RUN2 = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture_guide_cell_aperture.json"
 FROZEN = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture.json"
 PREDECLARATION = "docs/design_notes/20260905_v18_close_predeclaration.md"
-PREDECLARATION_SHA = "10b39787"
+PREDECLARATION_SHA = "f914a7ca"   # the note version the pod fetched (== provenance.commit); see note section 6
 RUN_ID = "369367258638"
 COMMIT = "f914a7caf1ff8c63cac6f5f8c975b7f9f420a0c7"
 RUN2_ID = "369367258205"
@@ -541,12 +545,33 @@ def test_zero_derivative_leg_is_report_only_and_its_ratio_fails_the_factor_3_ban
     assert zd["ratio"] == pytest.approx(5.709146, rel=1e-6)
     assert zd["ratio_max"] == 3.0
     assert zd["verdict"] == "fail", "outside the factor-3 band; a report, never the verdict"
+    assert G.zero_derivative_report_only_admissible(g_ad_x64=leg["g_ad"], g_fd=leg["g_fd"])
     # the float32 reading beside it is run 2's red: wrong sign, 95x larger, rel 541.5
     f32 = leg["ad_vs_fd_float32"]
     assert f32["verdict"] == "fail"
     assert f32["g_ad"] == pytest.approx(2.786023e-05, rel=1e-6)
     assert f32["rel"] == pytest.approx(541.539, rel=1e-5)
     assert math.copysign(1.0, f32["g_ad"]) != math.copysign(1.0, leg["g_fd"])
+
+
+def test_report_only_is_conditional_on_the_predeclared_branch(fx):
+    """§3 row 3's fail branch is enforced by the gate module, not only by this
+    module's pins: a future run whose zero-derivative leg flipped sign, or whose
+    x64 AD or FD grew above 1e-5, recomputes as fail — the leg cannot ride
+    report_only out of the branch that admits it."""
+    key = "ad_vs_fd|pec_short|flux|eps|s11_mag2"
+    base = json.loads(json.dumps(fx))
+    assert G.recompute_verdicts(base)[key] == "report_only"
+    flipped = json.loads(json.dumps(fx))
+    _leg(flipped, *ZERO_DERIVATIVE_LEG)["g_ad"] = -_leg(flipped, *ZERO_DERIVATIVE_LEG)["g_ad"]
+    assert G.recompute_verdicts(flipped)[key] == "fail"
+    grown = json.loads(json.dumps(fx))
+    _leg(grown, *ZERO_DERIVATIVE_LEG)["g_fd"] = -2e-5
+    assert G.recompute_verdicts(grown)[key] == "fail"
+    grown_ad = json.loads(json.dumps(fx))
+    _leg(grown_ad, *ZERO_DERIVATIVE_LEG)["g_ad"] = -1.1e-5
+    assert G.recompute_verdicts(grown_ad)[key] == "fail"
+    assert G.ZERO_DERIVATIVE_ABS_MAX == 1e-5
 
 
 # ---------------------------------------------------------------------------

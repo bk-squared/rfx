@@ -2,7 +2,7 @@
  "schema": "rfx.waveguide_chain_battery",
  "schema_version": 3,
  "predeclaration": "docs/design_notes/20260905_v18_close_predeclaration.md",
- "predeclaration_sha": "10b39787",
+ "predeclaration_sha": "f914a7ca",
  "shift_pair_name": "sign_discriminating_pair",
  "supersedes": "tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json",
  "supersedes_reason": "same port, same battery: this artifact reads contract criterion 1 (forward identity) and 3(a) (AD-vs-FD) under x64 on the flux lane per the v1.8 closing declaration, stores the float32 reading beside it, and carries the pre-declared zero-derivative leg as report_only",
@@ -29,7 +29,7 @@
   "recapture_entry_point": "scripts/diagnostics/waveguide_chain_battery_measure.py",
   "recapture_vessl_yaml": "scripts/vessl_waveguide_chain_battery_v18_close.yaml",
   "run_id_note": "VESSL_RUN_ID was unset in the pod (same as run 2, 369367258205); the id is written in from the backed-up log filename docs/vessl-logs/waveguide_chain_battery_v18_close_369367258638_completed.log",
-  "post_run_edits": "three strings written after the run, before the pin step: provenance.run_id (from the backed-up log filename), supersedes and supersedes_reason (the pod ran the script with run 2's constants; the constants in scripts/diagnostics/waveguide_chain_battery_measure.py now say what this artifact says)"
+  "post_run_edits": "three strings written after the run, before the pin step: provenance.run_id (from the backed-up log filename), supersedes and supersedes_reason (the pod ran the script with run 2's constants; the constants in scripts/diagnostics/waveguide_chain_battery_measure.py now say what this artifact says); predeclaration_sha 10b39787 -> f914a7ca (independent review of PR #908): the pod fetched f914a7ca and the note at that commit is the binding version \u2014 10b39787 was the note's first commit, whose section 2 still declared the zero-derivative branch as a gate; report_only entered at 04c42a57 (14:24 UTC), the CPU-smoke section at f914a7ca (14:38), the run started 14:39; the reader commit ba463005 (14:41, after the start, before the first stage finished at 14:42) edited section 3 row 2 and section 3.1 \u2014 every revision is listed in the note's section 6"
  },
  "fixture": {
   "a_m": 0.02286,

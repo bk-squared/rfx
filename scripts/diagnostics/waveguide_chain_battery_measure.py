@@ -460,10 +460,17 @@ def stage_ad_fd(args, out_dir: Path, rung: str, prov: dict) -> None:
                         # entry is stored beside it, never read as the verdict.
                         zd = G.zero_derivative_entry(g_ad_x64=w["g_ad_x64"], g_fd=e_primary["g_fd"],
                                                      fd_ulp_span=e_primary["fd_ulp_span"])
-                        e_primary = {**e_primary, "zero_derivative": zd, "verdict": "report_only",
-                                     "report_only_reason": "pre-declared zero-derivative objective; "
-                                     "AD and FD are O(1e-7) discretization residuals of a physically "
-                                     "zero derivative (closing pre-declaration section 2)"}
+                        admissible = G.zero_derivative_report_only_admissible(
+                            g_ad_x64=w["g_ad_x64"], g_fd=e_primary["g_fd"])
+                        e_primary = {**e_primary, "zero_derivative": zd,
+                                     "verdict": "report_only" if admissible else "fail",
+                                     "report_only_reason": (
+                                         "pre-declared zero-derivative objective; AD and FD are O(1e-7) "
+                                         "discretization residuals of a physically zero derivative "
+                                         "(closing pre-declaration section 2)") if admissible else (
+                                         "OUTSIDE the pre-declared report_only branch (section 3 row 3): "
+                                         "sign flip or |g| above 1e-5 — a non-zero derivative the two "
+                                         "precisions disagree on; fail, root-cause, do not close")}
                 else:
                     ident_primary, e_primary = ident, e
                 legs.append({

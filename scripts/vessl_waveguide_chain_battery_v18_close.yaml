@@ -18,7 +18,12 @@ env:
   RFX_EXPECT_SHA: "f914a7caf1ff8c63cac6f5f8c975b7f9f420a0c7"
   # The commit the re-measurement pre-declaration landed in (PR #891), recorded
   # in the artifact as predeclaration_sha; it must predate RFX_EXPECT_SHA.
-  RFX_PREDECLARATION_SHA: "10b39787"
+  # The note version the pod fetches is the one at RFX_EXPECT_SHA; the stamp must say so.
+  # Was "10b39787" (the note's first commit, whose section 2 still declared the zero-derivative
+  # branch as a gate) — restamped after the independent review of PR #908; the run-3 artifact
+  # carries the same restamp in provenance.post_run_edits and the note lists every revision in
+  # its section 6.
+  RFX_PREDECLARATION_SHA: "f914a7ca"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-

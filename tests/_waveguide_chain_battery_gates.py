@@ -151,6 +151,12 @@ X64_DECLARED_LANES = {"flux"}
 # keep its sign"), promoted from a report to a gate for that leg only. rel on a ~1e-6 gradient
 # of a 16.0 loss is a ULP question, which is why rel 38 there was never an accuracy finding.
 ZERO_DERIVATIVE_RATIO_MAX = 3.0
+# The closing pre-declaration's section-3 fail branch for that leg (row 3): report_only is
+# admissible only while the x64 AD and FD keep one sign AND both stay at or below 1e-5 in
+# magnitude — "sign flip, or either |g| above 1e-5: float64 tape and FD disagree on a NON-zero
+# derivative — defect on both precisions, root-cause, do not close". Outside it the leg is
+# fail, whatever EXPECTED_ULP_SKIP says (independent review of PR #908, finding 6).
+ZERO_DERIVATIVE_ABS_MAX = 1e-5
 LADDER_OBSERVABLES = (
     # name, dut, entry, kind
     ("slab_s11_mag", "slab", (0, 0), "mag"),
@@ -508,6 +514,14 @@ def zero_derivative_entry(*, g_ad_x64: float, g_fd: float, fd_ulp_span: float) -
             "ratio_max": ZERO_DERIVATIVE_RATIO_MAX}
 
 
+def zero_derivative_report_only_admissible(*, g_ad_x64: float, g_fd: float) -> bool:
+    """The closing note's section-3 row-3 branch: report_only only while the x64 AD and FD
+    keep one sign and both are at or below ZERO_DERIVATIVE_ABS_MAX; otherwise the leg is a
+    fail (a non-zero derivative the two precisions disagree on)."""
+    same_sign = (float(g_ad_x64) >= 0) == (float(g_fd) >= 0)
+    return same_sign and max(abs(float(g_ad_x64)), abs(float(g_fd))) <= ZERO_DERIVATIVE_ABS_MAX
+
+
 def forward_identity_pass(max_abs_diff_scaled: float) -> bool:
     """``max |S_traced − S_untraced| / (rtol·|S_untraced| + atol) ≤ 1``."""
     return max_abs_diff_scaled <= 1.0
@@ -759,7 +773,10 @@ def recompute_verdicts(fx: dict) -> dict:
         elif (declared and primary == "x64"
               and (leg["dut"], leg["theta_kind"], leg["objective"]) in EXPECTED_ULP_SKIP
               and verdict != "skipped_under_ulp_floor"):
-            verdict = "report_only"
+            # report_only only inside the pre-declared branch; a sign flip or a gradient
+            # above ZERO_DERIVATIVE_ABS_MAX is a fail, not a report
+            verdict = ("report_only" if zero_derivative_report_only_admissible(
+                g_ad_x64=leg["g_ad"], g_fd=leg["g_fd"]) else "fail")
         v[f"ad_vs_fd|{key}"] = verdict
         v[f"forward_identity|{key}"] = (
             "not_interpretable" if declared and primary != "x64" else
