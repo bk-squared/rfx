@@ -11,18 +11,26 @@ edits it concurrently). These tests pin, from strongest to most physical:
       non-zero spectrum (guards against silent re-introduction of the raise).
   T2  RELATIVE oracle: the finite monitor equals the full-plane NU integrand
       summed over the SAME lo:hi window to machine precision (x64-scoped).
-  T3  ABSOLUTE oracle (reviewer defect P1): the window selects exactly the
-      cells whose cumulative face area equals the requested physical size,
-      computed INDEPENDENTLY from the realized edge array — the one check the
-      relative oracle is structurally blind to (it applies the same possibly
-      off-by-one window on both sides). Also pins the node->cell decision
-      (#868) explicitly and shows the off-by-one it rejects.
+  T3  ABSOLUTE oracle (reviewer defect P1): the selected window and its
+      cumulative dA are compared against a span recomputed from the realized
+      edge array — the pad offset and the node->cell (#868) decision that T2 is
+      structurally blind to (it applies the same possibly off-by-one window on
+      both sides). Sub-check (e) is the one that leaves the window entirely: the
+      selected physical extent against the REQUESTED size, within the
+      edge-snapping bound (review2 F4 — (a)-(d) all read the monitor's own
+      lo/hi, so none of them can see a snap to the wrong edge).
   T4  GENERALITY / anti-hardcode: the SAME physical size/center on two DIFFERENT
       gradings must yield DIFFERENT lo/hi and DIFFERENT dA (the monitor tracks
       the mesh), while the recovered physical power agrees across gradings within
-      a bound DERIVED at runtime from the local field scale + Yee/face-quadrature
-      — never a pinned literal. A monitor returning identical dA regardless of
+      a MEASURED ENVELOPE whose shape ((k*d_max)^2 * (1+Q/P)) is derived and
+      computed at runtime from the fixture — never a pinned literal — but whose
+      O(1) prefactor is empirical, NOT a derived error bound (review2 F6; Yee
+      dispersion carries 1/12). A monitor returning identical dA regardless of
       grading FAILS. Carries the open-CPML ring-down settling witness.
+  T5  CLAMPING is documented and non-silent (review2 F7): an oversize or
+      off-edge window is CLAMPED to the interior — the helper never claimed
+      correctly that it "never clamps" — and that clamp now emits a
+      UserWarning, while an exactly-representable window does not.
 
 Every tolerance printed in-assertion is ``f(dA, dt, dx/dy/dz, eps, freq)``.
 x64 is scoped per-test via ``jax.enable_x64`` (never a module-level
@@ -239,6 +247,27 @@ def test_nu_finite_flux_absolute_aperture_and_dA():
         "graded fixture must make the off-by-one detectable (extra coarse cell "
         "strictly enlarges the aperture); choose a coarser tail")
 
+    # (e) REQUESTED vs SELECTED — the only check here that reads the REQUESTED
+    #     size at all. (a)-(d) all compare against a window; the runner resolves
+    #     each requested endpoint by argmin against the cumulative edges, and the
+    #     nearest edge to a point lying inside a cell of width d is at most d/2
+    #     away, so the two-endpoint worst case is (d_lo + d_hi)/2 <= max(d) over
+    #     the cells touching the window. Anything larger is a snap to the wrong
+    #     edge (or a clamp), which no window-vs-window comparison can see.
+    for label, d_full, lo, hi, requested in (
+            ("y", dy_full, mon.lo1, mon.hi1, size_y),
+            ("z", dz_full, mon.lo2, mon.hi2, size_z)):
+        selected = float(np.sum(d_full[lo:hi]))
+        tol_snap = float(np.max(d_full[max(lo - 1, 0):hi + 1]))   # (d_lo+d_hi)/2
+        err = abs(selected - requested)
+        print(f"[T3 requested] {label}: requested={requested:.6e} "
+              f"selected={selected:.6e} err={err:.3e} snap_bound={tol_snap:.3e}")
+        assert err <= tol_snap, (
+            f"{label} window [{lo}:{hi}] spans {selected:.6e} m but "
+            f"{requested:.6e} m was REQUESTED — off by {err:.3e} m, beyond the "
+            f"edge-snapping bound {tol_snap:.3e} m (max cell touching the "
+            "window): the endpoints did not snap to the nearest cumulative edge")
+
 
 # --------------------------------------------------------------------------
 # T4 — GENERALITY: two gradings -> different lo/hi and dA; recovered physical
@@ -349,8 +378,12 @@ def test_nu_finite_flux_generality_two_gradings():
             f"(rel {rel_area:.2e}) — the face weights are not the realized dz")
     rel_area_cross = abs(dA_sums[0] - dA_sums[1]) / max(dA_sums[0], 1e-300)
     # both equal the same physical area to within the sub-cell snapping of the
-    # two meshes (< one coarse cell of z-extent over the full aperture).
-    coarse_cell_frac = float(np.max(dz_coarse)) / ap_area[1][1] * ap_area[1][0]
+    # two meshes (< one coarse cell of z-extent over the full aperture). The two
+    # apertures share the same y window, so the RELATIVE area difference equals
+    # the relative z-extent difference and one coarse cell of z-snap is the
+    # DIMENSIONLESS fraction max(dz_coarse)/z_ext. (Until the review2 F5 fix this
+    # line also multiplied by y_ext, so the "fraction" carried units of metres.)
+    coarse_cell_frac = float(np.max(dz_coarse)) / ap_area[1][1]
     assert rel_area_cross < coarse_cell_frac, (
         f"aperture areas disagree across gradings ({dA_sums}) by more than one "
         f"coarse cell ({coarse_cell_frac:.2e}) — snapping/weighting inconsistent")
@@ -363,12 +396,22 @@ def test_nu_finite_flux_generality_two_gradings():
             "the DFT window closed on an un-settled field; recovered power is "
             "truncation-contaminated (repo ring-down rule)")
 
-    # (e) recovered physical power agrees across gradings within a DERIVED bound.
+    # (e) recovered physical power agrees across gradings within a MEASURED
+    #     ENVELOPE (review2 F6: this is NOT a derivation — do not call it one).
     #     The cross-mesh difference is a near-field observable: a small REAL
     #     flux extracted from a large reactive field, so the resolution error is
     #     amplified by the local reactive/real ratio Q/P (measured above). The
-    #     leading scale is the (k*d_max)^2 dispersion term, amplified by (1+Q/P);
-    #     a small O(1) constant covers the two tangential quadrature directions.
+    #     SHAPE is derived and computed at runtime from the fixture: the
+    #     (k*d_max)^2 Yee dispersion scaling times the measured (1+Q/P)
+    #     amplification — no pinned literal, no fixture-specific number. The
+    #     PREFACTOR 3.0 is NOT derived: Yee phase-velocity error carries 1/12,
+    #     and 3.0 is an empirical O(1) envelope covering the two tangential
+    #     quadrature directions and the face-snapping difference between the
+    #     meshes. It is an envelope that still bites (measured 2026-09-05 on this
+    #     fixture: propagating-bin rel = [0.033, 0.029, 0.024, 0.029] against
+    #     bound = [0.039, 0.055, 0.076, 0.094], 15 % margin at the tightest bin),
+    #     so a violation means "worse than this mesh pair has ever measured", NOT
+    #     "worse than theory allows".
     #     Restrict the comparison to the PROPAGATING bins (monitor >= 0.2*lambda
     #     downstream, k*L_path >= 2*pi*0.2) — a physical near/far criterion, not a
     #     hand-picked bin list; the deep-near-field bins carry no meaningful net
@@ -380,7 +423,9 @@ def test_nu_finite_flux_generality_two_gradings():
     L_path = abs(x_mon - x_src)
     dmax = float(max(np.max(dz_fine), np.max(dz_coarse)))
     qp = np.maximum(react[0], react[1])
-    bound = 3.0 * (k * dmax) ** 2 * (1.0 + qp)
+    # measured envelope (see (e)): derived shape, empirical O(1) prefactor.
+    envelope_prefactor = 3.0
+    bound = envelope_prefactor * (k * dmax) ** 2 * (1.0 + qp)
     propagating = (k * L_path) >= (2 * math.pi * 0.2)
     print(f"[T4 power] L_path={L_path*1e3:.2f}mm dmax={dmax*1e3:.2f}mm")
     print(f"  freqGHz={np.round(freqs_np/1e9,1)} rel={rel.round(3)} "
@@ -388,6 +433,71 @@ def test_nu_finite_flux_generality_two_gradings():
     assert np.any(propagating), "no propagating bin — enlarge the x-domain"
     viol = propagating & (rel > bound + 1e-9)
     assert not np.any(viol), (
-        f"recovered power disagrees across gradings beyond the derived "
-        f"near-field bound at propagating bins: rel={rel[propagating]} vs "
-        f"bound={bound[propagating]} — a weight bug or under-resolved fixture")
+        f"recovered power disagrees across gradings beyond the MEASURED "
+        f"near-field envelope at propagating bins: rel={rel[propagating]} vs "
+        f"envelope={bound[propagating]} — a weight bug or under-resolved "
+        "fixture (the envelope's shape is derived, its prefactor empirical)")
+
+
+# --------------------------------------------------------------------------
+# T5 — CLAMPING is documented and non-silent (review2 F7). The helper does NOT
+#      "never clamp": a window reaching outside the interior snaps to the end
+#      edges and the monitor then integrates the CLAMPED extent. Pin the
+#      documented behaviour and the warning that makes it non-silent, against
+#      an expectation computed here from the realized interior edges.
+# --------------------------------------------------------------------------
+def test_nu_finite_flux_oversize_window_clamps_and_warns():
+    import warnings as _warnings
+    from rfx.runners.nonuniform import _nu_flux_tangential_bounds
+
+    pad = 2
+    d_full = np.concatenate([np.full(pad, 0.5e-3), np.full(20, 0.5e-3),
+                             np.full(pad, 0.5e-3)])
+    interior = np.asarray(interior_cells(d_full, pad, pad))
+    edges = np.insert(np.cumsum(interior), 0, 0.0)
+    axis_len = float(edges[-1])
+    n_int = int(len(interior))
+
+    # (a) size far larger than the axis -> the WHOLE interior, and a warning.
+    with _warnings.catch_warnings(record=True) as caught:
+        _warnings.simplefilter("always")
+        lo, hi = _nu_flux_tangential_bounds(d_full, pad, pad,
+                                            axis_len / 2, 3.0 * axis_len)
+    assert (lo, hi) == (pad, pad + n_int), (
+        f"oversize window resolved to ({lo},{hi}); the documented behaviour is "
+        f"the clamped intersection with the interior ({pad},{pad + n_int})")
+    assert any(issubclass(c.category, UserWarning) and "CLAMPED" in str(c.message)
+               for c in caught), (
+        "an oversize window clamped SILENTLY — the review2 F7 warning is gone; "
+        f"caught={[str(c.message) for c in caught]}")
+
+    # (b) off-edge window: requested [-2, +4] mm of a 0.5 mm-celled axis ->
+    #     [0, 4] mm, i.e. the requested extent is NOT delivered; warn.
+    with _warnings.catch_warnings(record=True) as caught:
+        _warnings.simplefilter("always")
+        lo, hi = _nu_flux_tangential_bounds(d_full, pad, pad, 1.0e-3, 6.0e-3)
+    delivered = float(np.sum(interior[lo - pad:hi - pad]))
+    assert abs(delivered - 4.0e-3) < 1e-12, (
+        f"off-edge window delivered {delivered:.6e} m, expected the clamped "
+        "[0, 4] mm intersection")
+    assert any("CLAMPED" in str(c.message) for c in caught), (
+        "an off-edge window clamped SILENTLY")
+
+    # (c) an ordinary in-interior request must resolve exactly and NOT warn
+    #     (the warning fires on clamping, not on ordinary snapping). Endpoints
+    #     are taken FROM the realized edge array, so the request is exactly
+    #     representable on this mesh whatever interior_cells returns.
+    mid = n_int // 2
+    lo_i, hi_i = mid - 4, mid + 4
+    c_in = 0.5 * (float(edges[lo_i]) + float(edges[hi_i]))
+    size_in = float(edges[hi_i]) - float(edges[lo_i])
+    with _warnings.catch_warnings(record=True) as caught:
+        _warnings.simplefilter("always")
+        lo, hi = _nu_flux_tangential_bounds(d_full, pad, pad, c_in, size_in)
+    assert (lo, hi) == (pad + lo_i, pad + hi_i), (
+        f"exactly-representable window resolved to ({lo},{hi}), expected "
+        f"({pad + lo_i},{pad + hi_i})")
+    assert abs(float(np.sum(interior[lo - pad:hi - pad])) - size_in) < 1e-12
+    assert not [c for c in caught if "CLAMPED" in str(c.message)], (
+        f"an exactly-representable window raised the clamp warning: "
+        f"{[str(c.message) for c in caught]}")
