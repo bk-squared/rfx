@@ -794,6 +794,12 @@ def slab_ringdown_rate(f_hz, spec: dict):
 # ``yee_lattice_full`` returns.  No FDTD is involved; the bars are unchanged.
 # ---------------------------------------------------------------------------
 RECORD_NFFT = 1 << 17        # 131072 samples: > 4x the longest predicted record
+# The length RECORD_DECLARED was DERIVED at. record_probe_series builds the record
+# by inverse DFT, so undecayed content wraps; at 2**17 two keys never settle and
+# te_30 at dx reads 49 % long (comment on RECORD_DECLARED). Anything that
+# re-derives or checks that table passes THIS, never the default above -- the
+# default stays because derive_record runs it per arm on every case run.
+RECORD_DECLARED_NFFT = 1 << 19
 RECORD_AMP_FLOOR = 1e-9      # source bins kept (relative amplitude); 1e-9 is 6 decades
                              # under the tightest witness bar (TAIL_PURITY_LIMIT = 1e-3)
 
@@ -1018,24 +1024,38 @@ def predict_settling(spec: dict, *, nx_interior: int | None = None, dx_div: int 
 #     records at 45 and 60 deg came down when the auxiliary absorber stopped
 #     echoing, and the closed form did not move with them.
 RECORD_DECLARED: dict[tuple[str, int, int, int], dict] = {
-    ("te_00", 1, 20, 1500): {"n_settle": 1511, "e_absorber": 1.393891508634971e-06, "theta_eff_deg": 13.94},
-    ("tm_00", 1, 20, 1500): {"n_settle": 1512, "e_absorber": 1.391265590619891e-06, "theta_eff_deg": 14.13},
-    ("te_30", 1, 20, 1500): {"n_settle": 3076, "e_absorber": 4.03672757524891e-06, "theta_eff_deg": 64.46},
-    ("te_30", 2, 20, 1500): {"n_settle": 6238, "e_absorber": 1.4155619937184452e-05, "theta_eff_deg": 65.26},
-    ("te_45", 1, 20, 1500): {"n_settle": 6048, "e_absorber": 0.0667355161458998, "theta_eff_deg": 77.68},
-    ("te_45", 2, 20, 1500): {"n_settle": 11082, "e_absorber": 0.029900040860177408, "theta_eff_deg": 76.56},
-    ("te_60", 1, 20, 1500): {"n_settle": 12153, "e_absorber": 0.0367692980434444, "theta_eff_deg": 83.87},
-    ("te_60", 2, 20, 1500): {"n_settle": 18614, "e_absorber": 0.017835682109265335, "theta_eff_deg": 81.75},
-    ("tm_45", 1, 20, 1500): {"n_settle": 6123, "e_absorber": 0.04795089251015183, "theta_eff_deg": 77.85},
-    ("tm_45", 2, 20, 1500): {"n_settle": 11395, "e_absorber": 0.022389798664306904, "theta_eff_deg": 76.99},
-    ("tm_60", 1, 20, 1500): {"n_settle": 12153, "e_absorber": 0.05612854031285014, "theta_eff_deg": 83.87},
-    ("tm_60", 2, 20, 1500): {"n_settle": 18614, "e_absorber": 0.02652962052475824, "theta_eff_deg": 81.75},
-    ("graze_vac", 1, 20, 100): {"n_settle": 24784, "e_absorber": 0.013751585162277324, "theta_eff_deg": 88.55},
-    ("graze_pec", 1, 20, 100): {"n_settle": 24784, "e_absorber": 0.07637134237496736, "theta_eff_deg": 88.55},
-    ("graze_te", 1, 20, 100): {"n_settle": 24784, "e_absorber": 0.06602613270085005, "theta_eff_deg": 88.55},
-    ("graze_pec", 1, 8, 100): {"n_settle": 24784, "e_absorber": 0.3056116969641457, "theta_eff_deg": 88.55},
-    ("graze_pec", 1, 16, 100): {"n_settle": 24784, "e_absorber": 0.10366420129621712, "theta_eff_deg": 88.55},
-    ("graze_pec", 1, 32, 100): {"n_settle": 24784, "e_absorber": 0.04096824964426426, "theta_eff_deg": 88.55},
+    ('te_00', 1, 20, 1500): {"n_settle": 1511, "e_absorber": 2.3163071228933127e-06, "theta_eff_deg": 13.94},
+    ('tm_00', 1, 20, 1500): {"n_settle": 1512, "e_absorber": 2.319317948039465e-06, "theta_eff_deg": 14.13},
+    ('te_30', 1, 20, 1500): {"n_settle": 3099, "e_absorber": 4.4326122381647744e-06, "theta_eff_deg": 64.69},
+    ('te_30', 2, 20, 1500): {"n_settle": 6238, "e_absorber": 3.302665718249719e-05, "theta_eff_deg": 65.26},
+    ('te_45', 1, 20, 1500): {"n_settle": 6047, "e_absorber": 0.06673552045505318, "theta_eff_deg": 77.68},
+    ('te_45', 2, 20, 1500): {"n_settle": 11087, "e_absorber": 0.029885520903827935, "theta_eff_deg": 76.57},
+    ('te_60', 1, 20, 1500): {"n_settle": 10258, "e_absorber": 0.03678582937335072, "theta_eff_deg": 82.54, "nfft_converged": False, "n_settle_ladder_2e17_to_2e20": [9627, 9623, 10258, 9632]},
+    ('te_60', 2, 20, 1500): {"n_settle": 18448, "e_absorber": 0.017845485253995007, "theta_eff_deg": 81.67},
+    ('tm_45', 1, 20, 1500): {"n_settle": 6124, "e_absorber": 0.04794914433654528, "theta_eff_deg": 77.85},
+    ('tm_45', 2, 20, 1500): {"n_settle": 11405, "e_absorber": 0.022375547906149734, "theta_eff_deg": 77.0},
+    ('tm_60', 1, 20, 1500): {"n_settle": 10258, "e_absorber": 0.05607186203624842, "theta_eff_deg": 82.54, "nfft_converged": False, "n_settle_ladder_2e17_to_2e20": [9619, 9512, 10258, 9524]},
+    ('tm_60', 2, 20, 1500): {"n_settle": 18448, "e_absorber": 0.02654603205764698, "theta_eff_deg": 81.67},
+    ('graze_vac', 1, 20, 100): {"n_settle": 21735, "e_absorber": 0.0008324974239487657, "theta_eff_deg": 86.94},
+    ('graze_pec', 1, 20, 100): {"n_settle": 21735, "e_absorber": 0.07241269112138844, "theta_eff_deg": 86.94},
+    ('graze_te', 1, 20, 100): {"n_settle": 21735, "e_absorber": 0.06213502478342781, "theta_eff_deg": 86.94},
+    ('graze_pec', 1, 8, 100): {"n_settle": 21735, "e_absorber": 0.30083650795593664, "theta_eff_deg": 86.94},
+    ('graze_pec', 1, 16, 100): {"n_settle": 21735, "e_absorber": 0.09948545183505768, "theta_eff_deg": 86.94},
+    ('graze_pec', 1, 32, 100): {"n_settle": 21735, "e_absorber": 0.03802511502329543, "theta_eff_deg": 86.94},
+}
+
+# n_settle / n_closed_form per oblique primary-rig rung, from the table above (test pin).
+RECORD_DECLARED_CLOSED_FORM_RATIO = {
+    ("te_30", 1): 1.4268,
+    ("te_30", 2): 1.452,
+    ("te_45", 1): 1.9885,
+    ("te_45", 2): 1.8417,
+    ("te_60", 1): 2.0524,
+    ("te_60", 2): 1.8691,
+    ("tm_45", 1): 2.0759,
+    ("tm_45", 2): 1.9532,
+    ("tm_60", 1): 2.1424,
+    ("tm_60", 2): 1.9522
 }
 
 
