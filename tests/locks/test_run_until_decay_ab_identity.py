@@ -89,11 +89,11 @@ red-lines the previous shared-E-floor behaviour so it cannot come back.
 LOCK_PROVENANCE = {
     "fixture": "none",
     "generator": "hand-derived",
-    # "unknown" until the squash merge of PR #899 lands; the repo's locks name the
-    # main commit that produced the pinned number (see ed2d09d3), which for a
-    # squash-merged PR is not knowable before the merge. f019c89, the first commit
-    # of the series, carried the shared-E floor this revision retired.
-    "commit": "unknown",
+    # The squash commit of PR #899 on main, filled in after the merge (the repo's
+    # locks name the main commit that produced the pinned number, see ed2d09d3;
+    # for a squash-merged PR that is not knowable before the merge). f019c89, the
+    # first commit of the series, carried the shared-E floor this revision retired.
+    "commit": "47eb917",
     "date": "2026-09-05",
     "run_id": ("local (CPU derivation) + VESSL 369367258329 / 369367258350 (GPU evidence "
                "that the retired flat 1e-10 floor reds on RTX4090, measured against the old "
