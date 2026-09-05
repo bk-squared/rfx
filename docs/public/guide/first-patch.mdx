@@ -92,7 +92,7 @@ sim.add(
     material="fr4_design",
 )
 
-# Copper values above 1e6 S/m are routed to the PEC sheet mask.
+# Copper values at or above 1e6 S/m are routed to the PEC sheet mask.
 ground = Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_lo))
 sim.add_thin_conductor(ground, sigma_bulk=5.8e7, thickness=35e-6)
 
@@ -106,7 +106,8 @@ sim.add_thin_conductor(patch, sigma_bulk=5.8e7, thickness=35e-6)
 src_z = z_sub_lo + 2.5 * dz_sub
 feed = (px0 + 8e-3, dom_y / 2, src_z)
 probe = (dom_x / 2 + 5e-3, dom_y / 2 + 5e-3, src_z)
-sim.add_source(feed, "ez", waveform=GaussianPulse(f0=f0, bandwidth=0.8))
+sim.add_source(feed, "ez", waveform=GaussianPulse(f0=f0, bandwidth=0.8),
+               amplitude_kind="current")   # required from 1.8
 sim.add_probe(probe, "ez")
 
 sim.preflight(strict=True)
@@ -114,8 +115,22 @@ sim.preflight(strict=True)
 
 The thin-conductor calls warn that the copper sheet is routed to PEC. That is
 the represented model: conductor skin depth, surface roughness, and finite
-copper loss are not included. A finite sheet-resistance approximation requires
-an explicitly justified `sigma_bulk < 1e6` S/m.
+copper loss are not included. Two routes put loss back.
+
+The documented one is
+`add_thin_conductor(shape, sigma_bulk=5.8e7, surface_impedance_f0=f0)`, which
+models the sheet as a resistive sheet of sheet resistance
+`Rs0 = sqrt(pi*f0*mu0/sigma_bulk)` — the thick-conductor surface resistance at
+the band centre `f0` {/* rfx/api/__init__.py:1379-1420 */}. Its scope, from the
+"Surface-impedance sheets" row of `docs/guides/support_matrix.md`: it "supports
+patterned shapes that rasterize to exactly one cell layer and at least one cell
+on its documented uniform and graded-mesh lanes. It is not a general dispersive
+or multi-runner conductor model." One frequency, one cell layer.
+
+The cruder route is a finite sheet-resistance approximation through
+`sigma_bulk`, which requires an explicitly justified value below 1e6 S/m — that
+is the threshold at which the sheet stops being routed to PEC, so anything above
+it silently reverts to the lossless model.
 
 ## 4. Check execution before interpreting RF results
 
@@ -153,11 +168,5 @@ The script's evidence applies only to its committed geometry, mesh, frequency
 band, metric, and tolerances. Do not transfer its frequency or Q to the model
 above or to a modified feed without a new comparison.
 
-See [Cross-Validation and Accuracy](/rfx/guide/validation/) for evidence levels
-and [S-Parameters and Ports](/rfx/guide/probes-sparams/) for
-calculator-specific limits.
-
-For the ordered learning sequence, continue with
-[Examples](/rfx/examples/). A source checkout lists the exact tutorial order in
-`examples/README.md`; the cross-validation script above remains an accuracy
-fixture rather than a lesson.
+Continue with [Examples](/rfx/examples/) for the ordered learning sequence; the
+cross-validation script above is an accuracy fixture, not a lesson.

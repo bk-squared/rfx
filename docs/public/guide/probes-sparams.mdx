@@ -14,6 +14,39 @@ rfx provides three probe types for extracting field data, plus several S-paramet
 
 Records a single field component at one Yee cell over time. The time series is stored in `result.time_series`.
 
+Setup used by the snippets below:
+
+```python
+import numpy as np
+from rfx import GaussianPulse, Simulation
+
+sim = Simulation(
+    freq_max=5e9,
+    domain=(0.05, 0.05, 0.05),
+    dx=2.5e-3,
+    boundary="cpml",
+    cpml_layers=6,
+)
+sim.add_source(
+    (0.015, 0.025, 0.025),
+    "ez",
+    waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8),
+    amplitude_kind="current",
+)
+
+# A two-port S-matrix cube for the host-side report checks below.
+quality_sim = Simulation(
+    freq_max=5e9,
+    domain=(0.05, 0.04, 0.02),
+    dx=2.5e-3,
+    boundary="cpml",
+    cpml_layers=6,
+)
+quality_sim.add_port((0.01, 0.02, 0.01), "ez", impedance=50.0)
+quality_sim.add_port((0.04, 0.02, 0.01), "ez", impedance=50.0)
+s_matrix = quality_sim.run(n_steps=600, compute_s_params=True).s_params
+```
+
 ```python
 sim.add_probe(
     position=(0.025, 0.025, 0.010),  # (x, y, z) in meters
@@ -155,6 +188,17 @@ means that an implemented check did not fire; it does not certify passivity.
 When one or more lumped ports are added with `add_port()`, pass `compute_s_params=True`:
 
 ```python
+# Ports drive the run themselves, so this simulation carries no soft source;
+# the probe records the ring-down the Harminv section reads.
+sim = Simulation(
+    freq_max=5e9,
+    domain=(0.05, 0.05, 0.05),
+    dx=2.5e-3,
+    boundary="cpml",
+    cpml_layers=6,
+)
+sim.add_probe((0.025, 0.025, 0.025), "ez")
+
 sim.add_port((0.01, 0.02, 0.01), "ez", impedance=50)
 sim.add_port((0.04, 0.02, 0.01), "ez", impedance=50)
 
@@ -174,15 +218,25 @@ The S-matrix is normalized to each port's `impedance`.
 Wire ports use voltage/current DFT integrals accumulated during the time loop. The extraction is performed inside a JIT-compiled scan, making it faster than post-processing FFTs for long simulations.
 
 ```python
-sim.add_port(
+# A mixed lumped+wire port set is unsupported, so the wire port gets its own
+# simulation.
+wire_sim = Simulation(
+    freq_max=5e9,
+    domain=(0.05, 0.05, 0.02),
+    dx=2.5e-3,
+    boundary="cpml",
+    cpml_layers=6,
+)
+
+wire_sim.add_port(
     (0.01, 0.02, 0.0),
     "ez",
     impedance=50,
     extent=0.0016,               # wire length
 )
 
-result = sim.run(n_steps=5000, compute_s_params=True)
-s11 = result.s_params[0, 0, :]  # complex, shape (n_freqs,)
+wire_result = wire_sim.run(n_steps=5000, compute_s_params=True)
+s11 = wire_result.s_params[0, 0, :]  # complex, shape (n_freqs,)
 ```
 
 `add_port(..., reference_plane_cells=N)` (wire ports, multi-drive S-matrix
@@ -199,7 +253,31 @@ separated port on a parallel trace also trips them.
 MSL ports use their own calculator and result object:
 
 ```python
-msl = sim.compute_msl_s_matrix(n_freqs=101, num_periods=40)
+from rfx import Box
+
+# A microstrip board of its own: ground, substrate, trace, and two MSL ports.
+msl_sim = Simulation(
+    freq_max=6e9,
+    domain=(0.020, 0.010, 0.004),
+    dx=0.25e-3,
+    boundary="cpml",
+    cpml_layers=3,
+)
+msl_sim.add_material("substrate", eps_r=3.2, sigma=0.01)
+msl_sim.add(Box((0.75e-3, 0.75e-3, 0.75e-3), (19.25e-3, 9.25e-3, 1.25e-3)), material="pec")
+msl_sim.add(Box((0.75e-3, 0.75e-3, 1.25e-3), (19.25e-3, 9.25e-3, 2.25e-3)), material="substrate")
+msl_sim.add(Box((0.75e-3, 4.50e-3, 2.25e-3), (19.25e-3, 5.50e-3, 2.75e-3)), material="pec")
+for x_feed, feed_direction, port_name in ((0.004, "+x", "in"), (0.016, "-x", "out")):
+    msl_sim.add_msl_port(
+        (x_feed, 0.005, 1.25e-3),
+        width=1.0e-3,
+        height=1.0e-3,
+        direction=feed_direction,
+        eps_r_sub=3.2,
+        name=port_name,
+    )
+
+msl = msl_sim.compute_msl_s_matrix(n_freqs=101, num_periods=40)
 S = msl.S          # (n_ports, n_ports, n_freqs)
 freqs = msl.freqs  # (n_freqs,) Hz
 Z0 = msl.Z0        # extracted characteristic impedance
@@ -267,7 +345,26 @@ See [Sources & Ports](/rfx/guide/sources-ports/) for the waveguide-port setup wo
 Use `compute_waveguide_s_matrix(...)` for the full multi-port matrix:
 
 ```python
-wg = sim.compute_waveguide_s_matrix(num_periods=30, normalize=True)
+# Waveguide ports cannot share a simulation with lumped ports.
+wg_sim = Simulation(
+    freq_max=11e9,
+    domain=(0.10, 0.023, 0.010),
+    dx=1e-3,
+    boundary="cpml",
+    cpml_layers=8,
+)
+for x_face, face_direction, port_name in ((0.01, "+x", "port1"), (0.09, "-x", "port2")):
+    wg_sim.add_waveguide_port(
+        x_position=x_face,
+        y_range=(0.0, 0.023),
+        z_range=(0.0, 0.010),
+        direction=face_direction,
+        f0=9e9,
+        bandwidth=0.5,
+        name=port_name,
+    )
+
+wg = wg_sim.compute_waveguide_s_matrix(num_periods=40, normalize=True)  # 40 = docstring default; 30 under-settles (-35.8 dB vs the -40 dB bar)
 S = wg.s_params      # (n_ports, n_ports, n_freqs)
 freqs = wg.freqs
 ```
@@ -294,7 +391,25 @@ expand the RF validation scope.
 `run(...)` can also expose per-port waveguide diagnostics:
 
 ```python
-sp = result.waveguide_sparams["port1"]
+# run() supports a single waveguide port, so drive one port here.
+diag_sim = Simulation(
+    freq_max=11e9,
+    domain=(0.10, 0.023, 0.010),
+    dx=1e-3,
+    boundary="cpml",
+    cpml_layers=8,
+)
+diag_sim.add_waveguide_port(
+    x_position=0.01,
+    y_range=(0.0, 0.023),
+    z_range=(0.0, 0.010),
+    f0=9e9,
+    bandwidth=0.5,
+    name="port1",
+)
+wg_run = diag_sim.run(n_steps=3000)
+
+sp = wg_run.waveguide_sparams["port1"]
 
 print(sp.freqs.shape)              # (n_freqs,)
 print(sp.s11.shape)                # (n_freqs,) complex
@@ -370,8 +485,8 @@ You can call Harminv directly on any time series:
 from rfx import harminv
 import numpy as np
 
-dt = 1e-12  # timestep in seconds
-signal = np.loadtxt("probe_data.txt")
+dt = result.dt                              # timestep in seconds
+signal = np.asarray(result.time_series[:, 0])
 modes = harminv(signal, dt, f_min=1e9, f_max=5e9)
 ```
 
@@ -418,6 +533,8 @@ write_touchstone("patch_antenna.s2p", result.s_params, result.freqs, z0=50.0)
 s_matrix, freqs, z0 = read_touchstone("patch_antenna.s2p")
 
 # Metadata-aware Touchstone 2.0 read path preserves per-port references
-network = read_touchstone_full("device_v2.s4p")
+write_touchstone("device_v2.s2p", result.s_params, result.freqs,
+                 version="2.0", layout="standard", port_z0=[50.0, 50.0])
+network = read_touchstone_full("device_v2.s2p")
 print(network.reference)
 ```

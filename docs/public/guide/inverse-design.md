@@ -1,5 +1,6 @@
 ---
 title: "Inverse Design"
+description: "Gradient-based design through the FDTD solver: the manual jax.grad loop, which objective family runs inside optimize(), and the design-region driver."
 sidebar:
   order: 16
 ---
@@ -33,8 +34,17 @@ scalar loss:
 ```python
 import jax
 import jax.numpy as jnp
+from rfx import GaussianPulse, Simulation
 
-# sim is an already configured Simulation with sources/probes/ports.
+# Stand-in for your own configured Simulation: one soft source, one probe,
+# open (CPML) boundaries, deliberately small so the snippet runs in seconds.
+sim = Simulation(freq_max=10e9, domain=(0.03, 0.02, 0.02), dx=2e-3,
+                 boundary="cpml", cpml_layers=6)
+sim.add_source((0.010, 0.010, 0.010), "ez",
+               waveform=GaussianPulse(f0=5e9, bandwidth=0.8),
+               amplitude_kind="current")   # required from 1.8; see Sources & Ports
+sim.add_probe((0.020, 0.010, 0.010), "ez")
+
 # Discover the grid shape from a quick run (result.grid is always populated):
 eps0 = jnp.ones(sim.run(n_steps=1).grid.shape, dtype=jnp.float32)
 
@@ -122,12 +132,16 @@ exactly. Note that an AD-vs-finite-difference check will *not* catch an empty
 window: both differentiate the same window and agree (see
 [Autodiff and Adjoint Background](/rfx/guide/autodiff-adjoint/#a-passing-finite-difference-check-is-necessary-not-sufficient)).
 
-For NTFF/directivity optimization, pass
-`maximize_directivity(..., log_ratio=True)` when the design variable can change
-total radiated power (conductors/PEC, lossy, or magnitude-changing dielectric
-DoFs). The default `log_ratio=False` mode drops a quotient-rule term and yields
-wrong-sign gradients for those DoFs; it is correct only for shape-preserving,
-constant-radiated-power DoFs.
+For NTFF/directivity optimization, `maximize_directivity(...)` defaults to
+`log_ratio=True`, which is sign-correct for every degree of freedom, including
+design variables that change total radiated power (conductors/PEC, lossy, or
+magnitude-changing dielectric DoFs). <!-- rfx/optimize_objectives.py:290 -->
+`log_ratio=False` is the legacy mode kept for back-compatibility: it drops a
+quotient-rule term and yields wrong-sign gradients for power-changing DoFs, so
+it is correct only for shape-preserving, constant-radiated-power ones. The
+default flipped in 1.6.7 (CHANGELOG `[1.6.7] - 2026-07-28`, GitHub #129); code
+written against the older default should pass `log_ratio=False` explicitly if it
+relied on it.
 
 ## Design-region API
 
@@ -142,8 +156,11 @@ base simulation, see [Sources & Ports](/rfx/guide/sources-ports/).
 ```python
 from rfx import Simulation, DesignRegion, optimize, minimize_reflected_energy
 
-sim = Simulation(freq_max=10e9, domain=(0.1, 0.04, 0.02), boundary="cpml")
-sim.add_port(...)  # see Sources & Ports for the concrete call
+sim = Simulation(freq_max=10e9, domain=(0.1, 0.04, 0.02), dx=2e-3,
+                 boundary="cpml", cpml_layers=6)
+feed = (0.015, 0.02, 0.01)
+sim.add_port(position=feed, component="ez", impedance=50.0)
+sim.add_probe(feed, "ez")   # time_series column 0 -> port_probe_idx=0
 
 region = DesignRegion(
     corner_lo=(0.03, 0.0, 0.0),
@@ -155,7 +172,7 @@ result = optimize(
     sim,
     region,
     objective=minimize_reflected_energy(port_probe_idx=0),
-    n_iters=50,
+    n_iters=5,      # a real design runs tens to hundreds of iterations
     lr=0.01,
 )
 # result.eps_design, result.loss_history, result.latent

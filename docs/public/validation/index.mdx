@@ -21,16 +21,13 @@ port, calculator, and observable restrictions.
 | differentiable design loops | treat the optimization quantity as a proxy and validate the final RF observable separately |
 | other repository code | treat RF accuracy as unvalidated unless a public guide and support entry define the configuration and evidence |
 
-## Runnable examples
-
-- `validation/crossval/05_patch_antenna.py` — patch-antenna cross-check
-- `validation/crossval/11_waveguide_port_wr90.py` — rectangular waveguide-port workflow
-- `examples/inverse_design/multilayer_ar_coating.py` — inverse-design example;
-  validate the optimized result independently
-
 ## Evidence, artifacts, and reports
 
 Plots, Touchstone files, HDF5 snapshots, CSV tables, and report bundles are
 useful review artifacts. They become validation evidence only when paired with
 a documented analytic result, dump replay, external-solver comparison,
 convergence study, or benchmark acceptance criterion.
+
+The measured cases themselves — every script under `validation/crossval/` with
+its reference, gate and reproduce command — are listed in
+[Benchmarks](/rfx/guide/benchmarks/).

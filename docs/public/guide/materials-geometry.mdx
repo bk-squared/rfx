@@ -196,12 +196,25 @@ sim.add(via, material="copper")
 ### MeshShape (CAD import)
 
 ```python
+import tempfile
+from pathlib import Path
+
+import trimesh  # ships with the same extra as MeshShape
+
 from rfx import MeshShape  # needs: pip install "rfx-fdtd[cad]"
 
-# STL / OBJ / PLY natively; STEP / STP via the cad extra's OpenCASCADE backend.
-# scale converts the file's length unit to metres (STL in mm -> scale=1e-3;
-# STEP is converted to metres already -> scale=1.0).
-part = MeshShape.from_file("bracket.stl", scale=1e-3, translate=(0.01, 0.0, 0.0))
+# Stand-in for a real CAD export: a 30 x 20 x 2 mm part drawn in MILLIMETRES.
+with tempfile.TemporaryDirectory() as tmp_dir:
+    bracket = Path(tmp_dir) / "bracket.stl"
+    trimesh.creation.box(extents=(30.0, 20.0, 2.0)).export(bracket)
+
+    # STL / OBJ / PLY natively; STEP / STP via the cad extra's OpenCASCADE backend.
+    # scale converts the file's length unit to metres (STL in mm -> scale=1e-3;
+    # STEP is converted to metres already -> scale=1.0).
+    part = MeshShape.from_file(
+        str(bracket), scale=1e-3, translate=(0.025, 0.025, 0.010),
+    )
+
 sim.add(part, material="pec")
 ```
 

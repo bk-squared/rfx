@@ -52,7 +52,8 @@ def make_sim() -> Simulation:
 def add_sample(sim: Simulation, material: str) -> None:
     """Place one material sample, source, and probe in a simulation."""
     sim.add(Box((0.004, 0.004, 0.004), (0.012, 0.012, 0.012)), material=material)
-    sim.add_source((0.008, 0.008, 0.008), component="ez")
+    sim.add_source((0.008, 0.008, 0.008), component="ez",
+                   amplitude_kind="current")
     sim.add_probe((0.010, 0.008, 0.008), component="ez")
 
 
