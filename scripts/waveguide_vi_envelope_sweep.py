@@ -534,9 +534,17 @@ def run_case(case: dict) -> dict:
     out: dict = dict(case)
     out["provenance"] = rfx_provenance()
     out["alpha_scale"] = float(case.get("alpha_scale") or 1.0)
+    out["layout_r_lo"] = float(case.get("layout_r_lo") or 0.0) or None
 
     r_lo = float(case.get("r_lo") or np.asarray(case["freqs_hz"]).min() / FC_CONTINUOUS_HZ)
-    lay = layout(r_lo, float(case.get("domain_mult", 1.0)))
+    # layout_r_lo lets a case borrow ANOTHER band's box — domain, pad, port planes —
+    # while keeping its own frequency bins. It exists because R3's lowest bins lie
+    # inside R2's band, and at N=36 they converge with record inside R2's box (flat to
+    # 0.8 %) but not inside R3's own shorter one (+-30 % out to T/tau = 16). The
+    # band-scaled layout is not a fixed physical object; a bin's convergence can
+    # depend on which band it was assigned to, and this is how that is tested.
+    r_lo_layout = float(case.get("layout_r_lo") or r_lo)
+    lay = layout(r_lo_layout, float(case.get("domain_mult", 1.0)))
     freqs = band_freqs(case, N)
 
     # Pass 1 — realized numerical TE10 cutoff of the rasterized guide, read at
@@ -552,7 +560,7 @@ def run_case(case: dict) -> dict:
     del probe_sim, probe_grid
 
     # Pass 2 — the absorber, then the real build.
-    absorber = absorber_layers(dict(case, r_lo=r_lo), lay, fc_num)
+    absorber = absorber_layers(dict(case, r_lo=r_lo_layout), lay, fc_num)
     out.update(absorber)
     sim, meta = _build(case, freqs, lay, absorber["cpml_layers"])
     out.update(meta)
