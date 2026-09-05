@@ -1,0 +1,100 @@
+# v1.8 waveguide chain closure — pre-declaration (2026-09-05)
+
+**Status: PRE-DECLARATION.** Written before the closing measurement runs. Base: `origin/main`
+at the SHA this note is committed on. Contract: `docs/design_notes/chain_closure_contract.md`.
+Predecessors: `waveguide_chain_battery_predeclaration.md` (run 1, #867),
+`waveguide_chain_battery_remeasure_predeclaration.md` (run 2, #893).
+
+## 0. What is red, and why neither red is physics
+
+After #893, 9 of 185 verdicts are red in two families. Both are float32 effects on the
+differentiation side; the forward physics is green at the claims rung (column power
+1.000975, complex reciprocity 6.98e-3, referees green).
+
+**(a) Forward identity, flux lane, 8 legs.** `max|S_traced − S_untraced|` scaled to
+rtol 1e-5 / atol 1e-7 reads 1.08–1.76 (> 1). Mechanism, from run 2's own x64 witness:
+float32 reassociation of the 2849-step Poynting DFT under the reverse-mode tape. The same
+identity in x64 reads 1.74e-10 / 2.83e-10 / 1.05e-8 on the three legs that carry the witness
+— ten orders inside the bar. The other five legs lack the witness only because
+`waveguide_chain_battery_measure.py` computes it for `objectives[0]` of each (dut, lane, θ)
+group; the x64 primal identity does not depend on the objective, so the same `S64` serves
+all four.
+
+**(b) AD-vs-FD, `pec_short | flux | eps | s11_mag2`, 1 leg.** A physically zero derivative
+(|S11| = 1 in front of a PEC for any lossless window). float32 AD +2.683e-5 (its noise
+floor, wrong sign), FD −7.245e-7, x64 AD −9.821e-7. `rel = 38` against 0.05. The remeasure
+pre-declaration §(ii) predicted exactly this and named the closing condition in its own
+branches: the x64 AD "must stay within a factor 3 of −9.821e-7 and keep its sign" against
+FD. That is a sign-and-order statistic, because `rel` on a ~1e-6 gradient of a 16.0 loss is
+a ULP question, not an accuracy question.
+
+## 1. The declaration (PI decision 2026-09-05)
+
+> **Contract criterion 1 (forward identity) and criterion 3(a) (AD-vs-FD) are evaluated
+> under x64 on the differentiable lanes.** The forward default stays `precision="float32"`.
+
+Evidence the decision rests on, recorded so it is not re-argued: float32 is the forward use
+case (default; every claims-bearing artifact; 15 of 21 crossval scripts) and has never been
+short there; it has failed four times on the differentiation side (#527, #477 FD comparators;
+#630 Yee arithmetic dtype; run 2's tape reassociation and zero-derivative leg); x64 costs
+1.25–1.49× wall and 2× memory on the RTX 4090 with forward physics identical (+0.073 % band
+mean, asy equal to four digits) — `docs/research_notes/20260904_vi_envelope_predeclaration.md`.
+
+What this is NOT: a tolerance change. rtol 1e-5 / atol 1e-7 and rel 0.05 are untouched. The
+float32 readings stay in the artifact as the recorded envelope of the float32 tape.
+
+## 2. Changes, and the one new gate
+
+1. **Script**: `forward_identity_x64` attached to every leg in a group (one `S64` per group,
+   already computed); `g_ad_x64` computed for every flux-lane leg, not only `objectives[0]`.
+   Both float32 and x64 readings stored; `primary_precision` field says which the gate reads.
+2. **Gate module**: `forward_identity_pass` reads the x64 metric on lanes declared under x64;
+   `ad_fd_entry` gains a **zero-derivative branch** for legs in `EXPECTED_ULP_SKIP` whose FD
+   resolves above the ULP floor:
+   ```
+   pass iff sign(g_ad_x64) == sign(g_fd) and 1/3 <= |g_ad_x64| / |g_fd| <= 3
+   ```
+   This is the remeasure note's own §(ii) branch, promoted from a report to a gate. It applies
+   ONLY to pre-declared zero-derivative legs; every other leg keeps rel ≤ 0.05.
+3. **Test**: the 8 + 1 `xfail(strict=True)` marks are removed AFTER the run shows green — strict
+   xfail forbids removing them first.
+
+## 3. Predicted outcome, written before the run
+
+| family | legs | predicted | how it could instead fail |
+|---|---|---|---|
+| forward identity, flux, x64 | 8 | all ≤ 1e-7 scaled (three measured 1.7e-10…1.05e-8) | any leg > 1e-3 scaled: reassociation is NOT confined to the DFT; report next to the flux numbers, do not close |
+| forward identity, `normalize=False` | 4 | bit-identical (0), unchanged | — |
+| AD-vs-FD zero-derivative, x64 | 1 | ratio |g_ad_x64/g_fd| in [0.33, 3], same sign (run 2: 1.36, same sign) | ratio outside or sign flipped: the float64 tape disagrees with the float64 FD, a defect on both precisions — root-cause, do not close |
+| AD-vs-FD, all other legs, x64 | 15 | rel ≤ 0.05, and ≤ run 2's float32 rel (1.0e-4…1.1e-2) | any leg's rel RISES under x64: the float32 pass was noise agreeing with noise — report as a finding |
+| everything else | 152 | unchanged from run 2 to replay tolerance | any drift: the x64 context leaked into a non-AD path |
+
+**Expected census: 185 pass / report_only, 0 fail, 0 not_interpretable.** If that lands, the
+waveguide family is declared chain-closed (v1.8) through the ledger row and support matrix,
+per the contract's "How a family is declared chain-closed".
+
+## 4. Falsifier for the declaration itself
+
+Run the SAME script with the x64 primary disabled (float32 primary, one flag). It must
+reproduce run 2's 9 red to the stored digits. If it does not, the script change altered
+something other than which reading the gate reads, and the closing is not attributable to
+the declaration.
+
+## 5. Scope fences, unchanged
+
+Uniform single-mode WR-90 only; junctions, multimode, nonuniform excluded; phase referee =
+Airy only; `pec_short` / `slab` / `thru` at a/9, a/18, a/36. #854's four deferrals stay
+deferred. The record-window finding of the VI-envelope campaign (#894) does not touch this
+battery's committed numbers: its band sits at f/f_c ≥ 1.28 and 40→120-period twins moved
+nothing above 3.3e-5 (post-merge review, `20260905_post_merge_review_20_prs.md`).
+
+## R3
+
+- Memory: `project_v18_kickoff_state` (PI decisions recorded), `project_precision_carry_dtype_family`
+  (f64 cost), consistent with `feedback_root_cause_before_gate_change` — no tolerance moves; the
+  one new gate is the pre-declaration's own branch language promoted, and only for the leg it
+  was written for.
+- R2 attempts: 3rd measurement of this battery; each previous one closed families with a named
+  mechanism (#868 aperture, #869 witness) and this one names its mechanism (float32 tape) with
+  an x64 witness already in hand. Not a repeat.
+- Falsifier: §4 — the float32-primary rerun must reproduce the 9 red.
