@@ -10,6 +10,7 @@ from rfx.core.yee import MaterialArrays
 from rfx.materials.debye import init_debye
 from rfx.materials.lorentz import init_lorentz
 from rfx.materials.thin_conductor import check_sheet_occupancy, sheet_bounds
+from rfx.sources.waveguide_port import _node_span_to_cell_span
 from rfx.nonuniform import (
     NonUniformGrid,
     e_node_dual_spacing_at,
@@ -410,6 +411,13 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
     else:
         u_slice, a_span = _range_to_slice_nu(entry.x_range, grid.dx_arr, grid.nx, *pads_lo_hi["x"])
         v_slice, b_span = _range_to_slice_nu(entry.y_range, grid.dy_arr, grid.ny, *pads_lo_hi["y"])
+
+    # NODE span -> CELL span, same conversion and same reason as the uniform
+    # builder (issue #868): ``_range_to_slice_nu`` reports the aperture as
+    # ``edges[hi] - edges[lo]``, i.e. the cells lo..hi-1, while
+    # ``WaveguidePort.u_slice`` is the field-array slice the transverse mode
+    # operator is sized from.
+    u_slice, v_slice = _node_span_to_cell_span(u_slice), _node_span_to_cell_span(v_slice)
 
     # Snapped source-plane physical coordinate (for waveguide_plane_positions).
     # Use the cumulative cell-edge position corresponding to the snapped cell

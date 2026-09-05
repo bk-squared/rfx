@@ -102,6 +102,17 @@ class WaveguidePort(NamedTuple):
         Port-normal axis. Default `"x"` for the original straight-guide model.
     u_slice, v_slice : tuple[int, int] or None
         Generic transverse aperture slices used for non-x-normal ports.
+
+        CELL spans, not node spans: these index the FIELD ARRAYS through
+        :func:`_plane_indexer`, so ``hi - lo`` is the number of aperture cells
+        the transverse mode operator is built on and ``sum(widths)`` over the
+        slice must equal ``a`` (resp. ``b``). A node span — which is what
+        ``rfx/api/_compile.py::_range_to_slice`` and
+        ``rfx/runners/nonuniform.py::_range_to_slice_nu`` produce, both
+        reporting the physical aperture as ``(hi - lo - 1) * d`` — has ONE
+        ENTRY TOO MANY and must be converted at the call site (issue #868:
+        unconverted, it put ``f_cutoff`` on a guide one cell wider than the
+        walls make, 10 % low at ``dx = a/9`` and 2.7 % low at ``dx = a/36``).
     """
     x_index: int
     y_slice: tuple[int, int] | None
@@ -558,6 +569,35 @@ def _discrete_tm_mode_profiles(a: float, b: float, m: int, n: int,
     return ey, ez, hy, hz, float(np.sqrt(kc2))
 
 
+def _node_span_to_cell_span(span: tuple[int, int]) -> tuple[int, int]:
+    """NODE-index span -> the CELL span it encloses.
+
+    ``_range_to_slice`` / ``_range_to_slice_nu`` return NODE indices: they
+    report the physical aperture as ``(hi - lo - 1) * d``, so the ``hi - lo``
+    nodes bracket ``hi - lo - 1`` cells (cell k lies between node k and node
+    k+1). ``WaveguidePort.u_slice`` / ``.v_slice`` are FIELD-ARRAY slices —
+    ``hi - lo`` is the number of aperture cells the transverse mode operator
+    is built on — so the span has to be narrowed by one before it gets there.
+
+    Passing the node span straight through solved the port's Neumann/Dirichlet
+    eigenproblem on a guide ONE CELL WIDER than the walls make, which put
+    ``WaveguidePortConfig.f_cutoff`` — and with it every ``_compute_beta``
+    reference-plane rotation and every ``_compute_mode_impedance`` Z_TE — on
+    the wrong guide (issue #868): 5.877 instead of 6.524 GHz on WR-90 at
+    dx = a/9, 6.378 instead of 6.555 GHz at dx = a/36. Corrected, the port's
+    cutoff is the discrete TE10 cutoff of the N-cell guide,
+    ``(2/dx)·sin(π/(2N))·c/2π``, which is what the guide propagates with.
+
+    The invariant it restores, and the cheapest check that it holds:
+    ``sum(u_widths) == a`` (``_range_to_slice``'s own reported span).
+    """
+    lo, hi = int(span[0]), int(span[1])
+    if hi - lo < 2:
+        raise ValueError(
+            f"transverse aperture node span {span!r} encloses no guide cell")
+    return (lo, hi - 1)
+
+
 def init_waveguide_port(
     port: WaveguidePort,
     dx,
@@ -710,6 +750,12 @@ def init_waveguide_port(
     #
     # Detection: +face is PEC iff axis fully PEC (not in cpml_axes) OR per-
     # face spec marks it PEC. Only fires when slice reaches the grid edge.
+    #
+    # Does NOT fire for a port built by ``Simulation``/``run_nonuniform``: those
+    # hand ``WaveguidePort`` the guide's CELL span (issue #868), which ends one
+    # index short of the array edge, so there is no cell past the wall left to
+    # drop. It still fires for a low-level caller that passes the whole node
+    # plane (``y_slice=(0, grid.ny)``), which is what it was written for.
     u_aperture_weights = np.ones_like(u_widths_np)
     v_aperture_weights = np.ones_like(v_widths_np)
     if boundary_grid is not None and u_axis_name is not None:

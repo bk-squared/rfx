@@ -194,6 +194,30 @@ def test_the_flux_lane_thru_number_is_a_construction_not_a_comparison(report):
         assert abs(m["flux_lane_column_power_max"] - 1.0) < 1e-4
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "EXPECTED RED on the port-cutoff correction branch (evidence for #868): the "
+        "port now solves its transverse mode on the guide's N cells, so the live "
+        "coarse config carries f_cutoff = 6.523901 GHz (the guide's discrete cutoff) "
+        "where this report recorded 5.877188 GHz, and ez_profile is 9x4 where the "
+        "report recorded 10x5. The tripwire fired exactly as designed. "
+        "It is NOT re-pinned and NOT relaxed, and the remedy this module's docstring "
+        "prescribes — re-run the producer and re-commit suspects.json — is deliberately "
+        "NOT taken, because it would mix provenances: the measured excess this report "
+        "explains comes from the FROZEN battery fixture, which was measured with the "
+        "(N+1)-cell port, while a live rebuild now returns the corrected port. Suspect "
+        "S1 is exactly gamma = (z_guide - z_port)/(z_guide + z_port), so with the "
+        "correction it collapses to ~0 and the regenerated report would claim the "
+        "suspects explain ~none of an excess that the (N+1) port largely produced. "
+        "Two coherent resolutions, for the #880 lane to choose: (1) re-key the producer "
+        "to read the port cutoff from the fixture's own port_cutoff.per_rung[*]."
+        "fc_port_hz (recorded = 5877187618.169577 at coarse), which models the port that "
+        "actually produced the measurement and leaves every committed number in "
+        "suspects.json unchanged; or (2) re-measure the false-lane cells with the "
+        "corrected port and re-declare the comparison. Neither is this lane's call."
+    ),
+)
 def test_live_port_config_still_carries_the_cutoff_the_report_compared_against():
     """Ties the committed JSON to live code: rebuild the coarse port config.
 

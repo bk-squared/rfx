@@ -65,9 +65,12 @@ import jax.numpy as jnp  # noqa: E402
 import numpy as np  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO / "tests"))
-
-from test_waveguide_nu_flux_ad import (  # noqa: E402  (the fixture itself, not a copy)
+sys.path.insert(0, str(REPO))
+# The fixture module moved to tests/unit/autodiff/ in the test reorganisation;
+# importing it through the package keeps this producer runnable by the command
+# its own docstring prints, instead of only from a shell that happens to have
+# that directory on the path.
+from tests.unit.autodiff.test_waveguide_nu_flux_ad import (  # noqa: E402  (the fixture itself, not a copy)
     NUM_PERIODS,
     _FREQS,
     _wr90_nu_sim,

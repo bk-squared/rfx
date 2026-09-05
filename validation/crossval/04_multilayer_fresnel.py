@@ -434,9 +434,20 @@ if "--lattice-witness" in sys.argv:
         "tail": {"scat_refl_rel": float(tail_refl_rel),
                  "total_trans_rel": float(tail_trans_rel),
                  "purity_inc_rel": float(tail_inc_rel), "ok": bool(tail_ok)},
+        # ``nx_interior`` and the cell bookkeeping are what the auxiliary-echo
+        # record invariant (#888) derives its arrival from; without them the
+        # rung would be unguarded, and the cross-check in
+        # ``lattice_witness.aux_echo_witness`` would have nothing to compare
+        # this rig's probes against.
         "run": {"n_steps": int(n_steps), "dx_m": float(dx), "dx_div": 1,
+                "nx_interior": int(nx_interior),
                 "record": {"rate_ring_1_s": _rates["rate_ring_1_s"],
-                           "t_safe_cpml_steps": int(n_steps_safe)}},
+                           "t_safe_cpml_steps": int(n_steps_safe),
+                           "nx_interior": int(nx_interior), "dx_div": 1,
+                           "nx": int(grid.nx), "n_cpml": int(n_cpml),
+                           "x_lo": int(x_lo), "probe_refl": int(probe_refl_x),
+                           "probe_trans": int(probe_trans_x),
+                           "v_cells": float(v_cells)}},
     }
     # Stamp the commit the way cv22 / cv23 do, so this artifact carries its own
     # provenance instead of a null (review, 2026-09-03).
@@ -455,6 +466,10 @@ if "--lattice-witness" in sys.argv:
     with open(os.path.join(_out04, _LW.witness_json_name()), "w") as _fh:
         _json.dump(_doc, _fh, indent=1)
     _r = _doc["rungs"]["slab_eps4"]
+    _ae = _r["aux_echo"]
+    print(f"  cv04-aux-echo-invariant slab_eps4 (#888): record {_ae['record_steps']} steps / "
+          f"echo arrival {_ae['echo_arrival_steps']} = {_ae['record_over_echo_arrival']:.3f} "
+          f"(limit {_ae['limit']:.1f}); ok={_ae['ok']}")
     print(f"  cv04-lattice-witness slab_eps4: |rfx-lattice| mean R "
           f"{_r['mean_dR_lattice_gated']:.2e} vs W {_r['mean_W_witness_R_gated']:.2e} "
           f"(ceiling {_r['mean_W_ceiling_R_gated']:.2e}); reported, not gated")
