@@ -1,6 +1,19 @@
 # Pre-declaration — validity envelope of the waveguide `normalize=False` port
 
-**Status: PRE-DECLARATION, revision 2. Written before any sweep case runs.** Every number
+**Status: PRE-DECLARATION, revision 2. Written before any sweep case runs.**
+
+> **Post-measurement annotation (2026-09-05).** The sweep ran and refuted §0's mechanism.
+> The near-cutoff residual is a far-boundary round trip clipped by the DFT record, not a
+> port property, not CPML absorption, not leakage: ||S11|−|S22||/2 is a function of T/τ
+> alone (τ = 2·port→far-outer-wall / v_g at the band's lowest bin), with the absorber
+> entering only through τ. The extractor is second order — the |S21| phase residual against
+> analytic −βL converges at 2.00 at every band. Every near-cutoff order in this document's
+> §3.4 table and every case run under the interior record rule (`n_trav` traversals of the
+> interior) is a clipped measurement. The harness now carries `record_rule="far_boundary"`
+> and `"grid_extent"`; the plateau is rung-dependent because the criterion is relative and
+> the remnant is absolute (N=18 at T/τ≈3, N=36 at ≈5, N=72 deeper). The measured boundary is
+> NOT yet converged; see `docs/research_notes/20260904_vi_envelope_predeclaration.md`. This
+> document is kept as written so the prediction and the outcome can be compared. Every number
 below is either (a) prior scouting evidence, labelled with its source, or (b) a threshold
 or verdict rule that binds the sweep. No sentence here is a gate, a fixture, or a
 validated result.
