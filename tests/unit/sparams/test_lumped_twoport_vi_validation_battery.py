@@ -297,9 +297,16 @@ _THRU_PHASE_DEV_BAND_RAD = (-1.1, -0.1)
 
 # Measured reciprocity max|S21 - S12| = 1.1233e-4 (rel 1.21e-4) on the
 # whole-port frame AFTER the item B2 half-step current correction
-# (2026-09-04 — IMPROVED ~2.4x from the pre-B2 whole-port 2.6678e-4 /
-# rel 2.78e-4, itself 28x better than the per-cell 7.53e-3: symmetrising
-# the current phase removes a per-port asymmetry in the V/I bookkeeping).
+# (2026-09-04; pre-B2 whole-port 2.6678e-4 / rel 2.78e-4, itself 28x
+# better than the per-cell 7.53e-3).
+# NOT EVIDENCE FOR B2 (corrected 2026-09-05): for a geometrically
+# symmetric two-port both drive runs are mirror images, so S21 = S12 up
+# to grid asymmetry regardless of any COMMON rotation of the port
+# current. The 2.4x move is an incidental shift of a noise-level
+# residual, not a discriminating witness — a kappa sweep put a broad
+# shallow minimum at kappa ~1.1-1.2 with the wrong sign (kappa = -1)
+# still landing 4.59e-4, the same order. Do not cite it as corroboration;
+# the matched-port Ohm-law phase table is the discriminating witness.
 # Abs gate KEPT at 1.5e-2 and rel at 0.10 (scale-free numerical
 # tolerances, geometry-independent) — both now carry ~130x / ~830x
 # margin; a break catches an asymmetric edit to the shared decomposers or
@@ -742,14 +749,26 @@ def test_thru_passivity_singular_values(thru_smatrix):
 
     RE-BASELINED 2026-09-04 (item B2, Yee half-step current correction):
     the "mechanism unidentified" 0.32% over-unity excess documented below
-    is now IDENTIFIED and REMOVED. Its cause was a discretization
+    is now ATTRIBUTED and REMOVED. (Attribution credit, corrected
+    2026-09-05: the same mechanism, factor and sign were already
+    identified and applied to the REFERENCE-PLANE path in issue #313
+    Phase 0 — ``refplane.refplane_centered_current``, whose note records
+    collapsing the receive-cell Ohm-law phase from +0.008..+0.018 rad to
+    ~0, i.e. w*dt/2 on this dt. B2 extends that known fix to the
+    port-cell wire channel; it does not discover it.)
+    Its cause was a discretization
     artefact, not physics: the port DFT accumulated the E-derived voltage
     (E^{n+1}) and the H-derived Ampere-loop current (H^{n+1/2}) against the
     SAME phase kernel exp(-j*2*pi*f*step*dt), leaving the current
     over-phased by exactly one Yee half-step (dt/2). The B2 fix multiplies
     the current sample's DFT phase by exp(+j*2*pi*f*dt/2)
     (rfx/core/dft_utils.half_step_current_phase; dt read at runtime, exact
-    for every frequency and geometry — NOT a fixture patch). On this exact
+    for every frequency and geometry — NOT a fixture patch). SCOPE: the
+    WIRE-port lane only, which is the lane this fixture drives. The lumped
+    single-cell lane is deliberately left uncorrected — its V is sampled
+    pre-injection at a driven cell (#72/#683), so the E = E^{n+1} premise
+    that fixes the offset at dt/2 does not hold there. See the SCOPE
+    paragraph in rfx/core/dft_utils.half_step_current_phase. On this exact
     fixture the same run now measures per-bin sv 0.9816..0.9989 (max
     0.998896 at 3 GHz), STRICTLY BELOW the physical passivity bound of 1.0
     with a ~1.1e-3 loss margin (radiation + feed-post loss). The earlier
@@ -758,8 +777,17 @@ def test_thru_passivity_singular_values(thru_smatrix):
     was systematic because the half-step phase error is systematic, and it
     was monotone in frequency because the phase error grows linearly with
     f. The pre-fix artefact 1.003227 is preserved as the historical record
-    in tests/fixtures/thru_singular_value_dx_ladder/ (the dx-ladder study
-    whose "verdict C non-closing" this correction closes).
+    in tests/fixtures/thru_singular_value_dx_ladder/.
+
+    NOT CLAIMED (corrected 2026-09-05): that this correction "closes" the
+    dx-ladder's verdict C. No post-B2 rung has been run (the ladder's
+    generator is GPU-only), and the ladder is NOT explained by a pure
+    dt/2 artefact alone: its recorded 3 GHz excess goes
+    +3.2e-3 -> +3.2e-4 -> -8.5e-4 across dx, dx/2, dx/4, whereas a pure
+    dt/2 artefact would halve per rung — and the fixture's radiation loss
+    also moves across rungs (|S11| at 7 GHz 0.29 -> 0.39 -> 0.49). B2
+    plausibly removes the ~+0.004 offset at the coarsest rung; the ladder
+    verdict stays OPEN pending a post-B2 GPU rung.
 
     Gate: the EXACT physical passivity bound 1.0 — a passive scattering
     matrix has every singular value <= 1 by energy conservation. This is
