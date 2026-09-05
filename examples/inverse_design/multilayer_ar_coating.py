@@ -119,6 +119,7 @@ def _build_simulation() -> Simulation:
         (X_SRC, LY / 2, LZ / 2),
         "ez",
         waveform=GaussianPulse(f0=F0, bandwidth=bw, amplitude=1.0),
+        amplitude_kind="current",
     )
     sim.add_probe((X_REFL, LY / 2, LZ / 2), "ez")
     sim.add_probe((X_TRANS, LY / 2, LZ / 2), "ez")

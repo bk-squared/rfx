@@ -8,6 +8,22 @@ sidebar:
 
 rfx distinguishes between **sources** (field injection without impedance loading) and **ports** (sources with a matched load for S-parameter extraction).
 
+Setup used by the source and lumped-port snippets below:
+
+```python
+from rfx import Box, Simulation
+
+sim = Simulation(
+    freq_max=6e9,
+    domain=(0.05, 0.05, 0.02),
+    dx=2.5e-3,
+    boundary="cpml",
+    cpml_layers=6,
+)
+sim.add_material("substrate", eps_r=3.2, sigma=0.01)
+sim.add(Box((0.010, 0.010, 0.005), (0.040, 0.040, 0.015)), material="substrate")
+```
+
 ---
 
 ## Waveforms
@@ -84,7 +100,8 @@ def chirp(t):
     rate = (f_end - f_start) / 10e-9
     return jnp.sin(2 * jnp.pi * (f_start * t + 0.5 * rate * t**2))
 
-sim.add_source((0.02, 0.02, 0.01), "ez", waveform=CustomWaveform(func=chirp))
+sim.add_source((0.02, 0.02, 0.01), "ez", waveform=CustomWaveform(func=chirp),
+               amplitude_kind="current")
 ```
 
 ---
@@ -98,18 +115,25 @@ sim.add_source(
     position=(0.025, 0.025, 0.010),  # (x, y, z) in meters
     component="ez",                   # "ex", "ey", or "ez"
     waveform=GaussianPulse(f0=3e9),
+    amplitude_kind="current",         # or "field"; see below
 )
 ```
 
 Use `add_source` for resonance characterization (Harminv) where port loading would suppress the ring-down signal.
 
 What the waveform amplitude *means* is controlled by `amplitude_kind`
-(issue #571): `'current'` — amperes, realized as `E += Cb·I/dV` on every
-path and boundary (resolution-independent injected power; default transition:
-**In progress**) — or `'field'` — a raw E-field increment `E += w(t)`. Omitting it
+(issue #571). With `amplitude_kind='current'` the amplitude is a current
+`I(t)` in amperes, injected as `E += Cb·I/dV` on every path and boundary
+(`Cb = (dt/ε)/(1 + σ·dt/(2ε))` at the source cell, `dV` its cell volume), so
+the injected power does not change when the mesh is refined — Meep's
+convention. With `amplitude_kind='field'` the amplitude is a raw E-field
+increment per step, `E += w(t)`, again the same on every path and boundary.
+Omitting it
 keeps a deprecated per-path legacy meaning (raw add on uniform+PEC,
 `Cb`-normalized add on uniform+CPML/UPML, current on non-uniform meshes)
 and emits one `DeprecationWarning` per simulation naming which one applies.
+`amplitude_kind` becomes required in 1.8, and the default becomes
+`'current'` in 1.9.
 To migrate an open-boundary uniform script exactly, multiply the waveform
 amplitude by the cell volume `dV` and pass `amplitude_kind='current'`.
 
@@ -121,16 +145,19 @@ Injects one or two Cartesian source components. The documented scope is linear:
 
 ```python
 # Linear
-sim.add_polarized_source((0.025, 0.025, 0.01), polarization="ez")
+sim.add_polarized_source((0.025, 0.025, 0.01), polarization="ez",
+                         amplitude_kind="current")
 
 # 45-degree slant linear
-sim.add_polarized_source((0.025, 0.025, 0.01), polarization="slant45")
+sim.add_polarized_source((0.025, 0.025, 0.01), polarization="slant45",
+                         amplitude_kind="current")
 
 # Arbitrary real linear combination
 sim.add_polarized_source(
     (0.025, 0.025, 0.01),
     polarization=(1.0, -0.5),  # real (Ex, Ey), normalized internally
     waveform=GaussianPulse(f0=3e9),
+    amplitude_kind="current",
 )
 ```
 
@@ -179,6 +206,16 @@ full extraction, plotting, and Touchstone-export path.
 A wire port spans multiple Yee cells along the port axis, connecting conductor to conductor across a gap. It is a common model for probe- and coaxial-style feeds:
 
 ```python
+# A wire port cannot share a Simulation with the lumped port above, so this
+# section starts a fresh one.
+sim = Simulation(
+    freq_max=6e9,
+    domain=(0.06, 0.06, 0.012),
+    dx=1e-3,
+    boundary="cpml",
+    cpml_layers=6,
+)
+
 # Port spans 1.6 mm in z, from substrate bottom to patch surface
 sim.add_port(
     position=(0.029, 0.030, 0.0),    # start of wire
@@ -218,6 +255,10 @@ On the uniform single-device differentiable path, registered RLC elements now
 affect `forward(...)`, and scalar component values can be overridden by tracers:
 
 ```python
+import jax.numpy as jnp
+
+R = 75.0   # the overridden resistance; pass a tracer here under jax.grad
+
 result = sim.forward(
     port_s11_freqs=jnp.array([5e9]),
     rlc_values_override={0: {"R": R}},
@@ -235,20 +276,36 @@ Non-uniform and distributed `forward(...)` lanes reject this override.
 not routed through `run(compute_s_params=True)`. Use the dedicated calculator:
 
 ```python
+# A microstrip port needs its own board, and cannot share a Simulation with
+# the lumped/wire ports above. Ground, substrate, and trace are explicit.
+sim = Simulation(
+    freq_max=6e9,
+    domain=(0.020, 0.010, 0.004),
+    dx=0.25e-3,
+    boundary="cpml",
+    cpml_layers=3,
+)
+sim.add_material("substrate", eps_r=3.2, sigma=0.01)
+sim.add(Box((0.75e-3, 0.75e-3, 0.75e-3), (19.25e-3, 9.25e-3, 1.25e-3)), material="pec")
+sim.add(Box((0.75e-3, 0.75e-3, 1.25e-3), (19.25e-3, 9.25e-3, 2.25e-3)), material="substrate")
+sim.add(Box((0.75e-3, 4.50e-3, 2.25e-3), (19.25e-3, 5.50e-3, 2.75e-3)), material="pec")
+
 sim.add_msl_port(
-    position=(0.004, 0.003, 0.0),
-    width=0.5e-3,
-    height=0.25e-3,
+    position=(0.004, 0.005, 1.25e-3),
+    width=1.0e-3,
+    height=1.0e-3,
     direction="+x",
     impedance=50.0,
+    eps_r_sub=3.2,
     name="in",
 )
 sim.add_msl_port(
-    position=(0.016, 0.003, 0.0),
-    width=0.5e-3,
-    height=0.25e-3,
+    position=(0.016, 0.005, 1.25e-3),
+    width=1.0e-3,
+    height=1.0e-3,
     direction="-x",
     impedance=50.0,
+    eps_r_sub=3.2,
     name="out",
 )
 
@@ -290,6 +347,16 @@ Modal waveguide excitation for rectangular waveguide S-matrix extraction.
 Injects a specific TE/TM mode and decomposes the reflected/transmitted fields into the same modal basis. Requires `boundary="cpml"` (with `cpml_layers > 0`) and `mode="3d"`; it cannot be combined with lumped ports or a TFSF source. The public examples cover rectangular guides — validate branch or T-junction geometries against a reference before reporting.
 
 ```python
+# A waveguide port cannot share a Simulation with lumped ports, so this
+# section starts a fresh guide.
+sim = Simulation(
+    freq_max=11e9,
+    domain=(0.10, 0.023, 0.010),
+    dx=1e-3,
+    boundary="cpml",
+    cpml_layers=8,
+)
+
 sim.add_waveguide_port(
     x_position=0.01,              # physical x-coordinate of port face
     y_range=(0.0, 0.023),         # aperture y-extent
@@ -336,6 +403,23 @@ of one driven configuration, not the full driven-in-turn matrix that
 `compute_waveguide_s_matrix` assembles:
 
 ```python
+# run() supports one waveguide port, so drive a single-port guide here.
+sim = Simulation(
+    freq_max=11e9,
+    domain=(0.10, 0.023, 0.010),
+    dx=1e-3,
+    boundary="cpml",
+    cpml_layers=8,
+)
+sim.add_waveguide_port(
+    x_position=0.01,
+    y_range=(0.0, 0.023),
+    z_range=(0.0, 0.010),
+    f0=10e9,
+    bandwidth=0.5,
+    name="port1",
+)
+
 result = sim.run(n_steps=3000)
 sp = result.waveguide_sparams["port1"]
 # sp.freqs, sp.s11, sp.s21
@@ -354,6 +438,15 @@ Scope is deliberately narrow: propagation along x only (`direction` `"+x"`/`"-x"
 and `polarization` `"ez"` or `"ey"`.
 
 ```python
+# TFSF cannot share a Simulation with lumped or waveguide ports.
+sim = Simulation(
+    freq_max=8e9,
+    domain=(0.06, 0.06, 0.06),
+    dx=3e-3,
+    boundary="cpml",
+    cpml_layers=6,
+)
+
 sim.add_tfsf_source(
     f0=5e9,
     bandwidth=0.4,

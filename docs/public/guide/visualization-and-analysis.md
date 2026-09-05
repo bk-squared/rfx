@@ -16,6 +16,36 @@ that forward to the functions below.
 
 ### S-Parameter Plots
 
+Setup used by the snippets below:
+
+```python
+import numpy as np
+from rfx import GaussianPulse, Simulation
+
+sim = Simulation(
+    freq_max=15e9,
+    domain=(0.06, 0.06, 0.06),
+    dx=1.5e-3,
+    boundary="cpml",
+    cpml_layers=6,
+)
+for x_port in (0.028, 0.032):
+    sim.add_port(
+        (x_port, 0.030, 0.030),
+        "ez",
+        impedance=50.0,
+        waveform=GaussianPulse(f0=8e9, bandwidth=0.8),
+    )
+sim.add_probe((0.030, 0.036, 0.030), "ez")
+sim.add_ntff_box(
+    corner_lo=(0.012, 0.012, 0.012),
+    corner_hi=(0.048, 0.048, 0.048),
+    freqs=np.array([12e9]),
+)
+
+result = sim.run(n_steps=800, compute_s_params=True)
+```
+
 Use the S-matrix and frequency grid stored on the result:
 
 ```python
@@ -64,7 +94,35 @@ elevation sweep with a single azimuth cut.
 `plot_rcs()` takes the `RCSResult` returned by `compute_rcs()`:
 
 ```python
-from rfx import plot_rcs
+import jax.numpy as jnp
+from rfx import Box, Grid, compute_rcs, plot_rcs
+from rfx.core.yee import MaterialArrays
+from rfx.geometry.csg import rasterize
+
+# TFSF illumination cannot share a Simulation with ports, so the RCSResult
+# comes from its own scattering run: a PEC plate, one cell thick.
+f0 = 3e9
+dx = 0.01
+grid = Grid(freq_max=f0 * 1.5, domain=(0.12, 0.12, 0.12), dx=dx, cpml_layers=8)
+c = 0.06
+plate = Box(
+    corner_lo=(c - dx / 2, c - 0.02, c - 0.02),
+    corner_hi=(c + dx / 2, c + 0.02, c + 0.02),
+)
+eps_r, sigma = rasterize(grid, [(plate, 1.0, 1e7)])
+materials = MaterialArrays(
+    eps_r=eps_r, sigma=sigma, mu_r=jnp.ones(grid.shape, dtype=jnp.float32),
+)
+rcs_result = compute_rcs(
+    grid, materials,
+    n_steps=400,
+    f0=f0,
+    bandwidth=0.5,
+    polarization="ez",
+    theta_obs=np.linspace(0.01, np.pi - 0.01, 91),
+    phi_obs=np.array([0.0, np.pi / 2]),
+    freqs=np.array([f0]),
+)
 
 fig = plot_rcs(rcs_result, freq_idx=0, polar=True)
 ```
@@ -162,6 +220,26 @@ from rfx import (
 
 # Legacy-compatible Touchstone for ADS/CST/HFSS. Shape is (n_ports, n_ports, n_freqs).
 write_touchstone("device.s2p", result.s_params, result.freqs, z0=50.0)
+
+# Four lumped ports supply the row-wise 4-port result exported below.
+four_port_sim = Simulation(
+    freq_max=10e9,
+    domain=(0.06, 0.06, 0.06),
+    dx=2e-3,
+    boundary="cpml",
+    cpml_layers=6,
+)
+for port_position in (
+    (0.026, 0.030, 0.030),
+    (0.034, 0.030, 0.030),
+    (0.030, 0.026, 0.030),
+    (0.030, 0.034, 0.030),
+):
+    four_port_sim.add_port(
+        port_position, "ez", impedance=50.0,
+        waveform=GaussianPulse(f0=5e9, bandwidth=0.8),
+    )
+four_port_result = four_port_sim.run(n_steps=600, compute_s_params=True)
 
 # Metadata-rich Touchstone 2.0 export for a standard row-wise 4-port result
 write_touchstone(

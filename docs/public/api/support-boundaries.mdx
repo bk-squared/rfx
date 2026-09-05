@@ -36,7 +36,7 @@ This page summarizes the public support scope for user-facing rfx workflows.
 | lumped/wire `add_port(...)` | `run(compute_s_params=True)` | documented calculator for the matching port family; use only within its stated validation limits |
 | lumped/wire `add_port(...)` | `forward(port_s11_freqs=...)` | differentiable S11 vectors on the uniform single-device configuration |
 | `add_msl_port(...)` | `compute_msl_s_matrix()` | specialized microstrip-line workflow; Laplace/quasi-TEM directions `+x`, `-x`, `+y`, and `-y`; eigenmode remains x-only and outside the public support envelope |
-| `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | rectangular waveguide workflow; use the guide-recommended normalization mode |
+| `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | rectangular waveguide workflow, **limited**. Differentiation through `eps_override`/`sigma_override` runs on `normalize=False` and `normalize="flux"` only; `normalize=True` is host-assembled and raises `NotImplementedError` for a traced override. Multimode (`n_modes>1`) is host-assembled and outside the differentiable chain. S is a modal voltage-wave ratio referenced to each port's own discrete modal impedance, so it is a power-wave S only when all ports share one cross-section. Magnitude evidence for uniform single-mode guides is broader than phase, junction, and nonuniform evidence, and the v1.8 chain battery is measured with gates red — this family is not chain-closed. The full row, including the battery verdict and the `JAX_ENABLE_X64` dtype rule, is in `docs/guides/support_matrix.md` (Rectangular-waveguide S-matrix) and `docs/guides/sparameter_support_matrix.md`. |
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `precision="float32"`; nonperiodic 3D second-order uniform Yee grid; CPML on all six boundary faces with positive thickness on both z faces; `cpml_axes="z"`; exactly one `face="top"` coaxial port; see [Sources and Ports](/rfx/api/sources-ports/) for rejected registrations and accepted arguments |
 | sources, TFSF, probes, flux monitors | not port calculators | field/flux/time observables |
 
@@ -58,7 +58,20 @@ approval.
 
 ## Unsupported combinations
 
-Unsupported combinations should fail clearly. Common examples include using a calculator with the wrong port family, mixing non-default mesh profiles with S-parameter calculators that only support a uniform grid, or treating field probes and flux monitors as impedance-defined ports.
+Unsupported means the run or the request must fail rather than return a number.
+These four are named in the nonuniform-mesh classification table of
+`docs/guides/support_matrix.md`:
+
+| Combination | Required failure |
+|---|---|
+| Periodic/Floquet port + nonuniform mesh | "Preflight or the calculation must fail." |
+| `boundary="upml"` + nonuniform mesh | "The run must fail. The non-uniform runner has no UPML implementation — its absorber dispatch keys on the CPML layer count and never reads the boundary type — so this combination was accepted and silently ran CPML while `sim._boundary` still reported `upml` (issue #680). Use `boundary='cpml'` on a graded mesh." |
+| Lumped-port S-parameters + nonuniform mesh | "The S-parameter request must fail." |
+| Coaxial port + nonuniform mesh | "The request must fail." |
+
+Calling a calculator with the wrong port family, or reading a field probe or
+flux monitor as an impedance-defined port, is unsupported for the same reason:
+neither has a port impedance or an S-matrix reference plane.
 
 ## Practical rule
 

@@ -199,7 +199,16 @@ within 5% and a matching sign.
 |---|---|---|---|---|
 | `∂\|S21\|²/∂εr` | `−0.2201` | central FD `−0.2197` (h = 0.05) | 0.0017 (0.17%) | yes |
 
-It agrees to 0.17% with matching sign — well inside the 5% asked of it.
+It agrees to 0.17% with matching sign — well inside the 5% asked of it. That
+number validates the differentiation of this computation; it is not a
+chain-closure verdict for the family. The rectangular-waveguide S-matrix row of
+`docs/guides/support_matrix.md` (source checkout) records: "**Chain battery
+(v1.8): measured, gates red — this family is NOT chain-closed.**" and
+"Criterion 1 (forward identity) is red on all eight `normalize="flux"` legs:
+float32 reassociation of the Poynting DFT under the reverse-mode tape moves S by
+up to 1.09e-5 against `rtol=1e-5, atol=1e-7`, while the same traced call under a
+scoped x64 context agrees with the untraced call to 1.5e-15; the
+`normalize=False` lane is bit-identical."
 
 ![Transmission sensitivity to the dielectric fill — AD gradient vs central finite differences](/rfx/gallery/assets/waveguide_wr90/autodiff.png)
 
@@ -216,8 +225,12 @@ layers raises it toward ~0.09 (a known trap). The broad-wall width `a` is **not*
 a `jax.grad` input: `a/dx` is a discrete cell count and the analytic mode profile
 is rebuilt for each width, so its sensitivity is shown by re-meshing and finite
 differences, alongside the analytic cutoff relation `f_c = c/(2·a)` — not by
-automatic differentiation. Both `normalize=True` and `normalize="flux"` support
-the gradient; each costs two runs per port.
+automatic differentiation. The differentiable lanes are `normalize=False` and
+`normalize="flux"`. `normalize=True` is the host-assembled two-run lane and is
+outside the differentiable chain: it raises `NotImplementedError` for a traced
+`eps_override`/`sigma_override` under `jax.grad`/`jax.jit`
+{/* rfx/api/_sparams.py:2730-2743 */}. The Run block above passes a concrete
+`normalize=True` and runs forward; the same call under `jax.grad` raises.
 
 ## Next
 
@@ -227,10 +240,4 @@ the gradient; each costs two runs per port.
   description="Reflection and transmission of a dielectric slab vs the exact transfer-matrix solution, with an exact-derivative autodiff check."
 />
 
-<LinkCard
-  title="Patch antenna diagnostics"
-  href="/rfx/gallery/patch_antenna/"
-  description="Plotting and AD/FD artifacts from a port setup that fails current preflight, with the RF limitations stated explicitly."
-/>
-
-<p style="opacity:0.6;font-size:0.85em">Computed with rfx · 2026-06-25</p>
+<p style="opacity:0.6;font-size:0.85em">Computed with rfx 1.6.5 · <code>1eb551b</code> · generated 2026-06-30T03:22:31Z {/* gallery/assets/waveguide_wr90/manifest.json: rfx_version, git_sha, generated_at */}</p>

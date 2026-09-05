@@ -29,47 +29,66 @@ from rfx import Simulation, Box, GaussianPulse
 
 
 def make_case(dx: float) -> Simulation:
-    # Keep the absorber about 12 mm thick as dx changes.
-    cpml_layers = max(4, round(0.012 / dx))
+    # Every face of the cavity and of the insert lands on a cell boundary at
+    # all three cell sizes below, so the rasterized structure is the same
+    # physical problem at each resolution.
     sim = Simulation(
         freq_max=4e9,
-        domain=(0.08, 0.06, 0.04),
-        boundary="cpml",
-        cpml_layers=cpml_layers,
+        domain=(0.08, 0.064, 0.04),
+        boundary="pec",
         dx=dx,
     )
     sim.add_material("insert", eps_r=4.0, sigma=0.01)
-    sim.add(Box((0.032, 0.024, 0.018), (0.048, 0.036, 0.022)), material="insert")
-    sim.add_source((0.024, 0.030, 0.020), "ez", waveform=GaussianPulse(f0=2.4e9, bandwidth=0.8))
-    sim.add_probe((0.056, 0.030, 0.020), "ez")
+    sim.add(Box((0.032, 0.024, 0.016), (0.048, 0.040, 0.024)), material="insert")
+    sim.add_source((0.024, 0.032, 0.008), "ez", waveform=GaussianPulse(f0=2.4e9, bandwidth=0.8),
+                   amplitude_kind="current")
+    sim.add_probe((0.056, 0.032, 0.008), "ez")
     return sim
 ```
 
 ## 3. Run the study
 
 ```python
-import numpy as np
 from rfx import convergence_study
 
 
-def peak_probe_metric(result) -> float:
-    return float(np.max(np.abs(np.asarray(result.time_series[:, 0]))))
+def first_resonance(result) -> float:
+    modes = result.find_resonances(freq_range=(2e9, 4e9))
+    if not modes:
+        raise RuntimeError("no mode in the band — lengthen the run or widen freq_range")
+    return float(min(mode.freq for mode in modes))
 
 study = convergence_study(
     sim_factory=make_case,
-    dx_values=[2.0e-3, 1.5e-3, 1.2e-3],
-    metric_fn=peak_probe_metric,
-    run_kwargs={"num_periods": 20},
+    dx_values=[2.0e-3, 1.6e-3, 1.0e-3],
+    metric_fn=first_resonance,
+    run_kwargs={"num_periods": 40},
 )
 
-print(study.summary())
+study.summary()
+```
+
+That study prints:
+
+```text
+Mesh Convergence Summary
+==================================================
+   dx (mm)          Metric    Rel. Error
+--------------------------------------------------
+    2.0000     2.92824e+09       0.0227%
+    1.6000     2.92846e+09       0.0150%
+    1.0000     2.92872e+09       0.0063%
+--------------------------------------------------
+Extrapolated value : 2.9289e+09
+Convergence order  : 1.85
 ```
 
 Use a short trial run first, then rerun the final study with the time window
-required by your observable. Keep physical absorber thickness, geometry, source,
+required by your observable. Keep geometry, source, absorber thickness where the model has one,
 probe, and run duration fixed as closely as grid quantization permits. The
-example uses a peak-probe metric because it is always defined; a resonance
-metric must handle an empty `find_resonances(...)` result explicitly.
+example selects the lowest mode in a fixed band, so the same mode is tracked at
+every resolution, and it handles an empty `find_resonances(...)` result
+explicitly rather than indexing into it.
 
 ## 4. Interpret the result
 

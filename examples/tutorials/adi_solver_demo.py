@@ -82,6 +82,7 @@ def build_cavity(solver: str, adi_cfl_factor: float) -> Simulation:
         (0.37 * A, 0.41 * B, 0.20 * D),
         component="ey",
         waveform=GaussianPulse(f0=F_TE101, bandwidth=0.9),
+        amplitude_kind="current",
     )
     sim.add_probe((0.63 * A, 0.58 * B, 0.80 * D), component="ey")
     return sim

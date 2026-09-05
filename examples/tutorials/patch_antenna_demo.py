@@ -33,31 +33,53 @@ What this tutorial teaches, in order:
 
 Honest accuracy at this deliberately coarse resolution (dx = 2 mm):
 
-- The resonance reads LOW versus openEMS-with-thirds: about -8.6 % at this
-  dx = 2 mm, about -6 % at dx = 1 mm, about -3 % extrapolated to zero cell
-  size.  Roughly half of that continuum residual comes from representing the
-  substrate permittivity on collocated cells at the air/dielectric interface —
-  recoverable with the opt-in interface treatment
-  ``sim.run(..., subpixel_smoothing=True)`` (see
-  ``tests/oracle/test_patch_cavity_eps_oracle.py`` for the cavity-oracle evidence).
-  The rest is the staircased PEC patch edge.
-- The far field is the observable that agrees: broadside directivity within
-  0.08 dB of openEMS (6.71 vs 6.79 dBi), measured on this same geometry and
-  mesh registration in the research frame of this fixture (95 mm of air above
-  the patch, ``num_periods=250``).  This demo trims the extra air above the
-  patch to stay in the ~15-minute class and prints its own directivity so the
-  agreement can be checked live.
+- The resonance reads HIGH versus openEMS-with-thirds: +11.3 % at this
+  dx = 2 mm (2.6953 GHz here against openEMS 2.4221 GHz).  Both
+  numbers name the SAME physical mode — the one resonating on the 32 mm
+  feed-axis dimension — and the run prints the comparison every time.
+  An earlier version of this file claimed "-8.6 %, LOW".  That was a
+  MODE-PAIRING error, not a sign slip: it compared the openEMS design mode
+  against this fixture's 40 mm CROSS mode (2.2157 GHz in the mode list
+  below).  Retired 2026-08-27 (issue #693), together with the dx ladder that
+  came with it ("-6 % at dx = 1 mm, -3 % extrapolated"), which is wrong-mode
+  data.  The committed lock is
+  ``tests/crossval/test_patch_canonical_farfield_e4.py``; it gates both the
+  magnitude envelope [+6 %, +16 %] and the SIGN.
+- Do not read +11.3 % as "the coarse-grid bias, which finer cells remove".
+  On this fixture the sign is not settled.  Two discretization errors push
+  opposite ways — the substrate under-resolved in z reads high, the staircased
+  PEC patch edge reads low — and which one wins depends on how the one-cell
+  PEC sheets are realized: the same canonical patch is on record at +11.3 %
+  with single-plane sheets and at -1.5 % at dx = 1 mm with the two-plane
+  realization (issue #720).  The substrate-permittivity half is addressable
+  with the opt-in interface treatment ``sim.run(..., subpixel_smoothing=True)``
+  (see ``tests/oracle/test_patch_cavity_eps_oracle.py`` for the cavity-oracle
+  evidence), but treat "finer dx recovers it" as a claim to measure here, not
+  one to assume.
+- The far field is the observable that agrees.  This configuration prints
+  D = 7.39 dBi at its radiating bin against openEMS 6.79 dBi, i.e.
+  +0.60 dB, and that is the agreement for the design mode — it is what
+  the committed envelope lock allows (``D_ABS_TOL_DB = 1.0``).  A "within
+  0.08 dB (6.71 vs 6.79 dBi)" figure appeared here before; it is retired with
+  the mode pairing above, because 6.71 dBi was read at the 40 mm cross mode.
+  This demo does trim the air above the patch (84 mm, ``num_periods = 125``)
+  against the 95 mm / ``num_periods = 250`` research frame, but that frame
+  cross-check moved the resonance by only 0.1 %: what separates 7.39 from
+  6.71 dBi is which mode the number belongs to, not the frame.
 
 Run as::
 
     python examples/tutorials/patch_antenna_demo.py
 
-Takes roughly 15 minutes on a many-core CPU.  ``NUM_PERIODS = 125`` is sized
-from measurement: runs at 90 and 204 periods measured -36.5 dB and -52.6 dB
-(the -40 dB settling bar falls near 115 periods on the average slope, and the
-multi-mode tail beats rather than decaying smoothly), and a verification run
-at 125 measured -43.1 dB, SETTLED.  The witness below still measures and
-prints the end-of-run envelope every run — proof, not promise.
+Measured 2026-09-05 on a 64-core CPU, run alone: 1345 s
+(22 min).  That is this pod, not a promise — a busy or smaller
+machine takes longer, and an earlier "roughly 15 minutes" line here did not
+survive re-measurement.  ``NUM_PERIODS = 125`` is sized from measurement:
+runs at 90 and 204 periods measured -36.5 dB and -52.6 dB (the -40 dB
+settling bar falls near 115 periods on the average slope, and the multi-mode
+tail beats rather than decaying smoothly); the 2026-09-05 run measured
+-50.9 dB, SETTLED.  The witness below re-measures and prints the
+end-of-run envelope every run — proof, not promise.
 """
 
 from __future__ import annotations
@@ -114,12 +136,14 @@ AIR_BELOW = 30.0e-3
 # knob.)
 AIR_ABOVE = 84.0e-3
 
-# 125 periods settles this fixture past the -40 dB bar: verified -43.1 dB,
-# SETTLED (2026-07-19).  Measured endpoints -36.5 dB at 90 periods and
+# 125 periods settles this fixture past the -40 dB bar: measured -50.9 dB,
+# SETTLED (2026-09-05).  Measured endpoints -36.5 dB at 90 periods and
 # -52.6 dB at 204 put the bar near 115 on the average slope, but the
 # multi-mode tail beats rather than decaying smoothly — trust the printed
-# witness, not slope extrapolation.  The fully settled research run of this
-# geometry measured f_res = 2.2143 GHz and D = 6.71 dBi.
+# witness, not slope extrapolation.  (The research run of this geometry
+# recorded f_res = 2.2147 GHz (2.2143 in the fixture claim text) and D = 6.71 dBi; those belong to the 40 mm
+# cross mode and were retired as the design-mode reference by #693 — see the
+# docstring.)
 #
 # Why not run(until_decay=...): its total-interior-energy stop cannot fire on
 # this fixture — the soft current feed leaves a static charge field across
@@ -218,6 +242,7 @@ def build_simulation():
         position=(feed_x, feed_y, src_z),
         component="ez",
         waveform=GaussianPulse(f0=F_DESIGN, bandwidth=1.2),
+        amplitude_kind="current",
     )
     sim.add_probe(position=(feed_x + 4e-3, feed_y + 4e-3, src_z), component="ez")
 
@@ -225,8 +250,9 @@ def build_simulation():
     # bottom face cannot (the domain has only 30 mm of air below the ground
     # plane), so it sits 6 mm below the ground.  Preflight flags exactly this
     # face — see the quoted warning in the run output.  The ground plane sits
-    # between the radiator and that face, and this same placement was
-    # cross-checked against openEMS to 0.08 dB in directivity.
+    # between the radiator and that face, and this same placement is
+    # cross-checked against openEMS at the design-mode bin: +0.60 dB in
+    # directivity, inside the committed 1.0 dB envelope lock.
     pad = (N_CPML + 3) * DX
     box_lo = (pad, pad, max(pad, z_gnd_lo - 3 * DX))
     box_hi = (dom_x - pad, dom_y - pad, z_total - pad)
@@ -407,14 +433,18 @@ def main():
     print("\nAccuracy recap (see the docstring for the full error budget):")
     print(
         f"  f_res {radiating.freq / 1e9:.4f} GHz vs openEMS "
-        f"{OPENEMS_F_RES / 1e9:.4f} GHz: {dev_pct:+.1f}% — the expected "
-        "coarse-grid (dx = 2 mm) low bias; finer dx and "
-        "subpixel_smoothing=True recover most of it."
+        f"{OPENEMS_F_RES / 1e9:.4f} GHz: {dev_pct:+.1f}% — the design mode "
+        "reads HIGH at dx = 2 mm. The committed lock "
+        "(tests/crossval/test_patch_canonical_farfield_e4.py) gates this "
+        "sign and the [+6%, +16%] envelope. The competing coarse-grid "
+        "mechanisms (substrate under-resolved in z reads high, staircased "
+        "patch edge reads low) are not separated here, so do not assume "
+        "finer dx moves this one way."
     )
     print(
-        f"  D {d_dbi[k_star]:.2f} dBi vs openEMS {OPENEMS_D_DBI:.2f} dBi — "
-        "the far field is the observable that agrees (0.08 dB on the "
-        "validated num_periods=250 run of this fixture)."
+        f"  D {d_dbi[k_star]:.2f} dBi vs openEMS {OPENEMS_D_DBI:.2f} dBi "
+        f"({d_dbi[k_star] - OPENEMS_D_DBI:+.2f} dB) — the far field is the "
+        "observable that agrees, inside the committed 1.0 dB envelope."
     )
 
     # ---- Save the far-field cuts ----

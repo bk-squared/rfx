@@ -25,6 +25,20 @@ listed in [Recommended Configuration](/rfx/validation/reference-lane/) and
 
 ## Material registration
 
+Setup used by the snippets below:
+
+```python
+from rfx import Simulation
+
+sim = Simulation(
+    freq_max=5e9,
+    domain=(0.04, 0.03, 0.02),
+    dx=2e-3,
+    boundary="cpml",
+    cpml_layers=6,
+)
+```
+
 ```python
 from rfx import DebyePole, LorentzPole
 

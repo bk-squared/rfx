@@ -85,13 +85,42 @@ and local-dip check; it is not an absolute feed calibration.
 The script's own OpenEMS comparison is coarse (no thirds-rule edge mesh) and is
 reported, not gated. A separate committed reference from the canonical
 thirds-rule recipe (`scripts/diagnostics/patch_tutorial_openems.py`; f_res
-2.4221 GHz, broadside D 6.79 dBi, from our source-built openEMS run — full
-provenance in the fixture) is locked by
-`tests/crossval/test_patch_canonical_farfield_e4.py`: broadside directivity within
-0.5 dB of the reference (measured difference 0.08 dB), beam peaks within 15°
-of broadside, and the resonance inside the documented dx = 2 mm low-bias band
-of −12% to −5% (measured −8.6%). The frequency band is a discretization-bias
-regression lock, not an accuracy claim.
+2.4221 GHz, Q 20.1, broadside D 6.79 dBi, from our source-built openEMS run —
+full provenance in the fixture `meta` block) is locked by
+`tests/crossval/test_patch_canonical_farfield_e4.py`. Those reference numbers are
+the 32 mm feed-axis mode, and the rfx side gated against them is that same design
+mode — the upper ring-down mode, 2.6954 GHz — not the 40 mm cross mode.
+
+{/* constants: tests/crossval/test_patch_canonical_farfield_e4.py:117,121,122
+     (D_ABS_TOL_DB, F_RES_REL_LO, F_RES_REL_HI) — cite the names, the line
+     numbers have gone stale before; measured values from the same file's
+     docstring and constant comments */}
+
+| Gate | Constant | Measured |
+|---|---|---|
+| broadside directivity | `D_ABS_TOL_DB = 1.0` | 0.60 dB at the design-mode bin (7.39 vs 6.79 dBi) |
+| E-/H-plane beam peaks | `PEAK_ANGLE_TOL_DEG = 15.0` from broadside | 0° / −3° (openEMS 0° / 0°) |
+| resonance at dx = 2 mm | `F_RES_REL_LO = +0.06`, `F_RES_REL_HI = +0.16` — a HIGH band, sign locked | +11.3% |
+| ring-down settling | `SETTLING_BAR_DB = -40.0`, asserted before any gated number | the `num_periods=90` demo of this fixture reads −36.5 dB, so the test runs 110 |
+
+The frequency band is a discretization-bias regression lock, not an accuracy
+claim. It was repinned on 2026-08-27 (issue #693): the earlier envelopes — 0.5 dB
+with a measured 0.08 dB, and a −12% to −5% band with a measured −8.6% — had been
+pinned against the 40 mm cross mode (2.2147 GHz), the wrong member of the patch's
+near-degenerate pair, and the surrounding prose was corrected on 2026-08-31
+(#812 Phase 0). Text quoting 0.08 dB or −8.6% is retired.
+
+The sign belongs to this fixture's sheet realization and mesh, not to a general
+"coarse grid reads low" rule. On the same geometry the corrected `two_plane`
+realization measures −4.7% at dx = 2 mm and −1.5% at dx = 1 mm, against +11.3%
+for the one-plane sheets gated above, and `validation/crossval/manifest.json`
+records the older cv05 agreement as "a documented z-under-res/staircase error
+cancellation".
+{/* sign evidence also in the maintainers' ledger docs/agent-memory/rfx-known-issues.md
+     (gitignored in this repo), entry "Added 2026-08-28 — two_plane vs external
+     agreement: the archive splits on the flag, and the split points AWAY from
+     #720's recommendation", and "Added 2026-07-16 — cv05 DEMOTED claims-bearing
+     → diagnostic-reporter (#325; PR #378)" for the cancellation */}
 
 ### `06b_msl_notch_filter_uniform`
 

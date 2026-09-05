@@ -37,8 +37,8 @@ boundary, source or port, and observable restrictions.
 
 ### Meep: Rectangular Cavity Resonance
 
-```python
-# Meep
+```text
+# Meep (for comparison only — not part of the rfx sequence on this page)
 import meep as mp
 
 sim = mp.Simulation(
@@ -60,7 +60,8 @@ sim.run(mp.at_beginning(mp.output_epsilon),
 from rfx import Simulation
 
 sim = Simulation(freq_max=5e9, domain=(0.1, 0.1, 0.05), boundary="pec")
-sim.add_source(position=(0.03, 0.03, 0.02), component="ez")
+sim.add_source(position=(0.03, 0.03, 0.02), component="ez",
+                amplitude_kind="current")
 sim.add_probe(position=(0.06, 0.06, 0.02), component="ez")
 result = sim.run(n_steps=20_000)
 modes = result.find_resonances()   # list of HarminvMode (fields: freq, decay, Q, ...)
@@ -117,8 +118,8 @@ is the lumped/wire `add_port(...)` calculator only.
 
 ### Meep Adjoint Solver -> rfx Inverse Design
 
-```python
-# Meep (uses the meep.adjoint module)
+```text
+# Meep (for comparison only — uses the meep.adjoint module)
 opt = mpa.OptimizationProblem(...)
 opt.update_design([design_params])
 f, g = opt()  # forward + adjoint

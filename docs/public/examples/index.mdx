@@ -1,30 +1,58 @@
 ---
-title: "Public Examples"
-description: "Recommended public example entry points for rfx."
+title: "Examples"
+description: "The 13-step learning path shipped in examples/, what each script teaches, and the port and boundary family it exercises."
 sidebar:
   order: 30
 ---
 
-Use these examples to learn the supported workflows. They do not cover every
-importable module or experimental script in the repository.
+Every script below ships in a source checkout under `examples/`. The order is the
+one in `examples/README.md`; each step teaches one decision a real design needs,
+and the last column says which port and boundary family the script actually
+builds, so you can find the one that matches your structure.
 
-## Recommended entry points
+Steps 4 and 10 are the long ones — tens of minutes on CPU. The rest finish in
+seconds to a few minutes.
 
-**Learning rfx** — start here, in order:
+## The learning path
 
-| Script | You learn |
-|---|---|
-| `examples/quickstart/hello_world.py` | install check, the minimal simulate-and-probe loop |
-| `examples/tutorials/` (ordered in `examples/README.md`) | boundaries, materials, run control, ports & S-parameters, resonance extraction, far-field patterns, RCS |
-| `examples/inverse_design/differentiable_s11_design.py` | the differentiable design loop |
-| `examples/inverse_design/multilayer_ar_coating.py` | conservative inverse-design demo |
+| # | Script | What it teaches | Ports and boundaries |
+|---|---|---|---|
+| 1 | `examples/quickstart/hello_world.py` | install check, the minimal Simulation → run → probe loop | closed PEC box; soft point source and one probe; no port |
+| 2 | `examples/tutorials/boundary_spec_demo.py` | choosing boundaries: CPML = open, PEC = closed (never mix roles), PMC symmetry, periodic cells | `BoundarySpec` per axis and per face — all four patterns; soft source and probe |
+| 3 | `examples/tutorials/slab_rt_flux_monitor.py` | R(f)/T(f) the right way: `add_flux_monitor` plus a two-run reference subtraction, and why a probe FFT lies | CPML; TFSF plane wave; two flux monitors — flux monitors are not ports |
+| 4 | `examples/tutorials/nonuniform_patch_demo.py` | graded z-mesh for a thin substrate, and verifying where the layers actually landed after `smooth_grading` shifts them | CPML; `dz_profile` graded mesh; soft source and probe |
+| 5 | `examples/tutorials/materials_and_dispersion.py` | library and custom materials, why loss matters (the infinite-Q trap), Debye and Lorentz poles | CPML; soft source and probe; five small runs, one per material model |
+| 6 | `examples/tutorials/run_control_and_fields.py` | `n_steps` vs `num_periods` vs `until_decay`, reading the truncation advisory, extracting field slices | CPML; soft source and probe |
+| 7 | `examples/tutorials/ports_and_sparams_101.py` | which port suits which structure, S11 basics, and the standing-wave-null bins the extractor marks unreliable | the script's five-entry port decision tree — `add_msl_port`, `add_waveguide_port`, `add_coaxial_port`, lumped `add_port`, `add_lumped_rlc`; CPML and PEC |
+| 8 | `examples/tutorials/resonance_harminv.py` | ring-down resonance extraction, picking a mode by physics rather than amplitude, record length vs frequency resolution | closed PEC cavity via `BoundarySpec`; soft source and probe; no port (a port would load the cavity) |
+| 9 | `examples/tutorials/antenna_farfield_pattern.py` | near-to-far-field boxes done right — every face at least half the shortest monitored wavelength from the radiator — and directivity against the textbook short dipole | CPML; `add_ntff_box`; soft source |
+| 10 | `examples/tutorials/patch_antenna_demo.py` | a real antenna end to end: a stack registered to the built mesh, identifying the radiating mode from the far field rather than by amplitude rank, a settling witness, and an error budget against openEMS | CPML; graded `dz_profile`; `add_ntff_box`; soft source and probe |
+| 11 | `examples/tutorials/rcs_scattering.py` | radar cross-section with `subtract_incident_reference=True`, and why deep nulls near the collection box carry larger error | CPML; TFSF illumination with an empty reference run |
+| 12 | `examples/inverse_design/differentiable_s11_design.py` | the differentiable design loop: `jax.grad` end to end through the public `compute_waveguide_s_matrix` API, cross-checked against central finite differences | CPML; two WR-90 `add_waveguide_port` above cutoff; differentiates on `normalize=False` |
+| 13 | `examples/tutorials/artifact_report_demo.py` | exporting a shareable scene, mesh/preflight metadata, Markdown report and manifest | PEC box; lumped `add_port` and a probe; exports without running FDTD |
 
-## Validate a result
+## The rest of what ships
 
-[RF Workflows](./rf-workflows/) explains which example matches a design task.
-[Cross-Solver Validation](/rfx/validation/cross-solver/) lists runnable checks
-against analytic calculations and other solvers.
+| Script | What it is | Ports and boundaries |
+|---|---|---|
+| `examples/tutorials/adi_solver_demo.py` | the ADI solver's timestep-vs-accuracy trade, read three ways against an exact cavity oracle — see [ADI Solver](/rfx/guide/adi-solver/) | closed PEC cavity via `BoundarySpec`; soft source and probe |
+| `examples/tutorials/cad_mesh_import_demo.py` | importing an STL part with `MeshShape` and an explicit mm→m `scale`; needs the optional `rfx-fdtd[cad]` extra and exits cleanly without it | CPML; soft source |
+| `examples/inverse_design/multilayer_ar_coating.py` | a 3-layer AR coating optimized with `jax.value_and_grad` through `forward(eps_override=...)`, cross-checked against an analytic transfer-matrix optimum | CPML on x, periodic y and z (1D-equivalent); soft source and two probes |
+| `examples/inverse_design/field_observable_shielding.py` | pooling two `add_dft_plane_probe` planes into one worst-case-leakage scalar with `field_softmax`, then descending on it | CPML; TFSF plane wave; two DFT plane probes behind the stack |
+| `examples/inverse_design/progressive_demo.py` | how `progressive_optimize` runs a design at increasing mesh resolutions, upsampling the latent between stages. Its own docstring calls it a minimal API demonstration with a trivial optimum, not a cross-validation | CPML on all sides; soft source and probe |
+| `examples/config/microstrip_thru.yaml` | the declarative YAML front-end for the same Simulation API, driven by `rfx run` / `rfx plot` / `rfx export-geometry` | CPML; two 50 Ω lumped wire ports, port 1 excited and port 2 a passive matched load |
 
-Start with a uniform Yee-grid example when it fits the problem. Before using a
-result, inspect preflight warnings and confirm that the validation case covers
-the same mesh, source, port, material model, boundary, and output quantity.
+Read the preflight output every time. Its warnings identify conditions that can
+invalidate a result — lossless-dielectric Q traps, graded-mesh rasterization
+errors, incomplete ring-down.
+
+## Validation scripts are not tutorials
+
+The scripts under `validation/crossval/` check the solver against an analytic
+result or another solver. (`examples/crossval/` in a checkout is a tombstone
+README from the 2026-07 restructure; the scripts moved.) They assume the structure is already understood and
+gate on numbers, so they teach nothing about setup, and a passing run supports
+only its own committed geometry, mesh, band, source, port and observable.
+[Benchmarks](/rfx/guide/benchmarks/) lists every case with its pass criteria and
+reproduce command; [Cross-Solver Validation](/rfx/validation/cross-solver/)
+explains what the exit codes mean.
