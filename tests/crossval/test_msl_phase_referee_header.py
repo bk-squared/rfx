@@ -1623,74 +1623,115 @@ def test_run_stage_b_reds_end_to_end_on_a_coherent_rfx_beta_error(monkeypatch):
 # DERIVED AT RUNTIME (no pinned per-board fractions).
 #
 # The gated _analytic_beta_witness checks max(|dev|) <= B_BETA_ANALYTIC_TOL_FRAC
-# -- a SYMMETRIC magnitude budget. Two of its three physical terms are
-# sign-definite (finite-thickness NEGATIVE, dispersion POSITIVE), so a
-# physically-correct quasi-static line's SIGNED deviation lives in an
-# ASYMMETRIC envelope [lo, hi] that _signed_beta_envelope computes at runtime
-# from the realized dims. rfx's committed residual is one-signed POSITIVE,
-# past the +hi bound and on the WRONG side of the finite-thickness physics --
-# invisible to the symmetric gate, caught by the signed one. The signed leg is
+# -- a SYMMETRIC magnitude budget. Two of its three terms are sign-definite
+# (finite-thickness NEGATIVE, dispersion POSITIVE), so the band a CORRECT
+# QUASI-STATIC line may occupy is asymmetric: [lo, hi] with hi built only from
+# the positive-capable terms and lo only from the negative-capable ones. rfx's
+# committed residual sits ABOVE hi -- a magnitude excursion on the positive
+# side that the symmetric gate is blind to. It is NOT called a wrong-sign
+# finding (hi is itself positive), and it is NOT attributed to solver physics:
+# the half-cell rasterization band of this mesh is larger than the excess, so
+# the witness reports the ambiguity instead of resolving it. The leg is
 # REPORTED, NOT gated (kept out of sanity_passed), because reddening cv20's
 # sanity_passed would break the committed suite for the OPEN #830 question.
 # ===========================================================================
 def test_signed_beta_envelope_is_derived_at_runtime_and_moves_with_the_board():
-    """The envelope must be a FUNCTION of the realized dims, not pinned
-    fractions: feed a different board and [lo, hi] must move. The sign
-    structure is re-derived here from the RAW closed forms (not asserted from
-    the module's own output) so the two cannot silently agree on a wrong sign.
+    """The envelope must be a FUNCTION of the realized board, not pinned
+    fractions.
+
+    Independence (review2 P2-4): this test does NOT re-type the module's own
+    closed forms and compare them to themselves. Each term is checked by a
+    property the formula must have but a wrong formula generally will not --
+    limits, monotonicity, exact linearity in t, invariance of lo to frequency
+    and of hi to thickness -- and the underlying eps_eff is checked against an
+    INDEPENDENT implementation (``rfx.microstrip``) on BOTH u branches.
     """
     module = _load_referee_module()
+    from rfx.microstrip import microstrip_eps_eff
 
-    # (1) Only the HJ MODEL figure is a constant; it is board-independent.
-    hj = module._beta_frac_from_eps_eff_frac(module.HJ_MODEL_ACCURACY_EPS_EFF_FRAC)
-    assert hj > 0.0
-
-    # (2) Sign-definiteness, re-derived from the raw closed forms on the
-    #     realized board -- thickness LOWERS eps_eff (negative), Getsinger
-    #     dispersion RAISES it (positive).
     er, w, h, t = module.B_EPS_R, 600e-6, 300e-6, module.B_DX_M
-    eps0 = module._hammerstad_jensen_eps_eff(w, h, er)
-    d_eps_thickness = -(er - 1.0) * (t / h) / (4.6 * math.sqrt(w / h))
-    assert d_eps_thickness < 0.0, "Bahl-Garg finite thickness must LOWER eps_eff"
-    z0 = module._hammerstad_z0(eps0, w, h)
-    f_p = z0 / (2.0 * module._MU0 * h)
-    g = 0.6 + 0.009 * z0
-    d_eps_getsinger = (er - (er - eps0) / (1.0 + g * (module.B_GATE_F_HI_HZ / f_p) ** 2)) - eps0
-    assert d_eps_getsinger > 0.0, "Getsinger dispersion must RAISE eps_eff"
+    f_top = module.B_GATE_F_HI_HZ
 
-    # (3) The envelope equals +(HJ + getsinger) / -(HJ + |thickness| + getsinger),
-    #     re-composed from the module's OWN component functions -- proving the
-    #     asymmetry (hi omits the negative-only thickness term) is what ships.
-    getsinger = module._getsinger_beta_dev_frac(er, w, h, module.B_GATE_F_HI_HZ)
-    thickness = module._bahl_garg_thickness_beta_dev_frac(er, w, h, t)
-    assert getsinger > 0.0 and thickness < 0.0
-    lo, hi = module._signed_beta_envelope(er, w, h, t, module.B_GATE_F_HI_HZ)
-    assert hi == pytest.approx(hj + getsinger, abs=1e-12)
-    assert lo == pytest.approx(-(hj + abs(thickness) + getsinger), abs=1e-12)
+    # (0) Independent oracle for the eps_eff the whole envelope rests on --
+    #     both branches, including the u < 1 board used in step (5).
+    for w_i, h_i in ((w, h), (300e-6, 635e-6)):
+        assert module._hammerstad_jensen_eps_eff(w_i, h_i, er) == pytest.approx(
+            microstrip_eps_eff(w_i, h_i, er), rel=1e-12)
+
+    # (1) Getsinger dispersion: strictly positive, vanishes at DC, monotone in f.
+    g_lo = module._getsinger_eps_eff_dev_frac(er, w, h, 1.0)
+    g_mid = module._getsinger_eps_eff_dev_frac(er, w, h, f_top / 2.0)
+    g_top = module._getsinger_eps_eff_dev_frac(er, w, h, f_top)
+    assert 0.0 <= g_lo < 1e-12 < g_mid < g_top  # -> 0 as f -> 0, rising with f
+    # f^2 pole well below f_p: quartering f must quarter the term to ~1%.
+    assert g_mid / g_top == pytest.approx(0.25, rel=0.02)
+
+    # (2) Bahl-Garg thickness: strictly negative, vanishes at t = 0, EXACTLY
+    #     linear in t (the property that distinguishes this correction from a
+    #     mistyped one), monotone decreasing.
+    assert module._bahl_garg_thickness_eps_eff_dev_frac(er, w, h, 0.0) == 0.0
+    t1 = module._bahl_garg_thickness_eps_eff_dev_frac(er, w, h, t)
+    t2 = module._bahl_garg_thickness_eps_eff_dev_frac(er, w, h, 2.0 * t)
+    assert t1 < 0.0 and t2 < t1
+    assert t2 / t1 == pytest.approx(2.0, rel=1e-12)
+
+    # (3) Composition is in eps_eff space, square-rooted ONCE, and each side
+    #     carries ONLY its sign-capable terms. Checked by INVERTING the
+    #     composition rather than retyping it.
+    terms = module._signed_beta_envelope_terms(er, w, h, t, f_top, module.B_DX_M)
+    m = terms["model_eps_eff_frac"]
+    assert (1.0 + terms["hi_frac"]) ** 2 - 1.0 == pytest.approx(
+        m + terms["getsinger_eps_eff_frac"], abs=1e-15)
+    assert (1.0 + terms["lo_frac"]) ** 2 - 1.0 == pytest.approx(
+        -m + terms["thickness_eps_eff_frac"], abs=1e-15)
+    assert terms["hi_frac"] > 0.0 > terms["lo_frac"]
     # The positive bound is strictly tighter than the symmetric gate -- else
     # the asymmetry would catch nothing.
-    assert hi < module.B_BETA_ANALYTIC_TOL_FRAC
+    assert terms["hi_frac"] < module.B_BETA_ANALYTIC_TOL_FRAC
 
-    # (4) NOT PINNED: a different board yields a materially different envelope.
-    lo2, hi2 = module._signed_beta_envelope(4.4, 300e-6, 635e-6, 17.5e-6, 10e9)
-    assert abs(hi2 - hi) > 1e-4, "hi must move with the board (not a pinned constant)"
-    assert abs(lo2 - lo) > 1e-4, "lo must move with the board (not a pinned constant)"
-    # And the move is driven by the recomputed physical terms, not noise:
-    g2 = module._getsinger_beta_dev_frac(4.4, 300e-6, 635e-6, 10e9)
-    t2 = module._bahl_garg_thickness_beta_dev_frac(4.4, 300e-6, 635e-6, 17.5e-6)
-    assert hi2 == pytest.approx(hj + g2, abs=1e-12)
-    assert lo2 == pytest.approx(-(hj + abs(t2) + g2), abs=1e-12)
+    # (4) Sign separation, tested by INVARIANCE rather than by formula:
+    #     thickness may not touch hi, dispersion may not touch lo (review2
+    #     P2-3: the first version padded lo with the strictly positive
+    #     Getsinger term, pre-loosening the negative side).
+    thicker = module._signed_beta_envelope_terms(er, w, h, 3.0 * t, f_top, module.B_DX_M)
+    assert thicker["hi_frac"] == pytest.approx(terms["hi_frac"], abs=1e-15)
+    assert thicker["lo_frac"] < terms["lo_frac"]
+    lower_band = module._signed_beta_envelope_terms(er, w, h, t, f_top / 3.0, module.B_DX_M)
+    assert lower_band["lo_frac"] == pytest.approx(terms["lo_frac"], abs=1e-15)
+    assert lower_band["hi_frac"] < terms["hi_frac"]
+
+    # (5) NOT PINNED: different boards yield materially different envelopes,
+    #     including a narrow (u < 1) line, which the u < 1 branch of the
+    #     closed form now covers.
+    lo, hi = module._signed_beta_envelope(er, w, h, t, f_top)
+    assert (lo, hi) == (terms["lo_frac"], terms["hi_frac"])
+    for er2, w2, h2, t2_m, f2 in ((4.4, 1000e-6, 635e-6, 17.5e-6, 10e9),
+                                  (9.8, 300e-6, 635e-6, 35e-6, 8e9)):
+        lo2, hi2 = module._signed_beta_envelope(er2, w2, h2, t2_m, f2)
+        assert abs(hi2 - hi) > 1e-4, "hi must move with the board (not a pinned constant)"
+        assert abs(lo2 - lo) > 1e-4, "lo must move with the board (not a pinned constant)"
+
+    # (6) The rasterization band is a MESH quantity: zero at dx = 0, growing
+    #     with dx, and NOT part of the envelope itself.
+    assert module._half_cell_rasterization_beta_dev_frac(er, w, h, 0.0) == 0.0
+    coarse = module._signed_beta_envelope_terms(er, w, h, t, f_top, 2.0 * module.B_DX_M)
+    assert (coarse["half_cell_rasterization_band_frac"]
+            > terms["half_cell_rasterization_band_frac"] > 0.0)
+    assert coarse["hi_frac"] == pytest.approx(terms["hi_frac"], abs=1e-15)
+    assert coarse["lo_frac"] == pytest.approx(terms["lo_frac"], abs=1e-15)
 
 
-def test_signed_beta_envelope_flags_rfx_that_the_symmetric_gate_passes():
-    """Fail-before / pass-after for audit G1, on the committed run-2 artifact.
+def test_signed_beta_envelope_flags_rfx_and_reports_what_it_cannot_attribute(capsys):
+    """Fail-before / pass-after for audit G1 on the committed run-2 artifact,
+    plus the interpretation guards review2 P1-1/P1-2/P2-2 require.
 
-    The OLD symmetric _analytic_beta_witness reports rfx passed=True (|dev|
-    < B_BETA_ANALYTIC_TOL_FRAC). The NEW signed envelope reports rfx
-    passed=False (its residual is one-signed POSITIVE, above the +hi bound)
-    while openEMS passes (negative, finite-thickness side). Before the fix
-    _signed_analytic_beta_envelope_witness / _signed_beta_envelope do not
-    exist, so this test errors; after, it passes.
+    The OLD symmetric _analytic_beta_witness reports rfx passed=True (|dev| <
+    B_BETA_ANALYTIC_TOL_FRAC). The signed envelope reports rfx passed=False
+    (above hi) while openEMS passes. What the witness must NOT do is dress
+    that up: no wrong-sign language, an explicit statement that the excess is
+    smaller than this mesh's half-cell rasterization band, the model error
+    that admitting it would require, and the fixture provenance of the rfx
+    beta.
     """
     module = _load_referee_module()
     stage_b = json.loads(_RUN2_RESULT_PATH.read_text())["stage_b"]
@@ -1700,12 +1741,13 @@ def test_signed_beta_envelope_flags_rfx_that_the_symmetric_gate_passes():
     beta_rfx = np.asarray(cross["beta_rfx_real"], dtype=float)
     beta_oe = np.asarray(cross["beta_openems_real"], dtype=float)
 
-    # Envelope DERIVED from the realized board (fixture-sourced dims + one-cell
-    # metal thickness), the same call _run_stage_b makes.
+    # Envelope DERIVED from the realized board (fixture-sourced dims + the
+    # one-cell realized metal thickness), the same call _run_stage_b makes.
     fixture = module._load_rfx_fixture(str(RFX_FIXTURE_PATH))
-    lo, hi = module._signed_beta_envelope(
+    terms = module._signed_beta_envelope_terms(
         module.B_EPS_R, fixture["meta"]["w_trace_realized_m"],
-        fixture["meta"]["h_sub_realized_m"], module.B_DX_M, module.B_GATE_F_HI_HZ)
+        fixture["meta"]["h_sub_realized_m"], module.B_DX_M,
+        module.B_GATE_F_HI_HZ, module.B_DX_M)
 
     # OLD symmetric gate: rfx passes (this is the defect the finding names).
     old_rfx = module._analytic_beta_witness(
@@ -1714,18 +1756,48 @@ def test_signed_beta_envelope_flags_rfx_that_the_symmetric_gate_passes():
     assert old_rfx["passed"] is True
     assert old_rfx["max_abs_dev_frac"] < module.B_BETA_ANALYTIC_TOL_FRAC
 
-    # NEW signed envelope: rfx FAILS (wrong-signed positive), openEMS PASSES.
     new_rfx = module._signed_analytic_beta_envelope_witness(
-        freqs, beta_rfx, eps_eff=eps, lo_frac=lo, hi_frac=hi,
-        label="g1", solver="rfx")
+        freqs, beta_rfx, eps_eff=eps, envelope=terms, label="g1", solver="rfx",
+        provenance="REPLAYED from the committed rfx fixture")
     new_oe = module._signed_analytic_beta_envelope_witness(
-        freqs, beta_oe, eps_eff=eps, lo_frac=lo, hi_frac=hi,
-        label="g1", solver="openems")
+        freqs, beta_oe, eps_eff=eps, envelope=terms, label="g1", solver="openems",
+        provenance="solved by openEMS in THIS cv20 run")
+    stderr = capsys.readouterr().err
+
+    # (1) Still flagged: rfx is entirely above hi, openEMS is inside.
     assert new_rfx["passed"] is False
-    assert new_rfx["min_signed_dev_frac"] > hi  # entirely above +hi (wrong sign)
+    assert new_rfx["min_signed_dev_frac"] > terms["hi_frac"]
+    assert new_rfx["excess_above_hi_frac"] > 0.0
     assert new_oe["passed"] is True
-    assert new_oe["min_signed_dev_frac"] >= lo
-    assert new_oe["max_signed_dev_frac"] <= hi
+    assert terms["lo_frac"] <= new_oe["min_signed_dev_frac"]
+    assert new_oe["max_signed_dev_frac"] <= terms["hi_frac"]
+
+    # (2) NOT a sign claim (review2 P1-1). hi is positive, so exceeding it is a
+    #     magnitude statement; the stderr may not say otherwise.
+    assert terms["hi_frac"] > 0.0
+    assert "WRONG SIGN" not in stderr
+    assert "ABOVE hi" in stderr
+    # ... and openEMS is NOT presented as landing where the thickness term
+    # predicts: it sits far above that prediction, which the witness records.
+    assert new_oe["offset_from_thickness_corrected_prediction_frac"] > 0.005
+    assert new_oe["max_signed_dev_frac"] > 0.0  # openEMS straddles zero in band
+
+    # (3) Attribution is left open, because the excess is smaller than half a
+    #     cell of interface ambiguity on this mesh (review2 P1-2).
+    assert new_rfx["excess_above_hi_frac"] < terms["half_cell_rasterization_band_frac"]
+    assert new_rfx["excess_within_half_cell_rasterization_band"] is True
+    assert "NOT attributable" in new_rfx["attribution"]
+    assert "mesh-refinement rung" in new_rfx["attribution"]
+    assert "ATTRIBUTION" in stderr
+
+    # (4) The single pinned constant is not left implicit: the model error
+    #     that WOULD admit rfx is reported and is well above the one used.
+    assert new_rfx["required_model_eps_eff_frac_for_admissibility"] > 1.5 * \
+        new_rfx["model_eps_eff_frac_used"]
+
+    # (5) Provenance (review2 P2-2): the rfx leg is a fixture replay.
+    assert "REPLAYED" in new_rfx["beta_provenance"]
+    assert "THIS cv20 run" in new_oe["beta_provenance"]
 
 
 def test_signed_beta_envelope_is_reported_not_gated(monkeypatch):
@@ -1755,6 +1827,19 @@ def test_signed_beta_envelope_is_reported_not_gated(monkeypatch):
     assert report["signed_beta_envelope_witness_rfx"]["passed"] is False
     assert report["signed_beta_envelope_witness_rfx"]["gated"] is False
     assert report["signed_beta_envelope_witness_openems"]["passed"] is True
-    # The recorded envelope is the runtime-derived one, not a pinned pair.
+    # The recorded envelope is the runtime-derived one, not a pinned pair, and
+    # its inputs are the REALIZED board the fixture meta reports.
     assert report["signed_beta_envelope_hi_frac"] < module.B_BETA_ANALYTIC_TOL_FRAC
     assert report["signed_beta_envelope_lo_frac"] < 0.0
+    meta = module._load_rfx_fixture(str(RFX_FIXTURE_PATH))["meta"]
+    inputs = report["signed_beta_envelope_terms"]["inputs"]
+    assert inputs["w_m"] == meta["w_trace_realized_m"]
+    assert inputs["h_m"] == meta["h_sub_realized_m"]
+    assert inputs["t_m"] == meta["dx_m"] == inputs["dx_m"]
+
+    # The mesh-independent half of the finding is recorded too, and it is the
+    # larger of the two statements on this data.
+    xs = report["signed_beta_envelope_cross_solver_summary"]
+    assert xs["gated"] is False
+    assert xs["min_frac"] > 0.0
+    assert xs["max_frac"] > report["signed_beta_envelope_witness_rfx"]["excess_above_hi_frac"]
