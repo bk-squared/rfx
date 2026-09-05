@@ -418,6 +418,13 @@ def main(argv=None) -> int:
               f"{'' if primary else ' (reported, not gated: diagnostic rung)'}; "
               f"tail scat/trans {run['tail']['scat_refl_rel']:.2e}/{run['tail']['total_trans_rel']:.2e} "
               f"vs {O.SETTLING_LIMIT:g} -> {'ok' if run['tail']['ok'] else 'FAIL'}")
+        ae = O.aux_echo_arrival_report(spec, O.rig_cells(spec["nx_interior"], run["n_cpml"], dx_div=dx_div),
+                                       dx=O.DX_M / dx_div, dt=run["dt_s"], n_steps=r_["n_steps"])
+        run["record"]["aux_echo"] = ae
+        print(f"  aux-echo arrival (#892, geometry): flight {ae['flight_steps']:.0f} - lead {ae['lead_steps']:.0f} = "
+              f"{ae['arrival_steps']:.0f} steps; record {r_['n_steps']}"
+              + (f" -> record/arrival {ae['record_over_arrival']:.2f}; " if ae['applicable'] else "; ")
+              + ae["verdict"])
         print(f"  E2 ({e2['n_bins_gated']} bins, theta {e2['theta_gated_deg'][0]:.1f}-{e2['theta_gated_deg'][1]:.1f} deg): "
               f"max|dR|={e2['max_dR_gated']:.4f} max|dT|={e2['max_dT_gated']:.4f} | mean|dR|={e2['mean_dR_gated']:.4f}/"
               f"{e2['mean_window_R']:.4f} mean|dT|={e2['mean_dT_gated']:.4f}/{e2['mean_window_T']:.4f}; "

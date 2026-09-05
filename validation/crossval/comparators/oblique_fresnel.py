@@ -1039,6 +1039,39 @@ RECORD_DECLARED: dict[tuple[str, int, int, int], dict] = {
 }
 
 
+def aux_echo_arrival_report(spec: dict, cells: dict, *, dx: float, dt: float, n_steps: int) -> dict:
+    """The AUXILIARY absorber's echo arrival at the reflection probe, REPORTED
+    per arm (#888 / #892). Geometry only -- the module's layout (``aux_cells``),
+    the probe offset, the lattice group velocity along x at f0 -- so it is never
+    measured on the run it describes.
+
+    ``arrival_steps`` = flight (source -> absorber inner edge -> probe) / v_gx(f0)
+    minus the pulse lead t0/dt, the #892 convention. On the compact box the lead
+    (~11000 steps at bw = 0.0037) exceeds the flight (~2400), the arrival is
+    NEGATIVE, and the invariant is NOT-APPLICABLE by construction: the echo is
+    inside the record from the start and is bounded by AMPLITUDE (``e_absorber``)
+    instead. That is a declared property of the compact-box design (note section
+    4.5), stated here so no reader mistakes it for a breach.
+    """
+    ac = aux_cells(cells)
+    edge = ac["n2x"] - ac["n_cpml"]                       # reflector bound: the inner edge
+    probe_aux = ac["i0_x"] + (cells["probe_refl"] - cells["x_lo"])
+    v = float(yee_vgx(spec["f0_hz"], spec["ky"], 1.0, 1.0, dx, dt)) * dt / dx
+    tau = 1.0 / (math.pi * spec["f0_hz"] * spec["bw"])
+    lead = SRC_T0_OVER_TAU * tau / dt
+    flight = ((edge - ac["src_x"]) + (edge - probe_aux)) / v
+    arrival = flight - lead
+    applicable = arrival > 0
+    return {"aux_n2x": ac["n2x"], "aux_src_x": ac["src_x"], "aux_edge": edge, "probe_aux_index": int(probe_aux),
+            "v_gx_cells_per_step": v, "flight_steps": float(flight), "lead_steps": float(lead),
+            "arrival_steps": float(arrival), "applicable": bool(applicable),
+            "record_over_arrival": (float(n_steps) / arrival if applicable else None),
+            "verdict": ("N/A: pulse lead exceeds the echo flight -- echo inside the record by design, "
+                        "bounded by e_absorber" if not applicable
+                        else ("record ends before the auxiliary echo" if n_steps < arrival
+                              else "record OUTLIVES the auxiliary echo -- answered for by e_absorber only"))}
+
+
 def derive_record(spec: dict, dt: float | None = None, *, n_cpml: int = N_CPML, nx_interior: int | None = None,
                   dx_div: int = 1) -> dict:
     """n_steps_min = n_pulse_end + n_ring + TAIL_WINDOW (cv22 section 13
