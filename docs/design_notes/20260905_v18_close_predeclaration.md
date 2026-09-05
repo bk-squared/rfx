@@ -123,7 +123,7 @@ nothing above 3.3e-5 (post-merge review, `20260905_post_merge_review_20_prs.md`)
 
 **Revision history of this note, so the stamp can be read.** The artifact stamps
 `predeclaration_sha: f914a7ca`, the commit the pod fetched (`RFX_EXPECT_SHA`) and therefore
-the version of §0–§5 that was binding when the run started at 14:39:00 UTC. It was first
+the version of §0–§5 that was binding when the run started (pod script 14:39:00 UTC, driver 14:39:36 — the run directory's own stamp). It was first
 stamped `10b39787` and restamped after the independent review of PR #908, because the note
 was revised three times before the run and once after it started:
 

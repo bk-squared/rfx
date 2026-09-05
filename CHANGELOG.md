@@ -13,7 +13,10 @@ The third pre-declared run of the WR-90 chain battery (VESSL run 369367258638,
 `tests/oracle/test_waveguide_chain_battery_v18_close.py`, pre-declaration
 `docs/design_notes/20260905_v18_close_predeclaration.md`) closes the family
 under `docs/design_notes/chain_closure_contract.md`: 134 pass / 51 report_only /
-0 fail / 0 not interpretable of the 185 stored verdicts, with contract
+0 fail / 0 not interpretable of the 185 stored verdicts (the 51 report_only
+are the 36 coarse- and mid-rung physics gates and referees, report-only below
+the claims rung by pre-declaration, the 12 ungated power-closure keys, and the
+3 zero-derivative legs), with contract
 criterion 1 (forward identity, traced = untraced) and 3(a) (AD vs central FD)
 **read under x64 on the `normalize="flux"` lane**
 (`tests/_waveguide_chain_battery_gates.py::X64_DECLARED_LANES`) and the

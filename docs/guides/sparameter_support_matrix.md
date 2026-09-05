@@ -43,7 +43,7 @@ guard. An absent warning therefore cannot be compared across port families.
 | Wire `add_port(..., extent=...)` | `run(compute_s_params=True, s_param_freqs=...)` | `Result.s_params`, `Result.freqs` | **limited** — multi-cell discrete feed across `extent`; magnitude evidence is stronger than absolute calibration evidence; nonuniform use is experimental |
 | Wire `add_port(..., extent=...)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited** — uniform, single-device AD path |
 | `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable` | **limited** — E5-narrow / eigenmode-blocked; external notch agreement is characterized, not tight; `eps_override` AD checked against an f64 referee on the band-mean `\|S21\|^2` objective (rel_err 0.0026 at the gate's num_periods=20 fixture, threshold 0.03; issue #530, superseding the pre-#530 `sum\|S_ij\|^2` objective and its 0.0331/0.10 figures); nonuniform mode is experimental |
-| `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | **limited** — broad magnitude evidence for documented uniform single-mode rectangular guides; phase and junction evidence are narrower; nonuniform configurations outside the passed Palace `normalize=flux` WR-90 cases remain experimental; chain-closed (v1.8) for uniform single-mode S on the differentiable lanes after three pre-declared chain-battery runs (VESSL run 369367257823 / 369367258205 / 369367258638; criterion 1 and 3(a) read under x64 on the flux lane, forward default float32) — still limited, not supported |
+| `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | **limited** — broad magnitude evidence for documented uniform single-mode rectangular guides; phase and junction evidence are narrower; nonuniform configurations outside the passed Palace `normalize=flux` WR-90 cases remain experimental; chain-closed (v1.8) for uniform single-mode S on the differentiable lanes after three pre-declared chain-battery runs (VESSL run 369367257823 / 369367258205 / 369367258638; criterion 1 and 3(a) read under x64 on the flux lane, forward default float32; a float32 gradient pipeline on the flux lane is outside the declaration) — still limited, not supported |
 | `add_waveguide_port(...)` | `run(...)` | `Result.waveguide_sparams[name]` | **limited diagnostic** — per-port output, not the full multi-port matrix API |
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | **limited** — exactly one `face="top"` port; broad-E5 analytic and broad-E4 MEEP evidence for the documented TEM-line result |
 | `add_coaxial_port(...)` | `compute_coaxial_s_matrix(...)` | `CoaxialSMatrixResult` | **experimental and deprecated** — older single-plane V/I path; can produce non-physical `\|S11\| > 1` for a lossless short |
@@ -510,7 +510,7 @@ and no gate, tolerance or pin was moved between them:
   (AD-vs-FD) **read under x64 on the flux lane** — the PI decision of
   2026-09-05, the float32 reading stored beside the x64 one on every leg — and
   the pre-declared zero-derivative leg carried as report-only. Census
-  **134 pass / 51 report_only / 0 fail / 0 not interpretable**. The declaration's
+  **134 pass / 51 report_only / 0 fail / 0 not interpretable**. The 51 report_only verdicts are the 36 coarse- and mid-rung physics gates and referees (report-only below the claims rung by pre-declaration), the 12 ungated power-closure keys, and the 3 zero-derivative legs (1 AD-vs-FD, 2 gradient-invariance); the 134 pass are the claims-rung gates, the AD legs, the plane-shift and ladder gates. The declaration's
   own falsifier holds: the same AD stage with the float32 primary reproduces run
   2's 9 red exactly.
 
@@ -532,8 +532,10 @@ Per criterion, on run 3:
   `0.01`, complex reciprocity at most `4.81e-3` against `0.01`; the energy-based
   ring-down witness reads `-100.9` to `-102.6 dB` per drive on every fine-rung
   cell against the `-40 dB` bar, skipping records below the float32 normal range
-  and naming them (issue #869). Power closure is report-only here and bounded by
-  the WP3 witness below.
+  and naming them (issue #869). The coarse and mid rungs are report-only by
+  pre-declaration; the coarse slab reads column power `1.00711` and complex
+  reciprocity `0.0309`, three times the gate. Power closure is report-only here
+  and bounded by the WP3 witness below.
 - **Criterion 3(a) (AD vs central FD) — 15 of 16 legs green, 1 report-only.**
   The fifteen pass at `rel` `1.22e-4` to `1.07e-2` against `0.05`, with FD ULP
   spans `8.7e13` to `4.8e15` on fourteen of them and `3.44e11` on the
@@ -552,8 +554,12 @@ Per criterion, on run 3:
 - **Criterion 3(b) (reference-plane invariance) — green.** `|S|` invariant to
   `1.76e-7` against `rtol=1e-3, atol=1e-4`; gradient invariance for magnitude
   objectives and rotation covariance for complex objectives measure below
-  `2.33e-7` (float32 on both sides; criterion 3(b) is not under the x64
-  declaration) and are pinned at `0.001`; the `angle(S11)` rotation is
+  `2.33e-7` on the ten pinned legs (float32 on both sides; criterion 3(b) is
+  not under the x64 declaration — the artifact's x64-base companion reading,
+  `gradient_invariance_x64_base`, measures this lane's float32 gradient error,
+  not plane invariance, and is not part of this criterion) and are pinned at
+  `0.001`; the two zero-derivative legs (`2.7e-4`, `6.5e-3`) are report-only on
+  the same pre-declared exit as 3(a); the `angle(S11)` rotation is
   `0.0317 degrees` against the Yee-discrete beta (gate `3 degrees`) and
   `0.0407 degrees` against the continuous beta (gate `6 degrees`), the
   wrong-sign discriminator reads `64.05 degrees` against a `10 degree` floor
@@ -569,7 +575,8 @@ Per criterion, on run 3:
   window; the slab against the analytic Airy oracle differs by at most
   `0.01262` (`normalize=False`) / `0.00903` (`normalize="flux"`) in magnitude
   against `0.05` and `6.10` / `6.15 degrees` in phase against `15.0 degrees`.
-  The referee set is this battery's Airy slab and PEC short **plus** the five
+  The coarse rung is report-only and outside both referee gates (slab vs Airy
+  `0.1487` in magnitude, `16.94 degrees` in phase). The referee set is this battery's Airy slab and PEC short **plus** the five
   broad-E5 replay bands (WR-340, WR-62, WR-28, WR-15, WR-10), replayed by
   `tests/crossval/test_waveguide_broad_e5.py` at zero run cost. The phase
   referee is analytic Airy only; cv18, cv19 and the Meep T-junction are
