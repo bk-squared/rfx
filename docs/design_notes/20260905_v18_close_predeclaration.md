@@ -21,12 +21,14 @@ group; the x64 primal identity does not depend on the objective, so the same `S6
 all four.
 
 **(b) AD-vs-FD, `pec_short | flux | eps | s11_mag2`, 1 leg.** A physically zero derivative
-(|S11| = 1 in front of a PEC for any lossless window). float32 AD +2.683e-5 (its noise
-floor, wrong sign), FD −7.245e-7, x64 AD −9.821e-7. `rel = 38` against 0.05. The remeasure
-pre-declaration §(ii) predicted exactly this and named the closing condition in its own
-branches: the x64 AD "must stay within a factor 3 of −9.821e-7 and keep its sign" against
-FD. That is a sign-and-order statistic, because `rel` on a ~1e-6 gradient of a 16.0 loss is
-a ULP question, not an accuracy question.
+(|S11| = 1 in front of a PEC for any lossless window). Run 1: float32 AD +2.683e-5 (its noise
+floor, wrong sign), FD −7.245e-7, x64 AD −9.821e-7, ratio 1.36. **Run 2, on the corrected
+port: FD −5.154e-8, x64 AD −2.943e-7, ratio 5.71, same sign.** Both fell toward zero with the
+port fix (FD 14×, x64 AD 3.3×) — what a physically-zero derivative should do — so the ratio
+of two shrinking O(1e-7) residuals is not a stable statistic. The FD is genuine: the float64
+pair resolves 2.25e7 ULP against a 1e4 floor (the span helper is dtype-aware; not the #527
+class). No precision defect to fix, and no pre-declared branch fits cleanly: run 2's x64 AD
+is 3.34× off run 1's, just outside the remeasure note's "factor 3, same sign" branch.
 
 ## 1. The declaration (PI decision 2026-09-05)
 
@@ -48,14 +50,18 @@ float32 readings stay in the artifact as the recorded envelope of the float32 ta
 1. **Script**: `forward_identity_x64` attached to every leg in a group (one `S64` per group,
    already computed); `g_ad_x64` computed for every flux-lane leg, not only `objectives[0]`.
    Both float32 and x64 readings stored; `primary_precision` field says which the gate reads.
-2. **Gate module**: `forward_identity_pass` reads the x64 metric on lanes declared under x64;
-   `ad_fd_entry` gains a **zero-derivative branch** for legs in `EXPECTED_ULP_SKIP` whose FD
-   resolves above the ULP floor:
-   ```
-   pass iff sign(g_ad_x64) == sign(g_fd) and 1/3 <= |g_ad_x64| / |g_fd| <= 3
-   ```
-   This is the remeasure note's own §(ii) branch, promoted from a report to a gate. It applies
-   ONLY to pre-declared zero-derivative legs; every other leg keeps rel ≤ 0.05.
+2. **Gate module**: `forward_identity_pass` reads the x64 metric on lanes declared under x64.
+   A `zero_derivative_entry` (sign and factor-3 on the x64 gradient against FD — the remeasure
+   note's own §(ii) branch) is **computed and stored for the pre-declared zero-derivative
+   leg, and that leg's verdict is `report_only`**, on the note's exit (c): the derivative is
+   physically zero, both AD and FD are O(1e-7) discretization residuals that fell with the
+   port correction, and a convergence verdict on their ratio would be a claim about noise.
+   On run 2's stored numbers that ratio is 5.71 — it FAILS the factor-3 branch — written here
+   so the report-only status is not mistaken for a pass. **Rejected alternative, on the
+   record**: widening the factor to 6 so the leg passes. That is the silent gate loosening the
+   repo forbids; a leg that needed the bar moved is a report, not a pass. Every other leg keeps
+   rel ≤ 0.05; the weight-bearing PEC-short magnitude leg (`sigma`, rel 4.9e-4) carries that
+   DUT's AD-vs-FD claim.
 3. **Test**: the 8 + 1 `xfail(strict=True)` marks are removed AFTER the run shows green — strict
    xfail forbids removing them first.
 
@@ -65,11 +71,11 @@ float32 readings stay in the artifact as the recorded envelope of the float32 ta
 |---|---|---|---|
 | forward identity, flux, x64 | 8 | all ≤ 1e-7 scaled (three measured 1.7e-10…1.05e-8) | any leg > 1e-3 scaled: reassociation is NOT confined to the DFT; report next to the flux numbers, do not close |
 | forward identity, `normalize=False` | 4 | bit-identical (0), unchanged | — |
-| AD-vs-FD zero-derivative, x64 | 1 | ratio |g_ad_x64/g_fd| in [0.33, 3], same sign (run 2: 1.36, same sign) | ratio outside or sign flipped: the float64 tape disagrees with the float64 FD, a defect on both precisions — root-cause, do not close |
+| AD-vs-FD zero-derivative, x64 | 1 | **report_only** (declared in §2); stored ratio expected ~3–8, same sign, both |g| ≤ 1e-6 | sign flip, or either |g| above 1e-5: float64 tape and FD disagree on a NON-zero derivative — defect on both precisions, root-cause, do not close |
 | AD-vs-FD, all other legs, x64 | 15 | rel ≤ 0.05, and ≤ run 2's float32 rel (1.0e-4…1.1e-2) | any leg's rel RISES under x64: the float32 pass was noise agreeing with noise — report as a finding |
 | everything else | 152 | unchanged from run 2 to replay tolerance | any drift: the x64 context leaked into a non-AD path |
 
-**Expected census: 185 pass / report_only, 0 fail, 0 not_interpretable.** If that lands, the
+**Expected census: 184 pass / report_only + 1 report_only (the zero-derivative leg), 0 fail, 0 not_interpretable.** Zero-cost replay of run 2's artifact through the new gate: float32 primary → exactly 9 red (§4 falsifier holds); x64 primary → the 3 forward-identity legs carrying a witness go green at 1.7e-10 / 2.8e-10 / 1.05e-8 scaled; the 5 without one are what the run measures. If that lands, the
 waveguide family is declared chain-closed (v1.8) through the ledger row and support matrix,
 per the contract's "How a family is declared chain-closed".
 

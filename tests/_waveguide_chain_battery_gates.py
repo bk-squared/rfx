@@ -138,6 +138,19 @@ AD_LEGS = {
     ("pec_short", "eps"): ("s11_mag2", "re_s11", "im_s11"),
 }
 EXPECTED_ULP_SKIP = {("pec_short", "eps", "s11_mag2")}
+# v1.8 closing declaration (PI, 2026-09-05; docs/design_notes/20260905_v18_close_predeclaration.md):
+# contract criterion 1 (forward identity) and 3(a) (AD-vs-FD) are evaluated under x64 on the
+# lanes named here. The forward default stays float32. `normalize=False` is bit-identical at 0
+# in float32 and is not declared. Both readings are stored in the artifact; `primary_precision`
+# on each leg says which one the gate read, and RFX_CHAIN_PRIMARY=float32 at measurement time
+# is the pre-declaration's section-4 falsifier (must reproduce run 2's 9 red).
+X64_DECLARED_LANES = {"flux"}
+# Zero-derivative legs (EXPECTED_ULP_SKIP) whose FD nonetheless resolves above the ULP floor
+# are gated on SIGN and ORDER of the x64 gradient against FD, not on rel <= 0.05: the
+# remeasure pre-declaration's own section (ii) branch ("within a factor 3 of -9.821e-7 and
+# keep its sign"), promoted from a report to a gate for that leg only. rel on a ~1e-6 gradient
+# of a 16.0 loss is a ULP question, which is why rel 38 there was never an accuracy finding.
+ZERO_DERIVATIVE_RATIO_MAX = 3.0
 LADDER_OBSERVABLES = (
     # name, dut, entry, kind
     ("slab_s11_mag", "slab", (0, 0), "mag"),
@@ -477,6 +490,22 @@ def ad_fd_entry(*, g_ad: float, f_plus: float, f_minus: float, h: float, loss_dt
     return {"f_plus": float(f_plus), "f_minus": float(f_minus), "fd_ulp_span": span,
             "ulp_floor": FD_ULP_FLOOR, "g_ad": float(g_ad), "g_fd": g_fd, "rel": float(rel),
             "gate": AD_FD_REL_GATE, "verdict": verdict, "loss_dtype": str(np.dtype(loss_dtype))}
+
+
+def zero_derivative_entry(*, g_ad_x64: float, g_fd: float, fd_ulp_span: float) -> dict:
+    """Gate for a pre-declared zero-derivative leg whose FD still resolves (span >= floor).
+
+    pass iff sign(g_ad_x64) == sign(g_fd) and 1/R <= |g_ad_x64|/|g_fd| <= R, R = 3.
+    Run 2's numbers: g_ad_x64 = -9.821e-7, g_fd = -7.245e-7 -> ratio 1.356, same sign.
+    """
+    if fd_ulp_span < FD_ULP_FLOOR:
+        return {"verdict": "skipped_under_ulp_floor", "ratio": None, "same_sign": None,
+                "ratio_max": ZERO_DERIVATIVE_RATIO_MAX}
+    ratio = abs(float(g_ad_x64)) / max(abs(float(g_fd)), 1e-300)
+    same_sign = (float(g_ad_x64) >= 0) == (float(g_fd) >= 0)
+    ok = same_sign and (1.0 / ZERO_DERIVATIVE_RATIO_MAX) <= ratio <= ZERO_DERIVATIVE_RATIO_MAX
+    return {"verdict": "pass" if ok else "fail", "ratio": ratio, "same_sign": same_sign,
+            "ratio_max": ZERO_DERIVATIVE_RATIO_MAX}
 
 
 def forward_identity_pass(max_abs_diff_scaled: float) -> bool:

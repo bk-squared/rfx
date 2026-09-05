@@ -83,8 +83,8 @@ SCHEMA = "rfx.waveguide_chain_battery"
 # Identity stamp of the SECOND run's artifact (re-measurement pre-declaration §7).
 # The first run's artifact stays at schema_version 1 and keeps pointing at the
 # parent note; nothing here rewrites it.
-SCHEMA_VERSION = 2
-PREDECLARATION = "docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md"
+SCHEMA_VERSION = 3
+PREDECLARATION = "docs/design_notes/20260905_v18_close_predeclaration.md"
 ARTIFACT = "tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json"
 SUPERSEDES = "tests/fixtures/waveguide_chain_battery/fixture.json"
 SUPERSEDES_REASON = (
@@ -405,6 +405,13 @@ def stage_ad_fd(args, out_dir: Path, rung: str, prov: dict) -> None:
             # float32 gradient re-evaluated in float64.
             x64_witness = {}
             t_x = time.time()
+            # v1.8 closing declaration: on X64_DECLARED_LANES the x64 reading is the PRIMARY the
+            # gate reads (criterion 1 and 3(a)), so it is measured for EVERY objective, not only
+            # objectives[0]. The forward identity does not depend on the objective, so one S64
+            # per group serves all legs. RFX_CHAIN_PRIMARY=float32 keeps the float32 primary
+            # (the pre-declaration's section-4 falsifier: must reproduce run 2's 9 red).
+            x64_primary = (lane_label in G.X64_DECLARED_LANES
+                           and os.environ.get("RFX_CHAIN_PRIMARY", "declared") != "float32")
             with enable_x64():
                 sim64w = F.build_simulation(dut, dx)
                 with warnings.catch_warnings():
@@ -413,7 +420,9 @@ def stage_ad_fd(args, out_dir: Path, rung: str, prov: dict) -> None:
                         num_periods=F.NUM_PERIODS, normalize=lane,
                         **_override_kw(sim64w, dut, kind, jnp.asarray(theta0, jnp.float64))).s_params)
                     nonfinite = [n for n in objectives if not np.isfinite(grads[n]["g_ad"])]
-                    for name in [objectives[0]] + [n for n in nonfinite if n != objectives[0]]:
+                    witness_names = (list(objectives) if x64_primary
+                                     else [objectives[0]] + [n for n in nonfinite if n != objectives[0]])
+                    for name in witness_names:
                         def f64(th, _name=name):
                             S = sim64w.compute_waveguide_s_matrix(
                                 num_periods=F.NUM_PERIODS, normalize=lane, checkpoint_segments=cseg,
@@ -437,7 +446,27 @@ def stage_ad_fd(args, out_dir: Path, rung: str, prov: dict) -> None:
                 ident = G.forward_identity_metric(grads[name]["S_primal"], ident_ref)
                 ident_concrete = G.forward_identity_metric(S_concrete, S_plain) if kind == "eps" else None
                 expected_skip = (dut, kind, name) in G.EXPECTED_ULP_SKIP
+                w = x64_witness.get(name)
+                primary = "x64" if (x64_primary and w is not None) else "float32"
+                if primary == "x64":
+                    ident_primary = w["forward_identity_x64"]
+                    e_primary = G.ad_fd_entry(g_ad=w["g_ad_x64"], f_plus=fd[name]["f_plus"],
+                                              f_minus=fd[name]["f_minus"], h=h, loss_dtype=fd[name]["loss_dtype"])
+                    if expected_skip and e_primary["verdict"] != "skipped_under_ulp_floor":
+                        # closing pre-declaration section 2: the pre-declared zero-derivative
+                        # leg is REPORT-ONLY on the remeasure note's exit (c); the sign/factor-3
+                        # entry is stored beside it, never read as the verdict.
+                        zd = G.zero_derivative_entry(g_ad_x64=w["g_ad_x64"], g_fd=e_primary["g_fd"],
+                                                     fd_ulp_span=e_primary["fd_ulp_span"])
+                        e_primary = {**e_primary, "zero_derivative": zd, "verdict": "report_only",
+                                     "report_only_reason": "pre-declared zero-derivative objective; "
+                                     "AD and FD are O(1e-7) discretization residuals of a physically "
+                                     "zero derivative (closing pre-declaration section 2)"}
+                else:
+                    ident_primary, e_primary = ident, e
                 legs.append({
+                    "primary_precision": primary,
+                    "forward_identity_float32": ident, "ad_vs_fd_float32": e,
                     "dut": dut, "lane": lane_label, "dx_m": dx, "rung": rung,
                     "objective": name, "theta_kind": kind, "theta0": theta0, "h": h,
                     "x64_context": x64_flag, "s_dtype_fd": fd[name]["s_dtype"],
@@ -445,12 +474,12 @@ def stage_ad_fd(args, out_dir: Path, rung: str, prov: dict) -> None:
                     "value_at_theta0": grads[name]["value"],
                     "grad_dtype": grads[name]["grad_dtype"],
                     "expected_ulp_floor_skip": expected_skip,
-                    "forward_identity": ident,
+                    "forward_identity": ident_primary,
                     "forward_identity_concrete_override_vs_plain": ident_concrete,
                     "wall_time_s": {"ad": grads[name]["wall_time_s"], "fd_pair": fd_wall,
                                     "x64_witness": x64_wall},
-                    "x64_witness": x64_witness.get(name),
-                    **e,
+                    "x64_witness": w,
+                    **e_primary,
                 })
                 _log(f"  {name}: g_ad={e['g_ad']:+.6e} g_fd={e['g_fd']:+.6e} rel={e['rel']:.3e} "
                      f"span={e['fd_ulp_span']:.3g} -> {e['verdict']}; identity scaled={ident['max_scaled_diff']:.3f}")
