@@ -58,6 +58,29 @@ _R0 = 50.0
 _C0 = 0.20e-12
 _N_STEPS = 1600
 
+# Central-difference relative step, DERIVED — not tuned to this fixture.
+# The total error of (f(x+h)-f(x-h))/2h is (h^2/6)|f'''| + eps_solve*|f|/h,
+# minimised at h/x0 ~ (3*eps_solve)^(1/3) for an O(1)-scaled objective. The
+# FDTD solve runs its fields in float32 even under scoped x64 (JAX truncates
+# the requested f64 arrays — see the dtype warnings this file emits), so
+# eps_solve is the float32 epsilon and the cube-root rule gives ~7.1e-3.
+#
+# ROOT CAUSE this replaces (item B2 review, 2026-09-05): the previous 1e-4
+# sat deep in the ROUND-OFF-dominated branch. Measured on this fixture, the
+# ABSOLUTE AD-vs-FD discrepancy at h/x0 = 1e-4 is ~5.2e-6 with the port-current
+# phase correction disabled and ~5.4e-6 with it enabled — i.e. a fixed noise
+# floor, unchanged by the primal edit — while |dS11^2/dR| itself moved 6.4x
+# (2.55e-4 -> 3.99e-5). The RELATIVE error therefore crossed the 5% gate
+# (1.98% -> 11.9%) purely because the signal shrank, with no AD/primal
+# inconsistency anywhere. Measured rel error vs step, correction off/on:
+#   h/x0   1e-4      3e-4     1e-3     3e-3     1e-2
+#   off    1.98%     0.79%    0.06%    0.09%    0.003%
+#   on    11.9%      5.29%    0.41%    0.61%    0.016%
+# The derived 7.1e-3 lands inside the converged plateau in BOTH columns, so
+# the 5% gate below now tests AD-vs-FD agreement rather than FD round-off.
+# The gate itself is UNCHANGED at 5%.
+_FD_REL_STEP = float((3.0 * np.finfo(np.float32).eps) ** (1.0 / 3.0))
+
 
 def _fixture_sim():
     sim = Simulation(
@@ -97,9 +120,11 @@ def test_dS11_dR_dC_ad_matches_fd():
             assert np.isfinite(g), f"grad {name} not finite: {g}"
             assert g != 0.0, f"grad {name} is exactly zero (no path to the DoF)"
 
-        # Central finite differences (scoped x64 makes the FD arithmetic clean).
-        hR = _R0 * 1e-4
-        hC = _C0 * 1e-4
+        # Central finite differences at the DERIVED step (see _FD_REL_STEP:
+        # the FDTD fields are float32 regardless of the scoped x64, so the FD
+        # round-off floor is set by the float32 epsilon, not by x64).
+        hR = _R0 * _FD_REL_STEP
+        hC = _C0 * _FD_REL_STEP
         fdR = (float(_s11_sq_sum(R + hR, C)) - float(_s11_sq_sum(R - hR, C))) / (2 * hR)
         fdC = (float(_s11_sq_sum(R, C + hC)) - float(_s11_sq_sum(R, C - hC))) / (2 * hC)
 
