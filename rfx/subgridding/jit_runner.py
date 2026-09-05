@@ -33,7 +33,6 @@ from rfx.subgridding.sbp_sat_3d import (
 from rfx.subgridding.material_sat import interface_pair_deltas
 from rfx.core.yee import EPS_0, MU_0
 from rfx.probes.probes import _ampere_loop
-from rfx.core.dft_utils import half_step_current_phase as _half_i_phase
 
 
 class SubgridResult(NamedTuple):
@@ -2079,11 +2078,19 @@ def _make_step_fn(ctx):
                 * lumped_sparam_freqs_arr
                 * (step_idx.astype(jnp.float32) * dt)
             )
-            # Yee half-step: the Ampere-loop current is H-derived (H^{n+1/2})
-            # while the voltage is E-derived (E^{n+1}); advance the current
-            # sample by dt/2 so both DFT channels share a reference time
-            # (rfx/core/dft_utils.half_step_current_phase).
-            i_phase = phase * _half_i_phase(lumped_sparam_freqs_arr, dt)
+            # NOTE (item B2, 2026-09-05): the Yee half-step current phase
+            # correction `rfx.core.dft_utils.half_step_current_phase` is
+            # deliberately NOT applied on this LUMPED lane. Its derivation
+            # needs E = E^{n+1} at the sample. On the wire lane that holds
+            # (post-injection sample, issue #683). It does not hold at a
+            # driven lumped cell: #683 measured the pre-injection sample is
+            # "not any field time level of the discrete update", and on THIS
+            # runner the slot is not even fixed — whether this block runs
+            # pre- or post-injection depends on the runtime
+            # ``inject_sources_before_e_coupling`` flag (see the fine-grid
+            # source injection below), so no single dt/2 offset is derivable
+            # here at all. See the scoping note in
+            # rfx/probes/probes.py::update_sparam_probe.
             v_dft = carry["lumped_sparam_v"]
             i_dft = carry["lumped_sparam_i"]
 
@@ -2111,7 +2118,7 @@ def _make_step_fn(ctx):
             for idx_lp, (li, lj, lk, lc, _z0) in enumerate(lumped_sparam_meta):
                 voltage, current = _sample_lumped_vi(li, lj, lk, lc)
                 v_dft = v_dft.at[idx_lp].add(voltage * phase * dt)
-                i_dft = i_dft.at[idx_lp].add(current * i_phase * dt)
+                i_dft = i_dft.at[idx_lp].add(current * phase * dt)
 
         # === Source injection on fine grid ===
         if not inject_sources_before_e_coupling:
