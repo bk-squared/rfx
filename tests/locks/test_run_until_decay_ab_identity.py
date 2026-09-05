@@ -15,7 +15,14 @@ The decay path is forced to run exactly ``N`` steps:
 Agreement level
 ---------------
 Target was bit-identical (``np.array_equal``).  The two harnesses do NOT
-agree bit-for-bit — they agree to ~2.4e-7 relative (float32 epsilon scale).
+agree bit-for-bit — they agree to the float32 epsilon scale.  Re-measured on
+this fixture (CPU, jax 0.11.1, N=80, 2026-09-05): the probe series agrees to
+8.2e-7 relative (abs 9.2e-12); the fields agree to at most 2.3e-6 of a
+component's own peak (hx, abs 1.0e-13), and the largest ABSOLUTE field
+difference is 2.9e-11 (ez, 1.2e-7 of its peak).  The numerically-null hz
+supports no relative statement (its own peak is roundoff).  The earlier
+"~2.4e-7 relative" figure quoted here was neither of those two field numbers
+and did not reproduce.
 This is a PRE-EXISTING difference, not introduced by the W6.1 refactor:
 ``run`` compiles its body inside ``jax.lax.scan`` while ``run_until_decay``
 compiles a standalone ``jax.jit`` step driven from a Python loop, and XLA
@@ -30,11 +37,15 @@ reproduces both the scan path and the loop path bit-exactly.
 We therefore gate at the reassociation agreement level via ``np.allclose``
 rather than ``np.array_equal``.  ``rtol`` is left at the pre-existing 1e-6;
 it is retained only so the gate keeps a relative component if the fixture
-ever grows a much larger dynamic range.  Measured on this fixture it binds
-NOTHING: ``rtol*|b| < atol`` on every element of every compared array, under
-the old flat floor as well as under the derived one, so the gate is in
-practice pure-atol.  Do not read "rtol unchanged" as a statement that the
-gate's sensitivity is unchanged — the atol is what gates here.
+ever grows a much larger dynamic range.  Measured on this fixture under the
+DERIVED floors it binds NOTHING: ``rtol*|b| < atol`` on all 750 000 compared
+field elements and all 80 probe samples, so the gate is in practice pure-atol.
+Under the RETIRED flat ``atol = 1e-10`` that was not quite true — ``rtol*|b|``
+exceeded the floor on the 9 peak E elements (1 ez at 2.45e-10, 4 ex and 4 ey
+at 1.01e-10) of 375 000 E elements, and nowhere in H.  Immaterial to any
+verdict, but "rtol bound nothing under the old floor either" would be false.
+Do not read "rtol unchanged" as a statement that the gate's sensitivity is
+unchanged — the atol is what gates here.
 
 The absolute floor is no longer the flat ``atol = 1e-10``: that literal was
 calibrated to the CPU reassociation scale and is EXCEEDED on GPU (RTX4090:
@@ -84,7 +95,11 @@ from rfx.sources.sources import GaussianPulse
 from rfx.simulation import run, run_until_decay, make_source, make_probe
 
 # Pre-existing scan-vs-loop XLA agreement envelope (see module docstring).
-# Measured: probe rel ~6.5e-7 (abs 7.3e-12), field rel ~2.4e-7 (abs 5.8e-11).
+# Re-measured 2026-09-05 (CPU, jax 0.11.1, this fixture, N=80): probe 8.2e-7
+# relative (abs 9.2e-12); worst field difference relative to its own component
+# peak 2.3e-6 (hx, abs 1.0e-13); largest absolute field difference 2.9e-11
+# (ez, 1.2e-7 relative).  The previous "field rel ~2.4e-7 (abs 5.8e-11)" pair
+# reproduced neither quantity.
 _RTOL = 1e-6
 
 # GPU-observed scan-vs-jitloop probe diff (VESSL 369367258329 / RTX4090).
@@ -141,6 +156,19 @@ _GPU_OBSERVED_TS_DIFF = 1.037e-10
 # Equivalently ``k_he = S/Z0`` and ``k_eh = S*Z0`` with S the Courant number,
 # which is why the two directions are reciprocal and neither is 1.
 #
+# What ``k_he`` is NOT: it is the ONE-STEP injection coefficient, the roundoff
+# an E-side error deposits into H in a single update.  The PROPAGATED
+# (wave-like) E->H coupling that the accumulated state actually shows is
+# larger by 1/S -- ``k_he/S = 1/Z0`` -- and the measurement points the same
+# way: the A/B diff ratios on this fixture are ez/hx = 290 and ez/hy = 351,
+# nearer ``Z0 = 376.7`` than ``1/k_he = 659.1`` (S = 0.5716, 1/S = 1.75).  So
+# the one-step coefficient UNDERSTATES the propagated E->H coupling, and hence
+# the H floor, by ~1.75x.  That factor is one of the things ``C`` has to
+# absorb: 2 (differencing two independently rounded harnesses) x 1.75
+# (propagated vs one-step coupling) = 3.5, which still fits under C = 4.  Not
+# a gate risk either way -- the measured hx margin is 141.7x -- but read the
+# k_he derivation as a scale, not as an exact coefficient.
+#
 # With one shared E-scale floor the H checks were inert: the floor sat ~4800x
 # above the H group's own ``C*N*eps*max|H|`` and ~660x above the correctly
 # coupled bound, i.e. at 22% (hx) / 18% (hy) of those components' own peaks --
@@ -177,10 +205,23 @@ def _curl_roundoff_coupling(grid, materials):
     cell size present and the smallest relative material constant.
 
     Axis-aware: ``d`` is the minimum of whatever cell sizes the grid exposes,
-    so a rectilinear grid is not assumed cubic.
+    so a rectilinear grid is not assumed cubic.  Each candidate is reduced
+    with ``np.min`` rather than ``float()`` because those attributes are not
+    all scalars: ``rfx.nonuniform.NonUniformGrid`` carries ``dz`` as an
+    ``(nz,)`` array and the per-cell profiles ``dx_arr`` / ``dy_arr`` next to
+    the scalar boundary ``dx`` / ``dy``, and ``float()`` on the array raised
+    ``TypeError: Only scalar arrays can be converted to Python scalars``.
+    The per-cell profiles are included where present, since the smallest cell
+    anywhere is the largest-coefficient cell and therefore the conservative
+    choice for a floor.
     """
-    dx = float(grid.dx)
-    d = min(dx, float(getattr(grid, "dy", dx)), float(getattr(grid, "dz", dx)))
+    cell_sizes = []
+    for name in ("dx", "dy", "dz", "dx_arr", "dy_arr"):
+        value = getattr(grid, name, None)
+        if value is None:
+            continue
+        cell_sizes.append(float(np.min(np.asarray(value))))
+    d = min(cell_sizes)
     mu_min = float(np.min(np.asarray(materials.mu_r))) * MU_0
     eps_min = float(np.min(np.asarray(materials.eps_r))) * EPS_0
     dt = float(grid.dt)
@@ -379,7 +420,16 @@ def test_field_reassoc_floors_still_red_physical_perturbations():
       (a) a reassociation-scale perturbation of hx PASSES -- taken as the
           GPU-observed probe (E-scale) diff pushed through the Yee curl with
           the kernel's own coefficient ``k_he = dt/(mu_r*MU_0*d)``, which is
-          what an E-side reassociation of that size does to H in one step;
+          what an E-side reassociation of that size does to H in one step.
+          Read the headroom it leaves (90.2x here) for what it is: ``k_he``
+          cancels between the perturbation and the coupling-set hx floor, so
+          90.2x is the E-side identity ``C*n_steps*eps*max|E| / 1.037e-10``,
+          NOT a measured H margin.  The best available H-side estimate is an
+          extrapolation: the measured CPU hx A/B diff (1.00e-13) scaled by the
+          probe's GPU/CPU ratio (1.037e-10 / 9.21e-12 = 11.3x) is 1.13e-12,
+          i.e. 12.6x under the 1.42e-11 hx floor.  The GPU run of this lock
+          that would replace that extrapolation with a measurement is OWED and
+          is recorded separately; do not cite 90.2x as GPU H headroom;
       (b) a 1% whole-array scale error in hx FAILS;
       (c) a 10% single-element error in hx FAILS;
       (d) the RETIRED shared-E-scale floor would have ACCEPTED both (b) and
@@ -422,7 +472,12 @@ def test_field_reassoc_floors_still_red_physical_perturbations():
     )
 
     # (a) Reassociation-scale noise on H, derived from the GPU-observed E-scale
-    #     diff and the curl coupling coefficient -- must PASS.
+    #     diff and the curl coupling coefficient -- must PASS.  NOTE: k_he
+    #     cancels out of the ratio below (the hx floor is
+    #     C*n_steps*eps*k_he*max|E| whenever the coupling term sets it),
+    #     so what this asserts is the E-side identity C*n_steps*eps*max|E| >
+    #     1.037e-10, not an H-specific margin.  See the docstring for the
+    #     extrapolated (not measured) ~12.6x H-side GPU margin.
     h_reassoc = k_he * _GPU_OBSERVED_TS_DIFF
     assert atol_hx > h_reassoc, (
         f"derived hx floor {atol_hx:.3e} must cover the curl-coupled "
