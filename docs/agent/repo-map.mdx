@@ -107,8 +107,12 @@ realized cumulative cell edges by `_nu_flux_tangential_bounds`
 (`rfx/runners/nonuniform.py`) — an argmin-on-edges lookup with a NODE→CELL
 narrowing (#868), never a cubic-cell `size/dx`. Each endpoint snaps to the
 nearest cumulative cell edge, and a window that reaches outside the interior is
-clamped to it (as on the uniform lane) with a `UserWarning`; only a degenerate
-(<1 cell) window raises. See
+clamped to it (as on the uniform lane); only a degenerate (<1 cell) window
+raises. The clamp is announced by a `UserWarning` when a requested endpoint sits
+outside the interior by more than half the end cell, or when the realized extent
+differs from the requested `size` by more than the largest cell touching the
+window; a clamp of half an end cell or less is silent (indistinguishable from
+ordinary sub-cell snapping). See
 `tests/unit/nonuniform/test_nu_flux_monitor_finite_size.py` and the graded-z row
 of `docs/guides/support_matrix.md`.
 

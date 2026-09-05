@@ -388,17 +388,28 @@ def _nu_flux_tangential_bounds(d_arr, pad_lo: int, pad_hi: int,
     "never clamps", which is false). ``argmin`` is taken over the interior edge
     array, so a requested endpoint outside ``[0, edges[-1]]`` snaps to the first
     or last edge: ``size`` larger than the axis, or a ``center`` that pushes the
-    window off an end, silently yields the CLAMPED intersection with the
-    interior (e.g. ``size=30 mm`` on a 10 mm axis -> the whole axis;
-    ``center=1 mm, size=6 mm`` -> ``[0, 4] mm``). Inside the interior the
-    endpoints still snap by up to half a local cell each. That is the same
-    behaviour as the uniform lane, and it is deliberate; only the degenerate
-    (<1 cell) case raises. To make it non-silent, a ``UserWarning`` is emitted
-    whenever the realized extent differs from the requested ``size`` by more
-    than the snapping bound (the largest cell touching the window, which
-    envelopes the (d_lo + d_hi)/2 two-endpoint worst case) — i.e. exactly when
-    the window was clamped or snapped to a non-adjacent edge, never for ordinary
-    sub-cell snapping.
+    window off an end, yields the CLAMPED intersection with the interior (e.g.
+    ``size=30 mm`` on a 10 mm axis -> the whole axis; ``center=1 mm,
+    size=6 mm`` -> ``[0, 4] mm``). Inside the interior the endpoints still snap
+    by up to half a local cell each. That is the same behaviour as the uniform
+    lane, and it is deliberate; only the degenerate (<1 cell) case raises.
+
+    To make it non-silent a ``UserWarning`` is emitted when EITHER of two
+    runtime-derived conditions holds (fix2b, verify nit 1 — the previous single
+    size-difference test was a PROXY that missed clamps of up to one cell):
+
+      (a) CLAMP, tested PER ENDPOINT: the REQUESTED ``center -/+ size/2``
+          reaches outside ``[0, edges[-1]]`` by more than half the end cell
+          (``interior[0]/2`` at the low end, ``interior[-1]/2`` at the high
+          end). Half a cell is the threshold because an endpoint anywhere in
+          the interior may legitimately move that far by ordinary snapping, so
+          a clamp of half an end cell or less is indistinguishable from it and
+          stays silent — the one documented silent case.
+      (b) SNAP PAST AN ADJACENT EDGE: the realized extent differs from the
+          requested ``size`` by more than the largest cell touching the window
+          (which envelopes the (d_lo + d_hi)/2 two-endpoint worst case).
+
+    Ordinary sub-cell snapping inside the interior triggers neither.
     """
     d_np = np.asarray(d_arr)
     interior = interior_cells(d_np, pad_lo, pad_hi)
@@ -418,15 +429,40 @@ def _nu_flux_tangential_bounds(d_arr, pad_lo: int, pad_hi: int,
             f"lo_local={lo_local}, hi_local={hi_local}); it spans no "
             f"interior cell -- widen size= or move center=")
     realized = float(edges[hi_local] - edges[lo_local])
+    axis_len = float(edges[-1])
+    # (a) per-endpoint clamp: how far each REQUESTED endpoint reaches outside
+    #     the realized interior, against half the end cell it would be clamped
+    #     onto. Both quantities are read off the realized profile.
+    over_lo = max(0.0 - lo_phys, 0.0)
+    over_hi = max(hi_phys - axis_len, 0.0)
+    half_end_lo = float(interior[0]) / 2.0
+    half_end_hi = float(interior[-1]) / 2.0
+    clamped = (over_lo > half_end_lo) or (over_hi > half_end_hi)
+    # (b) snap past an adjacent edge (size-difference test, kept).
     snap_bound = float(np.max(interior[max(lo_local - 1, 0):hi_local + 1]))
-    if abs(realized - float(size)) > snap_bound:
+    far_snap = abs(realized - float(size)) > snap_bound
+    if clamped or far_snap:
+        why = []
+        if over_lo > half_end_lo:
+            why.append(
+                f"CLAMPED at the low end (requested {lo_phys:.6g} m is "
+                f"{over_lo:.3g} m below the interior, more than the "
+                f"{half_end_lo:.3g} m half end cell)")
+        if over_hi > half_end_hi:
+            why.append(
+                f"CLAMPED at the high end (requested {hi_phys:.6g} m is "
+                f"{over_hi:.3g} m above the interior, more than the "
+                f"{half_end_hi:.3g} m half end cell)")
+        if far_snap:
+            why.append(
+                f"snapped past an adjacent edge (extent differs from the "
+                f"request by {abs(realized - float(size)):.3g} m, more than "
+                f"the {snap_bound:.3g} m largest cell touching the window)")
         warnings.warn(
             f"flux monitor center={center!r} size={size!r} resolves to a "
             f"{realized:.6g} m extent on this graded axis (interior "
-            f"[0, {float(edges[-1]):.6g}] m): the requested window was CLAMPED "
-            f"or snapped past an adjacent edge (difference {abs(realized - float(size)):.3g} m "
-            f"exceeds the {snap_bound:.3g} m one-cell snapping bound). The "
-            "monitor integrates the realized extent, not the requested one.",
+            f"[0, {axis_len:.6g}] m): " + "; ".join(why) + ". The monitor "
+            "integrates the realized extent, not the requested one.",
             UserWarning, stacklevel=2)
     node_span = (lo_local + pad_lo, hi_local + pad_lo + 1)
     return _node_span_to_cell_span(node_span)
