@@ -1,13 +1,25 @@
 # waveguide_chain_battery — fixture JSON schema
 
-`fixture.json` in this directory is written by the measurement driver
+Two artifacts live in this directory, one per pre-declared run, and they share this schema.
+
+| file | `schema_version` | pre-declaration | port | shift pair |
+|---|---|---|---|---|
+| `fixture.json` | 1 | `docs/design_notes/waveguide_chain_battery_predeclaration.md` | transverse eigenproblem on N+1 cells for an N-cell guide (`fc_port_hz` 5.877188 / 6.204954 / 6.378004 GHz) | `half_turn_pair` (0.03048, 0.08890) |
+| `fixture_guide_cell_aperture.json` | 2 | `docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md` | corrected: the guide's own N cells (`fc_port_hz` 6.523901 / 6.548821 / 6.555060 GHz) | `sign_discriminating_pair` (0.02540, 0.09906) |
+
+`fixture.json` is frozen: it is the record of a port that no longer exists and is neither
+edited nor re-pinned. `fixture_guide_cell_aperture.json` is the live artifact and says so in
+its own `supersedes` key.
+
+Both are written by the measurement driver
 `scripts/diagnostics/waveguide_chain_battery_measure.py` (one JSON per case persisted as it
-finishes, then assembled) and replayed by `tests/oracle/test_waveguide_chain_battery.py`. The
-pre-declaration `docs/design_notes/waveguide_chain_battery_predeclaration.md` and the builder
-`tests/_waveguide_chain_battery_fixture.py` were committed first (PR #861) so that every
-tolerance, position and drive setting provably predates the first measured S-parameter. This
-file fixes the schema the measurement writes, so the writer and the replay gate cannot drift.
-Gate arithmetic shared by the writer and the replay: `tests/_waveguide_chain_battery_gates.py`.
+finishes, then assembled) and replayed by `tests/oracle/test_waveguide_chain_battery.py` and
+`tests/oracle/test_waveguide_chain_battery_guide_cell_aperture.py`. Each run's pre-declaration
+and the builder `tests/_waveguide_chain_battery_fixture.py` were committed first (PR #861 for
+run 1, PR #891 for run 2) so that every tolerance, position and drive setting provably predates
+that run's first measured S-parameter. This file fixes the schema the measurement writes, so
+the writer and the replay gate cannot drift. Gate arithmetic shared by the writer and the
+replay: `tests/_waveguide_chain_battery_gates.py`.
 
 Units: metres, hertz, seconds, S/m, decibels, degrees. Complex values are written as
 `[re, im]` pairs. Every measured number carries the provenance block that produced it.
@@ -17,9 +29,12 @@ Units: metres, hertz, seconds, S/m, decibels, degrees. Complex values are writte
 | key | type | meaning |
 |---|---|---|
 | `schema` | string | `"rfx.waveguide_chain_battery"` |
-| `schema_version` | int | starts at 1; bump on any key change |
+| `schema_version` | int | starts at 1; bump on any key change. 1 = run 1 (`fixture.json`), 2 = run 2 (`fixture_guide_cell_aperture.json`, which adds `shift_pair_name`, `supersedes` and `supersedes_reason`) |
 | `predeclaration` | string | path of the design note, plus its commit sha in `predeclaration_sha` |
 | `predeclaration_sha` | string | the commit the note was read at — must predate `provenance.commit` |
+| `shift_pair_name` | string | schema_version ≥ 2 only: which named pair in `tests/_waveguide_chain_battery_fixture.py::_K_SHIFT_PAIRS` this run's `reference_planes_shifted_m` realizes. An artifact without the key resolves to `half_turn_pair`, so the builder guard keeps binding for both files and cannot silently accept a third pair |
+| `supersedes` | string | schema_version ≥ 2 only: path of the artifact this one replaces |
+| `supersedes_reason` | string | schema_version ≥ 2 only: one line saying why, so a reader who opens either file is told which is live |
 | `generated_at` | string | ISO-8601 UTC |
 | `provenance` | object | see below |
 | `fixture` | object | the constants of the builder, restated for the record (see below) |
