@@ -79,6 +79,19 @@ float32 readings stay in the artifact as the recorded envelope of the float32 ta
 waveguide family is declared chain-closed (v1.8) through the ledger row and support matrix,
 per the contract's "How a family is declared chain-closed".
 
+## 3.1 CPU smoke of the closing script, before the run (coarse rung, local)
+
+All eight flux legs read `primary_precision = x64` with a witness each; the zero-derivative
+leg lands `report_only`, the other seven `pass`. x64 forward identity 0.08–0.14 scaled
+against float32's 0.16–4.10 on the same legs — the declared shape. One thing to state ahead
+of the run: **the float32 AD on `pec_short | flux | sigma | s11_mag2` was NaN at the coarse
+rung on CPU** (x64: −6.894 against FD −6.898, rel 7e-4). Both GPU runs at the claims rung
+read it finite at −6.4214, identical to six digits, so the closing run is not expected to
+see it; if it does, the script's non-finite path (already designed for this) carries the
+verdict on the x64 reading, the float32 NaN is stored beside it, and the row is reported as
+a finding — a float32 tape producing a NaN the x64 tape does not is the declaration's
+premise, not a surprise to it. It is not read as a pass by the x64 lane alone.
+
 ## 4. Falsifier for the declaration itself
 
 Run the SAME script with the x64 primary disabled (float32 primary, one flag). It must
