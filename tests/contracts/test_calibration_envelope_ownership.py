@@ -250,6 +250,7 @@ FANOUT: dict[str, str] = {
     "docs/design_notes/20260903_test_reorg_tier3b_consolidation.md": DIFFERENT_QUANTITY,
     "docs/design_notes/20260904_aux_echo_record_invariant.md": RESOLVING_REFERENCE,
     "docs/design_notes/20260905_post_merge_review_20_prs.md": HISTORICAL_PROSE,
+    "docs/design_notes/20260906_issue928_ownership_decision.md": HISTORICAL_PROSE,
     "docs/design_notes/issue812_cv04_fringe_gate_predeclaration.md": HISTORICAL_PROSE,
 }
 

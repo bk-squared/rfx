@@ -484,6 +484,7 @@ CLASSIFICATION: dict[str, str] = {
     "docs/design_notes/20260905_post_merge_review_20_prs.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260905_post_v18_plan_rasterization_preflight_cst.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260905_v18_close_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260906_issue928_ownership_decision.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/chain_closure_contract.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/cv10_pmc_realization_regate.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/cv14_rect_cavity_gate_predeclaration.md": NO_ARTIFACT_REFERENCE,
