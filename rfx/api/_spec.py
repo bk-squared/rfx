@@ -1281,8 +1281,9 @@ class WaveguideSMatrixResult(NamedTuple):
     divided out so the residual is not defined there (``normalize="flux"``
     and ``normalize=False`` keep it).
     ``s21_phase_residual_meta`` always carries ``beta_convention``,
-    ``f_cutoff_hz``, ``L_m``, ``n_bins`` and ``masked_bins``, plus a
-    ``reason`` when the value is ``None``.
+    ``f_cutoff_hz``, ``L_m``, ``n_bins``, ``masked_bins`` and ``normalize``
+    (the lane the number was read under), plus a ``reason`` when the value
+    is ``None``.
     """
     s_params: np.ndarray
     freqs: np.ndarray
