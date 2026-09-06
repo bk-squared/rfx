@@ -43,12 +43,24 @@ in the same commit as its reason.
 - **(A)** the opted-in documents pass on the committed tree, with every reference resolving
   and every value inside its stated precision.
 - **(B)** the gate fails on a measured round-1 defect, for the right reason. The instance is
-  cv15: the round-1 lane regenerated the committed rfx leg so that
-  `validation/crossval/_15_patch_results/rfx.json::s11_dip_db = -4.4298` moved to
-  −0.3448 dB, while the prose describing it did not move. `test_the_gate_fires_on_the_measured_cv15_regression`
-  reproduces that artifact mutation in a scratch tree and asserts the gate reports the
-  document, the reference and both values. A second arm asserts the same for a sign
-  inversion of the cited literal.
+  cv15: the round-1 lane regenerated the committed rfx leg so that its dip depth moved from
+  −4.4298 dB to −0.3448 dB, while the prose describing it did not move.
+  `test_the_gate_fires_on_the_measured_cv15_regression` reproduces that artifact mutation
+  (−0.3448 dB, the constant `CV15_REGENERATED_VALUE`) in a scratch tree and asserts the gate
+  reports the document, the reference and both values. A second arm asserts the same for a
+  sign inversion of the cited literal.
+
+  **Re-anchored 2026-09-06 (issue #920).** cv15's leg was regenerated again, this time
+  because the fixture itself was wrong: the rfx feed post was floating between the two
+  conductors instead of galvanically bridging them, so its dip was a correct extraction of
+  the wrong circuit. The committed leg now reads
+  `validation/crossval/_15_patch_results/rfx.json::s11_dip_db = -21.9242`, and the two
+  values above (−4.4298 and −0.3448) are the pre-#920 history, no longer resolvable against
+  the current artifact. Criterion (B) is unaffected: it fires whenever the artifact holds
+  something other than what this document cites, and the injected −0.3448 dB is still a
+  value the leg does not hold. The pre-#920 leg is kept as
+  `validation/crossval/_15_patch_results/rfx_floating_post_1f005d0d.json::s11_dip_db = -4.4298`
+  so the round-1 narrative above keeps a resolvable artifact of its own.
 
 ## 5. What this gate does NOT catch
 

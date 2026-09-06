@@ -259,6 +259,29 @@ claim can be refuted without a solve.
 
 ### 6.6 cv15's rfx leg was STALE — refreshed here, with the delta bisected
 
+> **SUPERSEDED for the leg it describes (issue #920, 2026-09-06).** Every row
+> of the table below is a measurement of a fixture whose probe post was
+> FLOATING: it spanned the two interior substrate cells and touched neither
+> conductor, so a series gap capacitance (~−347j Ω) sat between feed and patch
+> while openEMS's `AddLumpedPort` fed the same board galvanically. The
+> bisection's conclusion still stands exactly as written — the ring-down half
+> was invariant and the |S11| move belonged entirely to the wire-port
+> extraction, which is why §6.6 correctly refused to adjudicate it — but the
+> dip depths in the table (−4.4298, +1.6670, −0.3448 dB) are properties of that
+> wrong circuit and must not be quoted as rfx's patch return loss. The leg
+> `_15_patch_results/rfx.json` is now the galvanic-feed regeneration
+> (−21.92 dB @ 2.360 GHz, ring-down 2.3646 GHz, Q 10.30); the leg this section
+> measured is archived as `_15_patch_results/rfx_floating_post_1f005d0d.json`.
+> The two "deserve a separate issue" items in the last bullet were #920, and
+> the passivity margin question they raised is answered by it: on a galvanic
+> feed max|S11| reads 0.989, margin 0.061.
+>
+> This lane's own finding is NOT superseded. Its comparison is #740 one-plane
+> ground versus the correct wall plane, and both members were recorded under
+> the same (floating) feed, so the feed cancels out of the ratio it studies.
+> Re-recording `tests/fixtures/patch_mode_identification/*` through the
+> post-#920 builder is the #920 follow-up.
+
 The gate needs the leg to carry its mode list, so the leg was regenerated.
 Doing so exposed that the committed leg no longer reproduced. Bisected with
 three control runs of the identical command:
@@ -292,6 +315,13 @@ at commit `5b6db32`, now carrying a `provenance` block. Gated consequences of
 the refresh: the f0 gate is unchanged (it reads the ring-down, which did not
 move — 0.69 % vs openEMS either way); passivity stays PASS; dip depth is not
 gated.
+
+> **Observed while re-anchoring this section for #920 (2026-09-06).** That
+> refresh never reached `main`: the leg committed there was the `1f005d0d` one
+> throughout (its top-level keys carry no `provenance` block), consistent with
+> the manifest's "script and committed leg unchanged" STOP. Recorded because
+> this paragraph reads as if it did; the #920 regeneration replaces the leg
+> either way, and that one carries `feed_check` rather than `provenance`.
 
 ### 6.7 CORRECTION (2026-09-01, same day) — two digits in §6.5
 
@@ -438,7 +468,11 @@ now-withdrawn gate could read a mode list. With no gate to feed, the
 regeneration has no purpose and the leg is restored to #768's committed
 version, which owns it. No evidence is lost: the reproduction's ring-down and
 the committed leg's are the same solve to the bound asserted by
-`test_cv15_reproduction_ringdown_matches_the_committed_leg`, and the mode list
+`test_cv15_reproduction_ringdown_matches_the_floating_post_leg` (renamed under
+#920, 2026-09-06: the leg it reads is now the archived
+`_15_patch_results/rfx_floating_post_1f005d0d.json` — byte-identical to the one
+restored here — because the shipping `rfx.json` is the galvanic-feed
+regeneration), and the mode list
 lives in the `two_plane_ground.modes` list of `tests/fixtures/patch_mode_identification/cv15_ringdown_spectra.json`, whose `source`
 field now names the run rather than the leg. §6.6's wire-port |S11| bisection
 stands as a **report** — it is extractor territory, not this lane's, and it

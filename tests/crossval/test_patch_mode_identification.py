@@ -326,18 +326,61 @@ def test_cv15_correct_build_would_pass_with_margin():
     assert worst < 0.5 * ident.tol        # margin, not a squeaker
 
 
-def test_cv15_reproduction_ringdown_matches_the_committed_leg():
+def test_cv15_reproduction_ringdown_matches_the_floating_post_leg():
     """The reproduction the two cv15 fixtures rest on is the same ring-down as
-    the leg #768 committed -- so reverting this lane's regeneration of
-    ``_15_patch_results/rfx.json`` (design note section 6.9) costs no evidence.
+    the leg #768 committed -- so reverting this lane's regeneration of that leg
+    (design note section 6.9) costs no evidence.
+
+    ROOT CAUSE of the re-anchor (issue #920, 2026-09-06). This test used to
+    read ``_15_patch_results/rfx.json``, the leg cv15 currently ships. It no
+    longer can, and the reason is not a tolerance: cv15's feed was FIXED. Its
+    probe post used to float between the two conductors, touching neither; it
+    now bridges them galvanically, as openEMS's ``AddLumpedPort`` always did.
+    A floating post barely loads the patch, so the ring-down it recorded
+    (f0 2.3139 GHz, Q 18.9) was the cavity's nearly-unloaded resonance; the
+    galvanic post loads it properly (2.3646 GHz, Q 10.3, committed in the
+    regenerated leg). Both fixtures under this lane were recorded through the
+    pre-#920 builder, so the leg they correspond to is the archived one,
+    ``rfx_floating_post_1f005d0d.json`` -- byte-identical to the leg this test
+    was written against, and now named explicitly rather than reached through
+    a path whose contents moved underneath it.
+
+    What this costs the #812 lane: nothing that it claims. Its finding is that
+    a dimensionless mode-pair instrument cannot separate the #740 one-plane
+    ground from the correct build, and both members of that comparison were
+    recorded under the SAME feed, so the feed cancels out of it. What the
+    fixtures no longer are is a live reproduction of today's production
+    builder -- re-recording them is the #920 follow-up, not this fix.
 
     The leg carries no mode list; f0 is the field the two share."""
     fx = _fixture("cv15_ringdown_spectra.json")["two_plane_ground"]
     leg = json.loads(
-        (REPO_ROOT / "validation/crossval/_15_patch_results/rfx.json")
-        .read_text(encoding="utf-8"))
+        (REPO_ROOT / "validation/crossval/_15_patch_results"
+         / "rfx_floating_post_1f005d0d.json").read_text(encoding="utf-8"))
     assert "modes" not in leg          # the committed leg is #768's, untouched
     assert fx["f_harminv_hz"] == pytest.approx(leg["f_harminv_hz"], rel=1e-7)
+
+
+def test_cv15_current_leg_is_the_galvanic_feed_and_moved_the_ringdown():
+    """The counterpart of the re-anchor above: cv15's SHIPPING leg is the
+    galvanic-feed regeneration (#920), and it is a different measurement from
+    the fixtures -- pinned here so the substitution above cannot be read as
+    "the leg did not really change"."""
+    leg = json.loads(
+        (REPO_ROOT / "validation/crossval/_15_patch_results/rfx.json")
+        .read_text(encoding="utf-8"))
+    old = json.loads(
+        (REPO_ROOT / "validation/crossval/_15_patch_results"
+         / "rfx_floating_post_1f005d0d.json").read_text(encoding="utf-8"))
+    assert leg["feed_check"]["galvanic"] is True
+    assert leg["feed_check"]["n_dead_cells"] == 2       # both ends shorted
+    assert leg["feed_check"]["live_flags"][0] is False
+    assert leg["feed_check"]["live_flags"][-1] is False
+    # the probe now loads the patch: f0 up, Q down, dip matched
+    assert leg["f_harminv_hz"] > old["f_harminv_hz"]
+    assert leg["q_harminv"] < 0.75 * old["q_harminv"]
+    assert leg["s11_dip_db"] < -10.0
+    assert old["s11_dip_db"] > -10.0                    # the floating post
 
 
 def test_cv15_740_defect_is_a_common_mode_dilation():

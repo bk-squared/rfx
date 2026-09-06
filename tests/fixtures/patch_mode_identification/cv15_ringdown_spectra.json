@@ -9,7 +9,7 @@
   "platform": "CPU"
  },
  "two_plane_ground": {
-  "source": "cv15 build_rfx_sim(two_plane=True) at repo commit 5b6db32, num_periods=45.0 n_freqs=181 --gain (the committed leg's own command). The committed leg validation/crossval/_15_patch_results/rfx.json carries no mode list; its f_harminv_hz agrees with this run's to better than 1e-7 relative -- bound asserted by tests/crossval/test_patch_mode_identification.py::test_cv15_reproduction_ringdown_matches_the_committed_leg",
+  "source": "cv15 build_rfx_sim(two_plane=True) at repo commit 5b6db32, num_periods=45.0 n_freqs=181 --gain (the committed leg's own command). The committed leg validation/crossval/_15_patch_results/rfx.json carries no mode list; its f_harminv_hz agrees with this run's to better than 1e-7 relative -- bound asserted by tests/crossval/test_patch_mode_identification.py::test_cv15_reproduction_ringdown_matches_the_floating_post_leg. NOTE (issue #920, 2026-09-06): that leg is now the ARCHIVED validation/crossval/_15_patch_results/rfx_floating_post_1f005d0d.json, not the shipping rfx.json. cv15's feed was a floating post (touching neither conductor) when this fixture was recorded; it is galvanic ground-sheet-to-patch-sheet since #920, which moved the shipping leg's ring-down to 2.3646 GHz / Q 10.3. Re-recording this fixture through the post-#920 builder is the #920 follow-up; the #812 finding it supports compares two builds recorded under the SAME feed, so the feed cancels out of it",
   "f_harminv_hz": 2313947494.5435557,
   "modes": [
    {

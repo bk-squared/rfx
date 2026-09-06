@@ -192,6 +192,54 @@ outside, the phase referee is analytic Airy only, and "chain-closed" is not
 "supported". The two entries below that say "not chain-closed" describe runs 1
 and 2 and are superseded by this one.
 
+### Fixed — cv15's probe feed is galvanic; its |S11| dip was measuring a floating post (#920)
+
+`validation/crossval/15_patch_antenna_rt5880.py` fed its patch with a wire port
+that touched neither conductor. The span ran from `z_sub_lo + DX` for `2*DX` —
+the two INTERIOR cells of the 4-cell substrate — while openEMS's
+`AddLumpedPort`, the reference this case compares against, bridges ground plane
+to patch conductively. The two solvers were not modelling the same feed.
+
+- **Root cause and its signature.** A floating post adds a series gap
+  capacitance (~0.20 pF, ~-347j ohm at 2.32 GHz) that never resonates out.
+  `Re(Z_in)` still peaked at ~46 ohm on the patch resonance — the resonance was
+  there and near-matched — but the reactance held |S11| at 0.964..0.998 across
+  the whole band, so the dip filled in to -0.32 dB against openEMS's -20.1 dB.
+  The number was a correct extraction of the wrong circuit. rfx's `#556`
+  preflight advisory named the defect verbatim on every run ("the feed never
+  galvanically reaches it and coupling is capacitive only"); nothing gated on
+  it, and the module docstring instead described the shallow dip as a property
+  of the rfx lumped port.
+- **Fix.** The port is anchored on the two conductors' own realized node planes
+  — the ground body's `corner_lo` to the patch body's — derived from the
+  assembled geometry, not typed. Its first and last cells then land inside the
+  two sheets, are classified dead, and are left PEC by `run()`'s live-only
+  clearing, so the feed shorts into each sheet without punching a hole in it.
+  A new `assert_galvanic_feed()` re-derives that from the assembled PEC mask
+  and refuses to quote a number otherwise; `#556` is now silent at both ends.
+- **Before / after** (CPU, `rfx --num-periods 45 --n-freqs 181 --gain`;
+  settling -52.6 dB, SETTLED; all gates PASS):
+
+  | | dip depth | f_dip | f0 ring-down | Q | max\|S11\| | D |
+  |---|---|---|---|---|---|---|
+  | floating post (`_15_patch_results/rfx_floating_post_1f005d0d.json`) | -4.43 dB | 2.310 GHz | 2.3139 GHz | 18.90 | 0.787 | 7.24 dBi |
+  | galvanic (`_15_patch_results/rfx.json`) | **-21.92 dB** | 2.360 GHz | 2.3646 GHz | 10.30 | 0.989 | 7.24 dBi |
+  | openEMS (`_15_patch_results/openems.json`) | -20.10 dB | 2.330 GHz | — | — | 0.992 | 7.34 dBi |
+
+  The archived row is that leg exactly as committed at `1f005d0d`, i.e. under
+  the pre-#776 extractor; re-running the same floating-post fixture on today's
+  extractor gives -0.3448 dB, which is the bullet below.
+
+  The f0 gate moves from 0.69 % to 1.49 % versus openEMS (bar 8 %), which is
+  the honest cost of the fix: `Q` 18.90 -> 10.30 is the patch finally being
+  loaded by its probe, and a loaded resonance sits higher. Directivity agrees
+  to 0.09 dB.
+- **#776 / #777 were right.** Those wire-port PRs changed how fully the frame
+  reports a gap reactance (-56j -> -347j), which is why the dip collapsed from
+  -4.43 to -0.32 dB on `main` after they merged. On a galvanic feed the same
+  frame reads 52.1 + 7.9j and -21.92 dB. The extractor was reporting the
+  fixture correctly both times.
+
 ### Fixed — the waveguide settling witness no longer scores port records that underflowed float32
 
 `settling_db` is the mandated ring-down witness for every claims-bearing
