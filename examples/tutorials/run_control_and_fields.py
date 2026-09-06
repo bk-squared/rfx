@@ -57,6 +57,7 @@ def build_simulation() -> Simulation:
         (0.016, 0.016, 0.016),
         component="ez",
         waveform=GaussianPulse(f0=F0, bandwidth=0.8),
+        amplitude_kind="current",
     )
     sim.add_probe((0.019, 0.016, 0.016), component="ez")
     return sim

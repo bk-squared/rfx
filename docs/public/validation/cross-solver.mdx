@@ -9,12 +9,12 @@ Use these scripts to reproduce a comparison for a specific RF configuration.
 They are available in a source checkout and are not installed with the Python
 wheel.
 
-## RF checks
+## Which script to run
 
-| Script | What it checks | Important limit |
-|---|---|---|
-| `validation/crossval/05_patch_antenna.py` | 2.4 GHz finite-ground-plane patch resonance against an analytic estimate and OpenEMS | Harminv resonance is the primary result; absolute probe-feed S11 is secondary |
-| `validation/crossval/11_waveguide_port_wr90.py` | WR-90 empty guide, PEC short, and dielectric slab | Analytic checks, including the Airy slab result, determine the exit status. Optional local Meep, OpenEMS, and Palace files add diagnostic columns but are not required for exit code `0`; see [Benchmarks](/rfx/guide/benchmarks/) for the numerical ranges and checks. |
+The case list is [Benchmarks](/rfx/guide/benchmarks/): every script in
+`validation/crossval/`, with its reference, its pass criterion and its reproduce
+command, generated from `validation/crossval/manifest.json` and locked by a test.
+This page covers only what running one of them means.
 
 Run a script from the repository root, for example:
 

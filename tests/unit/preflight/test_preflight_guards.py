@@ -598,7 +598,7 @@ def test_preflight_returns_back_compatible_structured_issues():
     for issue in report:
         assert isinstance(issue, PreflightIssue)
         assert isinstance(issue, str)          # back-compat: still a string
-        assert issue.severity in ("warning", "error")
+        assert issue.severity in ("warning", "error", "info")
         assert isinstance(issue.code, str) and issue.code
     # Back-compat operations the old list[str] supported still work.
     assert isinstance("\n".join(report), str)
@@ -611,7 +611,8 @@ def test_preflight_issue_is_a_real_string():
 
 def test_preflight_report_is_a_list_with_canonical_api():
     """PreflightReport IS a list (back-compat) AND mirrors the in-repo report
-    idiom (.issues/.errors/.warnings/.ok/.format()/.to_dict()/.to_json())."""
+    idiom (.issues/.errors/.warnings/.infos/.ok/.format()/.to_dict()/
+    .to_json())."""
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
     sim.add_source((0.01, 0.01, 0.0225), component="ez")  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
     sim.add_probe((0.01, 0.01, 0.022), component="ez")
@@ -623,7 +624,11 @@ def test_preflight_report_is_a_list_with_canonical_api():
     # canonical report API
     assert report.issues == list(report)
     assert report.ok == (not report.errors)
-    assert set(report.warnings) | set(report.errors) == set(report)
+    # errors + warnings + infos partition the report; .warnings excludes the
+    # info tier (see PreflightIssue's docstring), so all three are needed.
+    assert (set(report.warnings) | set(report.errors)
+            | set(report.infos)) == set(report)
+    assert not (set(report.warnings) & set(report.infos))
     assert "preflight:" in report.format()
 
 
@@ -783,7 +788,7 @@ def test_every_emitted_issue_carries_a_check_site_code():
             assert issue.code and issue.code != "uncoded", (
                 f"{build.__name__}: uncoded issue {str(issue)!r}"
             )
-            assert issue.severity in ("warning", "error")
+            assert issue.severity in ("warning", "error", "info")
     assert total > 0, "battery emitted no issues — meta-test is vacuous"
 
 

@@ -215,20 +215,45 @@ def _enumerate_emission_sites():
 # deliberate sibling of this freeze. EMISSION_CLASSIFICATION is unchanged too:
 # no preflight call was added, so ``compute_waveguide_s_matrix`` stays
 # DIAGNOSTIC_ONLY.
-# 89 -> 90 sites / 59 -> 60 literal codes, issue #885 (stacked on every
-# edit above, so the counts sum): ``_validate_cfg_settling_witness_present``
-# says at CONFIGURATION time that a run requesting NTFF or a field-DFT plane
-# with no point probe will come back with no ring-down settling witness
-# (``Result.settling_db is None``), because run() scores that witness from
-# the probe time series. One new site, one new literal code
+#
+# 89 -> 96 sites / 59 -> 63 literal codes, post-v1.8 plan item 2
+# (docs/design_notes/20260905_post_v18_plan_rasterization_preflight_cst.md
+# sections 2-1 and 2-4): the two waveguide S-parameter setup audits.
+# _validate_cfg_record_vs_far_boundary adds 3 sites and 2 codes
+# (record_shorter_than_far_boundary_round_trip at warning AND error severity
+# -- two explicit constructions rather than one call through a class held in a
+# variable, which the AST walk above could not see -- plus
+# record_far_boundary_band_below_cutoff);
+# _validate_cfg_port_index_mirror_covariance adds 3 sites and 2 codes
+# (port_index_mirror_known_e_plane_offset, and port_index_mirror_asymmetry
+# emitted from two places: the index planes and the metres-valued reference
+# plane). The 7th site is the dynamic-code one below.
+# EMISSION_CLASSIFICATION is UNCHANGED and measured so: the audits are wired
+# into compute_waveguide_s_matrix through the shared hook
+# _preflight_waveguide_setup, which is NOT preflight()/_auto_preflight(), so
+# that method stays DIAGNOSTIC_ONLY -- the advisories reach a direct
+# compute_waveguide_s_matrix caller as plain warnings and reach a
+# preflight_sparameters(calculator="waveguide") caller as report issues.
+#
+# 96 -> 97 sites / 63 -> 64 literal codes, review of the item-2 PR: the setup
+# audits' shared builder (_waveguide_setup_planes) now catches an exception
+# from the grid build or a port mode solve and reports
+# waveguide_setup_audit_skipped instead of letting it escape a
+# before-the-run safety call. One new site, one new literal code.
+# 97 -> 98 sites / 64 -> 65 literal codes, issue #885 (stacked on every edit
+# above, so the counts sum): ``_validate_cfg_settling_witness_present`` says at
+# CONFIGURATION time that a run requesting NTFF or a field-DFT plane with no
+# point probe will come back with no ring-down settling witness
+# (``Result.settling_db is None``), because run() scores that witness from the
+# probe time series. One new site, one new literal code
 # (``settling_witness_will_be_absent``) -- a new check family, not another
-# voice in an existing one, so it does not reuse a slug the way #823's check
-# 5 did. Input-side by construction: it reads the declared probe/NTFF/DFT
+# voice in an existing one, so it does not reuse a slug the way #823's check 5
+# did. Input-side by construction: it reads the declared probe/NTFF/DFT
 # registration, not any solved field, so it is a preflight check and not a
 # runtime guard. _FROZEN_DYNAMIC_SITES_BY_FUNCTION is unchanged (no new bare
 # except). EMISSION_CLASSIFICATION is unchanged: no new preflight call site.
-_FROZEN_TOTAL_SITES = 90
-_FROZEN_LITERAL_CODE_COUNT = 60
+_FROZEN_TOTAL_SITES = 98
+_FROZEN_LITERAL_CODE_COUNT = 65
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site
@@ -238,9 +263,13 @@ _FROZEN_LITERAL_CODE_COUNT = 60
 # insertion above them red the suite: #744 added no emission site at all
 # (total 81 and literal codes 53 both unchanged) yet shifted all three
 # dynamic sites by exactly 30 lines and broke main.
+# preflight_sparameters 1 -> 2 (post-v1.8 plan item 2): the waveguide branch
+# folds the setup audits' caught warnings into the returned report, and that
+# conversion reads ``code=`` off the caught PreflightWarning instance rather
+# than naming a slug at the site -- the same shape as preflight()'s own two.
 _FROZEN_DYNAMIC_SITES_BY_FUNCTION = {
     "preflight": 2,
-    "preflight_sparameters": 1,
+    "preflight_sparameters": 2,
 }
 
 

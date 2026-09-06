@@ -131,7 +131,38 @@ field passed to `sim.forward(...)`), and `loss_fn(params)` returns a scalar loss
 from that forward run. See [Inverse Design](/rfx/guide/inverse-design/) for how
 to build `loss_fn` from a `Simulation` and an objective. Run this single-cell
 finite-difference check before trusting the gradient for a new optimization
-setup:
+setup. Setup used by the snippet below:
+
+```python
+import jax.numpy as jnp
+from rfx import Box, GaussianPulse, Simulation
+
+# A closed PEC box keeps every grid index a physical cell, so the check below
+# never lands in an absorber.
+sim = Simulation(
+    freq_max=5e9,
+    domain=(0.04, 0.03, 0.02),
+    dx=2e-3,
+    boundary="pec",
+)
+sim.add_material("slab", eps_r=4.0, sigma=0.01)
+sim.add(Box((0.014, 0.010, 0.006), (0.026, 0.020, 0.014)), material="slab")
+sim.add_source(
+    (0.008, 0.015, 0.010),
+    "ez",
+    waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
+    amplitude_kind="current",
+)
+sim.add_probe((0.032, 0.015, 0.010), "ez")
+
+# The design variable is the permittivity field; its shape is the grid shape.
+params = jnp.full(sim.run(n_steps=1).grid.shape, 4.0, dtype=jnp.float32)
+
+
+def loss_fn(eps_r):
+    result = sim.forward(eps_override=eps_r, n_steps=200)
+    return jnp.sum(result.time_series ** 2)
+```
 
 ```python
 import jax

@@ -1,8 +1,9 @@
 """CAD mesh import tutorial (issue #358) — bring an STL part straight into the solver.
 
 Shows the full workflow: export a simple part to STL, import it with ``MeshShape`` (an
-explicit mm→m ``scale``), assign it PEC, watch the preflight resolution advisory fire on
-an under-resolved feature, and run a few FDTD steps.
+explicit mm→m ``scale``), assign it PEC, watch the preflight resolution advisory
+(``mesh_import_underresolved``) fire on the plate's 1.5 mm thickness — 1.5 cells at
+dx = 1 mm, under the 2-cell floor — and run a few FDTD steps.
 
 Requires the optional CAD extra:  pip install 'rfx-fdtd[cad]'  (trimesh + rtree).
 Degrades gracefully (prints guidance, exits 0) if the extra is absent.
@@ -22,9 +23,10 @@ def main() -> int:
     from rfx.api import Simulation
     from rfx.geometry import MeshShape
 
-    # 1. A "CAD" part — a 30x20x2 mm rectangular patch, drawn in MILLIMETRES like a real
-    #    CAD export. (Swap this for trimesh.load('your_part.stl').)
-    part_mm = trimesh.creation.box(extents=(30.0, 20.0, 2.0))
+    # 1. A "CAD" part — a 30x20x1.5 mm rectangular plate, drawn in MILLIMETRES like a
+    #    real CAD export. (Swap this for trimesh.load('your_part.stl').) The 1.5 mm
+    #    thickness is deliberate: it is under-resolved at dx=1 mm, so step 4 fires.
+    part_mm = trimesh.creation.box(extents=(30.0, 20.0, 1.5))
     with tempfile.TemporaryDirectory() as td:
         stl = Path(td) / "patch.stl"
         part_mm.export(stl)
@@ -40,12 +42,17 @@ def main() -> int:
         sim = Simulation(freq_max=10e9, domain=(0.06, 0.04, 0.03), dx=0.001,
                          boundary="cpml", cpml_layers=8, mode="3d")
         sim.add(patch, material="pec")
-        # source in free space ABOVE the patch (patch top is z≈16 mm), not inside the PEC
-        sim.add_source((0.03, 0.02, 0.022), component="ez")
+        # source in free space ABOVE the plate (plate top is z≈15.75 mm), not inside the PEC
+        sim.add_source((0.03, 0.02, 0.022), component="ez",
+                       amplitude_kind="current")
 
-        # 4. Preflight — the 2 mm patch thickness is 2 cells at dx=1 mm; a finer feature
-        #    would trip the mesh_import_underresolved advisory. Preflight output is part of
-        #    the result: quote it before trusting any number.
+        # 4. Preflight — the advisory fires here. The check (rfx/api/_preflight.py,
+        #    code "mesh_import_underresolved") compares the mesh's thinnest bbox extent
+        #    against 2 cells: 1.5 mm at dx=1 mm is 1.5 cells, so it warns. A 2.0 mm
+        #    plate sits exactly AT the 2-cell floor and stays silent — the advisory is
+        #    the last warning you get before a feature is staircased away, not a wide
+        #    margin. Preflight output is part of the result: quote it before trusting
+        #    any number.
         report = sim.preflight()
         print("\n--- preflight ---")
         for msg in report:

@@ -1,59 +1,26 @@
 ---
 title: "Cross-Validation and Accuracy"
-description: "Validation overview and current configuration limits for rfx."
+description: "Where the validation evidence for an rfx result lives."
 sidebar:
   order: 7
 ---
 
-Use this page to choose a starting configuration and the validation checks for a
-reported RF result. Start with the
-[Recommended Configuration](/rfx/validation/reference-lane/), check the exact
-[Support Boundaries](/rfx/api/support-boundaries/), and use the
-[Benchmarks](/rfx/guide/benchmarks/) for per-case evidence.
+Validation evidence for rfx is kept on three pages, split by the question you
+are asking:
 
-## Recommended configuration
+- **Which configuration should I start from, and which calculator has narrower
+  limits?** [Recommended Configuration](/rfx/validation/reference-lane/) — the
+  uniform Cartesian Yee starting point, plus the per-calculator restrictions for
+  waveguide, microstrip-line, lumped/wire, coaxial, graded-mesh and
+  differentiable work.
+- **Is this exact combination supported, and what must fail?**
+  [Support Boundaries](/rfx/api/support-boundaries/) — the status legend, the
+  S-parameter API table, and the combinations that are required to raise rather
+  than return a number.
+- **What has actually been measured, against what reference, with which pass
+  criterion?** [Benchmarks](/rfx/guide/benchmarks/) — every case in
+  `validation/crossval/manifest.json` with its reference, gate and reproduce
+  command. [Cross-Solver Validation](/rfx/validation/cross-solver/) explains the
+  exit codes.
 
-Start with the **uniform Cartesian Yee RF/FDTD configuration** for:
-
-- cavity and waveguide-style RF problems;
-- patch-style resonance workflows;
-- probes and Harminv resonance extraction;
-- selected port and S-parameter calculations; and
-- benchmarked far-field calculations.
-
-The Recommended Configuration page lists the applicable boundaries, sources,
-ports, observables, and required checks. A successful run does not replace a
-mesh-convergence study or comparison with an analytic or independent RF
-reference.
-
-## Calculations with narrower validated limits
-
-The following calculations require their matching API and documented geometry,
-mesh, frequency, normalization, and placement limits:
-
-- rectangular waveguide S-matrices via `compute_waveguide_s_matrix(...)`;
-- specialized microstrip-line S-matrices via `compute_msl_s_matrix(...)`;
-- lumped/wire S-parameters via the matching `add_port(...)` calculator;
-- one-port coaxial transmission-line reflection via
-  `compute_coaxial_line_reflection(...)`; and
-- differentiable design loops that use proxy objectives and then validate the
-  final RF observable with the applicable convergence and reference checks.
-
-Examples and regression tests do not expand those validated limits. See
-[Support Boundaries](/rfx/api/support-boundaries/) for the current restrictions
-and the [S-parameter guide](/rfx/guide/probes-sparams/) for calculator-specific
-checks.
-
-## Runnable examples
-
-| Example | Purpose |
-|---|---|
-| `validation/crossval/05_patch_antenna.py` | patch-antenna cross-check |
-| `validation/crossval/11_waveguide_port_wr90.py` | rectangular waveguide-port reference workflow |
-| `examples/inverse_design/multilayer_ar_coating.py` | inverse-design example; validate the optimized result independently |
-
-## Applying the result
-
-Record the mesh, boundary, source or port family, calculator, frequency range,
-normalization, and comparison criterion used for the result. If a configuration
-falls outside the listed limits, do not describe its RF accuracy as validated.
+A completed run, a clean preflight, and an exported artifact are none of these.

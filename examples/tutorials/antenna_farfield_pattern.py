@@ -39,6 +39,7 @@ N_STEPS = 400
 CENTER = (DOMAIN / 2.0,) * 3
 CLOSE_GAP = 3.0e-3
 VALID_GAP = 19.5e-3
+PROBE_OFFSET = 12.0e-3
 HALF_WAVELENGTH = C0 / (2.0 * F0)
 
 OUTPUT_PATH = Path(__file__).with_name("output") / "short_dipole_e_plane.png"
@@ -57,7 +58,19 @@ def build_simulation() -> Simulation:
         CENTER,
         component="ez",
         waveform=GaussianPulse(f0=F0, bandwidth=0.5),
+        amplitude_kind="current",
     )
+    # One point probe, so the run carries a ring-down settling witness.
+    # A far-field pattern is a DFT-derived number on an open domain, and this
+    # project's -40 dB settling rule says such a number must be quoted with
+    # the end-of-record energy relative to the post-source peak.  run() scores
+    # that witness from the probe time series, so a pattern run with no probe
+    # comes back with ``settling_db = None`` and no truncation guard at all.
+    # Broadside to the z-directed dipole, where E_z is largest: 12 mm from the
+    # source (0.32 wavelengths at 8 GHz), 7.5 mm inside the nearest corrected
+    # monitor face, and 9 mm clear of the CPML, so it records live field
+    # without sitting on the Huygens surface or inside the absorber.
+    sim.add_probe((CENTER[0] + PROBE_OFFSET, CENTER[1], CENTER[2]), "ez")
     return sim
 
 
@@ -120,6 +133,14 @@ def main() -> None:
     # again say that its checks passed.  For far-field work, call preflight()
     # yourself first, as above, to include the full monitor-face checks.
     result = sim.run(n_steps=N_STEPS, compute_s_params=False)
+
+    # The settling witness the probe above makes possible: how far the record
+    # had rung down when it ended, as end/peak energy in dB.  Below -40 dB the
+    # pattern integrates a settled record; above it, the record was cut while
+    # the structure was still ringing and run() says so.  ``None`` would mean
+    # no witness was established -- which is never a pass.
+    print(f"Ring-down settling witness: {result.settling_db:.1f} dB "
+          f"(rule: below -40 dB before quoting a pattern)")
 
     # A z-directed point dipole is rotationally symmetric.  Its phi=0 E-plane
     # is therefore the full angular description, and directivity() integrates

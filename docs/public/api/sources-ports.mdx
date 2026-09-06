@@ -26,9 +26,25 @@ own pulse arguments. This page is the API reference; the
 
 ## Sources
 
+Setup used by the snippets below:
+
 ```python
-sim.add_source((0.025, 0.025, 0.010), "ez", waveform=GaussianPulse(f0=3e9))
-sim.add_polarized_source((0.025, 0.025, 0.010), polarization="slant45")
+from rfx import GaussianPulse, Simulation
+
+sim = Simulation(
+    freq_max=6e9,
+    domain=(0.04, 0.04, 0.02),
+    dx=2e-3,
+    boundary="cpml",
+    cpml_layers=6,
+)
+```
+
+```python
+sim.add_source((0.025, 0.025, 0.010), "ez", waveform=GaussianPulse(f0=3e9),
+               amplitude_kind="current")
+sim.add_polarized_source((0.025, 0.025, 0.010), polarization="slant45",
+                         amplitude_kind="current")
 ```
 
 Use `add_source()` for ringdown and Harminv work when you do **not** want a load on the excited cell.
@@ -54,7 +70,17 @@ polarization sense.
 sim.add_port((0.01, 0.02, 0.01), "ez", impedance=50.0)
 sim.add_port((0.01, 0.02, 0.0), "ez", impedance=50.0, extent=0.0016)
 sim.add_coaxial_port((0.02, 0.02, 0.0016), face="top", impedance=50.0)
-sim.add_waveguide_port(x_position=0.01, y_range=(0.0, 0.023), z_range=(0.0, 0.010))
+
+# A waveguide port cannot share a Simulation with lumped ports, so it is
+# registered on its own guide here.
+wg_sim = Simulation(
+    freq_max=10e9,
+    domain=(0.12, 0.023, 0.010),
+    dx=2e-3,
+    boundary="cpml",
+    cpml_layers=8,
+)
+wg_sim.add_waveguide_port(x_position=0.01, y_range=(0.0, 0.023), z_range=(0.0, 0.010))
 ```
 
 `extent` promotes the single-cell lumped port to a multi-cell wire port spanning `extent` metres from `position` along the `component` axis (here `+z`); omit it for a lumped port.
@@ -101,7 +127,9 @@ sim.preflight_sparameters(calculator="waveguide")
 sim.preflight_sparameters(calculator="forward")
 ```
 
-An empty report means the selected calculator is valid for the registered port families; otherwise it lists coded issues to fix first. Pass `strict=True` to raise instead of returning them.
+A report with no error-severity issue (`report.ok`) means the selected calculator is valid for the registered port families; otherwise it lists coded issues to fix first. Pass `strict=True` to raise instead of returning them.
+
+`calculator="waveguide"` also runs two setup audits that speak in input units — the record length against the far-boundary round trip per port (`record_shorter_than_far_boundary_round_trip`, error severity below one round trip, or `record_far_boundary_band_below_cutoff` when the lowest measured frequency sits at or below that port's own cutoff and no ratio is defined), and the mirror covariance of every plane index an opposite-direction port pair uses (`port_index_mirror_asymmetry`). If the grid or the port modes cannot be built, the audits are skipped and say so with `waveguide_setup_audit_skipped` rather than raising. A healthy two-port guide still carries the informational `port_index_mirror_known_e_plane_offset` note, so read `report.ok`, not `len(report)` — and `strict=True` escalates error-severity findings only, for the same reason.
 
 `preflight_sparameters()` covers the `run`, `forward`, `msl`, and
 `waveguide` calculators. Its `calculator="coaxial"` compatibility alias checks

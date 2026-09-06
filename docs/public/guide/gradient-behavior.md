@@ -20,6 +20,35 @@ recomputing forward states during backpropagation. See the
 [Memory-Reduction Path](/rfx/guide/memory-reduction/) for how to size and pick
 these knobs.
 
+Setup used by the snippets below:
+
+```python
+import jax.numpy as jnp
+from rfx import Box, GaussianPulse, Simulation
+
+sim = Simulation(
+    freq_max=5e9,
+    domain=(0.04, 0.03, 0.02),
+    dx=2e-3,
+    boundary="cpml",
+    cpml_layers=6,
+)
+sim.add_material("slab", eps_r=4.0, sigma=0.01)
+sim.add(Box((0.014, 0.010, 0.006), (0.026, 0.020, 0.014)), material="slab")
+sim.add_port(
+    (0.008, 0.015, 0.010),
+    "ez",
+    impedance=50.0,
+    waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
+)
+sim.add_probe((0.032, 0.015, 0.010), "ez")
+
+# Values the later snippets read.
+s11 = sim.run(n_steps=600, compute_s_params=True).s_params[0, 0, :]
+eps_min, eps_max = 1.0, 12.0
+latent = jnp.zeros((8, 8, 4))
+```
+
 ```python
 import jax
 import jax.numpy as jnp

@@ -1101,7 +1101,7 @@ class Simulation(
                 "This per-path default is deprecated (issue #571): pass "
                 "amplitude_kind='current' (amperes, resolution-independent "
                 "power — the future default) or amplitude_kind='field' (raw "
-                "E increment). amplitude_kind becomes required in 1.8.",
+                "E increment). amplitude_kind becomes required in 1.9 (and 'current' the default in 2.0).",
                 DeprecationWarning, stacklevel=2)
         if waveform is None:
             waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)

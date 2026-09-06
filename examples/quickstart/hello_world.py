@@ -45,10 +45,17 @@ def main() -> None:
     #    (vertical electric field) pulse. The `GaussianPulse` is a short
     #    broadband "ping" centred at 5 GHz — like tapping the box to see how
     #    it rings.
+    #    `amplitude_kind` says what the waveform's amplitude MEANS. "current"
+    #    reads it as a drive current in amperes, which is why the printed
+    #    peak |Ez| below is large: 1 A into a 2 mm cell is a strong drive.
+    #    "field" instead reads it as a raw volts-per-metre increment per step.
+    #    Always pass one — it is required from rfx 1.8.
     sim.add_source(
         (0.01, 0.01, 0.01),                  # centre of the box, in metres
         "ez",                                # drive the z-component of E
         waveform=GaussianPulse(f0=5e9, bandwidth=0.8),
+        amplitude_kind="current",              # amplitude is a current in
+                                               # amperes (see step 2 note)
     )
 
     # 3. Add a probe.

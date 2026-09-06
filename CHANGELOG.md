@@ -50,6 +50,62 @@ with no post-source peak to divide it by. A one-sided end energy is not a
 ring-down ratio, so a probe-less run reports the witness absent rather than
 inventing a number.
 
+### Added — two waveguide S-parameter setup checks, in input units
+
+`compute_waveguide_s_matrix(...)` and
+`preflight_sparameters(calculator="waveguide")` now run two setup audits before
+any FDTD step. Both report declared-versus-realized quantities in the units the
+user typed — times, lengths, indices and the knob value that changes them — and
+neither predicts an effect on any S-parameter.
+
+`record_shorter_than_far_boundary_round_trip` compares the record length
+`T = n_steps * dt` against the far-boundary round trip
+`tau_far = 2 * far_path / v_g(f_min)`, per port. `far_path` runs from the port
+plane to the outer wall of the domain in the port's launch direction with the
+absorber pad included, and `v_g` uses that port's own discrete cutoff. Below
+`T/tau_far = 3` the check is a warning and below 1 it is error severity, and the
+message states T, tau_far, the ratio, far_path, `v_g(f_min)/c`, `f_min`, the
+port cutoff, and the `num_periods` that reaches 3. The threshold is a floor:
+the WR-90 chain battery needed 3, 5 and 8 at `a/18`, `a/36` and `a/72`. When
+the lowest measured frequency sits at or below the port's cutoff the check
+reports `record_far_boundary_band_below_cutoff` and no ratio.
+
+Two contract consequences of that. `preflight_sparameters(strict=True)` now
+escalates ERROR-severity findings only, because a healthy two-port guide always
+carries the informational note above and escalating on emptiness would raise on
+every correct waveguide setup; advisories are still returned and printed.
+`PreflightIssue` gains a documented `info` severity, `PreflightReport` gains an
+`.infos` property, and `.warnings` no longer includes info findings, so
+`errors + warnings + infos` partition a report. Only `.errors` gates. Mesh-plan
+support rows read the finding's severity instead of an `ERROR:` text prefix, so
+an informational finding is a `status="info"` row (and an error-severity
+finding emitted as a warning is now correctly `"fail"` rather than `"warn"`).
+If the grid or a port mode solve raises, the audits are skipped and report
+`waveguide_setup_audit_skipped` rather than letting the exception escape a
+before-the-run safety call.
+
+`port_index_mirror_asymmetry` audits every plane index a pair of
+opposite-direction ports on one axis actually uses — both source planes, the
+reference and measurement probe planes, and the reference plane in metres —
+and reports each pair sum against the covariant value for that plane's lattice
+(`n_axis - 1` primal, `n_axis - 2` dual). The one known exception,
+`apply_waveguide_port_e` placing the `-` port's E correction at `x_index + 1`,
+is reported separately as `port_index_mirror_known_e_plane_offset` at `info`
+severity rather than counted as an asymmetry.
+
+## [1.8.0] - 2026-09-06
+
+Headline: the rectangular-waveguide family is **chain-closed (v1.8)** for uniform single-mode S on the two differentiable lanes, with contract criterion 1 and 3(a) read under x64 on the flux lane (forward default float32); the wire-port current DFT carries the Yee half-step phase correction; finite-region flux monitors run on the graded mesh; the MSL preflight advisories no longer pin a realized-board bound; the waveguide settling witness skips float32-underflowed records; realized geometry no longer depends on `JAX_ENABLE_X64`. Entries below are the v1.8 cycle in reverse chronological order.
+
+### Changed — the `amplitude_kind` deprecation window moves one release: required in 1.9, default `'current'` in 2.0
+
+The 1.6.x notice said `add_port(..., amplitude_kind=None)` becomes required in
+1.8 and defaults to `'current'` in 1.9. At the 1.8.0 tag the argument still
+only warns; the v1.8 cycle went to the waveguide chain closure and enforcing
+the argument untested at tag time is the wrong moment. The warning text and
+the public docs now say 1.9 / 2.0. Behaviour is unchanged: omitting the
+argument warns and keeps the legacy meaning.
+
 ### Changed — wire-port current DFT carries the Yee half-step phase correction
 
 The H-derived port current DFT on the wire-port lane is advanced by
