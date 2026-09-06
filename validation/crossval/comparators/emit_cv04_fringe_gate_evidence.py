@@ -41,19 +41,40 @@ OUTPUT_PATH = (
     _HERE.parent / "_04_fresnel_results" / "fringe_gate_geometry.json"
 )
 
+def _load_slab_family():
+    spec = importlib.util.spec_from_file_location(
+        "_cv04_evidence_slab_family", _HERE / "slab_family.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+slab_family = _load_slab_family()
+
 # --- the committed cv04 configuration --------------------------------------
-# Every value here is read off validation/crossval/04_multilayer_fresnel.py at
-# the line cited; DT is Grid(...).dt for that configuration and BAND is the
-# contiguous band the committed spectral mask selects (a MEASURED property of
-# the committed run, not a gate threshold -- see "band_provenance" in the JSON).
-EPS_R = 4.0             # 04_multilayer_fresnel.py:63
-D_M = 10.0e-3           # 04_multilayer_fresnel.py:65
-N_INDEX = 2.0           # 04_multilayer_fresnel.py:64  (sqrt(4.0))
-DX_M = 1.0e-3           # 04_multilayer_fresnel.py:67
-C0 = 2.998e8            # 04_multilayer_fresnel.py:43
-DT_S = 2.335067793382187e-12   # Grid(freq_max=20e9, domain=(0.6,0.004,1e-3),
-#                                dx=1e-3, cpml_layers=10, mode="2d_tmz").dt
-NFFT = 8192             # 2**ceil(log2(719)) * 8   (04_multilayer_fresnel.py:290)
+# READ from the shared rig declaration (#928), not restated: this file used to
+# be a THIRD home for eps / d / dx / c (after the script and cv22's rig block),
+# each pinned to a line number in the script, and a line-number pin is what
+# broke when the script started reading the same declaration.
+# DT_S and BAND are MEASURED properties of the committed run (Grid(...).dt for
+# this configuration; the contiguous band the committed spectral mask selects)
+# and are keyed to the committed artifacts, not to a source line.
+EPS_R = slab_family.EPS_SLAB
+D_M = slab_family.D_SLAB_M
+N_INDEX = math.sqrt(EPS_R)
+DX_M = slab_family.DX_M
+C0 = slab_family.C0_SCRIPT
+N_STEPS = 719           # _04_fresnel_results/lattice_witness.json::rungs.slab_eps4.n_steps
+DT_S = 2.335067793382187e-12   # _04_fresnel_results/lattice_witness.json::rungs.slab_eps4.dt_s
+
+
+def nfft_for(n_steps: int) -> int:
+    """cv04's FFT-length rule, as a function instead of a pinned 8192."""
+    return int(2 ** math.ceil(math.log2(int(n_steps))) * slab_family.NFFT_OVERSAMPLE)
+
+
+NFFT = nfft_for(N_STEPS)       # 8192
 DF_BIN_HZ = 1.0 / (NFFT * DT_S)
 BAND_LO_HZ = 3.0321e9
 BAND_HI_HZ = 11.8666e9

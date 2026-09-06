@@ -32,6 +32,7 @@ logic can drift from the gate it claims to pin; imported logic cannot.
 
 from __future__ import annotations
 
+import json
 import importlib.util
 import math
 import sys
@@ -101,16 +102,18 @@ def test_cv11_selftest_runs_without_aborting():
 # docstring for why this can't be a direct import).
 # ---------------------------------------------------------------------------
 
-# validation/crossval/04_multilayer_fresnel.py:338 (issue #341)
+# 04_multilayer_fresnel.py::CONS_MAX_LIMIT, now slab_family.CONS_MAX_LIMIT
+# (issue #341; name-keyed, not line-keyed -- #928)
 CV04_CONS_MAX_LIMIT = 0.06
-# validation/crossval/04_multilayer_fresnel.py:232-234 (issue #341)
+# 04_multilayer_fresnel.py::TAIL_WINDOW / TAIL_PURITY_LIMIT / TAIL_LIMIT, now
+# slab_family's (issue #341)
 CV04_TAIL_WINDOW = 50
 CV04_TAIL_PURITY_LIMIT = 1e-3
 CV04_TAIL_LIMIT = 0.10
 
 
 def _cv04_cons_max_ok(r_plus_t_minus_1: np.ndarray) -> bool:
-    """Replicates validation/crossval/04_multilayer_fresnel.py:316,339:
+    """Replicates 04_multilayer_fresnel.py's conservation ceiling:
     ``cons_rfx = np.abs(R_rfx + T_rfx - 1)``;
     ``cons_max_ok = bool(cons_rfx.max() <= CONS_MAX_LIMIT)``."""
     cons = np.abs(r_plus_t_minus_1)
@@ -133,7 +136,7 @@ def test_cv04_conservation_ceiling_accepts_healthy_curve():
 
 def _cv04_tail_ok(inc_tail: np.ndarray, refl_tail: np.ndarray,
                   trans_tail: np.ndarray, inc_peak: float) -> bool:
-    """Replicates validation/crossval/04_multilayer_fresnel.py:236-243:
+    """Replicates 04_multilayer_fresnel.py's settling-tail witness:
     the settling-tail witness (issue #341) — the last TAIL_WINDOW samples of
     the incident/reflected/transmitted time series must be clean (incident
     tail negligible relative to its own peak = pulse has passed) and settled
@@ -397,13 +400,18 @@ CV04_EVIDENCE_JSON = (
 )
 
 
-def _load_cv04_evidence_emitter():
-    path = CROSSVAL_DIR / "comparators" / "emit_cv04_fringe_gate_evidence.py"
-    spec = importlib.util.spec_from_file_location("_cv04_evidence_test", path)
+def _load_by_path(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _load_cv04_evidence_emitter():
+    return _load_by_path(
+        "_cv04_evidence_test",
+        CROSSVAL_DIR / "comparators" / "emit_cv04_fringe_gate_evidence.py")
 
 
 def _assert_same(actual, expected, path="$"):
@@ -532,23 +540,39 @@ def test_cv04_evidence_config_still_matches_the_script_it_cites():
     edit to the crossval script that moves eps/d/dx/c0 invalidates the artifact
     here instead of silently invalidating every number that points at it."""
     emitter = _load_cv04_evidence_emitter()
-    lines = (CROSSVAL_DIR / "04_multilayer_fresnel.py").read_text(
-        encoding="utf-8"
-    ).splitlines()
 
-    def value_on(lineno: int, name: str) -> float:
-        stmt = lines[lineno - 1].split("#")[0].strip()
-        lhs, _, rhs = stmt.partition("=")
-        assert lhs.strip() == name, (
-            f"04_multilayer_fresnel.py:{lineno} is {stmt!r}, not an assignment "
-            f"to {name}"
-        )
-        return float(eval(rhs.strip(), {"math": math, "np": np}))  # noqa: S307
+    # #928: this used to read four constants out of the SCRIPT by line number
+    # and eval the right-hand sides -- a pin that broke the moment the script
+    # started reading them from the shared declaration, and a pin that could
+    # only ever see the script, not the emitter's own third copy of the same
+    # numbers. Both ends now read `slab_family`, so the comparison is between
+    # two READERS of one declaration, with no line numbers in it.
+    slab_family = _load_by_path("_cv04_slab_family_test",
+                                CROSSVAL_DIR / "comparators" / "slab_family.py")
 
-    assert value_on(63, "eps_slab") == emitter.EPS_R
-    assert value_on(65, "d_slab") == emitter.D_M
-    assert value_on(67, "dx") == emitter.DX_M
-    assert value_on(43, "C0") == emitter.C0
-    assert math.sqrt(emitter.EPS_R) == emitter.N_INDEX
-    # the FFT length the bin width is derived from
-    assert "np.ceil(np.log2(n_steps)) * 8" in lines[290 - 1]
+    assert emitter.EPS_R == slab_family.EPS_SLAB
+    assert emitter.D_M == slab_family.D_SLAB_M
+    assert emitter.DX_M == slab_family.DX_M
+    assert emitter.C0 == slab_family.C0_SCRIPT
+    assert emitter.N_INDEX == math.sqrt(slab_family.EPS_SLAB)
+    # the FFT length the bin width is derived from: the RULE, evaluated, not a
+    # pinned 8192 and not a string match on the script.
+    assert emitter.NFFT == emitter.nfft_for(emitter.N_STEPS)
+    assert emitter.NFFT == int(2 ** math.ceil(math.log2(emitter.N_STEPS))
+                               * slab_family.NFFT_OVERSAMPLE)
+    assert emitter.DF_BIN_HZ == 1.0 / (emitter.NFFT * emitter.DT_S)
+    # and the two run-measured constants are the committed artifact's, keyed by
+    # name rather than by line: an artifact regeneration that moves either one
+    # invalidates the emitter here.
+    witness = json.loads(
+        (CROSSVAL_DIR / "_04_fresnel_results" / "lattice_witness.json").read_text()
+    )["rungs"]["slab_eps4"]
+    assert emitter.DT_S == witness["dt_s"]
+    assert emitter.N_STEPS == witness["n_steps"]
+    # the producer itself reads the same declaration (no fourth home)
+    script = (CROSSVAL_DIR / "04_multilayer_fresnel.py").read_text(encoding="utf-8")
+    for line in ("eps_slab = slab_family.EPS_SLAB",
+                 "d_slab = slab_family.D_SLAB_M",
+                 "dx = slab_family.DX_M",
+                 "C0 = slab_family.C0_SCRIPT"):
+        assert line in script, line

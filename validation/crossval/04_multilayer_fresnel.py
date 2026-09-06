@@ -40,7 +40,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-C0 = 2.998e8
 
 
 def _load_fringe_gate():
@@ -78,12 +77,13 @@ def _load_slab_family():
 
 
 slab_family = _load_slab_family()
+C0 = slab_family.C0_SCRIPT     # 2.998e8, the value this script has always used
 
 # =============================================================================
 # Parameters
 # =============================================================================
 # Read from the shared declaration (#928); values unchanged.
-eps_slab = 4.0
+eps_slab = slab_family.EPS_SLAB    # 4.0
 n_slab = math.sqrt(eps_slab)
 d_slab = slab_family.D_SLAB_M      # 10 mm
 f0 = slab_family.TFSF_F0_HZ        # 10 GHz
@@ -445,11 +445,13 @@ if "--lattice-witness" in sys.argv:
     import json as _json
     import lattice_witness as _LW
     import slab_family as _SF
-    import slab_rig as _RIG
 
-    # #928: the producer reads the shared rig/family module, never a consumer's
-    # gate module. `slab_ringdown_rates` and `gated_mask` are rig + material
-    # physics and are declared in `slab_family`; cv22 re-exports them.
+    # #928: the producer imports the family LEAF and the witness emitter, and
+    # NOTHING that names a consumer -- directly or through them. `slab_family`
+    # declares the rig, the gated band, the ring-down rates, the cell
+    # bookkeeping, the auxiliary-echo geometry and `staged_commit`; cv22
+    # re-exports every one of them for its own importers.
+    # tests/crossval/test_producer_import_graph.py holds the property.
     _params = {"eps_inf": eps_slab, "sigma": 0.0}
     _rates = _SF.slab_ringdown_rates("conductive", _params)
     _arm = {
@@ -479,7 +481,7 @@ if "--lattice-witness" in sys.argv:
     # Stamp the commit the way cv22 / cv23 do, so this artifact carries its own
     # provenance instead of a null (review, 2026-09-03).
     _doc = _LW.witness_document("04_multilayer_fresnel", {"slab_eps4": _arm},
-                                commit=_RIG.staged_commit(os.path.dirname(os.path.dirname(SCRIPT_DIR)),
+                                commit=_SF.staged_commit(os.path.dirname(os.path.dirname(SCRIPT_DIR)),
                                                           cwd=SCRIPT_DIR),
                                 d_slab_m=d_slab)
     _doc["gated_here"] = False

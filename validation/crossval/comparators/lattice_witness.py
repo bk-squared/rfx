@@ -102,7 +102,11 @@ for _p in (_HERE, _REPO_ROOT):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-import cv22_dispersive_gates as G  # noqa: E402
+# The rig, its cell bookkeeping and the auxiliary-echo geometry come from the
+# family LEAF, not from a consumer's gate module (#928): the producer (cv04
+# --lattice-witness) imports this file, so importing a consumer here would put
+# cv22 back in the producer's import graph.
+import slab_family as G  # noqa: E402
 import dispersive_eps as de  # noqa: E402
 
 SCHEMA = "lattice-witness/v1"
@@ -117,7 +121,7 @@ PURITY_BAR = G.TAIL_PURITY_LIMIT         # 1e-3, cv04's tail-purity witness
 
 # The source the rig injects (rfx/sources/tfsf.py: s = -2 u exp(-u^2),
 # u = (t - t0)/tau, tau = 1/(pi f0 bandwidth)); the same tau
-# cv22_dispersive_gates.incident_amplitude_rel uses.
+# slab_family.incident_amplitude_rel uses.
 TAU_SRC_S = 1.0 / (math.pi * G.TFSF_F0_HZ * G.TFSF_BW)
 
 

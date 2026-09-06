@@ -41,7 +41,9 @@ No FDTD, no physics, no gate value.
 from __future__ import annotations
 
 import importlib.util
+import ast
 import json
+import math
 import re
 import subprocess
 import sys
@@ -113,6 +115,26 @@ def test_every_cited_envelope_artifact_is_registered_under_its_producer():
             assert is_tracked(rel, _REPO)
 
 
+# Value matching cannot tell an adopted number from an unrelated constant that
+# happens to equal it, so the coincidences are declared here -- with the reason
+# and checked below, rather than silently tolerated by a narrower regex.
+COINCIDENTAL_VALUES: dict[tuple[str, float], str] = {
+    ("validation/crossval/comparators/cv22_dispersive_gates.py", 0.01):
+        "MEEP_A_M = 0.01: Meep's length unit a = 1 cm, in metres. Equal to "
+        "W_MEAN_R (0.010) by arithmetic coincidence; it is the reference leg's "
+        "geometry scale and enters no window.",
+}
+
+
+def test_every_declared_coincidence_still_exists():
+    """A declared coincidence that has gone away is a stale exemption."""
+    for (module, value), reason in COINCIDENTAL_VALUES.items():
+        assert reason.strip(), (module, value)
+        literals = _python_number_literals(_REPO / module)
+        assert any(abs(v - value) <= _REL_TOL * abs(value) for v in literals), (
+            f"{module} no longer carries {value}; drop the exemption.")
+
+
 def test_consumer_modules_carry_no_envelope_literal():
     """A consumer holds an adoption record, never a copy of the values.
 
@@ -120,12 +142,33 @@ def test_consumer_modules_carry_no_envelope_literal():
     consequence of the split is that they now hold none: every window they
     enforce comes from the producer's artifact through the record.
     """
+    targets = {**_adopted_values(), **_derived_windows()}
     for consumer in _adoption_records():
-        text = (_REPO / consumer).read_text(encoding="utf-8")
-        found = _LITERAL_RE.findall(text)
-        assert not found, (
-            f"{consumer} restates the adopted envelope value(s) {sorted(set(found))}. "
-            f"A consumer derives from the artifact; it does not keep a copy.")
+        offenders = []
+        for value in _python_number_literals(_REPO / consumer):
+            hit = _matches(value, targets)
+            if hit is None:
+                continue
+            if COINCIDENTAL_VALUES.get((consumer, value)):
+                continue
+            offenders.append(f"{value!r} == {hit}")
+        assert not offenders, (
+            f"{consumer} restates {offenders}. A consumer derives from the "
+            f"artifact; it keeps neither the adopted values nor the windows "
+            f"derived from them, in any spelling.")
+
+
+def test_the_consumer_literal_guard_catches_a_planted_value():
+    """(B) arm: the two plants a review used to walk past the first version --
+    a differently-spelled adopted value and a hard-coded derived window."""
+    targets = {**_adopted_values(), **_derived_windows()}
+    assert _matches(9.1e-3, targets) == "mean_closure"      # cv23's plant
+    assert _matches(0.0110, targets) == "mean_dT"           # trailing-zero spelling
+    assert _matches(1.1e-2, targets) == "mean_dT"           # exponent spelling
+    assert _matches(0.074, targets) == "W_BIN"              # a derived window
+    assert _matches(0.148, targets) == "W_BIN_A"            # cv23's doubled one
+    assert _matches(0.027000000000000003, targets) == "W_MEAN_A"
+    assert _matches(0.5, targets) is None                   # an unrelated number
 
 
 def test_the_artifact_declares_the_consumers_that_adopt_it():
@@ -171,78 +214,161 @@ def test_bootstrap_is_used_at_most_once_per_artifact():
             "the bootstrap flag belongs to the FIRST revision, not a later one")
 
 
-def same_commit_violation(touched, records: dict, doc: dict) -> str | None:
+def _git(*args) -> tuple[int, str]:
+    result = subprocess.run(["git", *args], cwd=_REPO, capture_output=True, text=True)
+    return result.returncode, result.stdout
+
+
+def _doc_at(base: str, rel: str) -> dict | None:
+    """The artifact as of *base*, or None when it did not exist there."""
+    code, out = _git("show", f"{base}:{rel}")
+    if code != 0:
+        return None
+    try:
+        return json.loads(out)
+    except json.JSONDecodeError:
+        return None
+
+
+def same_commit_violation(touched, records: dict, doc: dict,
+                          base_doc: dict | None) -> str | None:
     """The predicate, separated from the branch it runs on so it can be
-    falsified: a message when the producer's artifact and an adoption record
-    that cites it move in one change outside the bootstrap exemption, else
-    None."""
+    falsified. Returns a message when a change breaks either half of the
+    evidence/calibration split, else None.
+
+    Two independent rules, both needed (a review defeated the first version by
+    satisfying neither and being waived anyway):
+
+    (a) **A written revision is immutable.** If a revision already exists at
+        the diff base, its block may not change -- not its values, not its rig,
+        not its hash. New evidence is a NEW revision. Without this, "edit r1
+        and re-stamp both hashes" is a silent gate move that every downstream
+        check accepts, because every downstream check is derived from r1.
+    (b) **Evidence and calibration do not move in one change.** If the artifact
+        and an adoption record that cites it both change, that is a producer
+        widening the gates that judge it -- UNLESS the artifact did not exist at
+        the base at all (the bootstrap case: the artifact and its first adoption
+        cannot exist without each other). "The adopted revision is marked
+        bootstrap" is NOT the exemption; r1 stays marked bootstrap forever, and
+        the first version of this guard therefore waived every later change too.
+    """
     if _ENVELOPE_REL not in touched:
         return None
+    problems: list[str] = []
+
+    if base_doc is not None:
+        base_revisions = base_doc.get("revisions", {})
+        for name, block in doc.get("revisions", {}).items():
+            was = base_revisions.get(name)
+            if was is None:
+                continue                     # appended: exactly what should happen
+            if json.dumps(was, sort_keys=True) != json.dumps(block, sort_keys=True):
+                changed = sorted(k for k in set(was) | set(block)
+                                 if was.get(k) != block.get(k))
+                problems.append(
+                    f"revision {name} already existed at the base and its "
+                    f"{changed} changed in place. A revision is append-only "
+                    f"evidence: append a new one and adopt it deliberately.")
+
     also_touched = sorted(set(records) & set(touched))
-    if not also_touched:
-        return None
-    bootstraps = {name for name, block in doc["revisions"].items()
-                  if block.get("bootstrap")}
-    adopted = {record["adopted_revision"] for record in records.values()}
-    if adopted <= bootstraps:
-        return None
-    return (
-        f"this change touches {_ENVELOPE_REL} AND the adoption record(s) in "
-        f"{also_touched}, while the adopted revision(s) {sorted(adopted)} are "
-        f"not the bootstrap revision. Split it: append the revision in one "
-        f"change (evidence), adopt it in another (calibration, reviewed).")
+    if also_touched:
+        artifact_is_new = base_doc is None
+        if not artifact_is_new:
+            problems.append(
+                f"this change touches {_ENVELOPE_REL} AND the adoption "
+                f"record(s) in {also_touched}. Split it: append the revision in "
+                f"one change (evidence), adopt it in another (calibration, "
+                f"reviewed). The bootstrap exemption applies only when the "
+                f"artifact does not exist at the base.")
+    return " ".join(problems) or None
 
 
 def test_the_producer_artifact_and_an_adoption_record_do_not_move_together():
-    """A re-run touches the artifact. An adoption touches the record. A change
-    that does both in one diff is a producer widening the gates that judge it.
+    """The live branch, judged by the predicate above.
 
-    The bootstrap revision is exempt: the artifact and its first adoption
-    cannot exist without each other.
+    The diff is taken against the base INCLUDING the working tree (``git diff
+    <base>``, not ``<base>..HEAD``), so an uncommitted edit is seen by a local
+    run rather than only after it is committed.
     """
     if not git_available(_REPO):
         pytest.skip("git unavailable; the branch diff cannot be read")
     base = _diff_base()
     if base is None:
         pytest.skip("no diff base (shallow checkout?)")
-    changed = subprocess.run(["git", "diff", "--name-only", f"{base}..HEAD"],
-                             cwd=_REPO, capture_output=True, text=True)
-    if changed.returncode != 0:
+    code, out = _git("diff", "--name-only", base)
+    if code != 0:
         pytest.skip("git diff unavailable")
-    violation = same_commit_violation(set(changed.stdout.split()),
-                                      _adoption_records(), _envelope_doc())
+    touched = set(out.split())
+    violation = same_commit_violation(touched, _adoption_records(), _envelope_doc(),
+                                      _doc_at(base, _ENVELOPE_REL))
     assert violation is None, violation
 
 
-def test_the_same_commit_guard_fires_when_the_exemption_does_not_apply():
-    """(B) arm: the guard is worth what it catches.
+def test_the_guard_state_matches_this_branch():
+    """What the branch IS, stated as a fact rather than assumed by the guard.
 
-    Synthetic inputs, so the detection power is tested rather than inferred
-    from a branch that happens to be exempt. Three shapes: the artifact alone
-    (a re-run) passes; the record alone (an adoption) passes; both together
-    fail once the adopted revision is no longer the bootstrap one.
+    On the branch that introduces the artifact, the artifact does not exist at
+    the base and the exemption is live; on any later branch it does exist and
+    the exemption is gone. This test reads which of the two it is instead of
+    asserting one of them unconditionally -- the first version asserted the
+    exemption always applied, and would have failed a legitimate r2 adoption.
+    """
+    if not git_available(_REPO):
+        pytest.skip("git unavailable")
+    base = _diff_base()
+    if base is None:
+        pytest.skip("no diff base")
+    base_doc = _doc_at(base, _ENVELOPE_REL)
+    doc = _envelope_doc()
+    if base_doc is None:
+        print(f"guard state: {_ENVELOPE_REL} is NEW in this branch -- bootstrap "
+              f"exemption live; revisions {sorted(doc['revisions'])}")
+        assert [n for n, b in doc["revisions"].items() if b.get("bootstrap")]
+    else:
+        print(f"guard state: {_ENVELOPE_REL} exists at {base[:8]} -- exemption "
+              f"expired; every revision at base must be untouched")
+        for name, block in doc["revisions"].items():
+            was = base_doc["revisions"].get(name)
+            if was is not None:
+                assert json.dumps(was, sort_keys=True) == json.dumps(block, sort_keys=True), name
+
+
+def test_the_guard_fires_on_the_reviewers_rewrite_probe():
+    """(B) arm: the exact mutation two reviewers used to defeat the first guard.
+
+    r1's values are rewritten in place, its hash re-stamped so the artifact is
+    self-consistent, and both consumers re-pinned -- in one change. The windows
+    moved and nothing complained. Both rules must catch it now, and each half
+    of the change alone must still be allowed.
     """
     doc = _envelope_doc()
     records = _adoption_records()
     consumer = sorted(records)[0]
+    base_doc = json.loads(json.dumps(doc))          # the artifact as it stands
+
+    rewritten = json.loads(json.dumps(doc))
+    block = rewritten["revisions"]["r1"]
+    block["values"] = {k: v / 10.0 for k, v in block["values"].items()}
+    block["revision_hash"] = "sha256:" + "0" * 64   # re-stamped, self-consistent
     both = {_ENVELOPE_REL, consumer}
 
-    # today: r1 is the bootstrap revision, so both-together is allowed once
-    assert same_commit_violation(both, records, doc) is None
-
-    # r2 appended and adopted, artifact edited in the same change: refused
-    later = json.loads(json.dumps(doc))
-    later["revisions"]["r2"] = json.loads(json.dumps(later["revisions"]["r1"]))
-    later["revisions"]["r2"]["bootstrap"] = False
-    adopting_r2 = {name: {**record, "adopted_revision": "r2"}
-                   for name, record in records.items()}
-    message = same_commit_violation(both, adopting_r2, later)
+    message = same_commit_violation(both, records, rewritten, base_doc)
     assert message is not None
-    assert consumer in message and "r2" in message
-
-    # each half alone is fine: a re-run, and an adoption
-    assert same_commit_violation({_ENVELOPE_REL}, adopting_r2, later) is None
-    assert same_commit_violation({consumer}, adopting_r2, later) is None
+    assert "append-only" in message and "r1" in message
+    # rule (a) alone: the artifact edited, no consumer touched
+    only_artifact = same_commit_violation({_ENVELOPE_REL}, records, rewritten, base_doc)
+    assert only_artifact is not None and "append-only" in only_artifact
+    # rule (b) alone: an APPENDED revision plus a re-adoption in one change
+    appended = json.loads(json.dumps(doc))
+    appended["revisions"]["r2"] = json.loads(json.dumps(doc["revisions"]["r1"]))
+    appended["revisions"]["r2"]["bootstrap"] = False
+    msg_b = same_commit_violation(both, records, appended, base_doc)
+    assert msg_b is not None and "Split it" in msg_b
+    # and the legitimate shapes stay legal
+    assert same_commit_violation({_ENVELOPE_REL}, records, appended, base_doc) is None
+    assert same_commit_violation({consumer}, records, appended, base_doc) is None
+    # the bootstrap case: the artifact is new at the base
+    assert same_commit_violation(both, records, doc, None) is None
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +408,7 @@ FANOUT: dict[str, str] = {
     "tests/crossval/test_cv22_dispersive_slab_gates.py": DIFFERENT_QUANTITY,
     "tests/crossval/test_crossval_gate_logic.py": DIFFERENT_QUANTITY,
     "tests/studio/test_interop_design_document.py": DIFFERENT_QUANTITY,
+    "rfx/api/_preflight.py": DIFFERENT_QUANTITY,
     "docs/public/gallery/assets/multilayer_fresnel/manifest.json": RECORDED_OUTPUT,
     "docs/public/gallery/multilayer_fresnel.mdx": DISPLAY_WITH_SOURCE,
     "docs/public/guide/benchmarks.mdx": RESOLVING_REFERENCE,
@@ -311,16 +438,88 @@ DIFFERENT_QUANTITY_REASON: dict[str, str] = {
     "tests/crossval/test_cv22_dispersive_slab_gates.py": "one docstring line naming the grep string that #928 deleted; every window in that file is re-derived from the artifact",
     "tests/crossval/test_crossval_gate_logic.py": "cv04's own per-bin closure ceiling test, 0.0487 against the 0.06 ceiling -- the producer's gate, not a consumer window",
     "tests/studio/test_interop_design_document.py": "a geometry centre coordinate that happens to read 0.011 m",
+    "rfx/api/_preflight.py": "a docstring worked example of the ceil(domain/dx) rounding rule, whose grid coordinate reads 0.011 m; the file enters this scan at all only because a preflight helper is named _waveguide_with_dispersive_slab",
     "docs/design_notes/20260903_test_reorg_tier3b_consolidation.md": "a pytest node id containing a parametrized 0.011",
 }
 
-_LITERALS = ("0.0066", "0.011", "0.0487", "0.0091")
-_LITERAL_RE = re.compile(r"(?<![0-9.])(0\.0066|0\.011|0\.0487|0\.0091)(?![0-9])")
+# Detection is by VALUE, never by spelling. The first version of this file
+# matched four decimal strings, and a review planted `CV04_MEAN_CLOSURE = 9.1e-3`
+# in a consumer -- the same number, a different spelling -- past all thirty
+# tests. Python files are walked as an AST (every numeric constant, including
+# the ones inside expressions); other files are scanned for numeric tokens and
+# compared as floats, so `0.0110`, `9.1e-3` and `0.011` are one thing.
+_REL_TOL = 1e-12
+_NUMBER_TOKEN = re.compile(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?")
 _FAMILY_MARKERS = ("04_multilayer_fresnel", "_04_fresnel_results", "cv22", "cv23",
                    "_22_dispersive", "_23_lossy", "slab_rig", "slab_family",
                    "dispersive_slab", "lossy_slab", "multilayer_fresnel")
-_TREES = ("validation", "tests", "docs/public", "docs/design_notes")
+# Wider than the four trees the first version looked at: a second copy of a
+# producer's evidence is just as wrong in scripts/ or in the package itself.
+_TREES = ("validation", "tests", "docs/public", "docs/design_notes",
+          "docs/agent", "scripts", "rfx", "examples")
 _SUFFIXES = {".py", ".json", ".md", ".mdx"}
+
+
+def _adopted_values() -> dict[str, float]:
+    return dict(_envelope_doc()["revisions"]["r1"]["values"])
+
+
+def _derived_windows() -> dict[str, float]:
+    """The windows a consumer must DERIVE, never restate: round-up(v x 1.5) at
+    quantum 1000, their triangle sums, and the doubled per-bin window."""
+    values = _adopted_values()
+    policy = sorted(_adoption_records().values(),
+                    key=lambda r: r["adopted_revision"])[0]["gate_policy"]
+    mult, quantum = policy["multiplier"], policy["quantum"]
+
+    def gate(v):
+        return math.ceil(v * mult * quantum) / quantum
+
+    w_bin = gate(values["per_bin_max_RT_closure"])
+    w_mean_r = gate(values["mean_dR"])
+    w_mean_t = gate(values["mean_dT"])
+    return {
+        "W_BIN": w_bin, "W_MEAN_R": w_mean_r, "W_MEAN_T": w_mean_t,
+        "W_BIN_A": 2.0 * w_bin, "W_MEAN_A": w_mean_r + w_mean_t,
+        "W_MEAN_A_TIGHT": gate(values["mean_closure"]),
+    }
+
+
+def _matches(value: float, targets: dict[str, float]) -> str | None:
+    for name, target in targets.items():
+        if target == 0:
+            continue
+        if abs(value - target) <= _REL_TOL * abs(target):
+            return name
+    return None
+
+
+def _python_number_literals(path: Path) -> list[float]:
+    out: list[float] = []
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) \
+                and not isinstance(node.value, bool):
+            out.append(float(node.value))
+    return out
+
+
+def _number_tokens_in(text: str) -> list[float]:
+    out: list[float] = []
+    for token in _NUMBER_TOKEN.findall(text):
+        try:
+            out.append(float(token))
+        except ValueError:
+            continue
+    return out
+
+
+def _carries_adopted_value(text: str) -> bool:
+    """Any adopted value, in any spelling, anywhere in the file -- code,
+    comment or prose. The fan-out question is "is a copy of the producer's
+    number here", and a comment is a copy too (the deleted grep guard was
+    aimed at exactly one)."""
+    targets = _adopted_values()
+    return any(_matches(v, targets) for v in _number_tokens_in(text))
 
 
 def _family_files_with_literals() -> list[str]:
@@ -330,13 +529,14 @@ def _family_files_with_literals() -> list[str]:
             if path.suffix not in _SUFFIXES or not path.is_file():
                 continue
             text = path.read_text(encoding="utf-8", errors="replace")
-            if not _LITERAL_RE.search(text):
-                continue
             rel = str(path.relative_to(_REPO))
+            if not any(marker in text or marker in rel for marker in _FAMILY_MARKERS):
+                continue
+            if not _carries_adopted_value(text):
+                continue
             if RESULTS_DIR_RE.match(rel) and rel != _ENVELOPE_REL:
                 continue      # a produced artifact: output by construction
-            if any(marker in text or marker in rel for marker in _FAMILY_MARKERS):
-                found.append(rel)
+            found.append(rel)
     return found
 
 
@@ -346,7 +546,7 @@ def _results_artifacts_with_literals() -> list[str]:
         rel = str(path.relative_to(_REPO))
         if rel == _ENVELOPE_REL:
             continue
-        if RESULTS_DIR_RE.match(rel) and _LITERAL_RE.search(
+        if RESULTS_DIR_RE.match(rel) and _carries_adopted_value(
                 path.read_text(encoding="utf-8", errors="replace")):
             out.append(rel)
     return out
@@ -414,7 +614,9 @@ def test_each_fanout_classification_holds(rel: str):
         # note is an adoption declaration only if a revision names it.
         if rel.endswith(".py"):
             assert "CV04_ADOPTION" in text
-            assert not _LITERAL_RE.search(
+            # the module-wide, value-based version of this lives in
+            # test_consumer_modules_carry_no_envelope_literal
+            assert not _carries_adopted_value(
                 text.split("CV04_ADOPTION")[1].split("FALSIFIERS")[0]), (
                 f"{rel} restates an envelope value next to its adoption record")
         else:

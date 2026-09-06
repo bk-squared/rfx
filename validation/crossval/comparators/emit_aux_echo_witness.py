@@ -41,14 +41,20 @@ for _p in (_HERE, _REPO_ROOT):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+import slab_family as SF  # noqa: E402
+# The rig, its cell bookkeeping and the auxiliary-echo geometry come from the
+# leaf. cv22 is imported for ONE thing (#928): NX_INTERIOR_R3, the round-3 box
+# width, which is cv22's own declaration adopted by cv23 -- this emitter writes
+# those two cases' witnesses, so it is a consumer-side tool and may name them.
+# The PRODUCER's path (cv04 --lattice-witness) does not come through here.
 import cv22_dispersive_gates as G  # noqa: E402
 
 # (results dir, the case's declared interior width in cells at dx_div = 1).
-# cv04 runs G.NX_INTERIOR (600, its own pre-declared rig); cv22 and cv23 run
+# cv04 runs SF.NX_INTERIOR (600, its own pre-declared rig); cv22 and cv23 run
 # G.NX_INTERIOR_R3 (1000, the round-3 box). Both are declared constants of the
 # family, not numbers read back out of a run.
 CASES = (
-    ("validation/crossval/_04_fresnel_results", G.NX_INTERIOR),
+    ("validation/crossval/_04_fresnel_results", SF.NX_INTERIOR),
     ("validation/crossval/_22_dispersive_results", G.NX_INTERIOR_R3),
     ("validation/crossval/_23_lossy_results", G.NX_INTERIOR_R3),
 )
@@ -70,9 +76,9 @@ def aux_echo_for_rung(rung: dict, nx_interior_default: int, record: dict | None 
     K = int(rung.get("dx_div", 1))
     rec = record or {}
     nxi = rec.get("nx_interior", nx_interior_default)
-    echo = G.slab_aux_echo(int(nxi) // K, float(rung["dt_s"]), dx_div=K,
+    echo = SF.slab_aux_echo(int(nxi) // K, float(rung["dt_s"]), dx_div=K,
                            n_steps=int(rung["n_steps"]))
-    cells = G.rig_cells(int(nxi) // K, K)
+    cells = SF.rig_cells(int(nxi) // K, K)
     for key in ("nx", "x_lo", "probe_refl", "probe_trans", "n_cpml"):
         if key in rec and int(rec[key]) != int(cells[key]):
             raise ValueError(f"rig bookkeeping drift on {key}: record {rec[key]} vs geometry {cells[key]}")

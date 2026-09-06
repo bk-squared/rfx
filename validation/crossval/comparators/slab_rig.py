@@ -28,23 +28,13 @@ import numpy as np
 
 import cv22_dispersive_gates as G
 import dispersive_eps as DE
+import slab_family
 
 
-def staged_commit(repo_root: str, cwd: str | None = None) -> str:
-    """The source commit: ``.staged_commit`` first (a staged copy on a pod has
-    no .git; the orchestrator writes it at staging time -- cv22 review
-    finding 6), then ``git rev-parse HEAD``, else "unknown"."""
-    staged = os.path.join(repo_root, ".staged_commit")
-    if os.path.isfile(staged):
-        with open(staged) as fh:
-            val = fh.read().strip()
-        if val:
-            return val
-    try:
-        return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=cwd or repo_root,
-                                       text=True, stderr=subprocess.DEVNULL).strip()
-    except Exception:
-        return "unknown"
+# Provenance helper, declared in the family LEAF (#928): the PRODUCER stamps
+# its own witness artifact with it, and importing this runner for it would
+# drag a consumer's gate module into the producer's import graph.
+staged_commit = slab_family.staged_commit
 
 
 def run_slab_arm(model: str, params: dict, *, setup, nx_interior: int, n_steps_cap: int,

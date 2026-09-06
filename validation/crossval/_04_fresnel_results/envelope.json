@@ -105,7 +105,7 @@
    "rig": {
     "cons_max_limit": 0.06,
     "d_slab_m": 0.01,
-    "dt_s": null,
+    "dt_s": 2.335067793382187e-12,
     "dx_m": 0.001,
     "eps_slab": 4.0,
     "grid_freq_max_hz": 20000000000.0,
@@ -132,7 +132,7 @@
    "rig_provenance": {
     "cons_max_limit": "cv04-source",
     "d_slab_m": "gallery-manifest",
-    "dt_s": null,
+    "dt_s": "cv04-artifact",
     "dx_m": "gallery-manifest",
     "eps_slab": "gallery-manifest",
     "grid_freq_max_hz": "cv04-source",
@@ -156,7 +156,7 @@
     "tfsf_margin_cells": "cv04-source",
     "tfsf_polarization": "cv04-source"
    },
-   "rig_hash": "sha256:70d7289402c7e3cb20d4f3ec166f99c115e1375bed0b245fea1eb7ecb3e5fc60",
+   "rig_hash": "sha256:24164f616573af51b91f5c596e7b79e521005c4a872218fede25d009ed9dd211",
    "adopted_by": [
     {
      "case": "22_dispersive_slab_fresnel",
@@ -181,11 +181,16 @@
      "adopted_in": "docs/design_notes/20260902_cv23_lossy_slab_predeclaration.md"
     }
    ],
-   "revision_hash": "sha256:8dff276ca1c8bce921ba89332aeba42c9d4b6c3b1d589a7e419e63958b14cc2f"
+   "revision_hash": "sha256:456a657a06be3b8d483701b126befd1e06ada99c3f9b5575185ed94810150ef2",
+   "rig_provenance_keys": {
+    "gallery-manifest": "read out of docs/public/gallery/assets/multilayer_fresnel/manifest.json::provenance.params",
+    "cv04-artifact": "read out of validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4 (and identical in fringe_gate_geometry.json::config)",
+    "cv04-source": "declared by the committed producer script; no run artifact attests it"
+   }
   }
  },
  "notes": [
-  "dt_s is null: no committed artifact records this run's timestep. It follows from the recorded grid, so a reader can recompute it; writing a number here that no committed file holds would be a reconstruction, not evidence.",
+  "dt_s is the committed run's own timestep, read from _04_fresnel_results/lattice_witness.json::rungs.slab_eps4.dt_s (and identical in fringe_gate_geometry.json::config.dt_s), both artifacts of this case. It was null in the first draft of this file on the argument that no artifact carried it; the argument was wrong (PR review, 2026-09-06), and the same standard that fills n_steps / nx_interior / n_cpml fills it.",
   "code_sha is null: the C4 rung's job id is recorded in the cv04 source comment and in the cv22 pre-declaration, but no committed file carries the commit it was built from. gallery_snapshot_git_sha belongs to a DIFFERENT run (the 1.6.5 gallery precompute) that reports the same three band-mean values; it is a second home for the values, not this run's commit.",
   "rig_provenance says, per key, whether the value is attested by a committed run snapshot (gallery-manifest) or only declared by the committed producer script (cv04-source). Nothing here is read from today's library defaults.",
   "The rig is the PRODUCER's. cv22 and cv23 run their own record-length recipe on the same grid and TFSF; that is a consumer property and is not described here.",

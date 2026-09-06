@@ -99,8 +99,8 @@ W_MEAN_A = G.W_MEAN_R + G.W_MEAN_T  # 0.027
 CV04_ADOPTION = {
     "envelope": slab_family.CV04_ENVELOPE_REL,
     "adopted_revision": "r1",
-    "revision_sha256": "sha256:8dff276ca1c8bce921ba89332aeba42c9d4b6c3b1d589a7e419e63958b14cc2f",
-    "rig_hash": "sha256:70d7289402c7e3cb20d4f3ec166f99c115e1375bed0b245fea1eb7ecb3e5fc60",
+    "revision_sha256": "sha256:456a657a06be3b8d483701b126befd1e06ada99c3f9b5575185ed94810150ef2",
+    "rig_hash": "sha256:24164f616573af51b91f5c596e7b79e521005c4a872218fede25d009ed9dd211",
     "gate_policy": {"multiplier": 1.5, "quantum": 1000},
     "adopted_in": "docs/design_notes/20260902_cv23_lossy_slab_predeclaration.md",
     "adopted_by_reviewer": "cv23 pre-declaration review, 2026-09-02",
