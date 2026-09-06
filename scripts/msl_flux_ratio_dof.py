@@ -111,11 +111,21 @@ RESULT (2026-08-01, this script, dx = h_sub/3 = 84.67 um, 8000 steps, CPU)
               eps_eff_fit = 3.0345                residual = 2.9e-16
 
   Z0 is constant to the printed digits across frequency, its reactive part is
-  ~0.5-1.3% of the real part, and it sits 8.1% below the closed form — inside
-  the ">5% expected" Yee-staircase envelope preflight warns about for a
+  ~0.5-1.3% of the real part, and it sits 8.1% below the closed form — the
+  order-of-magnitude the O(dx) dielectric-interface staircase produces on a
   3-substrate-cell mesh (_sparams.py:2479 records ~20-27% for this class). The
   configuration is HEALTHY. R = 1.008 on it is correct and unremarkable; the
   point is that R would read the same either way.
+
+  AUDIT 2026-09-02 (finding A1): this sentence used to say 8.1% is "inside the
+  '>5% expected' Yee-staircase envelope preflight warns about". Preflight no
+  longer says that — check 2's ">5% expected" prediction was retired as a
+  pre-#802 artefact (a re-solve of the aligned 3-cell sweep point read +0.56%
+  against the declared board, not >5%), and the message now states the O(dx)
+  order and the <5% accuracy TARGET without predicting a magnitude. The
+  health verdict above does not rest on that retired envelope: it rests on
+  Z0's frequency-flatness, its small reactive part, the fit residuals, and
+  the plane-to-plane agreement quoted in this same block.
 
   WHY THE PRODUCTION PATH AND NOT A HAND-ROLLED FIT. An earlier version fitted
   with beta PINNED to HJ's eps_eff, got Z0 = 45.2 ohm (-5.6%), found a free-beta

@@ -54,12 +54,22 @@ short ~ 0.667 — both explained by the live series plate-interior layer.)
   frame predicted a ~0.267 jump. PASS.
 - F7 power bookkeeping: wiring identity max residual 3.2e-27 (gate
   2.3e-16); short 1-|S11|^2 = [0.0003, 0.0021, 0.0084, 0.031] vs gate
-  0.10. PASS. F7b flux-box referee: NOT-RUN — the NU lane implements
-  only full-plane flux monitors (`runners/nonuniform.py` raises
-  NotImplementedError for finite-region `add_flux_monitor(size=...)`),
-  so the pre-declared closed box around the driven column is not
-  expressible; per the pre-declaration the sub-check is reported NOT-RUN
-  with the plumbing gap named, not re-aimed.
+  0.10. PASS. F7b flux-box referee: NOT-RUN — the pre-declared closed box
+  around the driven column is not expressible; per the pre-declaration the
+  sub-check is reported NOT-RUN with the plumbing gap named, not re-aimed.
+  The gap, restated 2026-09-05 (PR #900 review2): finite-region
+  `add_flux_monitor(size=...)` now RUNS on the NU lane, so the original
+  reason (`runners/nonuniform.py` raised NotImplementedError) is obsolete —
+  but both the monitor plane and its tangential window edges snap to integer
+  index planes (E at x_i, H read at x_{i+1/2} un-averaged), and the
+  pre-declared faces at x = y = 4.75 mm lie half a cell off that lattice.
+  Since the driven column (5.0 mm) and the four load
+  columns (4.5 / 5.5 mm) sit on the same 0.5 mm node lattice, NO expressible
+  box encloses the driven column alone. Expressing it needs a dual/H-plane
+  (half-index-offset) flux monitor, which no lane has. Consequence: the
+  whole-port normalization is UNTESTED by a field referee. F7a is not a
+  substitute — |a|²-|b|² == Re(V·I*) is an algebraic identity that holds for
+  any V, I (harness wiring only).
 - F8 KVL witness: **FIRED AS WRITTEN.** |V_port|/|V_mid| = 2.40 at the
   quasi-static bins vs gate < 0.1. Mechanism (named, gate NOT widened):
   the criterion's premise was that a short forces sum(V_c) -> 0 while
@@ -203,8 +213,11 @@ uniform-flip attempt:
 - The wire-port injection normalization deviation ((1+loss)/d_par from
   its "amperes" docstring, section 3) deserves its own issue; it cancels
   in S-parameters.
-- F7b's finite-region NU flux monitors remain unimplemented (#544-class
-  plumbing gap).
+- F7b's finite-region NU flux monitors were implemented by PR #900, but F7b
+  is still NOT-RUN: the plumbing gap is now integer-index-plane snapping (E at
+  x_i, H read at x_{i+1/2} un-averaged; the pre-declared half-cell box needs a
+  dual/H-plane monitor), not the missing
+  finite-region monitor. See the F7 bullet above.
 - L_short of the built FIX-A short: committed geometric estimate 0.1 nH;
   the measured F2 phase walk (13.2 deg at 2 GHz) corresponds to
   L_short ~ 0.18 nH via 2*atan(wL/Z0) — inside the <= 0.25 nH envelope

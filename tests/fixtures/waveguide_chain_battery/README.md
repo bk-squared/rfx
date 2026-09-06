@@ -1,22 +1,28 @@
 # waveguide_chain_battery — fixture JSON schema
 
-Two artifacts live in this directory, one per pre-declared run, and they share this schema.
+Three artifacts live in this directory, one per pre-declared run, and they share this schema.
 
 | file | `schema_version` | pre-declaration | port | shift pair |
 |---|---|---|---|---|
 | `fixture.json` | 1 | `docs/design_notes/waveguide_chain_battery_predeclaration.md` | transverse eigenproblem on N+1 cells for an N-cell guide (`fc_port_hz` 5.877188 / 6.204954 / 6.378004 GHz) | `half_turn_pair` (0.03048, 0.08890) |
 | `fixture_guide_cell_aperture.json` | 2 | `docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md` | corrected: the guide's own N cells (`fc_port_hz` 6.523901 / 6.548821 / 6.555060 GHz) | `sign_discriminating_pair` (0.02540, 0.09906) |
+| `fixture_v18_close.json` | 3 | `docs/design_notes/20260905_v18_close_predeclaration.md` | same corrected port; 18 cells bit-identical to run 2's | `sign_discriminating_pair` (0.02540, 0.09906) |
 
 `fixture.json` is frozen: it is the record of a port that no longer exists and is neither
-edited nor re-pinned. `fixture_guide_cell_aperture.json` is the live artifact and says so in
-its own `supersedes` key.
+edited nor re-pinned. `fixture_guide_cell_aperture.json` is the record of run 2 as measured
+(float32 primary on every lane). `fixture_v18_close.json` is the live artifact and says so in
+its own `supersedes` key: the same port and the same battery, with contract criterion 1
+(forward identity) and 3(a) (AD-vs-FD) read under x64 on the `normalize="flux"` lane per the
+v1.8 closing declaration, the float32 reading stored beside the x64 one on every leg, and the
+pre-declared zero-derivative leg carried as `report_only`.
 
 Both are written by the measurement driver
 `scripts/diagnostics/waveguide_chain_battery_measure.py` (one JSON per case persisted as it
-finishes, then assembled) and replayed by `tests/oracle/test_waveguide_chain_battery.py` and
-`tests/oracle/test_waveguide_chain_battery_guide_cell_aperture.py`. Each run's pre-declaration
+finishes, then assembled) and replayed by `tests/oracle/test_waveguide_chain_battery.py`,
+`tests/oracle/test_waveguide_chain_battery_guide_cell_aperture.py` and
+`tests/oracle/test_waveguide_chain_battery_v18_close.py`. Each run's pre-declaration
 and the builder `tests/_waveguide_chain_battery_fixture.py` were committed first (PR #861 for
-run 1, PR #891 for run 2) so that every tolerance, position and drive setting provably predates
+run 1, PR #891 for run 2, the closing note at `10b39787` for run 3) so that every tolerance, position and drive setting provably predates
 that run's first measured S-parameter. This file fixes the schema the measurement writes, so
 the writer and the replay gate cannot drift. Gate arithmetic shared by the writer and the
 replay: `tests/_waveguide_chain_battery_gates.py`.
@@ -29,9 +35,9 @@ Units: metres, hertz, seconds, S/m, decibels, degrees. Complex values are writte
 | key | type | meaning |
 |---|---|---|
 | `schema` | string | `"rfx.waveguide_chain_battery"` |
-| `schema_version` | int | starts at 1; bump on any key change. 1 = run 1 (`fixture.json`), 2 = run 2 (`fixture_guide_cell_aperture.json`, which adds `shift_pair_name`, `supersedes` and `supersedes_reason`) |
+| `schema_version` | int | starts at 1; bump on any key change. 1 = run 1 (`fixture.json`), 2 = run 2 (`fixture_guide_cell_aperture.json`, which adds `shift_pair_name`, `supersedes` and `supersedes_reason`), 3 = run 3 (`fixture_v18_close.json`, which adds `primary_precision`, `forward_identity_float32`, `ad_vs_fd_float32`, `zero_derivative` and `report_only_reason` on the AD legs, `base_precision` / `shift_precision` and `gradient_invariance_x64_base` on the plane-shift legs). From 3 on, `tests/_waveguide_chain_battery_gates.py::X64_DECLARED_LANES` names the lanes whose criterion-1 / 3(a) readings are x64; a leg on such a lane without `primary_precision == "x64"` recomputes as `not_interpretable` |
 | `predeclaration` | string | path of the design note, plus its commit sha in `predeclaration_sha` |
-| `predeclaration_sha` | string | the commit the note was read at — must predate `provenance.commit` |
+| `predeclaration_sha` | string | the commit the note was read at — the version of the note that was binding when the run started; it predates `provenance.commit` or equals it (run 3: the note's last pre-run revision IS the run commit `f914a7ca`; the note's earlier commits and one post-start edit are listed in its section 6) |
 | `shift_pair_name` | string | schema_version ≥ 2 only: which named pair in `tests/_waveguide_chain_battery_fixture.py::_K_SHIFT_PAIRS` this run's `reference_planes_shifted_m` realizes. An artifact without the key resolves to `half_turn_pair`, so the builder guard keeps binding for both files and cannot silently accept a third pair |
 | `supersedes` | string | schema_version ≥ 2 only: path of the artifact this one replaces |
 | `supersedes_reason` | string | schema_version ≥ 2 only: one line saying why, so a reader who opens either file is told which is live |
@@ -47,6 +53,7 @@ Units: metres, hertz, seconds, S/m, decibels, degrees. Complex values are writte
 | `port_cutoff` | object | report-only mechanism witness: the port config's `f_cutoff` (the β / Z_TE the extractor uses) against the guide's cutoff fitted from the thru's S21 phase, per rung and lane (see below) |
 | `legs_rung` | string | the rung the AD/FD and plane-shift legs ran at (`"fine"`, the claims rung) |
 | `readme` | string | this file's path |
+| `section_4_falsifier` | object | schema_version ≥ 3, when the run's VESSL YAML ran the ad_fd stage a second time with `RFX_CHAIN_PRIMARY=float32` (the closing pre-declaration's section 4): attached by the pin step from `<out-dir>/falsifier_float32/ad_fd__*.json` — `n_legs`, `n_red`, `red_keys` (must equal run 2's 9), per-leg `{primary_precision, verdict, rel, g_ad, g_fd, forward_identity_max_scaled_diff, forward_identity_pass}` and the stage's provenance; the replay compares it leg by leg with the `ad_vs_fd_float32` readings on the primary legs |
 | `pins` | object | written by the pin step (`--stages pin`): `gradient_invariance_envelope` / `gradient_invariance_gate` (quantum 1000), `richardson_quantum` (100 for magnitudes, 10 for degrees), `monotone_quantum` (100), `policy` |
 | `verdicts` | object | per gate: `"pass"`, `"fail"`, `"report_only"`, `"skipped"`, `"not_interpretable"` |
 
@@ -68,6 +75,7 @@ disagreement is itself a failure.
 | `recapture_command` | string | the exact command that regenerates this file from a clean checkout |
 | `recapture_entry_point`, `recapture_vessl_yaml` | string | the tracked driver path and the tracked VESSL YAML the measurement ran under (bare paths, `git ls-files`-resolvable) |
 | `wall_time_note` | string | what `wall_time_s` sums |
+| `run_id_note`, `post_run_edits` | string | schema_version ≥ 3: which provenance strings were written after the pod's assemble step and from what (the run id from the backed-up log filename when `VESSL_RUN_ID` was unset; `supersedes` / `supersedes_reason` when the pod ran with the previous run's constants). Numbers are never on this list |
 
 ## `fixture`
 
@@ -151,6 +159,15 @@ applied — so it isolates the gradient property from the value of β; `rel_chan
 uses `2β_yee(c/2a)Δ`. `pinned_gate` stays null on the first run and is filled by the same PR from
 `gate_from_envelope(measured, quantum=1000)`.
 
+schema_version ≥ 3: each entry carries `base_precision` / `shift_precision` (both `"float32"`:
+criterion 3(b) is NOT under the x64 declaration, so both sides of `rel_change` are float32 as in
+run 2). The closing run's plane-shift stage read its base gradient from `g_ad`, which the
+declaration had made the x64 primary on the flux lane, against a float32 shifted gradient; the pin
+step (`rebase_gradient_invariance_float32`) rebuilt those six entries from the stored float32
+numbers and kept the mixed reading under `gradient_invariance_x64_base` keyed the same way, where
+`rel_change` reports the float32 gradient's distance from x64 on that lane (5.9e-7 … 4.7e-6 on the
+in-program legs; 96.3 on the zero-derivative leg) and is not a plane-invariance number.
+
 `plane_shift.cheap_refute` records the §8 refute (plane-shift stage under a local copy of
 `_shift_modal_waves` with the shift sign flipped): `resid_yee_min_over_entries`,
 `resid_yee_max_over_entries`, `rotation_gate_would_pass` (must be false), `abs_s_still_invariant`,
@@ -162,7 +179,7 @@ uses `2β_yee(c/2a)Δ`. `pinned_gate` stays null on the first run and is filled 
 `re_s11`, `im_s11`), `theta_kind` (`"eps"` or `"sigma"`), `theta0`, `h`, `x64_context` (bool),
 `loss_dtype`, `s_dtype_fd`, `checkpoint_segments`, `value_at_theta0`, `grad_dtype`,
 `expected_ulp_floor_skip` (bool), `f_plus`, `f_minus`, `fd_ulp_span`, `ulp_floor` (1e4), `g_ad`,
-`g_fd`, `rel`, `gate` (0.05), `verdict` ∈ `{"pass", "fail", "skipped_under_ulp_floor"}`,
+`g_fd`, `rel`, `gate` (0.05), `verdict` ∈ `{"pass", "fail", "skipped_under_ulp_floor", "report_only"}`,
 `forward_identity` = `{max_abs_diff, max_scaled_diff, worst_entry, abs_s_at_worst, rtol, atol,
 pass}` (the θ0 reverse-mode-traced primal vs the untraced call; `max_scaled_diff ≤ 1` is the
 rtol 1e-5 / atol 1e-7 gate), `forward_identity_concrete_override_vs_plain` (eps legs: the concrete
@@ -170,6 +187,18 @@ no-op override vs the plain call, the form of `tests/unit/autodiff/test_waveguid
 `x64_witness` (report-only, first objective of each (dut, lane, kind) and every non-finite float32
 gradient): `{g_ad_x64, value_x64, forward_identity_x64}` from the same reverse-mode call under a
 scoped x64 context.
+
+schema_version ≥ 3 adds, per leg: `primary_precision` ∈ `{"float32", "x64"}` — which reading
+`g_ad`, `rel`, `verdict` and `forward_identity` hold (x64 on a lane in `X64_DECLARED_LANES` when
+the leg carries an `x64_witness`, which from run 3 on is every leg of such a lane);
+`ad_vs_fd_float32` = the float32 `{g_ad, g_fd, rel, fd_ulp_span, verdict, ...}` entry and
+`forward_identity_float32` = the float32 identity metric, always stored so the pre-declaration's
+section-4 falsifier (float32 primary must reproduce run 2's 9 red) replays from the file at zero
+cost; `zero_derivative` = `{ratio, same_sign, ratio_max: 3, verdict}` on the pre-declared
+zero-derivative leg (`EXPECTED_ULP_SKIP`) whose FD resolved above the ULP floor — a REPORT beside
+a `verdict == "report_only"` leg, never read as the verdict (closing note §2; the ratio on run 3 is
+5.709, outside the factor-3 band, written so report_only is not mistaken for pass);
+`report_only_reason` says why.
 
 ## `port_cutoff`
 

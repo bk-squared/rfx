@@ -2,10 +2,11 @@
 """WR-90 chain battery — the measurement driver (v1.8 WP2).
 
 Runs the pre-declared battery of
-``docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md`` (run 2;
-the parent note ``waveguide_chain_battery_predeclaration.md`` governed run 1) on
-the fixture set built by ``tests/_waveguide_chain_battery_fixture.py`` and writes
-``tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json`` (schema:
+``docs/design_notes/20260905_v18_close_predeclaration.md`` (run 3, the v1.8 closing
+run; ``waveguide_chain_battery_remeasure_predeclaration.md`` governed run 2 and the
+parent note ``waveguide_chain_battery_predeclaration.md`` run 1) on the fixture set
+built by ``tests/_waveguide_chain_battery_fixture.py`` and writes
+``tests/fixtures/waveguide_chain_battery/fixture_v18_close.json`` (schema:
 ``tests/fixtures/waveguide_chain_battery/README.md``). Gate arithmetic lives in
 ``tests/_waveguide_chain_battery_gates.py`` and is shared with the replay test
 ``tests/oracle/test_waveguide_chain_battery.py``; this file only builds, runs,
@@ -43,7 +44,7 @@ Usage (from a clean checkout; the rfx import must resolve to this tree)::
         --out-dir <run-dir> --run-id <vessl run id> --run-lane vessl
     PYTHONPATH=. python scripts/diagnostics/waveguide_chain_battery_measure.py \
         --out-dir <run-dir> --stages assemble \
-        --fixture-out tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json
+        --fixture-out tests/fixtures/waveguide_chain_battery/fixture_v18_close.json
 
 Lanes ``normalize=False`` and ``normalize="flux"`` only (``normalize=True``
 never enters). Nothing from ``rfx/probes/refplane.py`` is imported.
@@ -83,13 +84,14 @@ SCHEMA = "rfx.waveguide_chain_battery"
 # Identity stamp of the SECOND run's artifact (re-measurement pre-declaration §7).
 # The first run's artifact stays at schema_version 1 and keeps pointing at the
 # parent note; nothing here rewrites it.
-SCHEMA_VERSION = 2
-PREDECLARATION = "docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md"
-ARTIFACT = "tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json"
-SUPERSEDES = "tests/fixtures/waveguide_chain_battery/fixture.json"
+SCHEMA_VERSION = 3
+PREDECLARATION = "docs/design_notes/20260905_v18_close_predeclaration.md"
+ARTIFACT = "tests/fixtures/waveguide_chain_battery/fixture_v18_close.json"
+SUPERSEDES = "tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json"
 SUPERSEDES_REASON = (
-    "the frozen artifact records a port whose transverse eigenproblem was solved on N+1 "
-    "cells for an N-cell guide; this artifact is the same battery on the corrected port")
+    "same port, same battery: this artifact reads contract criterion 1 (forward identity) and "
+    "3(a) (AD-vs-FD) under x64 on the flux lane per the v1.8 closing declaration, stores the "
+    "float32 reading beside it, and carries the pre-declared zero-derivative leg as report_only")
 README = "tests/fixtures/waveguide_chain_battery/README.md"
 DRIVER = "scripts/diagnostics/waveguide_chain_battery_measure.py"
 SETTLING_RERUN_NUM_PERIODS = 2.0 * F.NUM_PERIODS      # §2.5 record-length doubling
@@ -405,6 +407,13 @@ def stage_ad_fd(args, out_dir: Path, rung: str, prov: dict) -> None:
             # float32 gradient re-evaluated in float64.
             x64_witness = {}
             t_x = time.time()
+            # v1.8 closing declaration: on X64_DECLARED_LANES the x64 reading is the PRIMARY the
+            # gate reads (criterion 1 and 3(a)), so it is measured for EVERY objective, not only
+            # objectives[0]. The forward identity does not depend on the objective, so one S64
+            # per group serves all legs. RFX_CHAIN_PRIMARY=float32 keeps the float32 primary
+            # (the pre-declaration's section-4 falsifier: must reproduce run 2's 9 red).
+            x64_primary = (lane_label in G.X64_DECLARED_LANES
+                           and os.environ.get("RFX_CHAIN_PRIMARY", "declared") != "float32")
             with enable_x64():
                 sim64w = F.build_simulation(dut, dx)
                 with warnings.catch_warnings():
@@ -413,7 +422,9 @@ def stage_ad_fd(args, out_dir: Path, rung: str, prov: dict) -> None:
                         num_periods=F.NUM_PERIODS, normalize=lane,
                         **_override_kw(sim64w, dut, kind, jnp.asarray(theta0, jnp.float64))).s_params)
                     nonfinite = [n for n in objectives if not np.isfinite(grads[n]["g_ad"])]
-                    for name in [objectives[0]] + [n for n in nonfinite if n != objectives[0]]:
+                    witness_names = (list(objectives) if x64_primary
+                                     else [objectives[0]] + [n for n in nonfinite if n != objectives[0]])
+                    for name in witness_names:
                         def f64(th, _name=name):
                             S = sim64w.compute_waveguide_s_matrix(
                                 num_periods=F.NUM_PERIODS, normalize=lane, checkpoint_segments=cseg,
@@ -437,7 +448,34 @@ def stage_ad_fd(args, out_dir: Path, rung: str, prov: dict) -> None:
                 ident = G.forward_identity_metric(grads[name]["S_primal"], ident_ref)
                 ident_concrete = G.forward_identity_metric(S_concrete, S_plain) if kind == "eps" else None
                 expected_skip = (dut, kind, name) in G.EXPECTED_ULP_SKIP
+                w = x64_witness.get(name)
+                primary = "x64" if (x64_primary and w is not None) else "float32"
+                if primary == "x64":
+                    ident_primary = w["forward_identity_x64"]
+                    e_primary = G.ad_fd_entry(g_ad=w["g_ad_x64"], f_plus=fd[name]["f_plus"],
+                                              f_minus=fd[name]["f_minus"], h=h, loss_dtype=fd[name]["loss_dtype"])
+                    if expected_skip and e_primary["verdict"] != "skipped_under_ulp_floor":
+                        # closing pre-declaration section 2: the pre-declared zero-derivative
+                        # leg is REPORT-ONLY on the remeasure note's exit (c); the sign/factor-3
+                        # entry is stored beside it, never read as the verdict.
+                        zd = G.zero_derivative_entry(g_ad_x64=w["g_ad_x64"], g_fd=e_primary["g_fd"],
+                                                     fd_ulp_span=e_primary["fd_ulp_span"])
+                        admissible = G.zero_derivative_report_only_admissible(
+                            g_ad_x64=w["g_ad_x64"], g_fd=e_primary["g_fd"])
+                        e_primary = {**e_primary, "zero_derivative": zd,
+                                     "verdict": "report_only" if admissible else "fail",
+                                     "report_only_reason": (
+                                         "pre-declared zero-derivative objective; AD and FD are O(1e-7) "
+                                         "discretization residuals of a physically zero derivative "
+                                         "(closing pre-declaration section 2)") if admissible else (
+                                         "OUTSIDE the pre-declared report_only branch (section 3 row 3): "
+                                         "sign flip or |g| above 1e-5 — a non-zero derivative the two "
+                                         "precisions disagree on; fail, root-cause, do not close")}
+                else:
+                    ident_primary, e_primary = ident, e
                 legs.append({
+                    "primary_precision": primary,
+                    "forward_identity_float32": ident, "ad_vs_fd_float32": e,
                     "dut": dut, "lane": lane_label, "dx_m": dx, "rung": rung,
                     "objective": name, "theta_kind": kind, "theta0": theta0, "h": h,
                     "x64_context": x64_flag, "s_dtype_fd": fd[name]["s_dtype"],
@@ -445,12 +483,12 @@ def stage_ad_fd(args, out_dir: Path, rung: str, prov: dict) -> None:
                     "value_at_theta0": grads[name]["value"],
                     "grad_dtype": grads[name]["grad_dtype"],
                     "expected_ulp_floor_skip": expected_skip,
-                    "forward_identity": ident,
+                    "forward_identity": ident_primary,
                     "forward_identity_concrete_override_vs_plain": ident_concrete,
                     "wall_time_s": {"ad": grads[name]["wall_time_s"], "fd_pair": fd_wall,
                                     "x64_witness": x64_wall},
-                    "x64_witness": x64_witness.get(name),
-                    **e,
+                    "x64_witness": w,
+                    **e_primary,
                 })
                 _log(f"  {name}: g_ad={e['g_ad']:+.6e} g_fd={e['g_fd']:+.6e} rel={e['rel']:.3e} "
                      f"span={e['fd_ulp_span']:.3g} -> {e['verdict']}; identity scaled={ident['max_scaled_diff']:.3f}")
@@ -573,18 +611,28 @@ def stage_plane_shift(args, out_dir: Path, rung: str, prov: dict, *, refute: boo
                     continue
                 grads = ad_grads(sim_shift, dut, kind, lane, resolvable, theta0, cseg,
                                  tag=f"{dut}/{lane_label}/{kind} shifted")
+                # Criterion 3(b) is not under the x64 declaration: the base gradient is the
+                # leg's FLOAT32 reading (``ad_vs_fd_float32`` from schema_version 3, ``g_ad``
+                # itself before), the same precision as the shifted gradient computed here.
+                # The closing run (VESSL 369367258638) read ``g_ad`` here while that key had
+                # become the x64 primary on the flux lane; ``G.rebase_gradient_invariance_float32``
+                # rebuilt its entries from the stored numbers in the pin step.
+                def _g32(n):
+                    return base_legs[n].get("ad_vs_fd_float32", base_legs[n])["g_ad"]
                 for n in resolvable:
                     if G.OBJECTIVES[n][0] == "magnitude":
                         ginv[f"{kind}:{n}"] = G.gradient_invariance_entry(
-                            "magnitude", base_legs[n]["g_ad"], 0.0, grads[n]["g_ad"], 0.0, None)
+                            "magnitude", _g32(n), 0.0, grads[n]["g_ad"], 0.0, None)
+                        ginv[f"{kind}:{n}"].update(base_precision="float32", shift_precision="float32")
                 complex_pairs = {("re_s21", "im_s21"): "s21_complex", ("re_s11", "im_s11"): "s11_complex"}
                 for (re_n, im_n), label in complex_pairs.items():
                     if re_n in resolvable and im_n in resolvable:
                         entry = "S21" if label == "s21_complex" else "S11"
                         ginv[f"{kind}:{label}"] = G.gradient_invariance_entry(
-                            "complex", base_legs[re_n]["g_ad"], base_legs[im_n]["g_ad"],
+                            "complex", _g32(re_n), _g32(im_n),
                             grads[re_n]["g_ad"], grads[im_n]["g_ad"], phi_meas[entry], phi_pre[entry])
                         ginv[f"{kind}:{label}"]["from_objectives"] = [re_n, im_n]
+                        ginv[f"{kind}:{label}"].update(base_precision="float32", shift_precision="float32")
                 for k, e in ginv.items():
                     if k.startswith(kind) and "rel_change" in e:
                         _log(f"  gradient leg {k}: rel_change={e['rel_change']:.3e} (bar {G.GRADIENT_REPORT_BAR})")
@@ -657,6 +705,46 @@ def _ladder_block(cells: list[dict]) -> dict:
                         "pinned_richardson_gate": None, "pinned_monotone_fraction_min": None})
             out[f"{name}|{lane}"] = lad
     return out
+
+
+def attach_section_4_falsifier(fx: dict, out_dir: Path) -> dict:
+    """Closing pre-declaration section 4: the ad_fd stage re-run with
+    ``RFX_CHAIN_PRIMARY=float32`` (the VESSL YAML writes it to ``<out-dir>/falsifier_float32``)
+    must reproduce run 2's 9 red. Attach a compact, checkable record of that stage — the
+    float32 verdict, rel, g_ad and identity metric per leg plus the red key set — so the
+    replay can compare it leg by leg with the float32 readings stored on the primary legs
+    (``tests/oracle/test_waveguide_chain_battery_v18_close.py``). No-op when the directory
+    is absent (a run without the falsifier stage) or when the block is already attached.
+    """
+    fdir = out_dir / "falsifier_float32"
+    files = sorted(fdir.glob("ad_fd__*.json")) if fdir.is_dir() else []
+    if not files or "section_4_falsifier" in fx:
+        return fx
+    legs, red, prov = {}, [], None
+    for p in files:
+        rec = json.loads(p.read_text())
+        prov = prov or {k: rec["provenance"].get(k) for k in ("commit", "jax_version", "jax_devices",
+                                                                "precision", "jax_enable_x64")}
+        for leg in rec["legs"]:
+            key = f"{leg['dut']}|{leg['lane']}|{leg['theta_kind']}|{leg['objective']}"
+            legs[key] = {
+                "primary_precision": leg.get("primary_precision", "float32"),
+                "verdict": leg["verdict"], "rel": leg["rel"], "g_ad": leg["g_ad"], "g_fd": leg["g_fd"],
+                "forward_identity_max_scaled_diff": leg["forward_identity"]["max_scaled_diff"],
+                "forward_identity_pass": bool(leg["forward_identity"]["pass"]),
+            }
+            if leg["verdict"] == "fail":
+                red.append(f"ad_vs_fd|{key}")
+            if not leg["forward_identity"]["pass"]:
+                red.append(f"forward_identity|{key}")
+    fx["section_4_falsifier"] = {
+        "what": "the ad_fd stage re-run in the same pod with RFX_CHAIN_PRIMARY=float32 "
+                "(closing pre-declaration section 4); must reproduce run 2's 9 red",
+        "stage_dir": "falsifier_float32", "n_legs": len(legs), "n_red": len(red),
+        "red_keys": sorted(red), "legs": legs, "provenance": prov,
+    }
+    _log(f"section-4 falsifier attached: {len(legs)} legs, {len(red)} red")
+    return fx
 
 
 def assemble(args, out_dir: Path, prov: dict) -> Path:
@@ -883,6 +971,8 @@ def main() -> int:
         # fields from the measured envelopes, recompute the verdicts, write back
         target = Path(args.fixture_out) if args.fixture_out else out_dir / "fixture.json"
         fx = json.loads(target.read_text())
+        fx = G.rebase_gradient_invariance_float32(fx)   # no-op once the plane stage writes float32 bases
+        fx = attach_section_4_falsifier(fx, out_dir)     # the pod's float32-primary stage, if it ran
         fx = G.pin_fixture(fx)
         _write(target, fx)
         _log(f"pinned {target}: {fx['pins']}")

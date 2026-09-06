@@ -25,8 +25,13 @@ This module holds three things:
   value this run measured, plus one test per §5 leg pinning the number the
   adjudication rests on inside the branch that fired. A future change that moves
   any of them reds here rather than passing quietly;
-* the **live layer** (§5.11's success criterion), re-pointed from the frozen
-  artifact to this one, with the three ``xfail(strict=True)`` marks removed.
+* (moved on) the **live layer** (§5.11's success criterion) was re-pointed from
+  the frozen artifact to this one here, with the three ``xfail(strict=True)``
+  marks removed; it now reads the v1.8 closing artifact in
+  ``tests/oracle/test_waveguide_chain_battery_v18_close.py`` (whose 18 cells are
+  bit-identical to this one's). This module is the adjudication of run 2 as it
+  was measured, float32 primary on every lane, and is not re-read under the
+  closing declaration (``recompute_verdicts`` applies it from schema_version 3).
 
 No gate, tolerance, golden or pin is moved here. Numbers that missed their
 predicted branch are pinned at what they measured and named in the PR body as
@@ -46,11 +51,6 @@ import pytest
 from tests import _waveguide_chain_battery_fixture as F
 from tests import _waveguide_chain_battery_gates as G
 from tests._gate_policy import gate_from_envelope
-from tests.oracle.test_waveguide_chain_battery import (
-    LIVE_ABS_S_ENVELOPE,
-    LIVE_ABS_S_TOL,
-    _measure_cell,
-)
 
 REPO = Path(__file__).resolve().parents[2]
 FIXTURE = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture_guide_cell_aperture.json"
@@ -1214,79 +1214,13 @@ def test_preflight_findings_are_recorded_verbatim(fx):
 
 
 # ===========================================================================
-# LIVE layer — §5.11's success criterion, re-pointed at THIS artifact
+# LIVE layer — moved on
 # ===========================================================================
-# The three tests below were xfail(strict=True) against the frozen artifact,
-# each naming this re-measurement as what would resolve it. They now read the
-# corrected-port artifact and the marks are off, which is what strict xfail
-# requires the moment they pass. LIVE_ABS_S_ENVELOPE (5.000e-6) and the derived
-# LIVE_ABS_S_TOL (1e-4) are imported from the frozen module unchanged; they are
-# committed values from a measured cross-backend envelope and are not moved here.
-
-
-def _live_compare(fx, rung: str):
-    for dut in F.DUTS:
-        for lane in F.LANES:
-            label = G.LANE_LABELS[lane]
-            stored = _cell(dut, rung, label)
-            sim, res, S, codes = _measure_cell(dut, rung, lane)
-            assert codes == sorted(f["code"] for f in stored["preflight"]), (dut, rung, label, codes)
-            S0 = G.s_from_json(stored["s_params"])
-            d = float(np.max(np.abs(S - S0)))
-            m = G.cell_metrics(S)
-            print(f"[live {dut}-{rung}-{label}] max|S_live-S_fixture|={d:.3e} "
-                  f"settling={np.asarray(res.settling_db)} colpow={m['column_power_max']:.5f} "
-                  f"recip_c={m['reciprocity_complex_max']:.2e}")
-            assert np.all(np.isfinite(S))
-            assert d <= LIVE_ABS_S_TOL, (dut, rung, label, d, LIVE_ABS_S_TOL,
-                                         "cross-backend excess is reported with both backends' "
-                                         "numbers, never absorbed by widening the pin (§5.11)")
-
-
-@pytest.mark.slow
-@pytest.mark.parametrize("rung", ["coarse", "mid"])
-def test_live_cells_reproduce_the_fixture_cpu(fx, rung):
-    """§5.11 row 1: was xfail (live differed from the frozen fixture by up to
-    1.6e-1 against LIVE_ABS_S_TOL = 1e-4, because the frozen fixture recorded the
-    (N+1)-cell aperture). Against this artifact it passes."""
-    _live_compare(fx, rung)
-
-
-@pytest.mark.slow
-@pytest.mark.gpu
-def test_live_cells_reproduce_the_fixture_fine_rung(fx):
-    """§5.11 row 2, same reason, on the GPU lane (the fine rung is 4x the steps)."""
-    _live_compare(fx, "fine")
-
-
-@pytest.mark.slow
-@pytest.mark.parametrize("lane", F.LANES, ids=lambda l: G.LANE_LABELS[l])
-def test_live_plane_shift_rotation_coarse_rung(lane):
-    """§5.11 row 3: was xfail because the FIRST shift pair put ``2βΔ`` within a few
-    degrees of 180° across the band, where the wrong-sign witness cannot separate
-    the two hypotheses at any cutoff — it read 1.801° against a 10° floor. With the
-    re-declared pair (§4) the coarse rung is predicted at 0.512° / 0.669° / 64.07°.
-    Measured live against physics, not against the artifact."""
-    sim, res, S_base, _ = _measure_cell("slab", "coarse", lane)
-    sim_s = F.build_simulation("slab", G.RUNG_DX["coarse"],
-                               reference_planes=(F.REF_LEFT_SHIFTED_M, F.REF_RIGHT_SHIFTED_M))
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        S_shift = np.asarray(sim_s.compute_waveguide_s_matrix(
-            num_periods=F.NUM_PERIODS, normalize=lane).s_params).astype(complex)
-    grid = sim._build_grid()
-    rot = G.plane_shift_rotation(S_base, S_shift, F.FREQS, float(grid.dt), G.RUNG_DX["coarse"])
-    print(f"[live plane-shift coarse {G.LANE_LABELS[lane]}] |S| max diff={rot['abs_s_max_diff']:.2e} "
-          f"resid_yee={rot['resid_yee_max']:.3f}° resid_cont={rot['resid_cont_max']:.3f}° "
-          f"wrong_sign_min={rot['wrong_sign_resid_min']:.1f}°")
-    assert rot["abs_s_allclose"]
-    assert rot["resid_yee_max"] <= G.ROTATION_TOL_YEE_DEG
-    assert rot["resid_cont_max"] <= G.ROTATION_TOL_CONTINUOUS_DEG
-    assert rot["wrong_sign_resid_min"] > G.WRONG_SIGN_MIN_DEG
-
-
-def test_the_live_pin_is_the_committed_one():
-    """§5.11: LIVE_ABS_S_ENVELOPE and its derived tolerance are not moved by this
-    run. They live in the frozen module and are imported, not restated."""
-    assert LIVE_ABS_S_ENVELOPE == 5.000e-6
-    assert LIVE_ABS_S_TOL == gate_from_envelope(LIVE_ABS_S_ENVELOPE, quantum=10000) == 1e-4
+# The three live tests that read THIS artifact — the two
+# ``test_live_cells_reproduce_the_fixture_*`` and
+# ``test_live_plane_shift_rotation_coarse_rung`` — and the pin guard
+# ``test_the_live_pin_is_the_committed_one`` now live in
+# ``tests/oracle/test_waveguide_chain_battery_v18_close.py`` and read the v1.8
+# closing artifact ``fixture_v18_close.json`` (VESSL 369367258638), whose 18 cells
+# are bit-identical to this one's (max|ΔS| = 0 on every cell). This module stays
+# the adjudication of run 2 as it was measured.
