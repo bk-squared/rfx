@@ -462,17 +462,34 @@ def _absorber_from_state(state: dict[str, Any], nominal_dx: float) -> dict[str, 
     }
 
 
-def _support_rows(source: str, issues: tuple[str, ...] | list[str]) -> list[dict[str, Any]]:
+# rfx.api._preflight.PreflightIssue severity -> support-row status. "info" is
+# already a status this schema uses elsewhere (the dispersion and stability
+# rows), so an informational finding gets its own row state rather than being
+# reported as something to fix.
+_SUPPORT_STATUS_BY_SEVERITY = {"error": "fail", "warning": "warn", "info": "info"}
+
+
+def _support_rows(source: str, issues: Any) -> list[dict[str, Any]]:
+    """One row per preflight finding, keyed on the finding's OWN severity.
+
+    ``issues`` holds ``PreflightIssue`` (a ``str`` subclass carrying
+    ``.severity``) on every current path. The severity is read off the issue
+    when it is there and only falls back to the historical ``"ERROR:"`` text
+    prefix for a plain string — which is also a correctness fix, since an
+    error-severity issue raised as a ``PreflightErrorWarning`` carries no such
+    prefix and used to be filed as ``warn``.
+    """
     if not issues:
         return [{"source": source, "status": "ok", "message": "All checks passed."}]
-    return [
-        {
-            "source": source,
-            "status": "fail" if issue.startswith("ERROR:") else "warn",
-            "message": issue,
-        }
-        for issue in issues
-    ]
+    rows = []
+    for issue in issues:
+        severity = getattr(issue, "severity", None)
+        if severity is None:
+            status = "fail" if str(issue).startswith("ERROR:") else "warn"
+        else:
+            status = _SUPPORT_STATUS_BY_SEVERITY.get(severity, "warn")
+        rows.append({"source": source, "status": status, "message": str(issue)})
+    return rows
 
 
 def plan_simulation_mesh(
@@ -488,6 +505,14 @@ def plan_simulation_mesh(
 
     ``artifact_root`` only declares intended paths; it never creates directories
     or writes files.
+
+    ``sparameter_calculator="waveguide"`` is the one calculator whose preflight
+    is not free: it builds the grid and solves each waveguide port's mode so
+    the setup audits can read the runner's own plane indices and cutoffs. It
+    runs no FDTD, but on a fine mesh with several ports it is seconds rather
+    than milliseconds. Those audits also file an informational row per port
+    pair (the known E-plane offset), which is a ``status="info"`` row, not a
+    ``"warn"`` one.
     """
     state = dict(sim._mesh_planner_state())
     report = sim.mesh_intelligence_report(

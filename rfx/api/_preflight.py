@@ -678,8 +678,16 @@ class PreflightIssue(str):
         if errors:
             ...  # stop before spending GPU minutes on a doomed run
 
-    ``severity`` is ``"error"`` for hard contradictions / known-bad configs and
-    ``"warning"`` for advisories. ``code`` is the lowercase-slug category set at
+    ``severity`` is ``"error"`` for hard contradictions / known-bad configs,
+    ``"warning"`` for advisories, and ``"info"`` for a finding that is a
+    RECORD rather than a problem — a known, shipped constant of the
+    implementation that a reader of the report should see but that nobody is
+    being asked to fix (the waveguide E-plane offset,
+    ``port_index_mirror_known_e_plane_offset``, is the first of these).
+    Only ``"error"`` gates: :attr:`PreflightReport.ok`,
+    :meth:`PreflightReport.raise_for_failure` and
+    ``preflight(strict=True)``'s sibling ``preflight_sparameters(strict=True)``
+    all key on it alone. ``code`` is the lowercase-slug category set at
     the check site (e.g. ``"conformal_nan"``, ``"mesh_resolution"``,
     ``"absorber_overlap"``). ``loc`` and ``source`` are optional provenance.
 
@@ -743,8 +751,21 @@ class PreflightReport(list):
 
     @property
     def warnings(self) -> list:
-        """Non-error (advisory) findings only."""
-        return [i for i in self if getattr(i, "severity", "warning") != "error"]
+        """Advisory findings only — neither error- nor info-severity.
+
+        ``info`` is deliberately excluded (it is not an advisory; see
+        :class:`PreflightIssue`), so the partition of a report is
+        ``errors + warnings + infos``. An issue carrying any other severity
+        string counts as a warning, which keeps an unknown future tier
+        visible rather than silently dropped.
+        """
+        return [i for i in self
+                if getattr(i, "severity", "warning") not in ("error", "info")]
+
+    @property
+    def infos(self) -> list:
+        """Informational findings only (severity ``"info"``)."""
+        return [i for i in self if getattr(i, "severity", "warning") == "info"]
 
     @property
     def ok(self) -> bool:
@@ -2667,12 +2688,20 @@ class _PreflightMixin:
             One of ``"run"``, ``"forward"``, ``"msl"``, or ``"waveguide"``
             (the corresponding method names are accepted as aliases).
         strict:
-            If True, escalate findings to a raise: collect every issue, then
-            raise a single ``ValueError`` listing them all (aggregate-then-raise,
-            matching ``preflight(strict=True)``). The underlying
-            ``NotImplementedError`` is recorded as an error-severity issue and
-            re-surfaced as part of that aggregated ``ValueError`` (its exact type
-            is not preserved).
+            If True, escalate ERROR-severity findings to a raise: collect
+            everything, then raise a single ``ValueError`` listing the errors
+            (aggregate-then-raise). The underlying ``NotImplementedError`` is
+            recorded as an error-severity issue and re-surfaced as part of that
+            aggregated ``ValueError`` (its exact type is not preserved).
+
+            Errors only, not "any issue": the waveguide setup audits report
+            advisory and informational findings on a perfectly valid routing,
+            and a healthy two-port guide ALWAYS carries the informational
+            E-plane note, so escalating on emptiness would make
+            ``strict=True`` raise on every correct waveguide setup. Advisories
+            are still returned in the report and printed; read them there.
+            (This differs from ``preflight(strict=True)``, whose report has no
+            informational tier.)
         normalize:
             Waveguide non-uniform preflight uses this to mirror
             ``compute_waveguide_s_matrix(normalize=...)``.  ``None`` means the
@@ -2797,10 +2826,15 @@ class _PreflightMixin:
             # everything in one raise below (don't fail-on-first).
             issues.extend(self.preflight(strict=False))
 
-        if strict and issues:
+        _errors = issues.errors
+        if strict and _errors:
+            _advisory = len(issues) - len(_errors)
             raise ValueError(
-                f"preflight_sparameters (strict) found {len(issues)} issue(s):"
-                "\n  - " + "\n  - ".join(issues)
+                f"preflight_sparameters (strict) found {len(_errors)} "
+                f"error-severity issue(s)"
+                + (f" (plus {_advisory} advisory/informational finding(s), "
+                   "returned but not escalated)" if _advisory else "")
+                + ":\n  - " + "\n  - ".join(_errors)
             )
 
         if issues:
@@ -6084,7 +6118,7 @@ class _PreflightMixin:
     # result-side effect.
     # ------------------------------------------------------------------
 
-    def _waveguide_setup_planes(self, freqs, num_periods, n_steps):
+    def _waveguide_setup_planes(self, _w, freqs, num_periods, n_steps):
         """``(grid, one cfg per waveguide port, n_steps, dt, freq_max)``.
 
         Built with the RUNNER's own builders so the two audits below read the
@@ -6092,6 +6126,16 @@ class _PreflightMixin:
         re-deriving either. Returns ``None`` when the setup cannot be laid out
         eagerly (a traced mesh or timestep, no ports, a builder that raises) —
         an audit is never allowed to break a run that would otherwise proceed.
+
+        The grid build and the per-port mode solve are the expensive part, and
+        they are the part that can raise. ``preflight_sparameters`` is a
+        BEFORE-the-run safety call, so a builder exception here is reported as
+        a warning-severity ``waveguide_setup_audit_skipped`` issue naming the
+        exception and the audits are skipped — never re-raised, which would
+        turn a check meant to save a doomed run into the thing that stops a
+        healthy one. The exception is named rather than swallowed: an advisory
+        that can fail silently is the failure mode these checks exist to catch
+        (the #576 precedent on the sibling absorber advisory).
         """
         entries = list(getattr(self, "_waveguide_ports", ()) or ())
         if not entries:
@@ -6103,26 +6147,47 @@ class _PreflightMixin:
                 getattr(self, "_dy_profile", None),
                 getattr(self, "_dz_profile", None))):
             return None
-        grid = self._build_nonuniform_grid() if nonuniform else self._build_grid()
-        if is_tracer(grid.dt):
-            return None
-        dt = float(grid.dt)
-        freq_max = float(getattr(grid, "freq_max", None) or self._freq_max)
-        if n_steps is None:
-            if hasattr(grid, "num_timesteps"):
-                n_steps = int(grid.num_timesteps(num_periods))
+        try:
+            grid = (self._build_nonuniform_grid() if nonuniform
+                    else self._build_grid())
+            if is_tracer(grid.dt):
+                return None
+            dt = float(grid.dt)
+            freq_max = float(getattr(grid, "freq_max", None) or self._freq_max)
+            if n_steps is None:
+                if hasattr(grid, "num_timesteps"):
+                    n_steps = int(grid.num_timesteps(num_periods))
+                else:
+                    # NonUniformGrid carries no num_timesteps; this is Grid's
+                    # own rule (period = 1/freq_max,
+                    # ceil(num_periods*period/dt)).
+                    n_steps = int(math.ceil(num_periods / freq_max / dt))
+            f = jnp.asarray(freqs)
+            if nonuniform:
+                from rfx.runners.nonuniform import (
+                    _build_waveguide_port_config_nu,
+                )
+                cfgs = [
+                    _build_waveguide_port_config_nu(self, e, grid, f,
+                                                    int(n_steps))
+                    for e in entries
+                ]
             else:
-                # NonUniformGrid carries no num_timesteps; this is Grid's own
-                # rule (period = 1/freq_max, ceil(num_periods*period/dt)).
-                n_steps = int(math.ceil(num_periods / freq_max / dt))
-        f = jnp.asarray(freqs)
-        if nonuniform:
-            from rfx.runners.nonuniform import _build_waveguide_port_config_nu
-            cfgs = [_build_waveguide_port_config_nu(self, e, grid, f, int(n_steps))
-                    for e in entries]
-        else:
-            cfgs = [self._build_waveguide_port_config(e, grid, f, int(n_steps))
-                    for e in entries]
+                cfgs = [self._build_waveguide_port_config(e, grid, f,
+                                                          int(n_steps))
+                        for e in entries]
+        except Exception as exc:  # noqa: BLE001 - reported, not swallowed
+            _w.warn(PreflightWarning(
+                "the waveguide setup audits (record length vs the far-boundary "
+                "round trip, and the port-index mirror covariance) could not "
+                f"run: building the grid and the port configs raised {exc!r}. "
+                "Those two checks are therefore UNCHECKED for this setup — the "
+                "record length and the port plane indices have to be verified "
+                "by hand. Nothing else about this call is affected.",
+                code="waveguide_setup_audit_skipped",
+                source="_waveguide_setup_planes",
+            ), stacklevel=3)
+            return None
         # A multimode port arrives as a list of per-mode configs. The
         # lowest-cutoff mode is the LEAST demanding one, the same deliberate
         # lower-bound fence _warn_thin_absorber_vs_guide_wavelength states.
@@ -6159,7 +6224,8 @@ class _PreflightMixin:
         """
         built = None
         if grid is None or cfgs is None:
-            built = self._waveguide_setup_planes(freqs, num_periods, n_steps)
+            built = self._waveguide_setup_planes(
+                _w, freqs, num_periods, n_steps)
             if built is None:
                 return
             grid, cfgs, n_steps, dt, freq_max = built
@@ -6309,7 +6375,8 @@ class _PreflightMixin:
                 if not entries or entries[0].freqs is None:
                     return
                 freqs = entries[0].freqs
-            built = self._waveguide_setup_planes(freqs, num_periods, n_steps)
+            built = self._waveguide_setup_planes(
+                _w, freqs, num_periods, n_steps)
             if built is None:
                 return
             grid, cfgs = built[0], built[1]
@@ -6423,10 +6490,18 @@ class _PreflightMixin:
         """The single hook both waveguide S-parameter entry points call.
 
         ``preflight_sparameters(calculator="waveguide")`` calls it with no
-        grid/cfgs (it builds them); ``compute_waveguide_s_matrix`` calls it on
-        each of its two lanes with that lane's already-built grid and configs,
-        so neither lane pays for a second mode solve.
+        grid/cfgs and pays ONE grid build plus one mode solve per port here,
+        shared by both audits; ``compute_waveguide_s_matrix`` calls it on each
+        of its two lanes with that lane's already-built grid and configs, so
+        neither lane pays for a second mode solve. Building once here also
+        keeps a builder failure to a single ``waveguide_setup_audit_skipped``
+        issue instead of one per audit.
         """
+        if grid is None or cfgs is None:
+            built = self._waveguide_setup_planes(_w, freqs, num_periods, n_steps)
+            if built is None:
+                return
+            grid, cfgs, n_steps = built[0], built[1], built[2]
         self._validate_cfg_record_vs_far_boundary(
             _w, freqs=freqs, num_periods=num_periods, grid=grid, cfgs=cfgs,
             n_steps=n_steps,

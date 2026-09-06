@@ -52,7 +52,7 @@ Key constructor arguments:
 | `add_probe(...)` | record a point observable | feeds `Result.find_resonances()` |
 | `add_ntff_box(...)` | accumulate far-field data | use only when the radiation workflow is benchmarked |
 | `fidelity_report(print_report=True)` | compare declared entities with their rasterized realization | run before a solve; reports geometry/material realization, not RF error |
-| `preflight(strict=False)` | validate setup before a long run | returns a coded `PreflightReport`; use `.errors`, `.warnings`, `.by_code(...)`, or `.raise_for_failure()` for automation gates |
+| `preflight(strict=False)` | validate setup before a long run | returns a coded `PreflightReport`; use `.errors`, `.warnings`, `.infos`, `.by_code(...)`, or `.raise_for_failure()` for automation gates (only `.errors` gates; `.infos` are records, not problems) |
 | `mesh_intelligence_report(...)` | summarize configured grid, preflight issues, and AD memory estimates | useful for non-uniform and memory-constrained planning |
 | `plan_mesh(...)` | return a serializable `MeshPlan` for this configured simulation | wraps `mesh_intelligence_report()`, `preflight()`, and optional S-parameter preflight checks |
 | `run(...)` | advance the simulation | returns a `Result` object |

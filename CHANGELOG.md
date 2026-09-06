@@ -26,6 +26,20 @@ the WR-90 chain battery needed 3, 5 and 8 at `a/18`, `a/36` and `a/72`. When
 the lowest measured frequency sits at or below the port's cutoff the check
 reports `record_far_boundary_band_below_cutoff` and no ratio.
 
+Two contract consequences of that. `preflight_sparameters(strict=True)` now
+escalates ERROR-severity findings only, because a healthy two-port guide always
+carries the informational note above and escalating on emptiness would raise on
+every correct waveguide setup; advisories are still returned and printed.
+`PreflightIssue` gains a documented `info` severity, `PreflightReport` gains an
+`.infos` property, and `.warnings` no longer includes info findings, so
+`errors + warnings + infos` partition a report. Only `.errors` gates. Mesh-plan
+support rows read the finding's severity instead of an `ERROR:` text prefix, so
+an informational finding is a `status="info"` row (and an error-severity
+finding emitted as a warning is now correctly `"fail"` rather than `"warn"`).
+If the grid or a port mode solve raises, the audits are skipped and report
+`waveguide_setup_audit_skipped` rather than letting the exception escape a
+before-the-run safety call.
+
 `port_index_mirror_asymmetry` audits every plane index a pair of
 opposite-direction ports on one axis actually uses — both source planes, the
 reference and measurement probe planes, and the reference plane in metres —

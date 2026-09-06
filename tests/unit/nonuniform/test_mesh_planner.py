@@ -138,6 +138,30 @@ def test_plan_simulation_mesh_suppresses_preflight_output_and_captures_sparam_is
     assert all(row["message"] not in payload["warnings"] for row in payload["support_checks"])
 
 
+def test_waveguide_plan_files_the_e_plane_note_as_info_not_warn():
+    """A healthy two-port guide must not show a "warn" row for a record.
+
+    The waveguide setup audits always report the known E-plane offset, and
+    _support_rows used to key row status on the "ERROR:" text prefix alone, so
+    every waveguide mesh plan showed it as something to fix. Severity-aware
+    rows file it as ``status="info"``, a state this schema already uses.
+    """
+    from tests import _waveguide_chain_battery_fixture as F
+
+    sim = F.build_simulation("thru", F.DX_LADDER[0])
+    plan = plan_simulation_mesh(sim, n_steps=4, sparameter_calculator="waveguide")
+    rows = [r for r in plan.support_checks
+            if r["source"] == "sparameter_preflight"]
+    assert rows
+    info_rows = [r for r in rows if "mirror audit" in r["message"]]
+    assert info_rows and all(r["status"] == "info" for r in info_rows), rows
+    # The record-length advisory is a real advisory and stays "warn"; nothing
+    # in a healthy setup is "fail".
+    assert any(r["status"] == "warn" and "T/tau_far" in r["message"]
+               for r in rows), rows
+    assert not any(r["status"] == "fail" for r in rows), rows
+
+
 def test_plan_simulation_mesh_propagates_unexpected_sparam_errors(monkeypatch):
     sim = Simulation(freq_max=3.0e9, domain=(0.03, 0.02, 0.01), boundary="pec", dx=0.005)
 

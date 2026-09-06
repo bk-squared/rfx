@@ -225,6 +225,11 @@ def main() -> None:
     #   * port_index_mirror_known_e_plane_offset -- informational: the '-'
     #     port's E correction sits one cell inward of its mirror image, a known
     #     constant of the source, not an asymmetry in this geometry.
+    #
+    # Two codes this model does NOT draw, for completeness: a band whose lowest
+    # frequency sits at or below the port's own cutoff reports
+    # record_far_boundary_band_below_cutoff and no ratio, and a grid or mode
+    # solve that fails reports waveguide_setup_audit_skipped instead of raising.
     waveguide_report = waveguide.preflight()
     waveguide_route = waveguide.preflight_sparameters(calculator="waveguide")
     print(

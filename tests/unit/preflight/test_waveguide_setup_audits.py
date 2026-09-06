@@ -286,13 +286,91 @@ def test_single_port_axis_is_silent():
 # ---------------------------------------------------------------------------
 
 def test_preflight_sparameters_waveguide_carries_the_audits():
+    """The audits reach the report, advisory, with .ok still True.
+
+    The T/tau_far ~ 1.06 quoted here is at ``WAVEGUIDE_DEFAULT_NUM_PERIODS``
+    (20.0), which is what ``preflight_sparameters`` evaluates at because it is
+    ``compute_waveguide_s_matrix``'s own default. It is NOT the fixture's own
+    record: ``F.NUM_PERIODS`` is 40, which puts the same rung at T/tau_far
+    ~ 2.12 — still a warning, since the threshold is 3.
+    """
     sim = F.build_simulation("thru", RUNG_M)
     report = sim.preflight_sparameters(calculator="waveguide")
     codes = [i.code for i in report]
     assert "record_shorter_than_far_boundary_round_trip" in codes
     assert "port_index_mirror_known_e_plane_offset" in codes
-    # The audits are advisory, so the report still has no error at this
-    # num_periods (T/tau_far ~ 1.06 > 1) and .ok stays True.
+    assert report.ok and not report.errors
+    # The three tiers partition the report and .warnings excludes info.
+    assert len(report.errors) + len(report.warnings) + len(report.infos) == len(report)
+    assert [i.code for i in report.infos] == [
+        "port_index_mirror_known_e_plane_offset"]
+    assert all(i.code == "record_shorter_than_far_boundary_round_trip"
+               for i in report.warnings)
+    # The fixture's own record is longer than the audit's evaluation default,
+    # and still short of the threshold — stated as a number, not an adjective.
+    grid = sim._build_grid()
+    assert F.NUM_PERIODS == 40.0
+    assert (int(grid.num_timesteps(F.NUM_PERIODS)) * float(grid.dt)) / (
+        int(grid.num_timesteps(WAVEGUIDE_DEFAULT_NUM_PERIODS))
+        * float(grid.dt)) == pytest.approx(2.0, rel=2e-3)
+
+
+# ---------------------------------------------------------------------------
+# strict=True escalates errors only (review of the item-2 PR)
+# ---------------------------------------------------------------------------
+
+def test_strict_does_not_raise_on_a_healthy_two_port_guide():
+    """The falsifier for the review's HIGH finding.
+
+    Every healthy two-port guide carries the informational E-plane note, so a
+    strict gate keyed on emptiness would raise on every correct waveguide
+    setup. This one has advisories and an info note and no error.
+    """
+    sim = F.build_simulation("thru", F.DX_LADDER[0])
+    report = sim.preflight_sparameters(calculator="waveguide", strict=True)
+    assert not report.errors
+    assert report.warnings and report.infos      # not a vacuous pass
+    assert report.ok
+
+
+def test_strict_raises_when_an_error_severity_finding_is_present():
+    """The other half: a record shorter than one round trip still stops it.
+
+    A thicker absorber pushes the far wall out without lengthening the record,
+    so T/tau_far falls below 1 at the same evaluation default.
+    """
+    sim = F.build_simulation("thru", F.DX_LADDER[0], cpml_layers=30)
+    with pytest.raises(ValueError) as excinfo:
+        sim.preflight_sparameters(calculator="waveguide", strict=True)
+    text = str(excinfo.value)
+    assert "error-severity issue(s)" in text
+    assert "record ends BEFORE the far-boundary round trip" in text
+    # The info note is returned, counted as advisory, and NOT escalated.
+    assert "advisory/informational finding(s)" in text
+    assert "port_index_mirror_known_e_plane_offset" not in text
+
+
+# ---------------------------------------------------------------------------
+# a builder exception is reported, never re-raised
+# ---------------------------------------------------------------------------
+
+def test_builder_exception_skips_the_audits_and_says_so(monkeypatch):
+    sim = F.build_simulation("thru", F.DX_LADDER[0])
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("mode solve exploded")
+
+    monkeypatch.setattr(type(sim), "_build_waveguide_port_config",
+                        _boom, raising=True)
+    report = sim.preflight_sparameters(calculator="waveguide")
+    skipped = [i for i in report if i.code == "waveguide_setup_audit_skipped"]
+    assert len(skipped) == 1, [i.code for i in report]
+    assert skipped[0].severity == "warning"
+    assert "mode solve exploded" in str(skipped[0])
+    assert "UNCHECKED" in str(skipped[0])
+    # Skipped, not half-run: neither audit reported anything else, and the
+    # call returned instead of raising.
+    assert [i.code for i in report] == ["waveguide_setup_audit_skipped"]
     assert report.ok
 
 

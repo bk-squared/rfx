@@ -234,8 +234,14 @@ def _enumerate_emission_sites():
 # that method stays DIAGNOSTIC_ONLY -- the advisories reach a direct
 # compute_waveguide_s_matrix caller as plain warnings and reach a
 # preflight_sparameters(calculator="waveguide") caller as report issues.
-_FROZEN_TOTAL_SITES = 96
-_FROZEN_LITERAL_CODE_COUNT = 63
+#
+# 96 -> 97 sites / 63 -> 64 literal codes, review of the item-2 PR: the setup
+# audits' shared builder (_waveguide_setup_planes) now catches an exception
+# from the grid build or a port mode solve and reports
+# waveguide_setup_audit_skipped instead of letting it escape a
+# before-the-run safety call. One new site, one new literal code.
+_FROZEN_TOTAL_SITES = 97
+_FROZEN_LITERAL_CODE_COUNT = 64
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site
