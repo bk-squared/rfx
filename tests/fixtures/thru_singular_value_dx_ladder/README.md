@@ -66,3 +66,17 @@ that run is this one. A new ladder is a new pre-declaration with its own fixture
 directory. The producer command, for the record:
 `python scripts/diagnostics/thru_singular_value_dx_ladder.py --dx-divisor {1|2|4} --output <file>`
 under `JAX_ENABLE_X64=0`; dx/4 on the GPU lane only.
+
+## The extractor these files were measured on has since been corrected — see `post_897/`
+
+Every number in this directory predates PR #897 (`0225b397`, the Yee half-step phase
+correction for the H-derived port current DFT on the wire lane). That correction moves
+the observable this ladder reads: it records the same battery THRU going
+`sv_max 1.003227 -> 0.998896`, and 1.003227 is the dx rung's own `sv_max` to the digit.
+
+These files stay as they are — they are the historical record, and the replay gate
+locks them. The re-read on the corrected extractor is a SEPARATE record in
+[`post_897/`](post_897/README.md) (VESSL run 369367258720, rfx `f5ee3b59`, same producer
+md5, same ladder fences), with its own `verdict.json` computed by the same
+pre-declared adjudication procedure. Cite `post_897/` for anything about the live
+extractor; cite this directory only for what the pre-#897 extractor measured.
