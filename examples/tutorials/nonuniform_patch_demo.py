@@ -20,20 +20,17 @@ air.  This tutorial shows the practical recipe AND the trap that comes with it:
      to chase digits.
 
   Rule 3 — A PROPERLY RESOLVED PATCH IS MULTI-MODE.  Once the substrate is
-     truly 6 cells, harminv shows the patch's real modes (TM01 on the 38 mm
+     truly 6 cells, harminv shows the patch's real modes: TM01 on the 38 mm
      width and TM10 on the 29.5 mm length at comparable amplitude, plus a
-     higher mode).  Picking "the mode closest to the textbook estimate" is
+     higher mode.  Picking "the mode closest to the textbook estimate" is
      mode-AMBIGUOUS; identifying the RADIATING mode needs the far field —
      see ``examples/tutorials/patch_antenna_demo.py`` for that workflow.
-     This script prints the full mode list and does not gate on any single
-     frequency.
+     This script prints the full mode list and gates on no single frequency.
 
-Runtime: measured 2026-09-05 on a 64-core CPU, run alone —
-1169 s total (19 min), of which the num_periods=120 FDTD run is
-1160 s.  Treat that as this machine's number, not a promise.  The mesh
-lesson itself — parts [1]-[3] — is grid-only arithmetic and costs nothing.
-That run settled to -53.8 dB (an earlier -40.8 dB here did not survive
-re-measurement; the witness in part [5] prints it every run).
+Runtime: measured 2026-09-05, 64-core CPU, run alone: 1169 s (19 min), of
+which the num_periods=120 FDTD run is 1160 s.  Settling at 120 periods:
+-53.8 dB (the witness in part [5] prints it every run).  Parts [1]-[3], the
+mesh lesson itself, are grid-only arithmetic and cost nothing to run.
 
 Run:
   python examples/tutorials/nonuniform_patch_demo.py
@@ -251,7 +248,7 @@ sim.add_probe(
 print("\n[4] Preflight (advisories below are part of the result):")
 sim.preflight(strict=False)
 
-n_periods = 120   # honest witness below: measured -53.8 dB at 120 on 2026-09-05
+n_periods = 120   # the witness in [5] measured -53.8 dB here (2026-09-05)
 print(f"\nRunning NU simulation (num_periods={n_periods})...")
 t0 = time.time()
 result = sim.run(num_periods=n_periods)

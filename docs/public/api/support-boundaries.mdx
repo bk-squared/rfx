@@ -5,8 +5,6 @@ sidebar:
   order: 26
 ---
 
-This page summarizes the public support scope for user-facing rfx workflows.
-
 ## Status legend
 
 | Status | Meaning |
@@ -36,7 +34,7 @@ This page summarizes the public support scope for user-facing rfx workflows.
 | lumped/wire `add_port(...)` | `run(compute_s_params=True)` | documented calculator for the matching port family; use only within its stated validation limits |
 | lumped/wire `add_port(...)` | `forward(port_s11_freqs=...)` | differentiable S11 vectors on the uniform single-device configuration |
 | `add_msl_port(...)` | `compute_msl_s_matrix()` | specialized microstrip-line workflow; Laplace/quasi-TEM directions `+x`, `-x`, `+y`, and `-y`; eigenmode remains x-only and outside the public support envelope |
-| `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | rectangular waveguide workflow, **limited**. Differentiation through `eps_override`/`sigma_override` runs on `normalize=False` and `normalize="flux"` only; `normalize=True` is host-assembled and raises `NotImplementedError` for a traced override. Multimode (`n_modes>1`) is host-assembled and outside the differentiable chain. S is a modal voltage-wave ratio referenced to each port's own discrete modal impedance, so it is a power-wave S only when all ports share one cross-section. Magnitude evidence for uniform single-mode guides is broader than phase, junction, and nonuniform evidence, Chain battery: chain-closed (v1.8) for uniform single-mode S on the `normalize=False` and `normalize="flux"` lanes. Contract criteria 1 and 3(a) are read under `JAX_ENABLE_X64` on the flux lane, so a float32 gradient pipeline there is outside the declaration. Chain-closed is not supported — this row stays **limited**. The full row, including the battery verdict and the `JAX_ENABLE_X64` dtype rule, is in `docs/guides/support_matrix.md` (Rectangular-waveguide S-matrix) and `docs/guides/sparameter_support_matrix.md`. |
+| `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | rectangular waveguide workflow, **limited**. Two lanes carry a gradient through `eps_override`/`sigma_override`: `normalize=False` and `normalize="flux"`. `normalize=True` is host-assembled and raises `NotImplementedError` for a traced override; multimode (`n_modes>1`) is host-assembled and carries no gradient. S is a modal voltage-wave ratio referenced to each port's own discrete modal impedance, so it is a power-wave S only when all ports share one cross-section. Magnitude evidence for uniform single-mode guides is broader than the phase, junction, and nonuniform evidence. The chain battery closed at v1.8 for uniform single-mode S on those two lanes, with criteria 1 and 3(a) read under `JAX_ENABLE_X64` on the flux lane — a float32 gradient pipeline on flux sits outside that declaration. A closed battery is a measurement verdict, not a support level, so the row stays **limited**. Battery verdict and dtype rule in full: `docs/guides/support_matrix.md` (Rectangular-waveguide S-matrix) and `docs/guides/sparameter_support_matrix.md`. |
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `precision="float32"`; nonperiodic 3D second-order uniform Yee grid; CPML on all six boundary faces with positive thickness on both z faces; `cpml_axes="z"`; exactly one `face="top"` coaxial port; see [Sources and Ports](/rfx/api/sources-ports/) for rejected registrations and accepted arguments |
 | sources, TFSF, probes, flux monitors | not port calculators | field/flux/time observables |
 
@@ -75,10 +73,10 @@ neither has a port impedance or an S-matrix reference plane.
 
 ## Practical rule
 
-If a workflow is not in the recommended configuration or a stated limited
-configuration in these tables, the linked feature guide, or the support
-matrices, present it as outside the documented public support scope. A
-successful preflight or completed run does not expand that scope.
+A workflow absent from the recommended configuration, from a stated limited
+configuration in these tables, from the linked feature guide, and from the
+support matrices is outside the documented public support scope. A successful
+preflight or a completed run does not expand that scope.
 
 ## Artifact and report exports
 

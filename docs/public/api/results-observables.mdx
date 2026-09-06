@@ -95,7 +95,7 @@ print(report.summary())
 These helpers are useful for regression checks. They do not turn an undocumented workflow into the recommended default path.
 
 During normal Python execution outside JAX tracing, some calculation paths emit
-warnings without changing the arrays. Coverage is deliberately narrow:
+warnings without changing the arrays. Coverage is narrow:
 
 - the generic `run()` warning and uniform single-device `forward()` warning
   inspect `time_series` and lumped/wire `s_params`, not state, NTFF, DFT-plane,
@@ -127,8 +127,6 @@ accuracy guarantee. See
 threshold and filtering example.
 
 ## Validated observables
-
-For public docs, describe observables in simple terms:
 
 - `time_series` and Harminv are the recommended resonance path.
 - lumped/wire, MSL, waveguide, and coaxial-line S-parameter/reflection workflows each have their own calculator and stated limits.

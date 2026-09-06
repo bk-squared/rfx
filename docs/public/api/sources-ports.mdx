@@ -12,8 +12,8 @@ rfx separates **sources** from **ports**:
 
 `add_source()` and lumped/wire `add_port()` accept a `waveform=` object that
 sets the time-domain excitation. Waveguide and TFSF sources instead use their
-own pulse arguments. This page is the API reference; the
-[Sources & Ports guide](/rfx/guide/sources-ports/) carries the worked examples.
+own pulse arguments. Worked examples are in the
+[Sources & Ports guide](/rfx/guide/sources-ports/).
 
 ## Waveforms
 
@@ -109,7 +109,7 @@ accuracy guarantee. During tracing,
 [Probes and S-Parameters](/rfx/guide/probes-sparams/#low-signal-msl-bins) for the
 threshold, array shape, and filtering example.
 
-`add_lumped_rlc(...)` is deliberately absent from the S-parameter calculators table above: it embeds an R/L/C circuit element in the FDTD update, but it is **not** a reflection-referenced port and does not by itself yield a transmission-line-referenced load reflection coefficient. A single-cell lumped element read directly reports its own near-field self-interaction, not a `Z0`-referenced `S11`. To measure the reflection a load presents to a reference line, drive the structure with `add_port(..., impedance=Z0)` — which fixes the reference impedance — and read `run(compute_s_params=True)` (or `forward(port_s11_freqs=...)`); place the `add_lumped_rlc` element inside that structure as the load.
+`add_lumped_rlc(...)` has no S-parameter calculator, which is why it is absent from the table above. It embeds an R/L/C element in the FDTD update, but it is not a reflection-referenced port: it fixes no reference impedance, so it yields no `Z0`-referenced `S11`. Read on its own, a single-cell element reports its near-field self-interaction. To measure the reflection a load presents to a reference line, drive the structure with `add_port(..., impedance=Z0)`, place the `add_lumped_rlc` element inside it as the load, and read `run(compute_s_params=True)` or `forward(port_s11_freqs=...)`.
 
 For differentiable component-value studies, the uniform single-device
 `forward(...)` calculation accepts
@@ -129,7 +129,26 @@ sim.preflight_sparameters(calculator="forward")
 
 A report with no error-severity issue (`report.ok`) means the selected calculator is valid for the registered port families; otherwise it lists coded issues to fix first. Pass `strict=True` to raise instead of returning them.
 
-`calculator="waveguide"` also runs two setup audits that speak in input units — the record length against the far-boundary round trip per port (`record_shorter_than_far_boundary_round_trip`, error severity below one round trip, or `record_far_boundary_band_below_cutoff` when the lowest measured frequency sits at or below that port's own cutoff and no ratio is defined), and the mirror covariance of every plane index an opposite-direction port pair uses (`port_index_mirror_asymmetry`). If the grid or the port modes cannot be built, the audits are skipped and say so with `waveguide_setup_audit_skipped` rather than raising. A healthy two-port guide still carries the informational `port_index_mirror_known_e_plane_offset` note, so read `report.ok`, not `len(report)` — and `strict=True` escalates error-severity findings only, for the same reason.
+`calculator="waveguide"` adds two setup audits, both reported in the units you
+entered.
+
+The first compares each port's record length with its far-boundary round trip.
+A record shorter than one round trip is an error,
+`record_shorter_than_far_boundary_round_trip`. When the lowest measured frequency
+sits at or below that port's own cutoff, no ratio is defined and the code is
+`record_far_boundary_band_below_cutoff` instead.
+
+The second checks the mirror covariance of every plane index an
+opposite-direction port pair uses, and reports `port_index_mirror_asymmetry` when
+they disagree.
+
+If the grid or the port modes cannot be built, both audits are skipped and say so
+with `waveguide_setup_audit_skipped`; neither raises.
+
+A healthy two-port guide still carries the informational
+`port_index_mirror_known_e_plane_offset` note, so a nonempty report is not a
+failure. Readiness is `report.ok`. `strict=True` escalates error-severity
+findings only.
 
 `preflight_sparameters()` covers the `run`, `forward`, `msl`, and
 `waveguide` calculators. Its `calculator="coaxial"` compatibility alias checks
@@ -214,7 +233,7 @@ DUT, set `termination="matched"` and `dut_impedance=...`. Do not pass
 
 ## Public boundary rules
 
-See [Support Boundaries](/rfx/api/support-boundaries/) for the support scope. In short:
+The support scope is [Support Boundaries](/rfx/api/support-boundaries/). In practice:
 
 - Use sources for clean transient or resonance extraction.
 - Use ports when you need impedance-normalized outputs.

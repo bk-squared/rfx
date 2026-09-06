@@ -45,18 +45,16 @@ uniform and single-device non-uniform runs observable from the terminal when
 checkpointing is compatible. Traced and unsupported paths warn or raise rather
 than silently ignoring it.
 
-This open-domain pulse example demonstrates the run and resonance-analysis APIs;
-it does not guarantee a resonant mode in the selected band, so `modes` may be
-empty. For a structure that does return modes, treat each Q as a finite-window
-estimate. Repeat with longer run lengths and finer meshes, and include every
-physical radiation, dielectric, conductor, and load-loss mechanism needed by
-the intended Q definition. Use the cavity validation workflow when Q itself is
-the target observable.
+This open-domain pulse exercises the run and resonance-analysis APIs. Nothing
+here forces a mode into the 1–4 GHz band, so `modes` may come back empty. Where
+modes do appear, each Q is a finite-window estimate: repeat with longer runs and
+finer meshes, and model every radiation, dielectric, conductor and load-loss
+mechanism your Q definition assumes. Use the cavity validation workflow when Q
+is the target observable.
 
 Use `add_source()` for **unloaded resonance studies**.  
-Use `add_port()` when you actually want S-parameters against a reference
-impedance. Treat quickstart S-parameters as an API example; the S-parameter
-support matrix states the validated configurations and remaining limits.
+Use `add_port()` for S-parameters against a reference impedance. The
+S-parameter support matrix states which port configurations are validated.
 
 ## 2. Minimal port / S-parameter run
 

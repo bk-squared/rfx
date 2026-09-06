@@ -5,9 +5,9 @@ sidebar:
 ---
 
 rfx supports rectangular waveguide ports with analytical TE/TM mode profiles.
-S-parameter claims are intentionally bounded: the documented full-matrix path is
-`compute_waveguide_s_matrix(...)` under the rectangular-guide evidence envelope
-in `docs/guides/sparameter_support_matrix.md`.
+The documented full-matrix path is `compute_waveguide_s_matrix(...)`, under the
+rectangular-guide evidence envelope in
+`docs/guides/sparameter_support_matrix.md`.
 
 Current evidence level: Recommended for the documented WR-style rectangular-guide
 cases. The main gates are in `tests/oracle/test_waveguide_port_validation_battery.py`
@@ -15,6 +15,11 @@ cases. The main gates are in `tests/oracle/test_waveguide_port_validation_batter
 `0.99 <= min(|S11|)` and `max(|S11|) < 1.03`) and
 `validation/crossval/11_waveguide_port_wr90.py` (analytic Airy/reference-plane
 gates, with external references reported as available or skipped).
+
+The port aperture defines the guide cross-section — you do not add PEC side
+walls. Measured on a 100 mm WR-90-like thru with `boundary="cpml"` and the
+aperture spanning the domain: `|S21| = 1.000` and `|S11| = 0.000` from 5 to
+7 GHz, at dx = 2 mm, 40 periods, `normalize="flux"`.
 
 Waveguide ports do **not** use `run(compute_s_params=True)` for full
 multi-port matrices. Use `compute_waveguide_s_matrix(...)` for the S-matrix;

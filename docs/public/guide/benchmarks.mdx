@@ -7,15 +7,13 @@ sidebar:
 
 import { Aside } from '@astrojs/starlight/components';
 
-Use this page to select a reference case, see exactly what a passing run
-checks, and reproduce the result. For validation scope and recommended
-engineering checks, read
+For validation scope and recommended engineering checks, read
 [Cross-Validation and Accuracy](/rfx/guide/validation/).
 
 `validation/crossval/manifest.json` defines the case list, dependencies, exit
-codes, checks, and saved artifacts. Automated tests compare
-this page with that manifest so a case cannot be added or reclassified without
-updating the documentation.
+codes, checks, and saved artifacts. Automated tests compare the table below
+with that manifest, so a case cannot be added or reclassified without a
+documentation update.
 
 <Aside type="note" title="Pass criteria are case-specific">
   The metrics and tolerances below come from each script's docstring and check
@@ -104,22 +102,16 @@ mode — the upper ring-down mode, 2.6954 GHz — not the 40 mm cross mode.
 | ring-down settling | `SETTLING_BAR_DB = -40.0`, asserted before any gated number | the `num_periods=90` demo of this fixture reads −36.5 dB, so the test runs 110 |
 
 The frequency band is a discretization-bias regression lock, not an accuracy
-claim. It was repinned on 2026-08-27 (issue #693): the earlier envelopes — 0.5 dB
-with a measured 0.08 dB, and a −12% to −5% band with a measured −8.6% — had been
-pinned against the 40 mm cross mode (2.2147 GHz), the wrong member of the patch's
-near-degenerate pair, and the surrounding prose was corrected on 2026-08-31
-(#812 Phase 0). Text quoting 0.08 dB or −8.6% is retired.
+claim. It is pinned against the design mode — the 32 mm feed-axis mode, not the
+40 mm cross mode at 2.2147 GHz (#693, 2026-08-27; #812).
 
-The sign belongs to this fixture's sheet realization and mesh, not to a general
-"coarse grid reads low" rule. On the same geometry the corrected `two_plane`
-realization measures −4.7% at dx = 2 mm and −1.5% at dx = 1 mm, against +11.3%
-for the one-plane sheets gated above, and `validation/crossval/manifest.json`
-records the older cv05 agreement as "a documented z-under-res/staircase error
-cancellation".
-{/* sign evidence also in the maintainers' issue ledger, entry "Added 2026-08-28 — two_plane vs external
-     agreement: the archive splits on the flag, and the split points AWAY from
-     #720's recommendation", and "Added 2026-07-16 — cv05 DEMOTED claims-bearing
-     → diagnostic-reporter (#325; PR #378)" for the cancellation */}
+The +11.3% sign belongs to this fixture's one-plane sheet realization and mesh,
+not to a general "coarse grid reads low" rule. On the same geometry the
+corrected `two_plane` realization measures −4.7% at dx = 2 mm and −1.5% at
+dx = 1 mm.
+{/* mechanism and both two_plane numbers: the comment block above F_RES_REL_LO / F_RES_REL_HI in tests/crossval/test_patch_canonical_farfield_e4.py (cite the constant names; line numbers have gone stale before).
+     validation/crossval/manifest.json records the older cv05 agreement as
+     "a documented z-under-res/staircase error cancellation" */}
 
 ### `06b_msl_notch_filter_uniform`
 

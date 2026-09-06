@@ -321,6 +321,13 @@ mesh/source/port combinations are rejected rather than silently returning
 `None`. `num_periods` defaults to 40 because MSL transients drain slowly. The
 thru-line and notch examples define the tested uniform-Yee configurations.
 
+This teaching board is coarse — 0.25 mm cells across a 1 mm substrate — so the
+run prints the extractor's advisory that the reported Z0 deviates from the
+analytic Hammerstad–Jensen value by more than 10 %. Z0 rides on the N-probe fit,
+which carries Yee-staircase bias at this cell size, and the rasterized board is
+not exactly the declared one (issue #752); the V·I-split S11/S21 are unaffected.
+Refine the mesh before quoting Z0.
+
 ### Feed direction
 
 `direction` accepts `"+x"`, `"-x"`, `"+y"` and `"-y"`. The board lies in the

@@ -1,10 +1,10 @@
-"""Patch antenna end to end: multi-mode ring-down, far-field mode ID, honest error budget.
+"""Patch antenna end to end: multi-mode ring-down, far-field mode ID, error budget.
 
 Geometry: the openEMS "Simple Patch Antenna" tutorial — a 32 x 40 mm patch on a
 1.524 mm, eps_r = 3.38, tan_delta = 1e-3 substrate over a 60 x 60 mm finite
-ground plane, probe-fed 6 mm off centre.  Running the identical geometry in
-openEMS (with that tutorial's thirds-rule edge meshing) gives the reference
-numbers quoted below: f_res = 2.4221 GHz, broadside directivity 6.79 dBi.
+ground plane, probe-fed 6 mm off centre.  The identical geometry in openEMS,
+with that tutorial's thirds-rule edge meshing, gives the reference numbers used
+below: f_res = 2.4221 GHz, broadside directivity 6.79 dBi.
 
 What this tutorial teaches, in order:
 
@@ -19,67 +19,50 @@ What this tutorial teaches, in order:
    radiating one must be identified from the FAR FIELD — a broadside beam plus
    the peak of the radiated-power spectrum — not by amplitude rank and not by
    whichever mode sits closest to a textbook estimate.  Both shortcuts have
-   mis-identified modes in real cross-validation work on this exact structure.
+   mis-identified modes on this exact structure.
 
-3. Near-to-far-field (NTFF) placement honesty.  Every box face should sit at
-   least half a wavelength from the radiator where the domain allows.  Here the
-   face below the ground plane cannot (it is 6 mm below the ground): preflight
-   flags it, the warning is quoted verbatim, and the placement is backed by a
-   solver-to-solver cross-check instead of silence.  Preflight output is part
-   of the result — never suppress it.
+3. Near-to-far-field (NTFF) box placement.  Every face should sit at least half
+   a wavelength from the radiator where the domain allows.  The face below the
+   ground plane cannot: it sits 6 mm below the ground.  Preflight flags it, the
+   run quotes the warning verbatim, and a solver-to-solver cross-check backs the
+   placement.  Preflight output is part of the result; do not suppress it.
 
 4. A settling witness (end-of-run envelope vs post-source peak, -40 dB bar) is
    printed BEFORE any frequency is quoted.
 
-Honest accuracy at this deliberately coarse resolution (dx = 2 mm):
+Error budget at this deliberately coarse resolution (dx = 2 mm):
 
-- The resonance reads HIGH versus openEMS-with-thirds: +11.3 % at this
-  dx = 2 mm (2.6953 GHz here against openEMS 2.4221 GHz).  Both
-  numbers name the SAME physical mode — the one resonating on the 32 mm
-  feed-axis dimension — and the run prints the comparison every time.
-  An earlier version of this file claimed "-8.6 %, LOW".  That was a
-  MODE-PAIRING error, not a sign slip: it compared the openEMS design mode
-  against this fixture's 40 mm CROSS mode (2.2157 GHz in the mode list
-  below).  Retired 2026-08-27 (issue #693), together with the dx ladder that
-  came with it ("-6 % at dx = 1 mm, -3 % extrapolated"), which is wrong-mode
-  data.  The committed lock is
-  ``tests/crossval/test_patch_canonical_farfield_e4.py``; it gates both the
-  magnitude envelope [+6 %, +16 %] and the SIGN.
-- Do not read +11.3 % as "the coarse-grid bias, which finer cells remove".
-  On this fixture the sign is not settled.  Two discretization errors push
-  opposite ways — the substrate under-resolved in z reads high, the staircased
-  PEC patch edge reads low — and which one wins depends on how the one-cell
-  PEC sheets are realized: the same canonical patch is on record at +11.3 %
-  with single-plane sheets and at -1.5 % at dx = 1 mm with the two-plane
+- The resonance reads HIGH against openEMS-with-thirds: +11.3 % at dx = 2 mm,
+  2.6953 GHz here against 2.4221 GHz.  Both numbers are the 32 mm feed-axis
+  design mode; the 40 mm cross mode is a separate entry in the printed mode
+  list (2.2157 GHz here).  (Mode pairing repinned 2026-08-27, #693.)  The
+  committed lock ``tests/crossval/test_patch_canonical_farfield_e4.py`` gates
+  the [+6 %, +16 %] magnitude envelope and the sign.
+- The sign is not a settled coarse-grid bias that finer cells remove.  Two
+  discretization errors push opposite ways: the substrate under-resolved in z
+  reads high, the staircased PEC patch edge reads low.  Which one wins depends
+  on how the one-cell PEC sheets are realized — the same canonical patch reads
+  +11.3 % with single-plane sheets and -1.5 % at dx = 1 mm with the two-plane
   realization (issue #720).  The substrate-permittivity half is addressable
   with the opt-in interface treatment ``sim.run(..., subpixel_smoothing=True)``
-  (see ``tests/oracle/test_patch_cavity_eps_oracle.py`` for the cavity-oracle
-  evidence), but treat "finer dx recovers it" as a claim to measure here, not
-  one to assume.
+  (cavity-oracle evidence in ``tests/oracle/test_patch_cavity_eps_oracle.py``).
+  Measure "finer dx recovers it" on this fixture before assuming it.
 - The far field is the observable that agrees.  This configuration prints
-  D = 7.39 dBi at its radiating bin against openEMS 6.79 dBi, i.e.
-  +0.60 dB, and that is the agreement for the design mode — it is what
-  the committed envelope lock allows (``D_ABS_TOL_DB = 1.0``).  A "within
-  0.08 dB (6.71 vs 6.79 dBi)" figure appeared here before; it is retired with
-  the mode pairing above, because 6.71 dBi was read at the 40 mm cross mode.
-  This demo does trim the air above the patch (84 mm, ``num_periods = 125``)
-  against the 95 mm / ``num_periods = 250`` research frame, but that frame
-  cross-check moved the resonance by only 0.1 %: what separates 7.39 from
-  6.71 dBi is which mode the number belongs to, not the frame.
+  D = 7.39 dBi at its radiating bin against openEMS 6.79 dBi, +0.60 dB, inside
+  the committed envelope lock (``D_ABS_TOL_DB = 1.0``).  The demo trims the air
+  above the patch to 84 mm with ``num_periods = 125``; the research frame
+  behind the reference numbers used 95 mm and ``num_periods = 250``.
 
 Run as::
 
     python examples/tutorials/patch_antenna_demo.py
 
-Measured 2026-09-05 on a 64-core CPU, run alone: 1345 s
-(22 min).  That is this pod, not a promise — a busy or smaller
-machine takes longer, and an earlier "roughly 15 minutes" line here did not
-survive re-measurement.  ``NUM_PERIODS = 125`` is sized from measurement:
-runs at 90 and 204 periods measured -36.5 dB and -52.6 dB (the -40 dB
-settling bar falls near 115 periods on the average slope, and the multi-mode
-tail beats rather than decaying smoothly); the 2026-09-05 run measured
--50.9 dB, SETTLED.  The witness below re-measures and prints the
-end-of-run envelope every run — proof, not promise.
+Measured 2026-09-05, 64-core CPU, run alone: 1345 s (22 min).
+``NUM_PERIODS = 125`` is sized from measurement: 90 periods gave -36.5 dB and
+204 periods gave -52.6 dB, which puts the -40 dB settling bar near 115 on the
+average slope, and the multi-mode tail beats rather than decaying smoothly.
+The 2026-09-05 run measured -50.9 dB, SETTLED.  The witness below re-measures
+the end-of-run envelope every run.
 """
 
 from __future__ import annotations
@@ -122,7 +105,7 @@ SIGMA_SUB = 2 * math.pi * 2.45e9 * EPS0 * SUB_EPS_R * TAN_DELTA
 OPENEMS_F_RES = 2.4221e9
 OPENEMS_D_DBI = 6.79
 
-# ---- Mesh and domain (coarse on purpose: dx = 2 mm, ~15 min CPU class) ----
+# ---- Mesh and domain (coarse on purpose: dx = 2 mm, 22 min measured) ----
 DX = 2.0e-3
 N_CPML = 8
 N_SUB = 4                  # fine cells across the substrate thickness
@@ -130,20 +113,17 @@ DZ_SUB = SUB_THICK / N_SUB
 MARGIN_XY = 85.0e-3        # air beyond the ground-plane edge, x and y
 AIR_BELOW = 30.0e-3
 # 84 mm keeps the top NTFF face half a wavelength above the patch at F_DESIGN
-# while staying in the ~15-minute CPU class.  (The validation runs behind the
-# quoted reference numbers used 95 mm of air; a cross-check with this trimmed
-# frame moved the resonance by only 0.1 %, so the frame is not a sensitive
-# knob.)
+# at the measured 22-minute runtime.  The research frame behind the quoted
+# openEMS reference numbers used 95 mm of air and num_periods = 250.
 AIR_ABOVE = 84.0e-3
 
 # 125 periods settles this fixture past the -40 dB bar: measured -50.9 dB,
-# SETTLED (2026-09-05).  Measured endpoints -36.5 dB at 90 periods and
-# -52.6 dB at 204 put the bar near 115 on the average slope, but the
-# multi-mode tail beats rather than decaying smoothly — trust the printed
-# witness, not slope extrapolation.  (The research run of this geometry
-# recorded f_res = 2.2147 GHz (2.2143 in the fixture claim text) and D = 6.71 dBi; those belong to the 40 mm
-# cross mode and were retired as the design-mode reference by #693 — see the
-# docstring.)
+# SETTLED (2026-09-05).  Endpoints -36.5 dB at 90 periods and -52.6 dB at 204
+# put the bar near 115 on the average slope, but the multi-mode tail beats
+# rather than decaying smoothly, so trust the printed witness over slope
+# extrapolation.  (The research run of this geometry recorded f_res =
+# 2.2147 GHz and D = 6.71 dBi at the 40 mm cross mode, not at the design mode
+# this demo reports.)
 #
 # Why not run(until_decay=...): its total-interior-energy stop cannot fire on
 # this fixture — the soft current feed leaves a static charge field across
@@ -221,9 +201,9 @@ def build_simulation():
     gx_lo, gx_hi = cx - GP_SIZE / 2, cx + GP_SIZE / 2
     gy_lo, gy_hi = cy - GP_SIZE / 2, cy + GP_SIZE / 2
     # Ground plane and patch are each exactly one fine cell thick, snapped to
-    # cell edges.  Preflight still prints its sub-cell PEC advisory (quoted in
-    # the run output) because a 381 um sheet is at the 1-cell floor; here the
-    # 1-cell thickness is deliberate and edge-aligned.
+    # cell edges.  Preflight prints its sub-cell PEC advisory (quoted in the run
+    # output) because a 381 um sheet sits at the 1-cell floor; that thickness is
+    # deliberate and edge-aligned here.
     sim.add(Box((gx_lo, gy_lo, z_gnd_lo), (gx_hi, gy_hi, z_gnd_hi)), material="pec")
     sim.add(Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_hi)), material="sub")
     sim.add(
@@ -246,13 +226,13 @@ def build_simulation():
     )
     sim.add_probe(position=(feed_x + 4e-3, feed_y + 4e-3, src_z), component="ez")
 
-    # NTFF box.  Side and top faces keep >= lambda/2-class clearance; the
-    # bottom face cannot (the domain has only 30 mm of air below the ground
-    # plane), so it sits 6 mm below the ground.  Preflight flags exactly this
-    # face — see the quoted warning in the run output.  The ground plane sits
-    # between the radiator and that face, and this same placement is
-    # cross-checked against openEMS at the design-mode bin: +0.60 dB in
-    # directivity, inside the committed 1.0 dB envelope lock.
+    # NTFF box.  Side and top faces keep >= lambda/2-class clearance.  The
+    # bottom face cannot: the domain holds only 30 mm of air below the ground
+    # plane, so that face sits 6 mm below the ground and preflight flags it (the
+    # warning is quoted in the run output).  The ground plane sits between the
+    # radiator and that face, and the placement is cross-checked against openEMS
+    # at the design-mode bin: +0.60 dB in directivity, inside the committed
+    # 1.0 dB envelope lock.
     pad = (N_CPML + 3) * DX
     box_lo = (pad, pad, max(pad, z_gnd_lo - 3 * DX))
     box_hi = (dom_x - pad, dom_y - pad, z_total - pad)
@@ -325,12 +305,12 @@ def main():
 
     sim = build_simulation()
 
-    # Preflight prints each advisory verbatim.  Expected on this fixture:
-    # two sub-cell PEC sheet advisories (deliberate 1-cell ground and patch),
-    # the close bottom NTFF face (see build_simulation), and the small
-    # ground plane (0.56 lambda across -> edge diffraction shapes the
-    # pattern; that is physics shared with the openEMS reference, not a
-    # solver defect).  All four are conditions to interpret, not suppress.
+    # Preflight prints each advisory verbatim.  Expected on this fixture: two
+    # sub-cell PEC sheet advisories (the deliberate 1-cell ground and patch),
+    # the close bottom NTFF face (see build_simulation), and the small ground
+    # plane (0.56 lambda across, so edge diffraction shapes the pattern —
+    # physics shared with the openEMS reference, not a solver defect).  All
+    # four are conditions to interpret, not to suppress.
     report = sim.preflight()
     print(f"preflight advisories: {len(list(report))}")
 
@@ -430,16 +410,16 @@ def main():
     )
 
     dev_pct = (radiating.freq - OPENEMS_F_RES) / OPENEMS_F_RES * 100
-    print("\nAccuracy recap (see the docstring for the full error budget):")
+    print("\nAccuracy recap (error budget in the module docstring):")
     print(
         f"  f_res {radiating.freq / 1e9:.4f} GHz vs openEMS "
         f"{OPENEMS_F_RES / 1e9:.4f} GHz: {dev_pct:+.1f}% — the design mode "
         "reads HIGH at dx = 2 mm. The committed lock "
-        "(tests/crossval/test_patch_canonical_farfield_e4.py) gates this "
-        "sign and the [+6%, +16%] envelope. The competing coarse-grid "
-        "mechanisms (substrate under-resolved in z reads high, staircased "
-        "patch edge reads low) are not separated here, so do not assume "
-        "finer dx moves this one way."
+        "(tests/crossval/test_patch_canonical_farfield_e4.py) gates the sign "
+        "and the [+6%, +16%] envelope. Two coarse-grid mechanisms compete "
+        "here (substrate under-resolved in z reads high, staircased patch "
+        "edge reads low) and are not separated, so finer dx is not a "
+        "predictable direction."
     )
     print(
         f"  D {d_dbi[k_star]:.2f} dBi vs openEMS {OPENEMS_D_DBI:.2f} dBi "

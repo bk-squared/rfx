@@ -7,13 +7,13 @@ sidebar:
 
 import { Aside } from '@astrojs/starlight/components';
 
-This page connects the model that passes preflight in
-[Your First Patch Antenna](/rfx/guide/first-patch/) with the separate patch
-cross-check in `validation/crossval/05_patch_antenna.py`.
+The patch workflow has two separate pieces: the model that passes preflight in
+[Your First Patch Antenna](/rfx/guide/first-patch/), and the cross-check in
+`validation/crossval/05_patch_antenna.py`.
 
 <Aside type="note" title="Public scope">
-  This workflow separates setup, execution, and RF evidence. Passing preflight
-  or a short run does not validate resonance, return loss, Q, or radiation.
+  Passing preflight or a short run does not validate resonance, return loss, Q,
+  or radiation.
 </Aside>
 
 ## Recommended workflow
@@ -26,7 +26,7 @@ cross-check in `validation/crossval/05_patch_antenna.py`.
 
 ## Baseline geometry
 
-Place the ground plane as an explicit finite PEC box inside the domain, not as a full-domain PEC boundary wall: a finite ground plane radiates into the absorber beneath it, which is the open-radiation problem being modelled, while a PEC bottom wall makes the structure a closed cavity and shifts the resonance high.
+Place the ground plane as a finite PEC box inside the domain, not as a full-domain PEC boundary wall. A finite ground plane radiates into the absorber beneath it, which is the open-radiation problem being modelled; a PEC bottom wall turns the structure into a closed cavity and shifts the resonance high.
 
 ## How to run the cross-check
 
@@ -37,15 +37,15 @@ python validation/crossval/05_patch_antenna.py
 With the OpenEMS/CSXCAD Python bindings installed, the script prints a console
 summary comparing the rfx and OpenEMS resonances and writes a plot plus a JSON
 result file. Those bindings are not an rfx dependency: if they are missing, the
-script runs the rfx portion and then exits with status 2 behind a SKIPPED banner.
-That run is inconclusive and does not report a cross-solver pass.
+script runs the rfx portion and exits with status 2 behind a SKIPPED banner —
+inconclusive, not a cross-solver pass.
 
 ## Interpretation rules
 
-- The script gates on three things, not two. Two are numeric: "rfx Harminv vs OpenEMS Harminv (resonance frequency) < 20 % (`pass_vs_openems`); rfx internal self-consistency < 5 % (`pass_internal`)" — a Harminv-vs-Harminv frequency agreement, not an |S11| magnitude match. The third is mode identification (`pass_mode_id_rfx`): every measured mode is assigned to its nearest declared TM_mn0 member, and the design member TM100 "must exist, be unique, and be accompanied by a member resolving the other in-plane axis", inside a derived tolerance of 12.4988 % (`sqrt(min adjacent declared member ratio) - 1`). An rfx TM100 error beyond the log-symmetric window [-11.11 %, +12.50 %] "fails the case BY IDENTIFICATION, not by an accuracy gate". The openEMS leg runs the same identifier but is reported, not gated. {/* validation/crossval/05_patch_antenna.py:80-87, 810-821 */}
-- The 20 % openEMS bound is a smoke bound. The script's own words: it "reports a coarse-mesh resonance and exercises the end-to-end path; it does NOT gate accuracy. Patch-accuracy evidence is delegated to the committed tests". Those tests are the `gate_paths` in `validation/crossval/manifest.json` — `tests/locks/test_patch_edgefed_resonance_harminv.py`, `tests/locks/test_patch_edgefed_s11_passivity.py`, `tests/oracle/test_patch_cavity_eps_oracle.py`, `tests/crossval/test_patch_canonical_farfield_e4.py` — not this script's exit code.
-- Those tolerances and results apply only to the script's geometry, mesh,
-  frequency band, and metric. They do not validate the First Patch model or the
+- The script gates three things, not two. Two are numeric: rfx Harminv vs OpenEMS Harminv resonance frequency within 20 % (`pass_vs_openems`), and rfx internal self-consistency within 5 % (`pass_internal`). Both compare Harminv frequencies, not |S11| magnitudes. The third is mode identification (`pass_mode_id_rfx`): every measured mode is assigned to its nearest declared TM_mn0 member, and TM100 must exist, be unique, and be accompanied by a member resolving the other in-plane axis, inside a derived tolerance of 12.4988 % (`sqrt(min adjacent declared member ratio) - 1`). An rfx TM100 error outside the log-symmetric window [-11.11 %, +12.50 %] fails the case by identification, not by an accuracy gate. The openEMS leg runs the same identifier but is reported, not gated. {/* validation/crossval/05_patch_antenna.py:80-87, 810-821 */}
+- The 20 % openEMS bound is a smoke bound: it reports a coarse-mesh resonance and exercises the end-to-end path, and gates no accuracy. Patch accuracy sits in the `gate_paths` of `validation/crossval/manifest.json` — `tests/locks/test_patch_edgefed_resonance_harminv.py`, `tests/locks/test_patch_edgefed_s11_passivity.py`, `tests/oracle/test_patch_cavity_eps_oracle.py`, `tests/crossval/test_patch_canonical_farfield_e4.py` — not in this script's exit code.
+- Those tolerances hold for the script's geometry, mesh, frequency band, and
+  metric only. They validate neither the First Patch model nor the
   [patch gallery diagnostic](/rfx/gallery/patch_antenna/).
 - Use impedance-referenced S-parameter results only through a documented port workflow — see [Sources & Ports](/rfx/guide/sources-ports/) for `add_port`. The lumped-port S11 dip in this script is a secondary check with a known single-cell parasitic reactance, so read it as a local dip near the Harminv frequency, not a deep matched null.
 - Treat non-uniform mesh variants as limited support unless the page you are following says otherwise.

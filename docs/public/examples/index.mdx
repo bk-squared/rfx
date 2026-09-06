@@ -49,10 +49,12 @@ errors, incomplete ring-down.
 ## Validation scripts are not tutorials
 
 The scripts under `validation/crossval/` check the solver against an analytic
-result or another solver. (`examples/crossval/` in a checkout is a tombstone
-README from the 2026-07 restructure; the scripts moved.) They assume the structure is already understood and
+result or another solver. They assume the structure is already understood and
 gate on numbers, so they teach nothing about setup, and a passing run supports
 only its own committed geometry, mesh, band, source, port and observable.
 [Benchmarks](/rfx/guide/benchmarks/) lists every case with its pass criteria and
 reproduce command; [Cross-Solver Validation](/rfx/validation/cross-solver/)
 explains what the exit codes mean.
+
+`examples/crossval/` in a checkout is a tombstone README from the 2026-07
+restructure; the scripts moved.
