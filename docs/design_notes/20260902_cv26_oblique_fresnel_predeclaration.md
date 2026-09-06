@@ -765,3 +765,58 @@ exit 1. **No arm is dropped, no mask is narrowed, no window is widened and no ba
 lowered.** What would refute §13: an arm whose FDTD tail does not meet its bars within
 `RECORD_CAP_FACTOR` × the derived record, or whose measured `|R − R_Fresnel|` on the
 primary recipe exceeds `W_bin` in the direction and by the size `W_abs` predicts.
+
+## 17. Round 3 — the primary rig's absorber is 80 cells; the compact box keeps 20 (2026-09-06, append-only)
+
+This note declared the rig's absorber at 20 cells (cv04's depth). Round 3 changes that for
+the PRIMARY rig only, and records why here rather than editing the sections above.
+
+**What was found.** After the auxiliary absorber was re-derived (#888, lane A, and the
+depth-derivation note's section 12), four of the seven primary arms still failed the
+band-mean gates: te_45 mean|dR| 0.0240 vs 0.0139 and mean|dT| 0.0331 vs 0.0214; te_60,
+tm_45, tm_60 likewise; closure 6-9 %. Their `e_absorber` (2-3e-02) is the MAIN grid's
+20-cell CPML at oblique incidence -- the same mechanism as the auxiliary one, one grid over.
+It had passed `absorber_ok` only because that check uses W_bin = 0.074, the stale cv04
+envelope decision B is about; the band-mean windows caught it.
+
+**How the depth was derived, not picked** (close note section 9). An FDTD depth ladder
+(n_cpml 20 / 40 / 80 / 160) established the cause: every failing arm passes at 40 and the
+closure keeps falling to 80. Then, because n alone also changes sigma_max (~1/n), a
+(depth, target) grid was measured on the arms' own gated bins with the exact-lattice
+instrument (CPML recursion against an outgoing-wave termination, clean incident). It shows
+the same two-sided optimum the auxiliary grid showed: too steep (R_asym 1e-28) reflects off
+its own gradient; too gentle (1e-4) under-absorbs at grazing and gets WORSE with depth at
+60 deg; in between, depth wins an order of magnitude per doubling. The requirement is that
+the absorber term sit well under the lattice-vs-continuum floor the same gates must absorb
+(0.0043 at te_45 dx/2), so the gates judge the solver and not the rig:
+
+| n_cpml (R_asym 1e-15) | te_45 dx/2 mean\|dR\| / \|dT\| | te_60 dx/2 |
+|---|---|---|
+| 20 | 0.0253 / 0.0378 | 0.0282 / 0.0302 |
+| 40 | 0.0046 / 0.0080 | 0.0081 / 0.0091 |
+| **80** | **0.0001 / 0.0003** | **0.0006 / 0.0007** |
+| 160 | 0.0000 / 0.0000 | 0.0000 / 0.0000 |
+
+40 is the same size as the floor; 80 is a tenth of it; 160 is the convergence witness.
+The instrument tracks the FDTD where the absorber dominates (te_45 dx/2: 0.0253 / 0.0046
+against the FDTD's 0.0240 / 0.0053 at 20 / 40).
+
+**Declared.** `N_CPML_PRIMARY = 80`, `R_asym` unchanged at the repo default 1e-15 (1e-8
+would be ~5x better at 80 but does not justify touching `_cpml_profile`'s global default
+for a term already at 1/10 of the floor). `N_CPML_COMPACT = 20`, on purpose: the grazing
+arms exist to characterise the absorber cv04 ships -- G6 judges rfx against the exact
+lattice model OF that absorber, and the depth ladder (8 / 16 / 32) and the depth_half
+falsifier (10 cells) are defined against it. Deepening the witness's own absorber would
+leave G6 nothing to judge. cv04 keeps 20: at normal incidence its 20-cell term is under its
+own gate (closure 0.0043), and the divergence between the two rigs is stated here.
+
+**What moves with it.** `rig_cells` for the primary rig (nx, x_lo, probes; the TF/SF span
+2982 and the reflection-probe offset 1420 do NOT move -- the interior shifts as a block);
+every primary `RECORD_DECLARED` key's `n_cpml` (re-derived at 80, nfft 2**19); the
+round-1 bracket anchors (re-measured at 80); the Meep leg's cell, which is
+`NX_INTERIOR + 2 N_CPML` and must be re-run at the new width before E4 can read anything;
+the 60-degree nfft-convergence flags (re-measured at 80, not carried from 20).
+
+**Refuted by.** A primary arm whose band-mean gate still fails at 80 cells for a reason the
+absorber term does not explain; a compact-box G6 that stops firing on its depth_half
+falsifier; the 160-cell rung reading anything but the lattice floor.

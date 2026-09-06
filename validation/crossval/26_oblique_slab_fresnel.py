@@ -77,7 +77,7 @@ def staged_commit() -> str:
 # The rig: cv04's PART 1 on the Bloch TFSF path
 # =============================================================================
 
-def run_rfx_arm(spec: dict, *, n_cpml: int = O.N_CPML, cpml_kwargs: dict | None = None,
+def run_rfx_arm(spec: dict, *, n_cpml: int | None = None, cpml_kwargs: dict | None = None,
                 theta0_run_deg: float | None = None, eps_scale: float = 1.0,
                 nx_interior: int | None = None, dx_div: int = 1, smoke: bool = False, verbose: bool = True) -> dict:
     """One arm. ``theta0_run_deg`` / ``eps_scale`` / ``n_cpml`` / ``cpml_kwargs``
@@ -86,6 +86,7 @@ def run_rfx_arm(spec: dict, *, n_cpml: int = O.N_CPML, cpml_kwargs: dict | None 
     the SAME rig in cells (dx/K; interior, absorber depth, TFSF margin, probe
     offsets, tail window and extension x K; the aux grid's constants are
     tfsf_2d's and are not scaled)."""
+    n_cpml = O.declared_n_cpml(spec) if n_cpml is None else int(n_cpml)
     import jax
     import jax.numpy as jnp
     import rfx.boundaries.cpml as cpml_mod
@@ -363,7 +364,7 @@ def main(argv=None) -> int:
            "date_utc": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
            "falsifier": a.falsifier, "smoke": bool(a.smoke), "tag": a.tag, "n_cpml_override": a.n_cpml,
            "dx_div_override": a.dx_div, "arm_dx_div": dict(O.ARM_DX_DIV),
-           "rig": {"dx_m": O.DX_M, "d_slab_m": O.D_SLAB_M, "eps_r_slab": O.EPS_R_SLAB, "n_cpml": O.N_CPML,
+           "rig": {"dx_m": O.DX_M, "d_slab_m": O.D_SLAB_M, "eps_r_slab": O.EPS_R_SLAB, "n_cpml": O.N_CPML, "n_cpml_primary": O.N_CPML_PRIMARY, "n_cpml_compact": O.N_CPML_COMPACT,
                    "nx_interior": O.NX_INTERIOR, "nx_interior_graze": O.NX_INTERIOR_GRAZE, "f0_hz": O.TFSF_F0_HZ,
                    "arm_bw": O.ARM_BW, "graze_bw": O.GRAZE_BW, "graze_theta0_deg": O.GRAZE_THETA0_DEG,
                    "theta_gate_max_deg": O.THETA_GATE_MAX_DEG, "W_bin": O.W_BIN, "W_mean_R": O.W_MEAN_R,
@@ -378,7 +379,7 @@ def main(argv=None) -> int:
             th = SMOKE_THETA0_DEG
             spec = dict(spec, theta0_deg=th, bw=O.bandwidth_for(th), ky=O.ky_from(O.TFSF_F0_HZ, th),
                         f_cutoff_hz=O.cutoff_hz(O.ky_from(O.TFSF_F0_HZ, th)), theta_gate_deg=(0.0, O.THETA_GATE_MAX_DEG))
-        run_kw = {"n_cpml": O.N_CPML if a.n_cpml is None else a.n_cpml}
+        run_kw = {"n_cpml": O.declared_n_cpml(spec) if a.n_cpml is None else a.n_cpml}
         or_kw = {}
         if rfx_fals is not None and O.FALSIFIERS[rfx_fals][0] == arm:
             _, desc, run_def, or_def = O.FALSIFIERS[rfx_fals]
@@ -479,7 +480,7 @@ def main(argv=None) -> int:
         if arm == "graze_pec":
             decl_kw = None
             pg = O.evaluate_grazing_pec(run["freqs_hz"], run["R_rfx"], spec, run["dt_s"],
-                                        O.rig_cells(spec["nx_interior"], O.N_CPML, dx_div=run["dx_div"]),
+                                        O.rig_cells(spec["nx_interior"], O.N_CPML_COMPACT, dx_div=run["dx_div"]),
                                         n_cpml=run["n_cpml"], declared_cpml_kwargs=decl_kw)
             e2["grazing_pec"] = pg
             gates_line["G6_absorber"] = pg["G6_absorber"]

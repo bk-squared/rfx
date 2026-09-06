@@ -632,3 +632,188 @@ round 1 on the broken absorber needed 22001.
 21735. The compact-box `e_absorber` on graze_vac fell 1.38e-02 -> 8.32e-04 (the auxiliary
 echo, now under LEAK_BAR); the primary-rig `e_absorber` at 45 / 60 deg did not move
 (6.7e-02 / 3.7e-02) -- that term is the MAIN grid's 20-cell CPML, not the auxiliary one.
+
+---
+
+## 9. The residual physics failure is the MAIN grid's absorber, and its depth is derived, not picked (2026-09-06)
+
+With the auxiliary absorber fixed and the table re-derived, four of the seven primary arms
+still fail the band-mean gates: te_45 mean|dR| 0.0240 vs 0.0139, mean|dT| 0.0331 vs 0.0214;
+te_60 0.0258 / 0.0154 and 0.0273 / 0.0225; tm_45 and tm_60 likewise; closure 6-9 %. Their
+`e_absorber` (2-3e-02) is the MAIN grid's 20-cell CPML: the same physics as section 12 of the
+absorber note, one grid over. It passed `absorber_ok` only because that check uses
+`W_bin = 0.074`, decision B's stale window; the honest band-mean windows catch it.
+
+### 9.1 Mechanism confirmed by an FDTD depth ladder (R_asym 1e-15, the repo default)
+
+| arm, rung | n_cpml 20 | 40 | 80 | 160 |
+|---|---|---|---|---|
+| te_45 dx  mean\|dR\| / closure | 0.0544 / 0.181 | 0.0177 / 0.026 | 0.0176 / 0.0019 | — |
+| te_60 dx | 0.0613 / 0.119 | 0.0238 / 0.031 | 0.0224 / 0.0028 | — |
+| te_45 dx/2 (primary) | 0.0240 / 0.080 | 0.0053 / 0.0124 | 0.0043 / 0.0019 | pending |
+| te_60 dx/2 (primary) | 0.0258 / 0.057 | 0.0083 / 0.0152 | pending | pending |
+| tm_45 dx/2 (primary) | 0.0117 / 0.078 | 0.0029 / 0.0149 | pending | — |
+| graze_pec (compact) passivity / closure | False / False | True / True | — | — |
+
+Every failing arm passes at 40 and the closure keeps falling to 80. That establishes the
+cause. It does NOT by itself derive the depth: n alone also changes sigma_max (~1/n), the
+confound section 12 had to untangle for the auxiliary grid.
+
+### 9.2 The (depth, target) grid, on the arms' own gated bins
+
+Instrument: the exact lattice with the CPML recursion against the same lattice with an
+outgoing-wave termination, clean incident (`aux="plane"`), so only the MAIN absorber
+shows. Gated mean of |R_lat - R_ideal|, |T_lat - T_ideal|:
+
+te_45 dx/2 (259 bins, realized 37-58 deg):
+
+| n | R_asym | sigma_max | mean\|dR\| | mean\|dT\| | mean closure |
+|---|---|---|---|---|---|
+| 20 | 1e-15 | 18.3 | 0.0253 | 0.0378 | 0.0299 |
+| 20 | 1e-4 | 4.9 | 0.0128 | 0.0198 | 0.0159 |
+| 40 | 1e-15 | 9.2 | 0.0046 | 0.0080 | 0.0070 |
+| 40 | 1e-8 | 4.9 | 0.0024 | 0.0046 | 0.0042 |
+| 40 | 1e-4 | 2.4 | 0.0019 | 0.0034 | 0.0031 |
+| **80** | **1e-15** | 4.6 | **0.0001** | **0.0003** | 0.0003 |
+| 80 | 1e-8 | 2.4 | 0.0000 | 0.0001 | 0.0001 |
+| 80 | 1e-4 | 1.2 | 0.0016 | 0.0036 | 0.0034 |
+| 160 | 1e-15 | 2.3 | 0.0000 | 0.0000 | 0.0000 |
+
+te_60 dx/2 (118 bins, realized 54-70 deg):
+
+| n | R_asym | sigma_max | mean\|dR\| | mean\|dT\| | mean closure |
+|---|---|---|---|---|---|
+| 20 | 1e-15 | 18.3 | 0.0282 | 0.0302 | 0.0292 |
+| 40 | 1e-15 | 9.2 | 0.0081 | 0.0091 | 0.0080 |
+| 40 | 1e-8 | 4.9 | 0.0054 | 0.0058 | 0.0052 |
+| 40 | 1e-4 | 2.4 | 0.0128 | 0.0150 | 0.0103 |
+| **80** | **1e-15** | 4.6 | **0.0006** | **0.0007** | 0.0004 |
+| 80 | 1e-8 | 2.4 | 0.0005 | 0.0006 | 0.0003 |
+| 80 | 1e-4 | 1.2 | 0.0171 | 0.0207 | 0.0139 |
+| 160 | 1e-15 | 2.3 | 0.0000 | 0.0000 | 0.0000 |
+
+**Instrument check against the FDTD:** at R = 1e-15, te_45 dx/2 reads 0.0253 / 0.0046 /
+0.0001 for n = 20 / 40 / 80 against the FDTD's 0.0240 / 0.0053 / 0.0043. The model tracks
+the FDTD where the absorber dominates; at 80 the FDTD's 0.0043 is the lattice-vs-continuum
+floor, which the model (by construction) does not contain -- so the model says the absorber
+has stopped being the leading term there, and the FDTD agrees.
+
+**The same two-sided optimum as the auxiliary grid.** Too steep (1e-28, sigma 34) reflects
+off its own gradient at every depth. Too gentle (1e-4, sigma 1.2-2.4) under-absorbs at
+grazing -- and gets WORSE with depth at 60 deg (0.0128 -> 0.0171 -> 0.0187), because the
+target, not the depth, sets R(theta) = R(0)^cos(theta) once the gradient is gentle. In
+between, depth wins by an order of magnitude per doubling.
+
+### 9.3 The requirement, and the depth read off it
+
+The band-mean gates judge rfx against the continuum. For them to judge the SOLVER rather
+than the RIG, the absorber term must sit under the lattice-vs-continuum floor those gates
+must also absorb -- 0.0043 at te_45 dx/2 (the FDTD at 80 cells), i.e. the term should be
+a small fraction of that, not comparable to it.
+
+- n = 40: 0.0024-0.0058 at the best target -- the same size as the floor; the gate would
+  still be judging the absorber half the time. Passes, but for the wrong reason.
+- **n = 80: 0.0001-0.0007 at the repo's default target** -- a tenth of the floor at 60 deg,
+  a fortieth at 45. The absorber is no longer the leading term.
+- n = 160: ~0. The convergence witness, not the pick.
+
+**Declared: `N_CPML` 20 -> 80 on cv26's primary rig, `R_asym` unchanged at the repo
+default 1e-15.** 1e-8 would be ~5x better still at 80 cells, but it is `_cpml_profile`'s
+global default and a term already at 1/10 of the floor does not justify touching every
+case's absorber. Cost: 120 cells on a 1500-cell interior at dx (8 %), the same fraction at
+dx/2.
+
+### 9.4 What the change moves (blast radius, stated before it is made)
+
+`rig_cells` (nx, x_lo, probe indices) and hence every `RECORD_DECLARED` key's `n_cpml`;
+the record law re-derived at 80; the compact-box falsifiers `graze_pec_depth_half` (10 cells
+= half of 20) and the depth ladder (8 / 16 / 32) are written as literals against the
+20-cell declared absorber and must be re-expressed against 80; the Meep leg's cell is
+`NX_INTERIOR + 2 N_CPML` and its legs must be re-run; lane A's `CV26_TE45` reflection-probe
+offset (1420) shifts with nx//2; the pre-declaration declared 20 cells and gets a round-3
+section, append-only. cv04 keeps 20: at normal incidence its 20-cell absorber term is under
+its own gate (closure 0.0043), and the divergence is stated, not hidden.
+
+### 9.5 Applied (2026-09-06)
+
+`N_CPML_PRIMARY = 80`, `N_CPML_COMPACT = 20`, `N_CPML = N_CPML_PRIMARY`;
+`declared_n_cpml(spec)` picks by `spec["compact"]`, and `derive_record`,
+`predict_settling`, `record_probe_series`, `evaluate_e2` and the case's `run_rfx_arm`
+default to it instead of to one literal. G6 and the compact-box falsifiers
+(`graze_pec_depth_half = N_CPML_COMPACT // 2`, the 8 / 16 / 32 ladder) stay on the compact
+depth. Pre-declaration section 17 records the rig change, append-only.
+
+Three things the change surfaced:
+
+1. **A latent index coupling in the lattice model.** `yee_lattice_full` read the auxiliary
+   field at every 3-D node as `E_aux[idx + off]`; nodes below `x_lo` map into the auxiliary
+   margin, and once the MAIN absorber is deeper than that margin (80 > 25) they map off
+   the end of the array. The 20-cell rig hid it because `x_lo = 25` equalled the auxiliary
+   margin exactly. Nodes outside the total-field box carry no incident field by
+   construction, so the read is now clipped to the array with zeros outside. On the primary
+   rig the results are bit-identical to before (the forcing only reads `x_lo-1..x_hi+1`
+   and the probes); on small test rigs it turned an IndexError into the right answer.
+2. **The dx/2 recipe's stated reason is gone.** Section 13.4 picked dx/2 because at dx the
+   20-cell echo put the 45-deg arms outside `W_bin`. At 80 cells the echo over the record
+   is under 1e-3 at BOTH rungs (te_45 dx/2 1.8e-04, te_60 dx 7.2e-04 -- 170x and 50x
+   down), and the FDTD ladder shows the dx rung passing E2 too (te_45 dx 0.0176 vs
+   0.0222). The recipe is left at dx/2; its reason is now the lattice dispersion term
+   `W_disp`, which the case prints, and the test that asserted "dx fails absorber_ok" now
+   asserts what is measured (both rungs under 1e-3, both declared, both absorber_ok).
+3. **The 60-degree dx keys stay non-converged in nfft at 80 cells too**: 9619 / 9424 /
+   10258 at 2^17 / 2^18 / 2^19 (2^20 below). The absorber was not what set that; section 8
+   stands.
+
+Measured settling on the 80-cell rig, from the case run from the closed form and extended
+until the witnesses settled: te_00 dx 1597 (0 ext), tm_00 1597, te_30 dx 2172 -> 3172
+(10 ext), te_30 dx/2 4296 -> 6296 (10 ext), te_45 dx/2 6020 -> 10620, te_60 dx/2
+9870 -> 18470, tm_45 dx/2 5839 -> 10239; compact box unchanged (graze_pec 21835). The
+bracket test is re-anchored to these.
+
+### 9.6 nfft convergence on the 80-cell rig, and the rule now applied
+
+On the 80-cell primary rig the 60-degree dx ladder is 9619 / 9424 / 10258 / 9245
+(2**17..2**20) for te_60 and tm_60 alike -- an 11 % spread with no lone outlier, unlike the
+20-cell rig where three lengths agreed and 2**19 stood out. te_45 dx/2 is nfft-dependent
+too (2**18 11208, 2**19 10875; 2**17 and 2**20 in the table's ladder). The settling model
+cannot vouch for one number on these keys.
+
+**Rule applied to the table (the section-8 proposal, in its minimal form):** a key whose
+ladder spans more than one extension quantum carries `nfft_converged = False`, its ladder,
+and is DECLARED at the largest value of the ladder -- the conservative record (more
+settling, never less). The 2**19 value is kept beside it (`n_settle_at_2e19`). The FDTD
+bracket test then asks a weaker but honest question of a flagged key: does the run settle
+inside the range the model's own ladder spans, with the declared value at most one quantum
+past the measured settle. Keys without a measured ladder are NOT claimed converged; they
+are bracketed against the FDTD directly, which is the stronger witness where it exists
+(eight of twelve primary keys).
+
+te_45 dx/2's ladder is 11635 / 11208 / 10875 / 10535 (2**17..2**20), a 10.4 % drift, the
+SHORTEST transform giving the LONGEST settle -- wrapped content lands on the witness and
+delays the crossing. It is declared at 11635. That inflates the record by ~10 % over the
+FDTD's 10620 (runtime, not accuracy: more settling never hurts the measurement). tm_45 dx/2
+shows the same disease against the FDTD (2**19 10875 vs a measured settle of 10239) and its
+ladder is being measured so it is flagged the same way rather than bracketed by one length.
+
+### 9.7 Result on the 80-cell rig, and the one verdict left to decide
+
+Full baseline, every arm, 80-cell primary rig, 1e-28 auxiliary absorber, re-derived table:
+**all seven primary arms PASS** -- te_00, te_30, te_45, te_60, tm_00, tm_45, tm_60 -- with
+`e_absorber` 2.6e-06 to 5.8e-04 (was 2-3e-02 at 45 / 60 deg). graze_vac passes. The
+physics-gate failures the round opened with are closed on the rig the Fresnel claim is made
+on.
+
+graze_pec and graze_te still read FAIL, and the reason is not physics: their witnesses
+PASS. G6: rfx matches the exact lattice model of its own 20-cell absorber to
+max|R - R_lat| = 1.26e-03, and the measured excess |R - 1| (0.1152) sits on the a-priori
+absorber term (0.1150) -- the absorber behaves exactly as its discrete model says, to 1 %,
+at 80-85 deg. G7 on graze_te: max|dR| 1.1e-03, max|dT| 1.5e-04 against the lattice with
+the absorber. What fails is `G3_passivity` (and the E2 gates), which the arm's verdict rule
+requires -- on a rig DESIGNED to hold a 7e-02 echo inside its record, R + T > 1 is the
+designed-in signature, not a defect. This is the graze_vac situation again (section 5.1
+B-2): the scope is declared in the pre-declaration (the compact box is the absorber
+witness, judged against the lattice WITH the absorber), the verdict rule did not follow.
+The consistent fix is to mark `G3_passivity` and `G3_closure` N/A on the compact arms,
+declared in the artifact, and judge them on G6 / G7 and the tail witness. It changes what
+two arms gate, so it is put to the PI here and not applied.
+
