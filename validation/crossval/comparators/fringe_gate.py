@@ -75,6 +75,34 @@ CELL_HALF_WIDTHS_PER_FSR = 0.25
 # gate fails rather than reporting a boundary as an extremum.
 PIN_MARGIN_BINS = 2
 
+# ---------------------------------------------------------------------------
+# Measurability: how brightly an extremum must be lit before its position is a
+# measurement rather than a reading (#888 lane, 2026-09-04).
+# ---------------------------------------------------------------------------
+# The spectral mask admits a bin to the band at 2 percent of the incident power
+# peak. That is the right floor for a band MEAN; it is nowhere near enough for
+# an extremum POSITION, and cv04 shipped for months gating a fringe lit at 3.4
+# percent. Measured on cv04's own rig by sweeping the source bandwidth and
+# watching the third fringe's position converge (all other things equal):
+#
+#   inc power at the extremum   0.0336  0.0735  0.1313  0.2037  0.2855  0.4571  0.8414
+#   position error vs converged  319.7   306.5   187.2    80.9    22.0     2.7     0.0  MHz
+#
+# The error falls under the measurement's own resolution, df_bin/2 = 26.1 MHz,
+# at an incident power of 0.277 -- fourteen times the mask floor that lets the
+# bin into the band at all. The admission bar is that measured threshold carried
+# through the shared gate policy's safety multiplier (tests/_gate_policy.py,
+# ENVELOPE_GATE_MULTIPLIER = 1.5): 0.277 * 1.5 = 0.416, quantised up to 0.42.
+#
+# CONTAINMENT OF THE SEARCH CELL WAS TESTED FIRST AND IS NOT THE CRITERION.
+# At bw = 0.55 the third fringe's cell is 94 percent inside the band and the
+# gate still fails by +245.8 MHz; at bw = 0.65 through 1.10 the band top is
+# identical (14.95 GHz) and the measured position still moves 81 MHz as the
+# illumination rises. The band sets what can be searched; the incident power at
+# the extremum sets whether the answer means anything.
+FRINGE_INC_POWER_MEASURABLE = 0.277   # MEASURED: error < df_bin/2 at or above this
+FRINGE_INC_POWER_MIN = 0.42           # the bar: measured threshold * 1.5, quantised up
+
 # Meep leg (section 6). Pointwise |dR| induced by one position budget
 # W(f_top) (= windows.max_position_window_hz in the evidence artifact, 234.9 MHz
 # for the committed cv04 config, pinned by
@@ -124,6 +152,10 @@ class FringeVerdict:
     ok: bool
     rows: tuple[FringeRow, ...]
     reasons: tuple[str, ...]  # empty iff ok
+    # Analytic extrema inside the band that this gate REFUSES to judge because
+    # they are not lit brightly enough to be measured: (kind, f_hz, inc_power).
+    # Reported, never silently dropped -- a shrinking gate has to be visible.
+    not_applicable: tuple[tuple[str, float, float], ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -347,6 +379,8 @@ def compare_fringes(
     value_limit: float = FRINGE_VALUE_LIMIT,
     safety: float = SAFETY,
     label: str = "measured",
+    inc_power_rel: np.ndarray | None = None,
+    inc_power_min: float = FRINGE_INC_POWER_MIN,
 ) -> FringeVerdict:
     """Gate a measured etalon R(f) against the analytic slab fringe structure.
 
@@ -371,6 +405,7 @@ def compare_fringes(
     # cannot be judged at the declared resolution and is out of scope here.
     expected: list[tuple[str, float, float]] = []
     windows: list[float] = []
+    not_applicable: list[tuple[str, float, float]] = []
     for kind, f_an, v_an in expected_all:
         w = position_window_hz(
             f_an,
@@ -383,6 +418,11 @@ def compare_fringes(
         )
         if f_an - w - df_bin_hz < f_lo or f_an + w + df_bin_hz > f_hi:
             continue
+        if inc_power_rel is not None:
+            lit = float(np.interp(f_an, freqs_hz, np.asarray(inc_power_rel, dtype=float)))
+            if lit < inc_power_min:
+                not_applicable.append((kind, f_an, lit))
+                continue
         expected.append((kind, f_an, v_an))
         windows.append(w)
 
@@ -395,8 +435,14 @@ def compare_fringes(
                 f"{label}: the evaluated band {f_lo/1e9:.3f}-{f_hi/1e9:.3f} GHz "
                 "contains no analytic fringe extremum it can judge at the "
                 "declared resolution -- this gate cannot decide, which is a "
-                "FAIL, not a pass.",
+                "FAIL, not a pass."
+                + (f" {len(not_applicable)} extremum/extrema were refused as "
+                   f"too dimly lit to measure: "
+                   + ", ".join(f"{k} at {f/1e9:.4f} GHz (incident power {p:.4f} "
+                               f"< {inc_power_min})" for k, f, p in not_applicable)
+                   if not_applicable else ""),
             ),
+            not_applicable=tuple(not_applicable),
         )
 
     found: list[Extremum] = []
@@ -415,6 +461,7 @@ def compare_fringes(
                     f"sampled, so fringe extrema cannot be located ({exc}). "
                     "The spectral mask must select one contiguous band.",
                 ),
+                not_applicable=tuple(not_applicable),
             )
         if meas is None:
             reasons.append(f"{label}: fringe CONTAINMENT -- {why}")
@@ -422,7 +469,8 @@ def compare_fringes(
             found.append(meas)
 
     if reasons:
-        return FringeVerdict(ok=False, rows=(), reasons=tuple(reasons))
+        return FringeVerdict(ok=False, rows=(), reasons=tuple(reasons),
+                             not_applicable=tuple(not_applicable))
 
     rows: list[FringeRow] = []
     for (kind, f_an, v_an), w, meas in zip(expected, windows, found):
@@ -458,7 +506,8 @@ def compare_fringes(
                 f"(= {abs(row.dvalue)/row.value_limit:.2f}x)."
             )
 
-    return FringeVerdict(ok=not reasons, rows=tuple(rows), reasons=tuple(reasons))
+    return FringeVerdict(ok=not reasons, rows=tuple(rows), reasons=tuple(reasons),
+                         not_applicable=tuple(not_applicable))
 
 
 def format_fringe_table(verdict: FringeVerdict, label: str) -> str:
@@ -477,6 +526,12 @@ def format_fringe_table(verdict: FringeVerdict, label: str) -> str:
             f"{row.f_window_hz/1e6:>8.1f} {row.value_ref:>8.4f} "
             f"{row.value_meas:>8.4f} {row.dvalue:>+8.4f} "
             f"{'ok' if ok else 'FAIL':>9}"
+        )
+    for kind, f_hz, lit in verdict.not_applicable:
+        lines.append(
+            f"    {kind:>4} {f_hz/1e9:>11.4f} {'--':>12} {'--':>9} {'--':>8} "
+            f"{'--':>8} {'--':>8} {'--':>8} {'N/A':>9}"
+            f"   incident power {lit:.4f} < {FRINGE_INC_POWER_MIN}: too dim to measure"
         )
     for reason in verdict.reasons:
         lines.append(f"    !! {reason}")

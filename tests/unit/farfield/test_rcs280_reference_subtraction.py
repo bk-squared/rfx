@@ -30,6 +30,14 @@ _RFX_SPHERE = _REPO / "tests/fixtures/rcs_sphere_mie/fixture.json"
 sys.path.insert(0, str(_REPO / "tests/fixtures/rcs_sphere_mie"))
 from mie_oracle import bistatic_over_pi_a2  # noqa: E402
 
+sys.path.insert(0, str(_REPO))
+from tests._gate_policy import gate_from_envelope  # noqa: E402
+
+# MEASURED on the converged rig with the shipped (post-#888) auxiliary absorber;
+# the bar is that measurement through the shared envelope policy, never chosen.
+CORRECTED_MEAN_MEASURED = 0.705
+PATTERN_MEAN_BAR = 1.06
+
 
 @pytest.fixture(scope="module")
 def fx():
@@ -68,8 +76,39 @@ def test_corrected_pattern_matches_exact_mie(fx):
     mie = _db(fx["mie_bistatic_over_pi_a2"])
     corr = _db(fx["rfx_corrected_over_pi_a2"])
     assert np.corrcoef(corr, mie)[0, 1] >= 0.95
-    assert np.abs(corr - mie).mean() <= 0.6           # measured ~0.42 dB
-    assert abs(corr[-1] - mie[-1]) <= 0.5             # backscatter, measured ~0.06 dB
+    # The pattern-mean bar was 0.6 at "measured ~0.42 dB". Both numbers were taken
+    # on the pre-#888 auxiliary absorber, which reflected 4-6 % into the injected
+    # field -- and the subtraction cancelled more of the pattern error with that
+    # contamination present than without it. Measured, sweeping the auxiliary depth
+    # and this rig's own CPML depth independently (2026-09-04 derivation note 13.3):
+    #     mean |corrected - Mie|, dB       cpml 8    16      24      32
+    #       auxiliary 20 cells (pre-#888)   0.481   0.404   0.408   0.412
+    #       auxiliary 200 cells (shipped)   0.886   0.719   0.705   0.714
+    # Both converge in depth; they converge to DIFFERENT values, so the difference is
+    # the injection, not the absorber. 0.705 is this rig's honest number with a clean
+    # incident field. Re-derived through the shared policy at that measurement:
+    # gate_from_envelope(0.705, quantum=100) = 0.705 * 1.5 -> 1.06.
+    #
+    # A bar that moved because the measurement got worse has to be shown to still
+    # kill what it killed: test_the_pattern_bar_still_rejects_the_uncorrected_path.
+    assert gate_from_envelope(CORRECTED_MEAN_MEASURED, quantum=100) == PATTERN_MEAN_BAR
+    assert np.abs(corr - mie).mean() == pytest.approx(CORRECTED_MEAN_MEASURED, rel=0.05)
+    assert np.abs(corr - mie).mean() <= PATTERN_MEAN_BAR
+    # backscatter: measured +0.185 dB on the converged rig (was 0.06 dB, on the
+    # cancellation -- see the sibling rcs_sphere_mie fixture's CPML derivation)
+    assert abs(corr[-1] - mie[-1]) <= 0.5
+
+
+def test_the_pattern_bar_still_rejects_the_uncorrected_path(fx):
+    """(B) The pattern-mean bar moved 0.6 -> 1.06, so show it still fails the
+    defect it exists to fail: the UNCORRECTED far field, which carries the
+    spurious forward-oblique lobe the #280 subtraction removes. It reads
+    3.10 dB mean -- 2.9x the new bar -- and its correlation with Mie is -0.09,
+    i.e. the shape is gone too, not merely offset."""
+    mie = _db(fx["mie_bistatic_over_pi_a2"])
+    un = _db(fx["rfx_uncorrected_over_pi_a2"])
+    assert np.abs(un - mie).mean() > 2.0 * PATTERN_MEAN_BAR
+    assert np.corrcoef(un, mie)[0, 1] < 0.95
 
 
 def test_empty_domain_isolates_leakage(fx):

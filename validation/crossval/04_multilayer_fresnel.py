@@ -65,7 +65,15 @@ n_slab = math.sqrt(eps_slab)
 d_slab = 10.0e-3     # 10 mm
 f0 = 10.0e9
 dx = 1.0e-3           # 1 mm (15 cells/λ at 20 GHz)
-bw = 0.5
+# bw = 0.5 shipped, and it never illuminated the top of this case's own analysis
+# band: the third fringe at 11.2425 GHz sat at 3.4 % of the incident power peak,
+# where its measured position is 320 MHz off and swings 193 MHz under a change
+# of the injection. DERIVED (#888 lane, note section 10): the smallest bandwidth
+# at which every gated extremum clears fringe_gate.FRINGE_INC_POWER_MIN = 0.42
+# -- here 0.876 / 0.909 / 0.457. The realized band top is then 14.95 GHz, inside
+# the 15.587 GHz ceiling at which a perfect lattice solver would start failing
+# this gate's own fixed value_limit against the continuum reference.
+bw = 0.8
 
 # Large domain with thick CPML for clean measurement
 # Probe-to-CPML distance must be large enough that CPML round-trip
@@ -384,13 +392,33 @@ cons_max_ok = bool(cons_rfx.max() <= CONS_MAX_LIMIT)
 # -----------------------------------------------------------------------------
 freqs_band = freqs[mask]
 df_bin = float(freqs[1] - freqs[0])
+# ``inc_power_rel`` is what makes the gate refuse an extremum it cannot measure
+# rather than read one off a dim shoulder: the mask admits a bin to the band at
+# 2 % of the incident peak, and an extremum POSITION needs 0.42 (fringe_gate.py,
+# FRINGE_INC_POWER_MIN -- measured, #888 lane). Before this, cv04 gated its third
+# fringe lit at 3.4 % and read it 320 MHz off.
 fringe_verdict = fringe_gate.compare_fringes(
     freqs_band, R_rfx,
     eps_r=eps_slab, d=d_slab, n_index=n_slab,
     dx=dx, dt=dt, df_bin_hz=df_bin, c0=C0,
     label="rfx vs analytic",
+    inc_power_rel=inc_power[mask] / inc_power.max(),
 )
-fringe_ok = bool(fringe_verdict.ok)
+# A gate that shrinks is not a gate that passes. ``compare_fringes`` refuses an
+# extremum it cannot measure and REPORTS it (N/A), which is the right verdict for
+# the gate; for the CASE, an extremum going N/A on a rig declared to measure it is
+# a failure, or a rig regression would read as green with a smaller gate.
+CV04_DECLARED_EXTREMA = (("max", 3.7475e9), ("min", 7.4950e9), ("max", 11.2425e9))
+_judged = {(r.kind, round(r.f_ref_hz, 1)) for r in fringe_verdict.rows}
+_missing = [(k, f) for k, f in CV04_DECLARED_EXTREMA if (k, round(f, 1)) not in _judged]
+fringe_admission_ok = not _missing
+if _missing:
+    print("    !! rfx vs analytic: fringe ADMISSION -- this rig no longer measures "
+          + ", ".join(f"the {k} at {f/1e9:.4f} GHz" for k, f in _missing)
+          + ". The gate reported them N/A; for the case that is a FAIL, not a "
+            "smaller gate (see fringe_gate.FRINGE_INC_POWER_MIN).")
+
+fringe_ok = bool(fringe_verdict.ok) and fringe_admission_ok
 print()
 print(fringe_gate.format_fringe_table(fringe_verdict, "rfx vs analytic"))
 
@@ -407,12 +435,27 @@ rfx_self_ok = bool(
 # DERIVED from the lattice model's own error budget (record truncation, the
 # incident reference's truncation, float32), evaluated at the one dx rung this
 # case runs. Nothing here can change the exit code: the note derives, from
-# THIS config's committed tail levels (0.036 / 0.051 of the incident peak,
-# against cv22's -40 dB bar), that W_witness is 5.2e-2 in the gated mean here
-# -- looser than the case's own band-mean window -- so the cv04 lattice gate is
-# declared NON-DISCRIMINATING at the committed 719-step record and is REPORTED,
-# not gated (note section 5.3). The claims-bearing rung for this material is
-# the settled one, cv23's `sigma_zero` arm.
+# THIS config's committed tail levels, that W_witness is looser than the case's
+# own band-mean window, so the cv04 lattice gate was declared NON-DISCRIMINATING
+# at the committed 719-step record and REPORTED, not gated (note section 5.3).
+#
+# THAT REASON NO LONGER HOLDS ON R, and the change is recorded rather than acted
+# on here. The derived absorber (#888) and the derived rig (bw = 0.8) between
+# them dropped this rung's tails, and with them W_witness:
+#
+#            mean W_witness_R   ceiling   W exceeds ceiling   |rfx - lattice| R
+#   before        4.68e-02      1.44e-02        YES               1.42e-03
+#   now           1.98e-03      4.81e-03        no                1.98e-04
+#
+# W_witness_R is now FIVE TIMES TIGHTER than the case's own W_MEAN_R = 0.010 and
+# sits inside its own ceiling, and rfx uses 20 % of it (worst_ratio_R = 0.198).
+# The R channel of this witness has become gateable. The T channel has not:
+# W_witness_T = 1.39e-02 still exceeds its 1.17e-02 ceiling.
+#
+# Turning it on changes what cv04 gates, so it is a decision, not a lane patch --
+# see docs/design_notes/20260904_aux_absorber_depth_derivation.md section 11.
+# The claims-bearing rung for this material remains the settled one, cv23's
+# `sigma_zero` arm.
 # -----------------------------------------------------------------------------
 if "--lattice-witness" in sys.argv:
     _cmp = os.path.join(SCRIPT_DIR, "comparators")
@@ -455,12 +498,29 @@ if "--lattice-witness" in sys.argv:
                                 commit=_RIG.staged_commit(os.path.dirname(os.path.dirname(SCRIPT_DIR)),
                                                           cwd=SCRIPT_DIR),
                                 d_slab_m=d_slab)
-    _doc["gated_here"] = False
+    # R IS GATED HERE as of the #888 lane; T and A are still reported. See the
+    # comment block above for the measurement that changed the verdict.
+    _r0 = _doc["rungs"]["slab_eps4"]
+    _gates_R = {k: v for k, v in _r0["gates"].items()
+                if k.endswith("_R") or k.startswith("precond_")}
+    lattice_R_ok = bool(all(_gates_R.values())) and not _r0["W_exceeds_ceiling_R"]
+    _doc["gated_here"] = True
+    _doc["gated_channels"] = ["R"]
+    _doc["reported_channels"] = ["T", "A"]
     _doc["gated_here_reason"] = (
-        "the committed 719-step record does not settle to -40 dB (tails "
-        f"{tail_refl_rel:.3f} / {tail_trans_rel:.3f} of the incident peak), so the "
-        "derived W_witness exceeds this case's own band-mean window; REPORTED, "
-        "see docs/design_notes/20260903_lattice_witness_standard.md section 5.3")
+        "R is GATED (#888 lane, PI decision 2026-09-04): W_witness_R sits inside "
+        f"its own ceiling ({_r0['mean_W_witness_R_gated']:.2e} vs "
+        f"{_r0['mean_W_ceiling_R_gated']:.2e}), five times tighter than this "
+        "case's own W_MEAN_R = 0.010, and the continuum falsifier separates 2.68 "
+        "of that window on 65 of 115 gated bins where it used to separate 0.099 "
+        "on none. T and A stay REPORTED: W_witness_T still exceeds its ceiling "
+        f"({_r0['mean_W_witness_T_gated']:.2e} vs "
+        f"{_r0['mean_W_ceiling_T_gated']:.2e}) and the same falsifier separates "
+        "only 0.38 there. The committed 719-step record still does not settle to "
+        f"-40 dB (tails {tail_refl_rel:.3f} / {tail_trans_rel:.3f} of the "
+        "incident peak), which is why T is still the loose channel. See "
+        "docs/design_notes/20260903_lattice_witness_standard.md section 5.3 and "
+        "docs/design_notes/20260904_aux_absorber_depth_derivation.md section 11.1")
     _out04 = os.path.join(SCRIPT_DIR, "_04_fresnel_results")
     os.makedirs(_out04, exist_ok=True)
     with open(os.path.join(_out04, _LW.witness_json_name()), "w") as _fh:
@@ -472,7 +532,13 @@ if "--lattice-witness" in sys.argv:
           f"(limit {_ae['limit']:.1f}); ok={_ae['ok']}")
     print(f"  cv04-lattice-witness slab_eps4: |rfx-lattice| mean R "
           f"{_r['mean_dR_lattice_gated']:.2e} vs W {_r['mean_W_witness_R_gated']:.2e} "
-          f"(ceiling {_r['mean_W_ceiling_R_gated']:.2e}); reported, not gated")
+          f"(ceiling {_r['mean_W_ceiling_R_gated']:.2e}); R GATED -> "
+          f"{'ok' if lattice_R_ok else 'FAIL'}, T/A reported")
+    if not lattice_R_ok:
+        print("    !! cv04-lattice-witness R: " + ", ".join(
+            k for k, v in _gates_R.items() if not v)
+            + (" ; W_witness_R exceeds its own ceiling" if _r0["W_exceeds_ceiling_R"] else ""))
+        sys.exit(1)
     print(f"  wrote {os.path.join(_out04, _LW.witness_json_name())}")
 
 # =============================================================================

@@ -313,8 +313,8 @@ dx/2, so its ladder is {dx/2, dx/4} and it has no committed dx rung — cv23
 Every value in that table is a key of
 `validation/crossval/_23_lossy_results/lattice_witness.json` (`rungs.<rung>.…`);
 e.g.
-`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand3.mean_W_witness_R_gated = 0.00047`,
-`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand3.mean_dR_lattice_gated = 3e-05`,
+`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand3.mean_W_witness_R_gated = 0.00025`,
+`validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand3.mean_dR_lattice_gated = 5e-06`,
 `validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand3_dx4.worst_ratio_T = 0.3`
 (the worst per-bin ratio over ALL nine rungs and all three observables).
 
@@ -388,7 +388,7 @@ now a statement about the solver, not about an unresolved 3e-3.
 
 **Stated limitation — the Debye arm's lattice gate is NON-DISCRIMINATING.**
 That arm's record settles only to
-`validation/crossval/_22_dispersive_results/rfx.json::arms.debye.tail.scat_refl_rel = 0.0072`
+`validation/crossval/_22_dispersive_results/rfx.json::arms.debye.tail.scat_refl_rel = 0.0064`
 (the −40 dB bar is 1e-2, so it is inside its own witness but only just), and its
 measured tail decays 1.5× slower than derived, so `W_witness,R = 1.71e-2` —
 larger than its own lattice term of 2.2e-3, and larger than its a-priori ceiling
@@ -427,38 +427,90 @@ that stayed is the lattice.
 
 ### 5.3 cv04 — the witness is REPORTED, not gated, and the derivation says why
 
+> **SUPERSEDED IN PART, 2026-09-04 (#888 lane, PI decision).** The verdict below
+> — REPORTED, not gated — was correct for the rig that produced it. **R is now
+> GATED** (`gated_channels = ["R"]`); T and A stay reported. The derived auxiliary absorber (#888) and the derived cv04 rig
+> (`bw = 0.8`) dropped this rung's tails by 8.6× and 4.2×, and with them
+> `W_witness`. What changed is measured in 5.3.1 below; the table and the falsifier
+> paragraph below have been re-stated to the run that exists now, and the
+> conclusion sentence they used to support has been withdrawn.
+
 cv04 runs one rung (dx = 1 mm, nx 600, 719 steps). `--lattice-witness` writes
-`validation/crossval/_04_fresnel_results/lattice_witness.json` with
-`gated_here = false`. The reason is derived, not measured: cv04's own tail
-witness reads **0.036 / 0.051** of the incident peak (`04_multilayer_fresnel.py`,
-the issue-#341 comment block, committed config 2026-07-13) against the family's
-−40 dB bar of 1e-2 — cv04's record does not settle, by design (`TAIL_LIMIT =
-0.10` there bounds "gross non-settling", and the residual is the documented
-order-2 etalon echo still in flight). Put those levels through §3 with the
-lossless etalon rate `Γ = 1.65e10 s⁻¹` (ρ = |r|² = 1/9 per round trip, t_rt =
-2·2·d/c) and Λ = 48.323, and the run confirms the derivation:
+`validation/crossval/_04_fresnel_results/lattice_witness.json`, which carried
+`gated_here = false` and now carries `gated_here = true` with
+`gated_channels = ["R"]`. The original reason was derived, not measured: cv04's tail witness
+read **0.036 / 0.051** of the incident peak on the rig this note was written for
+(`04_multilayer_fresnel.py`, the issue-#341 comment block, committed config
+2026-07-13) against the family's −40 dB bar of 1e-2 — cv04's record did not
+settle, by design (`TAIL_LIMIT = 0.10` there bounds "gross non-settling", and the
+residual is the documented order-2 etalon echo still in flight). It reads
+**0.0042 / 0.0121** now. Put the ORIGINAL levels through §3 with the lossless
+etalon rate `Γ = 1.65e10 s⁻¹` (ρ = |r|² = 1/9 per round trip, t_rt = 2·2·d/c) and
+Λ = 48.323, and the run confirmed the derivation; the table is the run that
+exists today:
 
 | quantity (cv04 AS COMMITTED, 719 steps, 115 gated bins) | value |
 |---|---|
-| `W_witness,R` gated mean | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_W_witness_R_gated = 0.0535` |
-| `W_witness,T` gated mean | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_W_witness_T_gated = 0.178` |
-| a-priori ceiling, R | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_W_ceiling_R_gated = 0.0149` |
-| `\|rfx − lattice\|` gated mean, R | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_dR_lattice_gated = 0.00168` |
-| `\|rfx − lattice\|` gated mean, T | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_dT_lattice_gated = 0.00625` |
-| worst per-bin ratio, R / T | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.worst_ratio_R = 0.095` / `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.worst_ratio_T = 0.056` |
+| `W_witness,R` gated mean | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_W_witness_R_gated = 0.0020` |
+| `W_witness,T` gated mean | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_W_witness_T_gated = 0.014` |
+| a-priori ceiling, R | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_W_ceiling_R_gated = 0.0048` |
+| `\|rfx − lattice\|` gated mean, R | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_dR_lattice_gated = 0.00020` |
+| `\|rfx − lattice\|` gated mean, T | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_dT_lattice_gated = 0.00096` |
+| worst per-bin ratio, R / T | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.worst_ratio_R = 0.198` / `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.worst_ratio_T = 0.119` |
 | Γ, source | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.budget.rate_ringdown_1_s = 1.647e10` (derived) |
 
-which is looser than cv04's own band-mean windows, and 3.6× looser than its own
-a-priori ceiling because the measured tails are 3.6× and 5.1× the declared bar.
-The wrong-model falsifier F2 does not fire there (separation 0.099 of the
-window, 0 of 115 gated bins), nor does F3 (0.082, 0 of 115). A gate that cannot
-reject the continuum model is not a gate; it is reported.
+**5.3.1 — What the #888 lane changed, measured.**
+
+On the rig this note was written for, `W_witness,R` was 5.35e-2 — looser than
+cv04's own band-mean window and 3.6× looser than its own a-priori ceiling,
+because the measured tails were 3.6× and 5.1× the declared bar. The wrong-model
+falsifier F2 did not fire (separation 0.099 of the window, 0 of 115 gated bins),
+nor did F3 (0.082, 0 of 115), and the note concluded: *a gate that cannot reject
+the continuum model is not a gate; it is reported.*
+
+**That conclusion is withdrawn on R.** Same case, same rung, same 719 steps,
+after the derived auxiliary absorber and the derived source bandwidth:
+
+| | this note's rig | now |
+|---|---|---|
+| tails, scat / trans | 0.036 / 0.051 | **0.0042 / 0.0121** |
+| `W_witness,R` gated mean | 5.35e-2 | **1.98e-03** |
+| a-priori ceiling, R | 1.44e-02 | 4.81e-03 |
+| `W_witness,R` exceeds its ceiling | **yes** | **no** (2.4× inside it) |
+| `\|rfx − lattice\|` gated mean, R | 1.42e-03 | **1.98e-04** |
+| worst per-bin ratio, R | — | 0.198 |
+
+and the falsifiers, which are what actually decide whether this is a gate:
+
+| falsifier | separation / window (R), then | now | bins over window (of 115) |
+|---|---|---|---|
+| `thickness_plus_cell` | — | 38.99 | 115 |
+| `thickness_minus_cell` | — | 39.08 | 114 |
+| `continuum` (F2) | 0.099 | **2.68** | 65 |
+| `eps_x1p01` (F3) | 0.082 | **2.20** | 86 |
+| `eps_continuum` | — | 0.000 | 0 (identically zero: cv04 is lossless, so this defect IS the continuum ε) |
+
+The witness now rejects the continuum model on R by a factor of 2.7 over its own
+window, on 65 of 115 gated bins. `W_witness,R` is five times TIGHTER than cv04's
+own `W_MEAN_R = 0.010`.
+
+**T is a different answer and stays reported:** `W_witness,T` = 1.39e-02 still
+exceeds its 1.17e-02 ceiling, and F2 separates only 0.38 there.
+
+So cv04's lattice witness has become gateable on R and has not on T. **It is
+now on for R** (PI decision, 2026-09-04): `04_multilayer_fresnel.py` exits
+non-zero when the R channel fails, and `tests/crossval/test_cv04_fringe_measurability.py`
+replays it from the committed artifact. Measured teeth: a one-cell slab
+thickness error (10 mm → 11 mm) drives `|rfx − lattice|` on R from 1.98e-04 to
+**7.72e-02** and fails both `GL1_R` and `GL2_R`. T and A stay reported.
+`docs/design_notes/20260904_aux_absorber_depth_derivation.md` §11.1.
 
 **These are the run's numbers, not a reconstruction.** The note's first draft
-carried derived values for this table that were 3–15 % off — 5.2e-2 for a
-measured 5.35e-2, 1.7e-1 for 1.78e-1, and F1 / F2 / F3 separations of
+carried derived values for the ORIGINAL table that were 3–15 % off — 5.2e-2 for
+a measured 5.35e-2, 1.7e-1 for 1.78e-1, and F1 / F2 / F3 separations of
 1.50 / 0.45, 0.10 and 0.08 for a measured 1.45 / 0.43, 0.099 and 0.082. Every
-number above is now a key of the committed artifact the VESSL run wrote (§9.1).
+number in the table above is a key of the committed artifact, re-stated by the
+#829 gate when the #888 lane regenerated it.
 
 **cv04's material does have a claims-bearing lattice rung today, at zero cost.**
 cv23's `tand0p1_sigma_zero` falsifier arm is cv04's slab exactly — ε′ = 4,
@@ -502,8 +554,8 @@ envelopes are not the same number:
 
 | observable | committed envelope | lattice term over the same mask | lattice / envelope | `\|rfx − lattice\|`, gated mean |
 |---|---|---|---|---|
-| `\|ΔR\|` | `tests/fixtures/golden_workflows/multilayer_fresnel.json::expected_metrics[0].observed_baseline = 0.0066` | 0.00727 | **1.10** | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_dR_lattice_gated = 0.00168` |
-| `\|ΔT\|` | `tests/fixtures/golden_workflows/multilayer_fresnel.json::expected_metrics[1].observed_baseline = 0.011` | 0.00727 | **0.66** | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_dT_lattice_gated = 0.00625` |
+| `\|ΔR\|` | `tests/fixtures/golden_workflows/multilayer_fresnel.json::expected_metrics[0].observed_baseline = 0.0066` | 0.00727 | **1.10** | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_dR_lattice_gated = 0.00020` |
+| `\|ΔT\|` | `tests/fixtures/golden_workflows/multilayer_fresnel.json::expected_metrics[1].observed_baseline = 0.011` | 0.00727 | **0.66** | `validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_dT_lattice_gated = 0.00096` |
 
 In R the lattice accounts for the whole envelope (1.10×, i.e. the identification
 is complete to within the residual the last column measures). In T it accounts
@@ -808,7 +860,7 @@ active recipe (§0's correction) — so this is not a window move.
 
 Derivation of the cost and the prediction, from the committed artifact:
 the tail must fall from
-`validation/crossval/_22_dispersive_results/rfx.json::arms.debye.tail.scat_refl_rel = 0.0072`
+`validation/crossval/_22_dispersive_results/rfx.json::arms.debye.tail.scat_refl_rel = 0.0064`
 to 3e-4 at the fitted rate
 `validation/crossval/_22_dispersive_results/rfx.json::arms.debye.tail.fitted_rate_scat_refl_1_s = 8.8e9`
 — but the budget uses the conservative
@@ -927,7 +979,8 @@ lane as well as on the committed artifact.
   document, and it is what closes §5.2's stated limitation.
 - `validation/crossval/_04_fresnel_results/lattice_witness.json` — one rung,
   written by `python validation/crossval/04_multilayer_fresnel.py
-  --lattice-witness`, with `gated_here = false` and `gated_here_reason`.
+  --lattice-witness`, with `gated_here` / `gated_channels` and
+  `gated_here_reason` (R gated since 2026-09-04, T and A reported).
   **Committed** as of the VESSL run below; cv04's `artifact_paths` now lists it
   and §5.3's cv04 numbers are READ from it rather than derived.
 
