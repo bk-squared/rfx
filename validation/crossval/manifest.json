@@ -10,7 +10,7 @@
     {
       "id": "01_waveguide_bend",
       "script": "validation/crossval/01_waveguide_bend.py",
-      "role": "diagnostic-reporter",
+      "role": "claims-bearing",
       "public_group": "A",
       "execution_tiers": ["cpu-runner", "scheduled-external"],
       "evidence_levels": ["E1", "E4"],
@@ -18,36 +18,40 @@
         {"kind": "external-solver", "name": "Meep Basics 90-degree waveguide bend", "required_for_script_pass": true},
         {"kind": "self-invariant", "name": "straight-waveguide transmission", "required_for_script_pass": true}
       ],
-      "claim_scope": "2-D dielectric bend transmittance and straight-guide normalization under the script's published thresholds EVIDENCE CLASSIFICATION 2026-09-06 (issue #928), DEMOTED to diagnostic-reporter: no run of this case has retained output anywhere in this repository -- no results artifact, no frozen fixture, and no gate test that executes its physics. The weekly scheduled lane (.github/workflows/validation.yml, job crossval-external) recomputes it and discards the numbers with the runner, and an Actions log is a schedule, not evidence: it expires and no clone can read it. The physics is not in question and no gate value changed; what is missing is a committed record, so the case cannot carry a validated claim today. RE-PROMOTION: run the external lane once, commit its output JSON under the case's results directory, list it in artifact_paths, restore role = claims-bearing. That is a measurement-lane change, not a governance one.",
+      "claim_scope": "2-D dielectric bend transmittance and straight-guide normalization under the script's published thresholds EVIDENCE CLASSIFICATION 2026-09-06 (issue #928), evidence_status = committed: this case retained nothing -- the weekly scheduled lane recomputed it and discarded the numbers with the runner, so no clone could check them. It now writes validation/crossval/_01_waveguide_bend_results/crossval.json before its plotting stage, and that file is the committed run of 2026-09-06T17:08:27Z: exit 0, G1_smoothed_T_in_0p3_1p0=PASS, G2_straight_self_T_in_0p95_1p05=PASS, G3_abs_rfx_minus_meep_lt_0p10=PASS, rfx 1.8.0 / Meep 1.34.0 / JAX_ENABLE_X64=1 / RFX_BOUNDARY=upml, commit 296cabad. It carries the gate table, the per-bin quantities the gates read, the exit code the script returned, the run's provenance and the realized rig as values, so a reader checks the numbers without re-running the case.",
       "external_dependencies": ["pymeep"],
       "expected_exit_codes": [0, 1, 2],
       "gate_paths": ["validation/crossval/01_waveguide_bend.py"],
-      "artifact_paths": [],
+      "artifact_paths": [
+        "validation/crossval/_01_waveguide_bend_results/crossval.json"
+      ],
       "cpu_runner": {"order": 1},
       "scheduled_external_order": 1,
-      "evidence_status": "external-scheduled",
-      "evidence_producer": ".github/workflows/validation.yml::crossval-external",
+      "evidence_status": "committed",
+      "evidence_producer": null,
       "failure_sentinel": "SOME CHECKS FAILED"
     },
     {
       "id": "02_ring_resonator",
       "script": "validation/crossval/02_ring_resonator.py",
-      "role": "diagnostic-reporter",
+      "role": "claims-bearing",
       "public_group": "A",
       "execution_tiers": ["cpu-runner", "scheduled-external"],
       "evidence_levels": ["E4"],
       "references": [
         {"kind": "external-solver", "name": "Meep Basics ring-resonator modes", "required_for_script_pass": true}
       ],
-      "claim_scope": "2-D ring-resonator mode frequencies matched to Meep, one-to-one, within the published mode-count and 5% frequency gates (mean AND per mode), with every Meep mode required to have an rfx counterpart and Q gated on each mode whose decay the harminv record actually observed EVIDENCE CLASSIFICATION 2026-09-06 (issue #928), DEMOTED to diagnostic-reporter: no run of this case has retained output anywhere in this repository -- no results artifact, no frozen fixture, and no gate test that executes its physics. The weekly scheduled lane (.github/workflows/validation.yml, job crossval-external) recomputes it and discards the numbers with the runner, and an Actions log is a schedule, not evidence: it expires and no clone can read it. The physics is not in question and no gate value changed; what is missing is a committed record, so the case cannot carry a validated claim today. RE-PROMOTION: run the external lane once, commit its output JSON under the case's results directory, list it in artifact_paths, restore role = claims-bearing. That is a measurement-lane change, not a governance one.",
+      "claim_scope": "2-D ring-resonator mode frequencies matched to Meep, one-to-one, within the published mode-count and 5% frequency gates (mean AND per mode), with every Meep mode required to have an rfx counterpart and Q gated on each mode whose decay the harminv record actually observed EVIDENCE CLASSIFICATION 2026-09-06 (issue #928), evidence_status = committed: this case retained nothing -- the weekly scheduled lane recomputed it and discarded the numbers with the runner, so no clone could check them. It now writes validation/crossval/_02_ring_resonator_results/crossval.json before its plotting stage, and that file is the committed run of 2026-09-06T17:07:57Z: exit 0, unmatched=PASS, count=PASS, mean_err=PASS, max_err=PASS, q=PASS, rfx 1.8.0 / Meep 1.34.0 / JAX_ENABLE_X64=1, commit 296cabad. It carries the gate table, the per-bin quantities the gates read, the exit code the script returned, the run's provenance and the realized rig as values, so a reader checks the numbers without re-running the case.",
       "external_dependencies": ["pymeep"],
       "expected_exit_codes": [0, 1, 2],
       "gate_paths": ["validation/crossval/02_ring_resonator.py", "validation/crossval/comparators/ring_mode_judge.py"],
-      "artifact_paths": [],
+      "artifact_paths": [
+        "validation/crossval/_02_ring_resonator_results/crossval.json"
+      ],
       "cpu_runner": {"order": 7},
       "scheduled_external_order": 2,
-      "evidence_status": "external-scheduled",
-      "evidence_producer": ".github/workflows/validation.yml::crossval-external",
+      "evidence_status": "committed",
+      "evidence_producer": null,
       "failure_sentinel": null
     },
     {

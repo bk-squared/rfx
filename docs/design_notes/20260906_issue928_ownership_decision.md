@@ -218,11 +218,12 @@ Methodology §3.2 asks that every user-visible measured number pass a run-length
 or mesh 2× check. This is the inventory for the claims-bearing cases as of
 2026-09-06, taken from what is COMMITTED — a witness that was run and not
 retained does not count here. It is a list, not a relabelling: nothing below
-changes a role or a gate. cv01 and cv02 are absent because the same PR demotes
-them for a different reason (no retained output at all).
+changes a role or a gate.
 
 | Case | Rig-variation witness in a committed artifact | What it is |
 |---|---|---|
+| `01_waveguide_bend` | **no** | One mesh (resolution 10) and one record (25 000 steps), now committed as `_01_waveguide_bend_results/crossval.json`. The straight-guide self-T of 0.9892 is a flux-conservation identity on the same rig, not a rig variation. |
+| `02_ring_resonator` | **no** | The case extends its record adaptively at run time (the ladder rungs), but only the final rung is retained in `_02_ring_resonator_results/crossval.json`, so no committed sibling differs in record length or mesh. |
 | `03_straight_waveguide_flux` | yes (partial) | `issue812_cv03_dispersion_matched_frequency.json` carries measured `n_eff` rows at two DFT record lengths (150 and 400 a/c₀) and two domain sizes (16 a, 40 a). Caveat recorded in that file: the driver that produced the measured operands is not committed. |
 | `04_multilayer_fresnel` | **no** | Its own rung does not settle; the lattice witness is reported, not gated; the "widening to nx 1500 / 1940 collapses the closure" comparison exists only as a source comment. The envelope's r1 revision is marked `carried-unwitnessed` for exactly this. |
 | `06b_msl_notch_filter_uniform` | **no** | The E4 legs sit at dx = 50 µm and the shipped case at dx = 63.5 µm — a different board, not a refinement of the same one — and the committed falsifier fixtures vary the geometry, not the rig. |
@@ -232,9 +233,11 @@ them for a different reason (no retained output at all).
 | `23_lossy_slab_fresnel` | yes | `rfx__tand{0p1,1,3}_dx2.json` and `..._dx4.json`: every arm at dx, dx/2 and dx/4, all committed and listed. |
 | `24_nu_rect_cavity_pozar` | yes | `rfx.json` carries the `uniform` (1 mm) and `uniform_fine` (0.5 mm) arms of the same cavity alongside the graded ones. |
 
-Read plainly: four of eight claims-bearing cases have no committed
-rig-variation witness for the numbers their public rows quote. That is a
-statement about what is retained, not a claim that any of them is wrong.
+Read plainly: six of ten claims-bearing cases have no committed rig-variation
+witness for the numbers their public rows quote. That is a statement about what
+is retained, not a claim that any of them is wrong. cv01 and cv02 join the list
+with this PR: their runs are now committed, which is what makes the gap
+visible — before it, there was nothing to ask the question of.
 
 ## 7. Pointers
 
