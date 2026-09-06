@@ -334,6 +334,14 @@ _doc = {
     "measured": {
         "freqs_c_over_a": [float(v) for v in f_meep],
         "eval_mask": [bool(v) for v in above],
+        # The RAW spectra both ratios are built from. A second run of this case
+        # is compared to this file bin by bin, and a difference in T alone
+        # cannot say which leg moved; these can (#928, PR review).
+        "flux_in_straight": [float(v) for v in flux_in_s],
+        "flux_out_straight": [float(v) for v in flux_out_s],
+        "flux_in_bend": [float(v) for v in flux_in_b],
+        "flux_out_bend": [float(v) for v in flux_out_b],
+        "T_bend_over_in": [float(v) for v in T_bend_abs],
         "T_self": [float(v) for v in T_self],
         "T_self_smooth": [float(v) for v in T_self_smooth],
         "T_norm": [float(v) for v in T_norm],
@@ -360,6 +368,27 @@ _doc = {
         "G1_smoothed_T_in_0p3_1p0": [0.3, 1.0],
         "G2_straight_self_T_in_0p95_1p05": [0.95, 1.05],
         "G3_abs_rfx_minus_meep_lt_0p10": 0.10,
+    },
+    # What an independent re-run compares, and how. Named here so the check is
+    # the same check whoever runs it.
+    "comparison_recipe": {
+        "compare_bin_by_bin": [
+            "measured.flux_in_straight", "measured.flux_out_straight",
+            "measured.flux_in_bend", "measured.flux_out_bend",
+            "measured.T_self", "measured.T_self_smooth",
+            "measured.T_bend_over_in", "measured.T_norm", "measured.T_norm_smooth",
+            "measured.meep.T",
+        ],
+        "compare_scalar": [
+            "measured.mean_self_smoothed_over_band",
+            "measured.mean_T_smoothed_over_band",
+            "measured.meep.mean_T_smoothed_over_band",
+            "measured.meep.abs_rfx_minus_meep",
+        ],
+        "identity": ["rig", "provenance.rfx_boundary", "provenance.jax_enable_x64"],
+        "expected": ("bit-identical on the same commit, same rig and same "
+                     "JAX_ENABLE_X64 / RFX_BOUNDARY; the Meep leg is a separate "
+                     "solver run and repeats to its own determinism"),
     },
     "verdict": {
         "rfx_self_ok": _rfx_self_ok,
