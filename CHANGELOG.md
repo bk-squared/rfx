@@ -6,6 +6,50 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — `run()` results carry a ring-down settling witness (absent, never NaN)
+
+`sim.run()` returns `Result.settling_db` and `Result.settling_witness`. Until
+now `settling_db` existed only on the S-parameter result types, so an NTFF far
+field, a field-DFT plane or a probe time series came back with no truncation
+guard — and a caller reading the missing attribute through
+`getattr(result, "settling_db", np.nan)` got `nan`, which a `> -40` comparison
+reads as settled. That is measured, not hypothetical: one 282,000-step
+far-field run wrote `nan` into its artifact, and a two-arm 3-hour field
+experiment returned INCONCLUSIVE for an instrument reason while the same run's
+S-parameter lane recorded -156 and -154 dB (#885).
+
+- **Route**: the worst end/peak power ratio over the user probe time series,
+  scored by the same arithmetic and the same float32 underflow floor as every
+  S-parameter lane (`settling_db_from_named_records`, now the one
+  implementation both paths call). Host-side post-processing of an array
+  `run()` already returns, so the fields cannot be perturbed.
+- **Absent, never NaN**: with no user probe (or only underflowed records)
+  `settling_db is None` and `settling_witness["status"] == "absent"`, with a
+  `reason` naming what would make it measurable. `settling_witness` also
+  carries `route`, `worst_record`, `per_record_db` and `skipped_records`.
+- **One comparison**: `rfx.api._sparams.settling_verdict(settling_db)` returns
+  `"pass" / "fail" / "absent"` and is now the only place the -40 dB bar is
+  compared — the aggregate S-parameter warner and the `run()` advisories both
+  route through it, so a missing witness cannot be read as a pass.
+- **Warnings**: on a run that requests NTFF or a field-DFT plane — the
+  claims-bearing open-domain numbers the settling rule governs — a failing
+  witness emits the same aggregate warning the S-parameter lanes emit, naming
+  the worst probe record and the record-length knob, and an absent witness
+  says the guard is missing. A bare probe run gets the number on the result
+  and no warning: the older envelope advisory already speaks for that record.
+  A library-internal driver run (the MSL S-matrix driver drives each port
+  through `run()`) stays silent too, since its own `settling_db` enforces the
+  same bar.
+- **Preflight**: `settling_witness_will_be_absent` says at configuration time
+  that a run requesting NTFF or a field DFT with no point probe will come back
+  without the witness.
+
+Field energy is deliberately NOT used as a fallback route: the fixed-step scan
+keeps no running energy record, and the final state alone gives an end value
+with no post-source peak to divide it by. A one-sided end energy is not a
+ring-down ratio, so a probe-less run reports the witness absent rather than
+inventing a number.
+
 ### Changed — wire-port current DFT carries the Yee half-step phase correction
 
 The H-derived port current DFT on the wire-port lane is advanced by

@@ -52,6 +52,7 @@ is kept verbatim; only module-level helper names carry a section prefix.
 from __future__ import annotations
 
 import ast
+import math
 import pathlib
 import warnings
 
@@ -162,6 +163,9 @@ def test_result_field_is_optional_for_backward_compatibility():
 _SPARAMS_SRC = pathlib.Path(
     __import__("rfx.api._sparams", fromlist=["_sparams"]).__file__
 )
+_EXECUTE_SRC = pathlib.Path(
+    __import__("rfx.api._execute", fromlist=["_execute"]).__file__
+)
 
 
 def _catch(fn):
@@ -256,14 +260,22 @@ def test_warning_names_the_knob_the_lane_is_actually_driven_by():
 # ---------------------------------------------------------------------------
 
 def _functions_producing_settling_db():
-    """(name, routes_through_warner) for every function in ``_sparams.py``
-    that attaches a ``settling_db=`` to a result object.
+    """(name, routes_through_warner) for every function that attaches a
+    ``settling_db=`` to a result object.
 
-    ``_sparams.py`` is the only module that does so (``grep -rn "settling_db="
-    rfx/ --include=*.py`` hits nothing else; ``_spec.py`` only declares the
-    field). If a lane is ever added elsewhere, widen this scan with it.
+    Two modules do so: ``_sparams.py`` (the S-matrix lanes) and, since #885,
+    ``_execute.py`` (the ``run()`` lane, which attaches the witness to
+    ``Result``). ``_spec.py`` only declares the field. The scan was widened
+    with the second module the moment it appeared, per the instruction the
+    first version of this docstring left for exactly that case.
     """
-    tree = ast.parse(_SPARAMS_SRC.read_text(encoding="utf-8"))
+    out = []
+    for src in (_SPARAMS_SRC, _EXECUTE_SRC):
+        out.extend(_producers_in(ast.parse(src.read_text(encoding="utf-8"))))
+    return out
+
+
+def _producers_in(tree):
     out = []
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -314,6 +326,7 @@ def test_the_known_lanes_are_all_covered():
         "compute_mixed_s_matrix",
         "compute_coaxial_two_port",
         "compute_coax_msl_transition",
+        "_attach_run_settling_witness",
     } <= names, sorted(names)
 
 
@@ -758,3 +771,258 @@ def test_synthetic_all_subnormal_record_set_is_refused():
         db = settling_db_from_port_records([_Records(per)])
     assert np.isnan(db) and not bool(db <= _SETTLING_WITNESS_DB)
     assert [w for w in caught if "NO COVERAGE" in str(w.message)]
+
+
+# ===========================================================================
+# 5. run() lane (#885) — the witness on Result, absent-not-NaN
+# ===========================================================================
+#
+# The gap this closes, measured: `Result` carried no settling field at all,
+# so a campaign driver read `getattr(result, "settling_db", np.nan)`, wrote
+# `nan` into its artifact for a 282,000-step far-field run, and on a second
+# experiment compared that `nan` to a "-40 dB or INCONCLUSIVE" guard. `nan`
+# is not above -40, the comparison went the wrong way, and 3 hours of GPU
+# came back INCONCLUSIVE for an instrument reason while the same run's
+# S-parameter lane recorded -156 / -154 dB.
+#
+# Two-thirds of these tests need no FDTD: the witness is host-side
+# post-processing of `result.time_series`, so a hand-built record exercises
+# the arithmetic and the absent/NaN policy directly.
+
+from rfx.api._sparams import settling_verdict  # noqa: E402
+from rfx.api._spec import Result  # noqa: E402
+from rfx.sources.waveguide_port import (  # noqa: E402
+    settling_db_from_named_records,
+)
+
+
+def _run_sim(probe=True, dft=False, probe_position=(0.002, 0.002, 0.003)):
+    """Tiny open-domain box: one soft Ez source, optionally one probe."""
+    sim = Simulation(freq_max=10e9, domain=(0.004, 0.004, 0.004), dx=1e-3,
+                     boundary="cpml", cpml_layers=4)
+    sim.add_source((0.002, 0.002, 0.002), "ez")
+    if dft:
+        sim.add_dft_plane_probe(axis="z", coordinate=0.002, component="ez",
+                                n_freqs=3)
+    if probe:
+        sim.add_probe(probe_position, "ez")
+    return sim
+
+
+def _settling_warnings(caught):
+    return [w for w in caught if "settling" in str(w.message)]
+
+
+def _no_nan_anywhere(witness):
+    """No float anywhere in the witness dict is NaN (the #885 policy)."""
+    def _floats(obj):
+        if isinstance(obj, dict):
+            for v in obj.values():
+                yield from _floats(v)
+        elif isinstance(obj, (list, tuple)):
+            for v in obj:
+                yield from _floats(v)
+        elif isinstance(obj, float):
+            yield obj
+    return not any(math.isnan(v) for v in _floats(witness))
+
+
+def test_settled_run_carries_a_finite_witness_that_passes():
+    """(a) A decayed record: finite settling_db, verdict "pass", and the
+    value is the end/peak arithmetic recomputed from the probe record."""
+    sim = _run_sim()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = sim.run(n_steps=800, skip_preflight=True)
+
+    assert result.settling_db is not None
+    assert math.isfinite(result.settling_db)
+    assert settling_verdict(result.settling_db) == "pass"
+    assert result.settling_witness["status"] == "measured"
+    assert result.settling_witness["route"] == "probe_records"
+    assert _no_nan_anywhere(result.settling_witness)
+    assert not _settling_warnings(caught), [
+        str(w.message) for w in _settling_warnings(caught)]
+
+    # Recompute independently from the returned record: peak power over the
+    # whole series, mean power over the last tenth.
+    record = np.asarray(result.time_series)[:, 0].astype(np.float64)
+    power = record ** 2
+    tail = max(1, power.shape[0] // 10)
+    expected = 10.0 * np.log10(
+        (float(power[-tail:].mean()) + float(np.finfo(float).tiny))
+        / (float(power.max()) + float(np.finfo(float).tiny)))
+    assert result.settling_db == pytest.approx(expected, abs=1e-9)
+    assert result.settling_witness["per_record_db"]["probe0(ez)"] == \
+        pytest.approx(expected, abs=1e-9)
+
+
+def test_truncated_run_fails_the_witness_and_warns():
+    """(b) The same fixture stopped while it is still ringing, with a
+    field-DFT plane requested — the claims-bearing open-domain number the
+    settling rule governs."""
+    sim = _run_sim(dft=True)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = sim.run(n_steps=60, skip_preflight=True)
+
+    assert settling_verdict(result.settling_db) == "fail"
+    assert result.settling_db > _SETTLING_WITNESS_DB
+    hot = [w for w in _settling_warnings(caught)
+           if "witness FAILED" in str(w.message)]
+    assert len(hot) == 1, [str(w.message) for w in caught]
+    msg = str(hot[0].message)
+    assert "probe0(ez)" in msg and "n_steps=60" in msg, msg
+    assert "NTFF far" in msg and "Harminv" in msg, msg
+
+
+def test_a_bare_probe_run_gets_the_number_without_a_second_lecture():
+    """The same truncated record with NO NTFF and no field DFT: the witness
+    is still on the result, and the run() lane stays silent because the #332
+    envelope advisory already speaks for a bare probe run — two lines about
+    one record in two different measures is the #470 flooding class."""
+    sim = _run_sim()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = sim.run(n_steps=60, skip_preflight=True)
+
+    assert settling_verdict(result.settling_db) == "fail"
+    assert result.settling_witness["status"] == "measured"
+    assert not _settling_warnings(caught), [
+        str(w.message) for w in _settling_warnings(caught)]
+
+
+def test_probeless_run_is_absent_not_nan():
+    """(c) No probe: settling_db is None, status "absent", no NaN anywhere,
+    and the absent-warning fires ONLY when NTFF / field-DFT was requested."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        quiet = _run_sim(probe=False).run(n_steps=200, skip_preflight=True)
+    assert quiet.settling_db is None
+    assert quiet.settling_witness["status"] == "absent"
+    assert quiet.settling_witness["route"] is None
+    assert settling_verdict(quiet.settling_db) == "absent"
+    assert _no_nan_anywhere(quiet.settling_witness)
+    assert "add_probe" in quiet.settling_witness["reason"]
+    # a run that asks for no open-domain DFT number is not lectured
+    assert not _settling_warnings(caught), [
+        str(w.message) for w in _settling_warnings(caught)]
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        dft = _run_sim(probe=False, dft=True).run(n_steps=200,
+                                                  skip_preflight=True)
+    assert dft.settling_db is None
+    absent = [w for w in _settling_warnings(caught)
+              if "no ring-down settling witness" in str(w.message)]
+    assert len(absent) == 1, [str(w.message) for w in caught]
+    assert "unguarded" in str(absent[0].message)
+
+
+def test_a_missing_witness_can_never_read_as_a_pass():
+    """The #885 defect in its original shape: the comparison that turned a
+    missing witness into a pass, now routed through the one helper."""
+    assert settling_verdict(None) == "absent"
+    assert settling_verdict(float("nan")) == "absent"
+    assert settling_verdict(float("-inf")) == "absent"
+    assert settling_verdict(_SETTLING_WITNESS_DB) == "pass"
+    assert settling_verdict(_SETTLING_WITNESS_DB + 1e-9) == "fail"
+    # the shape the campaign driver used
+    class _Old:
+        pass
+    assert settling_verdict(getattr(_Old(), "settling_db", None)) == "absent"
+
+
+def test_preflight_says_the_witness_will_be_absent():
+    """(d) Input-side: NTFF/field-DFT requested with no probe registered."""
+    report = _run_sim(probe=False, dft=True).preflight()
+    hits = report.by_code("settling_witness_will_be_absent")
+    assert hits, f"codes: {[i.code for i in report]}"
+    assert "no point probe" in str(hits[0])
+    quiet = _run_sim(probe=True, dft=True).preflight()
+    assert not quiet.by_code("settling_witness_will_be_absent")
+    none_requested = _run_sim(probe=False, dft=False).preflight()
+    assert not none_requested.by_code("settling_witness_will_be_absent")
+
+
+def test_an_underflowed_probe_record_is_skipped_and_named():
+    """(e) The #869 class on the run() lane: an all-zero record must be
+    SKIPPED and reported by name, never scored as a 0.00 dB hard fail.
+
+    Hand-built records — no FDTD needed, the witness is host-side."""
+    sim = _run_sim()
+    sim.add_probe((0.002, 0.002, 0.001), "ez")  # probe1
+    n = 400
+    live = np.zeros((n, 2), dtype=np.float32)
+    live[:, 0] = np.float32(1.0) * np.exp(-np.arange(n) / 20.0)
+    # column 1 stays exactly zero: the underflowed-record class
+
+    class _FakeResult:
+        time_series = live
+
+    db, witness = sim._run_settling_witness(_FakeResult())
+    assert witness["status"] == "measured"
+    assert witness["skipped_records"] == ["probe1(ez)"]
+    assert "probe1(ez)" not in witness["per_record_db"]
+    assert db == pytest.approx(witness["per_record_db"]["probe0(ez)"])
+    assert db < 0.0 and db != pytest.approx(0.0)
+
+    # every record underflowed -> absent (and loud), not a 0 dB fail
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+
+        class _AllZero:
+            time_series = np.zeros((n, 2), dtype=np.float32)
+
+        db2, witness2 = sim._run_settling_witness(_AllZero())
+    assert db2 is None and witness2["status"] == "absent"
+    assert settling_verdict(db2) == "absent"
+    assert _no_nan_anywhere(witness2)
+    assert sorted(witness2["skipped_records"]) == ["probe0(ez)", "probe1(ez)"]
+    assert [w for w in caught if "NO COVERAGE" in str(w.message)]
+
+
+def test_one_arithmetic_shared_by_both_lanes():
+    """The run() lane and the S-parameter lanes score a record identically —
+    same tail window, same underflow floor, one implementation."""
+    n = 300
+    rec = (np.exp(-np.arange(n) / 30.0)).astype(np.float32)
+    direct = settling_db_from_named_records([("probe0(ez)", rec)])
+    sim = _run_sim()
+
+    class _FakeResult:
+        time_series = rec[:, None]
+
+    db, _ = sim._run_settling_witness(_FakeResult())
+    assert db == pytest.approx(direct)
+
+
+def test_a_driver_internal_run_does_not_double_fire():
+    """The MSL S-matrix driver drives each port through ``sim.run()``. That
+    record's ring-down is judged by ``MSLSMatrixResult.settling_db``, which
+    already enforces the bar through the shared warner, so the run() lane
+    must stay silent there — two warnings for one record is the #470
+    advisory-flooding class. The witness is still attached.
+
+    Exercised on the attach path directly: the MSL FDTD runs that motivate
+    this live in section 1 and cost minutes; the decision does not."""
+    sim = _run_sim(dft=True)
+    n = 200
+    record = np.ones((n, 1), dtype=np.float32)  # never rings down -> "fail"
+
+    res = Result(state=None, time_series=record, s_params=None, freqs=None)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        loud = sim._attach_run_settling_witness(res, n_steps=n)
+    assert settling_verdict(loud.settling_db) == "fail"
+    assert len(_settling_warnings(caught)) == 1
+
+    sim._internal_probe_indices = {0}
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        quiet = sim._attach_run_settling_witness(res, n_steps=n)
+    assert quiet.settling_witness["status"] == "absent"
+    assert quiet.settling_db is None
+    assert not _settling_warnings(caught), [
+        str(w.message) for w in _settling_warnings(caught)]

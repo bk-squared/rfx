@@ -527,7 +527,8 @@ class _ExecuteMixin:
                 tail_samples = max(1, math.ceil(magnitude.shape[0] * 0.05))
                 tail = float(np.max(magnitude[-tail_samples:]))
                 tail_db = -math.inf if tail == 0.0 else 20.0 * math.log10(tail / peak)
-                if tail_db > -40.0:
+                from rfx.api._sparams import settling_verdict as _verdict
+                if _verdict(tail_db) == "fail":
                     warnings.warn(
                         f"run ended at {tail_db:.1f} dB of peak — ring-down "
                         "truncated; Harminv/DFT/NTFF quantities may carry "
@@ -551,6 +552,163 @@ class _ExecuteMixin:
                 "amplitude) (issue #336)",
                 stacklevel=3,
             )
+
+    def _run_settling_witness(self, result):
+        """Energy ring-down settling witness for the ``run()`` path (#885).
+
+        ROUTE: the USER probe time series the run already records, scored
+        with the SAME end/peak arithmetic and the same #869 underflow floor
+        as every S-parameter lane
+        (``rfx.sources.waveguide_port.settling_db_from_named_records``),
+        worst over probes. Nothing is added to the jitted graph -- this is
+        host-side post-processing of an array ``run()`` already returns -- so
+        it cannot perturb the fields.
+
+        Why probes and NOT total field energy: the fixed-step scan keeps no
+        running energy record. ``until_decay`` computes an interior
+        sum-of-squares proxy only while it is enabled, and the final
+        ``state`` alone gives an END value with no post-source PEAK to divide
+        it by. A one-sided end energy is not a ring-down ratio, so a
+        probe-less run reports the witness ABSENT rather than inventing a
+        number.
+
+        Returns ``(settling_db, witness)``. ``settling_db`` is ``None``
+        whenever the status is ``"absent"`` -- never NaN, because a NaN
+        reaching a ``> -40`` comparison is the entire failure this closes.
+        """
+        from rfx.core.jax_utils import is_tracer
+        from rfx.sources.waveguide_port import settling_db_from_named_records
+
+        def _absent(reason, skipped=()):
+            return None, {"status": "absent", "route": None,
+                          "worst_record": None, "per_record_db": {},
+                          "skipped_records": list(skipped), "reason": reason}
+
+        _ADD_A_PROBE = ("add a point probe (sim.add_probe(position, "
+                        "component)) so the run records a time series the "
+                        "witness can score, or drive the run with "
+                        "run(until_decay=...) so the stop criterion bounds "
+                        "the ring-down instead")
+
+        ts = getattr(result, "time_series", None)
+        if ts is None or is_tracer(ts):
+            return _absent("this run returned no concrete probe time series "
+                           "(none recorded, or the run is under tracing): "
+                           + _ADD_A_PROBE)
+        series = np.asarray(ts)
+        if series.ndim == 1:
+            series = series[:, None]
+        if series.ndim != 2 or series.size == 0:
+            return _absent("this run recorded no probe time series: "
+                           + _ADD_A_PROBE)
+        # Issue #470: library-internal witness probes (the MSL settling
+        # probes) are judged by the MSL driver's own settling_db and must not
+        # stand in for a user probe here -- the same exclusion
+        # ``_warn_postrun_energy_witness`` makes, for the same reason.
+        internal = getattr(self, "_internal_probe_indices", None) or set()
+        keep = [i for i in range(series.shape[1]) if i not in internal]
+        if not keep:
+            return _absent("this run recorded only library-internal witness "
+                           "probes, whose ring-down is judged by their own "
+                           "driver: " + _ADD_A_PROBE)
+        named = []
+        for col in keep:
+            entry = self._probes[col] if col < len(self._probes) else None
+            component = getattr(entry, "component", "?")
+            named.append((f"probe{col}({component})", series[:, col]))
+
+        worst, detail = settling_db_from_named_records(
+            named, record_noun="probe records", return_detail=True,
+            _warn_stacklevel=4)
+        skipped = list(detail["skipped_records"])
+        per_record = dict(detail["per_record_db"])
+        if not np.isfinite(worst):
+            reason = ("no probe record carries a witnessable ring-down "
+                      f"(records below the underflow floor, skipped rather "
+                      f"than scored: {', '.join(skipped) or 'none'}; records "
+                      "shorter than 10 samples and traced records are also "
+                      "unwitnessable): " + _ADD_A_PROBE)
+            return _absent(reason, skipped)
+        worst_record = max(per_record, key=lambda k: per_record[k])
+        return float(worst), {"status": "measured", "route": "probe_records",
+                              "worst_record": worst_record,
+                              "per_record_db": per_record,
+                              "skipped_records": skipped,
+                              "reason": ""}
+
+    def _attach_run_settling_witness(self, result, *, n_steps=None,
+                                     num_periods=None):
+        """Attach the #885 witness to a ``run()`` result and enforce the bar.
+
+        The -40 dB comparison itself is NOT made here: it goes through
+        ``settling_verdict``, the one helper every path shares, so no caller
+        can compare a missing witness (``None``/NaN) with ``>`` and read a
+        pass out of it.
+
+        Two warnings, both one line, neither of them per-probe (#470), and
+        BOTH scoped to a run that requests NTFF or a field-DFT plane --
+        the claims-bearing open-domain DFT numbers the settling rule
+        governs. FAILED routes through the SAME aggregate warner the
+        S-parameter lanes use (``_warn_if_ringdown_truncated``, #662) with
+        this lane's consequence text; ABSENT says the guard is missing.
+
+        A run that requests neither gets the witness ON THE RESULT and no
+        warning: for a bare probe run the older envelope advisory (#332,
+        ``_warn_postrun_energy_witness``) already speaks about the same
+        record, and a second line saying the same thing in a different
+        measure is the #470 flooding class. The witness is attached
+        unconditionally, so a caller who wants the number always has it.
+
+        Both warnings are SILENT on a library-internal driver run. The MSL
+        S-matrix driver drives each port through ``self.run()`` and registers
+        its own internal witness probes and DFT planes; that run's ring-down
+        is judged by ``MSLSMatrixResult.settling_db``, which enforces the
+        same bar through the same warner. Speaking here too would double-fire
+        on one record -- the #470 advisory-flooding lesson -- and would
+        lecture a caller who never asked for this run. The witness is still
+        attached to the intermediate result; only the warnings defer.
+        """
+        if not hasattr(result, "_replace") or not hasattr(result, "settling_witness"):
+            return result
+        settling_db, witness = self._run_settling_witness(result)
+        result = result._replace(settling_db=settling_db,
+                                 settling_witness=witness)
+        if getattr(self, "_internal_probe_indices", None):
+            return result
+
+        from rfx.api._sparams import (
+            _warn_if_ringdown_truncated,
+            settling_verdict,
+        )
+
+        if self._ntff is None and not self._dft_planes:
+            return result
+
+        verdict = settling_verdict(settling_db)
+        if verdict == "fail":
+            _warn_if_ringdown_truncated(
+                np.array([float(settling_db)]),
+                (),
+                n_steps=None if n_steps is None else int(n_steps),
+                num_periods=None if n_steps is not None else num_periods,
+                drive_labels=(
+                    f"worst probe record {witness['worst_record']}",),
+                consequence=(
+                    "every DFT-derived quantity of this run — NTFF far "
+                    "fields, field-DFT planes, Harminv modes — integrates a "
+                    "cut transient"),
+                quoted_thing="any of them",
+            )
+        elif verdict == "absent":
+            import warnings
+            warnings.warn(
+                "no ring-down settling witness on this run: "
+                f"{witness['reason']}. This run requests NTFF and/or "
+                "field-DFT output, so its truncation is unguarded (#885); "
+                "settling_db is None, which is not a pass.",
+                stacklevel=3,
+            )
+        return result
 
     def _warn_until_decay_dc_floor(self, *, dt, n_table: int) -> None:
         """#388 predictor: warn when a soft source will floor ``until_decay``.
@@ -3484,6 +3642,8 @@ class _ExecuteMixin:
                 fixed_num_periods=fixed_num_periods,
                 until_decay=until_decay,
             )
+            _res = self._attach_run_settling_witness(
+                _res, n_steps=n_steps, num_periods=num_periods)
             _warn_if_nonfinite_result(_res, context="run")
             return _res
 
@@ -3513,6 +3673,7 @@ class _ExecuteMixin:
                 pec_mask=pec_mask,
                 return_state=True,
             )
+            _res = self._attach_run_settling_witness(_res, n_steps=n_steps)
             _warn_if_nonfinite_result(_res, context="run")
             return _res
 
@@ -3547,6 +3708,8 @@ class _ExecuteMixin:
                 s_param_freqs=s_param_freqs,
                 s_param_n_steps=s_param_n_steps,
             )
+            _res = self._attach_run_settling_witness(
+                _res, n_steps=subgrid_n_steps)
             _warn_if_nonfinite_result(_res, context="run")
             return _res
 
@@ -3600,5 +3763,7 @@ class _ExecuteMixin:
             fixed_num_periods=fixed_num_periods,
             until_decay=until_decay,
         )
+        _res = self._attach_run_settling_witness(
+            _res, n_steps=n_steps, num_periods=num_periods)
         _warn_if_nonfinite_result(_res, context="run")
         return _res

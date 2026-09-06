@@ -3188,6 +3188,7 @@ class _PreflightMixin:
             _w, cpml_thickness, cpml_thick_lo, cpml_thick_hi, absorber_label
         )
         self._validate_cfg_ntff_min_steps(dx)
+        self._validate_cfg_settling_witness_present(_w)
         self._validate_cfg_geometry_in_cpml(
             _w, cpml_thickness, cpml_thick_lo, cpml_thick_hi, absorber_label
         )
@@ -4436,6 +4437,40 @@ class _PreflightMixin:
                 min_steps_for_ntff = int(10 * period / dt_est)
                 # Can't check n_steps here (not known yet), but store hint
                 self._ntff_min_steps_hint = min_steps_for_ntff
+
+    def _validate_cfg_settling_witness_present(self, _w) -> None:
+        """Warn when the declared inputs cannot produce a ring-down witness.
+
+        Input-side fact, not a result prediction: ``run()`` scores its
+        energy ring-down settling witness (#885) from the probe time series,
+        so a simulation that registers NTFF or a field-DFT plane and NO
+        point probe will come back with ``settling_db=None`` -- the
+        claims-bearing open-domain DFT numbers this project's -40 dB
+        settling rule governs, with the truncation guard absent. Cheaper to
+        say here than after the run.
+
+        Silent when a probe exists, and silent when the run asks for neither
+        NTFF nor a field DFT (the rule scopes to those).
+        """
+        if self._ntff is None and not self._dft_planes:
+            return
+        if self._probes:
+            return
+        wants = []
+        if self._ntff is not None:
+            wants.append("NTFF far-field output")
+        if self._dft_planes:
+            wants.append("field-DFT plane probe(s)")
+        _w.warn(PreflightWarning(
+            f"this simulation requests {' and '.join(wants)} but registers no "
+            "point probe, and run() scores its ring-down settling witness "
+            "from the probe time series — the result will carry "
+            "settling_db=None and those DFT numbers will have no truncation "
+            "guard (#885). Add sim.add_probe(position, component) somewhere "
+            "the field is live.",
+            code="settling_witness_will_be_absent",
+            source="_validate_cfg_settling_witness_present",
+        ))
 
     def _validate_cfg_geometry_in_cpml(
         self,

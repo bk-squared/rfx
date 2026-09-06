@@ -132,7 +132,14 @@ one under-settled record) and warns when a run exceeds the line. Every lane
 that carries the witness enforces the same line through the same warner
 (issue #662): `compute_waveguide_s_matrix`, `compute_msl_s_matrix`,
 `compute_mixed_s_matrix`, `compute_coaxial_two_port` and
-`compute_coax_msl_transition`. The witness is `nan`, and the warning
+`compute_coax_msl_transition`. Since issue #885 `sim.run()` carries the same
+witness as `Result.settling_db`, scored from the user probe time series by the
+same arithmetic, so NTFF far fields, field-DFT planes and Harminv modes are
+guarded too. A run with no probe reports `settling_db = None` and
+`Result.settling_witness["status"] == "absent"` — never `nan`, because a
+missing witness compared to the bar with `>` reads as a pass. Read the
+decision through `settling_verdict(...)` rather than writing the comparison
+again. The witness is `nan`, and the warning
 correspondingly silent, on the differentiable (`eps_scale`/`eps_override`)
 channels — they cannot build it without concretising a traced time series,
 so on those channels the rule stays the caller's to satisfy. The rule

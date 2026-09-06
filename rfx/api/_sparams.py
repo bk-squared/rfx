@@ -309,6 +309,33 @@ def _warn_msl_beta_scan_railed(
 _SETTLING_WITNESS_DB = -40.0
 
 
+def settling_verdict(settling_db) -> str:
+    """The ONE -40 dB ring-down comparison in this codebase (issue #885).
+
+    Returns ``"pass"``, ``"fail"`` or ``"absent"``. ``"absent"`` covers
+    ``None`` and every non-finite value (NaN, +/-inf) -- the states that mean
+    "no witness was established", which a bare ``> -40`` comparison silently
+    turns into a pass. That is not hypothetical: a campaign driver read a
+    missing witness as ``np.nan`` through ``getattr(result, "settling_db",
+    np.nan)``, compared it to the bar, and a completed 3-hour two-arm
+    experiment came back INCONCLUSIVE for an instrument reason (#885).
+
+    Every caller that needs the decision calls this instead of writing the
+    comparison again -- including the aggregate warner below and the
+    ``run()`` post-run advisories in ``rfx/api/_execute.py``. A value exactly
+    at the bar passes (the bar is the inclusive limit, unchanged since #538).
+    """
+    if settling_db is None:
+        return "absent"
+    try:
+        value = float(settling_db)
+    except (TypeError, ValueError):
+        return "absent"
+    if not np.isfinite(value):
+        return "absent"
+    return "fail" if value > _SETTLING_WITNESS_DB else "pass"
+
+
 def _validate_extra_flux_monitor_entries(entries, domain, fn_name):
     """Light re-validation of ``extra_flux_monitors=`` entries (#589 opt-in).
 
@@ -361,6 +388,9 @@ def _warn_if_ringdown_truncated(
     *,
     num_periods: float | None = None,
     n_steps: int | None = None,
+    drive_labels: tuple | None = None,
+    consequence: str | None = None,
+    quoted_thing: str = "any S value",
 ) -> None:
     """Emit one aggregate warning when a driven run's record is truncated.
 
@@ -395,8 +425,8 @@ def _warn_if_ringdown_truncated(
     would hide a second drive needing the same fix. It stays ONE warning per
     call (issue #470: per-probe advisory flooding buried the genuine ones).
     """
-    finite = np.isfinite(settling_db)
-    hot = finite & (settling_db > _SETTLING_WITNESS_DB)
+    values = np.atleast_1d(np.asarray(settling_db, dtype=float))
+    hot = np.array([settling_verdict(v) == "fail" for v in values], dtype=bool)
     if not bool(np.any(hot)):
         return
 
@@ -408,20 +438,27 @@ def _warn_if_ringdown_truncated(
         knob, record = "n_steps", f"n_steps={int(n_steps):d}"
     else:  # pragma: no cover - guarded by the call sites
         knob, record = "the record length", "fixed-length"
+    def _label(i: int) -> str:
+        if drive_labels is not None:
+            return drive_labels[i] if i < len(drive_labels) else str(i)
+        return f"port {port_names[i] if i < len(port_names) else i} driven"
+
     per_run = ", ".join(
-        f"port {port_names[i] if i < len(port_names) else i} driven: "
-        f"{settling_db[i]:+.1f} dB"
-        for i in np.flatnonzero(hot)
+        f"{_label(i)}: {values[i]:+.1f} dB" for i in np.flatnonzero(hot)
     )
+    if consequence is None:
+        consequence = (
+            "the DFT-based S-parameters of the affected run(s) are "
+            "truncation artifacts wherever the structure is resonant — expect "
+            "spurious |S| poles and passivity violations"
+        )
     warnings.warn(
         "ring-down settling witness FAILED (end/peak energy above "
         f"{_SETTLING_WITNESS_DB:.0f} dB): {per_run}. The {record} "
         "record ended while the structure was still "
-        "ringing, so the DFT-based S-parameters of the affected run(s) are "
-        "truncation artifacts wherever the structure is resonant — expect "
-        "spurious |S| poles and passivity violations. Increase "
-        f"{knob} until the witness is below −40 dB before quoting any S "
-        "value (see the result's settling_db field).",
+        f"ringing, so {consequence}. Increase "
+        f"{knob} until the witness is below −40 dB before quoting "
+        f"{quoted_thing} (see the result's settling_db field).",
         stacklevel=2,
     )
 

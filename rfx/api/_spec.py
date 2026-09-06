@@ -700,6 +700,24 @@ class Result(NamedTuple):
         Field snapshots keyed by component name.
     grid : Grid or None
         Grid metadata for post-processing helpers and advanced objectives.
+    settling_db : float or None
+        Energy ring-down settling witness for this run (issue #885): the
+        WORST (largest) end/peak power ratio in dB over the user probe time
+        series, i.e. how far the record had rung down when it ended. Below
+        -40 dB the record is settled; above it, every DFT-derived quantity of
+        the run (NTFF far fields, field-DFT planes, Harminv modes) integrates
+        a cut transient. ``None`` -- never NaN -- when no witness could be
+        established; see ``settling_witness`` for why, and read the decision
+        through ``rfx.api._sparams.settling_verdict`` rather than comparing
+        to -40 yourself (a ``getattr(result, "settling_db", np.nan) > -40``
+        is how a missing witness twice became a silent pass).
+    settling_witness : dict or None
+        Provenance for ``settling_db``: ``status`` (``"measured"`` /
+        ``"absent"``), ``route`` (``"probe_records"`` or ``None``),
+        ``worst_record``, ``per_record_db`` (per-probe dB),
+        ``skipped_records`` (records below the #869 underflow floor, skipped
+        rather than scored) and ``reason`` (what would make an absent witness
+        measurable). ``None`` only on lanes that never attach it.
     """
     state: object
     time_series: jnp.ndarray
@@ -716,6 +734,8 @@ class Result(NamedTuple):
     grid: object = None
     dt: float | None = None
     freq_range: tuple | None = None
+    settling_db: float | None = None
+    settling_witness: dict | None = None
 
     def find_resonances(self, freq_range=None, probe_idx=0,
                          source_decay_time=None, bandpass=None,

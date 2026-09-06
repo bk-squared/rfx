@@ -1890,6 +1890,86 @@ def _settling_db_for_record(peak_power: float,
     return float(10.0 * np.log10((end_power + tiny) / (peak_power + tiny)))
 
 
+def settling_db_from_named_records(named_records,
+                                   *,
+                                   record_noun: str = "port records",
+                                   return_detail: bool = False,
+                                   _warn_stacklevel: int = 2):
+    """Worst end/peak ring-down ratio, in dB, over a set of NAMED records.
+
+    The ONE implementation of this project's energy ring-down arithmetic
+    (issues #538, #869, #885). Callers supply an iterable of
+    ``(name, array-like)``: the S-parameter lanes pass their per-port V/I
+    records (:func:`settling_db_from_port_records`) and the ``run()`` lane
+    passes the user probe time series (``rfx/api/_execute.py``). No caller
+    may re-derive the tail window or the underflow floor -- a second copy of
+    this arithmetic is exactly how the #869 class (a float32-underflowed
+    record scored as a hard-fail 0.00 dB) got in.
+
+    Per record: peak power over the whole record, mean power over the last
+    tenth, ``10*log10(end/peak)``; records below
+    :func:`_settling_record_floor_amplitude` are SKIPPED (not scored) and
+    named. The return is the WORST (largest) surviving ratio.
+
+    Returns NaN when the witness has no coverage at all: a traced record, a
+    record shorter than 10 samples, or every record under the floor (which
+    also warns). NaN is the "no witness value" state and must never be read
+    as a pass -- route every comparison through
+    ``rfx.api._sparams.settling_verdict``.
+
+    ``return_detail=True`` returns ``(worst_db, detail)`` with
+    ``skipped_records``, ``n_witnessed``, ``floor_amplitude`` and
+    ``per_record_db`` (name -> dB for every scored record).
+    """
+    from rfx.core.jax_utils import is_tracer
+
+    def _out(value, skipped, n_witnessed, floor, per_record):
+        if not return_detail:
+            return value
+        return value, {"skipped_records": skipped,
+                       "n_witnessed": n_witnessed,
+                       "floor_amplitude": floor,
+                       "per_record_db": per_record}
+
+    worst = -np.inf
+    skipped: list[str] = []
+    per_record: dict[str, float] = {}
+    n_witnessed = 0
+    floor = float("nan")
+    for record_name, ts in named_records:
+        if is_tracer(ts):
+            return _out(float("nan"), skipped, n_witnessed, floor, per_record)
+        raw = np.asarray(ts)
+        if raw.shape[0] < 10:
+            return _out(float("nan"), skipped, n_witnessed, floor, per_record)
+        floor = _settling_record_floor_amplitude(np.finfo(raw.dtype).tiny)
+        amp = np.abs(raw.astype(np.float64))
+        p = amp ** 2
+        tail = max(1, p.shape[0] // 10)
+        db = _settling_db_for_record(float(p.max()),
+                                     float(p[-tail:].mean()), floor)
+        if db is None:
+            skipped.append(record_name)
+            continue
+        n_witnessed += 1
+        per_record[record_name] = db
+        worst = max(worst, db)
+
+    if n_witnessed == 0:
+        import warnings
+        warnings.warn(
+            f"ring-down settling witness has NO COVERAGE on this run: 0 of "
+            f"{len(skipped)} {record_noun} clear the {floor:.4g} peak-amplitude "
+            "floor (the storage format's smallest normal, scaled so the -40 dB "
+            "decision itself is representable), so no ring-down ratio can be "
+            "established. settling_db is NaN and must NOT be read as a pass. "
+            "Records: " + (", ".join(skipped) or "(none recorded)"),
+            stacklevel=_warn_stacklevel,
+        )
+        return _out(float("nan"), skipped, n_witnessed, floor, per_record)
+    return _out(float(worst), skipped, n_witnessed, floor, per_record)
+
+
 def settling_db_from_port_records(final_cfgs, *, return_detail: bool = False):
     """Energy ring-down witness for ONE driven waveguide run (issue #538).
 
@@ -1965,52 +2045,17 @@ def settling_db_from_port_records(final_cfgs, *, return_detail: bool = False):
     records, not interior stored energy (same limitation as the MSL
     implementation it mirrors).
     """
-    from rfx.core.jax_utils import is_tracer
-
-    def _out(value, skipped, n_witnessed, floor):
-        if not return_detail:
-            return value
-        return value, {"skipped_records": skipped,
-                       "n_witnessed": n_witnessed,
-                       "floor_amplitude": floor}
-
-    worst = -np.inf
-    skipped: list[str] = []
-    n_witnessed = 0
-    floor = float("nan")
-    for port_index, cfg in enumerate(final_cfgs):
-        for name in _SETTLING_RECORD_NAMES:
-            ts = getattr(cfg, name)
-            if is_tracer(ts):
-                return _out(float("nan"), skipped, n_witnessed, floor)
-            raw = np.asarray(ts)
-            if raw.shape[0] < 10:
-                return _out(float("nan"), skipped, n_witnessed, floor)
-            floor = _settling_record_floor_amplitude(np.finfo(raw.dtype).tiny)
-            amp = np.abs(raw.astype(np.float64))
-            p = amp ** 2
-            tail = max(1, p.shape[0] // 10)
-            db = _settling_db_for_record(float(p.max()),
-                                         float(p[-tail:].mean()), floor)
-            if db is None:
-                skipped.append(f"port{port_index}/{name}")
-                continue
-            n_witnessed += 1
-            worst = max(worst, db)
-
-    if n_witnessed == 0:
-        import warnings
-        warnings.warn(
-            f"ring-down settling witness has NO COVERAGE on this run: 0 of "
-            f"{len(skipped)} port records clear the {floor:.4g} peak-amplitude "
-            "floor (the storage format's smallest normal, scaled so the -40 dB "
-            "decision itself is representable), so no ring-down ratio can be "
-            "established. settling_db is NaN and must NOT be read as a pass. "
-            "Records: " + (", ".join(skipped) or "(none recorded)"),
-            stacklevel=2,
-        )
-        return _out(float("nan"), skipped, n_witnessed, floor)
-    return _out(float(worst), skipped, n_witnessed, floor)
+    named = [
+        (f"port{port_index}/{name}", getattr(cfg, name))
+        for port_index, cfg in enumerate(final_cfgs)
+        for name in _SETTLING_RECORD_NAMES
+    ]
+    return settling_db_from_named_records(
+        named,
+        record_noun="port records",
+        return_detail=return_detail,
+        _warn_stacklevel=3,
+    )
 
 
 def extract_waveguide_s_matrix(
