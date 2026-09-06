@@ -47,6 +47,40 @@ It calls `plan_ad_memory(...)`, `explain_ad_memory(...)`,
 `mesh_intelligence_report(...)`, and, when requested,
 `diagnose_ad_saved_residuals(...)`. It does not run FDTD.
 
+Setup used by the snippets below:
+
+```python
+import jax
+import jax.numpy as jnp
+from rfx import Box, GaussianPulse, Simulation
+
+sim = Simulation(
+    freq_max=5e9,
+    domain=(0.02, 0.02, 0.01),
+    dx=2e-3,
+    boundary="cpml",
+    cpml_layers=4,
+)
+sim.add_material("slab", eps_r=4.0, sigma=0.01)
+sim.add(Box((0.006, 0.006, 0.003), (0.014, 0.014, 0.007)), material="slab")
+sim.add_source(
+    (0.005, 0.010, 0.005),
+    "ez",
+    waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
+    amplitude_kind="current",
+)
+sim.add_probe((0.015, 0.010, 0.005), "ez")
+
+# Names the later snippets read: the design field and the region it is
+# allowed to vary in, and a stand-in for whatever launches the real run.
+eps = jnp.full(sim.run(n_steps=100).grid.shape, 4.0, dtype=jnp.float32)
+region_mask = jnp.zeros_like(eps, dtype=bool).at[4:-4, 4:-4, 4:-4].set(True)
+
+
+def launch():
+    print("start the configured run here")
+```
+
 ```python
 preflight = sim.ad_memory_preflight(
     n_steps=10_000,
@@ -120,6 +154,8 @@ scope as the preflight report. The API reads `Compiled.memory_analysis()` once
 and fails closed if the scope or compiler byte fields are incomplete.
 
 ```python
+compiled_loss = jax.jit(reduced_loss).lower(jnp.ones((32,))).compile()
+
 certificate = sim.ad_memory_compiled_certificate(
     compiled_loss,
     n_steps=10_000,
@@ -277,7 +313,7 @@ into a PML/absorber region), construct the restriction yourself at the
 
 ```python
 eps = jnp.where(region_mask, eps, jax.lax.stop_gradient(eps))
-result = sim.forward(eps_override=eps, ...)
+result = sim.forward(eps_override=eps, n_steps=200)
 ```
 
 `region_mask` is a boolean array (or broadcastable to `eps`'s shape) that is

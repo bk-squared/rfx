@@ -24,6 +24,13 @@ wavelength-resolved models, the explicit Yee solver is the right default and is
 more accurate step-for-step.
 
 ```python
+from rfx import Simulation
+from rfx.boundaries.spec import BoundarySpec
+
+# Closed vacuum PEC cavity, the same box the runnable demo below resonates.
+a, b, d = 24.0e-3, 12.0e-3, 36.0e-3
+dx = 1.5e-3
+
 sim = Simulation(
     freq_max=12e9,
     domain=(a, b, d),

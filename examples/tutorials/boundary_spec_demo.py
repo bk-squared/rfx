@@ -24,6 +24,9 @@ Run as::
 
 Each pattern prints the resolved spec (``BoundarySpec.to_dict()``) and the
 peak |Ez| after a short run, so you can confirm the configuration executed.
+All four sources pass ``amplitude_kind="current"``, which makes the drive mean
+the same thing under every boundary — without it the source convention itself
+varies per boundary and the four peaks are not comparable.
 """
 
 from __future__ import annotations
@@ -41,7 +44,8 @@ DX = 0.5e-3
 def _run_and_report(label: str, spec: BoundarySpec) -> None:
     """Build a Simulation with ``spec``, run briefly, print what resolved."""
     sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX, boundary=spec)
-    sim.add_source((0.005, 0.005, 0.0025), component="ez")
+    sim.add_source((0.005, 0.005, 0.0025), component="ez",
+                   amplitude_kind="current")
     sim.add_probe((0.006, 0.006, 0.0025), component="ez")
     result = sim.run(n_steps=120, compute_s_params=False)
     peak = float(np.max(np.abs(np.asarray(result.time_series))))

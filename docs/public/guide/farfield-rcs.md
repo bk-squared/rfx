@@ -30,6 +30,7 @@ sim.add_source(
     (0.10, 0.10, 0.10),
     "ez",
     waveform=GaussianPulse(f0=3e9, bandwidth=0.5),
+    amplitude_kind="current",
 )
 
 # NTFF box: encloses the radiator but stays inside the simulation region,

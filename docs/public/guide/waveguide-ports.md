@@ -23,6 +23,10 @@ multi-port matrices. Use `compute_waveguide_s_matrix(...)` for the S-matrix;
 ## Single Port
 
 ```python
+import jax.numpy as jnp
+import numpy as np
+from rfx import Simulation
+
 sim = Simulation(freq_max=10e9, domain=(0.12, 0.04, 0.02),
                  boundary="cpml", cpml_layers=10, dx=0.002)
 
@@ -47,6 +51,12 @@ print(f"|S21| mean: {np.mean(np.abs(sp.s21)):.3f}")
 For transmission measurements, use two ports with opposite directions:
 
 ```python
+freqs = jnp.linspace(4.5e9, 8e9, 50)
+
+# A fresh guide: the single-port run above keeps its own simulation.
+sim = Simulation(freq_max=10e9, domain=(0.12, 0.04, 0.02),
+                 boundary="cpml", cpml_layers=10, dx=0.002)
+
 sim.add_waveguide_port(0.01, direction="+x", name="left",
                        mode=(1, 0), freqs=freqs, f0=6e9)
 sim.add_waveguide_port(0.09, direction="-x", name="right",
@@ -89,6 +99,43 @@ matched-straight-guide references — one `Simulation` per driven port, each the
 straight continuation of that port's guide with no junction:
 
 ```python
+from rfx import Box
+
+port_kwargs = dict(mode=(1, 0), mode_type="TE", f0=6e9,
+                   freqs=jnp.linspace(4.5e9, 8e9, 6),
+                   z_range=(0.0, 0.02), ref_offset=3, probe_offset=15)
+
+
+def three_port_guide(walls):
+    """Same domain, dx and boundary for the device and every reference —
+    only the interior PEC walls differ."""
+    s = Simulation(freq_max=10e9, domain=(0.12, 0.12, 0.02),
+                   boundary="cpml", cpml_layers=10, dx=0.002)
+    for corner_lo, corner_hi in walls:
+        s.add(Box(corner_lo, corner_hi), material="pec")
+    s.add_waveguide_port(0.01, y_range=(0.04, 0.08), direction="+x",
+                         name="left", **port_kwargs)
+    s.add_waveguide_port(0.11, y_range=(0.04, 0.08), direction="-x",
+                         name="right", **port_kwargs)
+    s.add_waveguide_port(0.11, x_range=(0.04, 0.08), direction="-y",
+                         name="top", **port_kwargs)
+    return s
+
+
+HORIZONTAL = [((0.0, 0.0, 0.0), (0.12, 0.04, 0.02)),
+              ((0.0, 0.08, 0.0), (0.12, 0.12, 0.02))]
+VERTICAL = [((0.0, 0.0, 0.0), (0.04, 0.12, 0.02)),
+            ((0.08, 0.0, 0.0), (0.12, 0.12, 0.02))]
+
+# The device: main guide along x with one arm opening in +y. These arms are
+# COMPACT — the paragraph below states what that costs.
+sim = three_port_guide([((0.0, 0.0, 0.0), (0.12, 0.04, 0.02)),
+                        ((0.0, 0.08, 0.0), (0.04, 0.12, 0.02)),
+                        ((0.08, 0.08, 0.0), (0.12, 0.12, 0.02))])
+ref_left = three_port_guide(HORIZONTAL)
+ref_right = three_port_guide(HORIZONTAL)
+ref_top = three_port_guide(VERTICAL)
+
 result = sim.compute_waveguide_s_matrix(
     num_periods=30, normalize="flux",
     port_reference_sims=[ref_left, ref_right, ref_top],
@@ -110,6 +157,9 @@ junctions valid — keep the far-port discipline.
 Ports can be placed on any axis-normal boundary:
 
 ```python
+sim = Simulation(freq_max=10e9, domain=(0.04, 0.12, 0.02),
+                 boundary="cpml", cpml_layers=10, dx=0.002)
+
 # Y-normal ports for a y-directed waveguide
 sim.add_waveguide_port(0.01, direction="+y", name="bottom")
 sim.add_waveguide_port(0.09, direction="-y", name="top")
@@ -120,6 +170,9 @@ sim.add_waveguide_port(0.09, direction="-y", name="top")
 Multiple ports on the same boundary for parallel-guide or branch networks:
 
 ```python
+sim = Simulation(freq_max=10e9, domain=(0.12, 0.10, 0.02),
+                 boundary="cpml", cpml_layers=10, dx=0.002)
+
 sim.add_waveguide_port(0.01, y_range=(0.0, 0.04), z_range=(0.0, 0.02),
                        direction="+x", name="left_lo")
 sim.add_waveguide_port(0.01, y_range=(0.06, 0.10), z_range=(0.0, 0.02),
@@ -129,6 +182,9 @@ sim.add_waveguide_port(0.01, y_range=(0.06, 0.10), z_range=(0.0, 0.02),
 ## Calibration Options
 
 ```python
+sim = Simulation(freq_max=10e9, domain=(0.12, 0.04, 0.02),
+                 boundary="cpml", cpml_layers=10, dx=0.002)
+
 # Report S-params at the snapped measurement planes (default)
 sim.add_waveguide_port(0.01, calibration_preset="measured")
 

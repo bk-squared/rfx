@@ -57,6 +57,7 @@ def build_simulation() -> Simulation:
         CENTER,
         component="ez",
         waveform=GaussianPulse(f0=F0, bandwidth=0.5),
+        amplitude_kind="current",
     )
     return sim
 

@@ -26,9 +26,25 @@ own pulse arguments. This page is the API reference; the
 
 ## Sources
 
+Setup used by the snippets below:
+
 ```python
-sim.add_source((0.025, 0.025, 0.010), "ez", waveform=GaussianPulse(f0=3e9))
-sim.add_polarized_source((0.025, 0.025, 0.010), polarization="slant45")
+from rfx import GaussianPulse, Simulation
+
+sim = Simulation(
+    freq_max=6e9,
+    domain=(0.04, 0.04, 0.02),
+    dx=2e-3,
+    boundary="cpml",
+    cpml_layers=6,
+)
+```
+
+```python
+sim.add_source((0.025, 0.025, 0.010), "ez", waveform=GaussianPulse(f0=3e9),
+               amplitude_kind="current")
+sim.add_polarized_source((0.025, 0.025, 0.010), polarization="slant45",
+                         amplitude_kind="current")
 ```
 
 Use `add_source()` for ringdown and Harminv work when you do **not** want a load on the excited cell.
@@ -54,7 +70,17 @@ polarization sense.
 sim.add_port((0.01, 0.02, 0.01), "ez", impedance=50.0)
 sim.add_port((0.01, 0.02, 0.0), "ez", impedance=50.0, extent=0.0016)
 sim.add_coaxial_port((0.02, 0.02, 0.0016), face="top", impedance=50.0)
-sim.add_waveguide_port(x_position=0.01, y_range=(0.0, 0.023), z_range=(0.0, 0.010))
+
+# A waveguide port cannot share a Simulation with lumped ports, so it is
+# registered on its own guide here.
+wg_sim = Simulation(
+    freq_max=10e9,
+    domain=(0.12, 0.023, 0.010),
+    dx=2e-3,
+    boundary="cpml",
+    cpml_layers=8,
+)
+wg_sim.add_waveguide_port(x_position=0.01, y_range=(0.0, 0.023), z_range=(0.0, 0.010))
 ```
 
 `extent` promotes the single-cell lumped port to a multi-cell wire port spanning `extent` metres from `position` along the `component` axis (here `+z`); omit it for a lumped port.

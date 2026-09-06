@@ -17,7 +17,7 @@ New to rfx? Run these in order; each teaches one decision a real design needs.
 | 9 | `tutorials/antenna_farfield_pattern.py` | far-field boxes done right (half-wavelength rule), directivity vs the textbook dipole |
 | 10 | `tutorials/patch_antenna_demo.py` | a real antenna end to end: mesh-registered stack, picking the radiating mode by its far field (not loudness), settling witness, honest error budget vs openEMS |
 | 11 | `tutorials/rcs_scattering.py` | radar cross-section with incident-reference subtraction |
-| 12 | `inverse_design/differentiable_s11_design.py` | the differentiable design loop: `forward` + `jax.grad` + optimizer |
+| 12 | `inverse_design/differentiable_s11_design.py` | end-to-end `jax.grad` through the public `compute_waveguide_s_matrix`, cross-checked against central finite differences |
 | 13 | `tutorials/artifact_report_demo.py` | exporting a shareable scene/mesh/report bundle |
 
 `config/microstrip_thru.yaml` shows the declarative YAML front-end for the same

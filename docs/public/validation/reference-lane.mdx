@@ -5,6 +5,9 @@ sidebar:
   order: 41
 ---
 
+This page is the reference lane (its URL slug): the configuration to start from
+and the calculations whose limits are narrower than it.
+
 ## Start with the uniform grid
 
 Use the **uniform Cartesian Yee** solver for ordinary RF examples and public
@@ -46,4 +49,7 @@ For port calculations, also read the
 
 Do not substitute one calculator for another port family. A completed run or
 an absent warning does not establish convergence, passivity, reference-plane
-correctness, or agreement with an independent RF reference.
+correctness, or agreement with an independent RF reference. Examples and
+regression tests do not expand those validated limits either: a committed test
+locks the behaviour it was written against, at the mesh, band and configuration
+it was written for.

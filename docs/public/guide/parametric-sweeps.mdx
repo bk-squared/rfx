@@ -61,7 +61,8 @@ def make_inclusion_sim(insert_width: float, eps_r: float) -> Simulation:
     y0 = 0.030 - insert_width / 2
     y1 = 0.030 + insert_width / 2
     sim.add(Box((0.032, y0, 0.018), (0.048, y1, 0.022)), material="insert")
-    sim.add_source((0.024, 0.030, 0.020), "ez", waveform=GaussianPulse(2.4e9, 0.8))
+    sim.add_source((0.024, 0.030, 0.020), "ez", waveform=GaussianPulse(2.4e9, 0.8),
+                   amplitude_kind="current")
     sim.add_probe((0.056, 0.030, 0.020), "ez")
     return sim
 ```
@@ -91,7 +92,9 @@ to rank the case. That manifest is what lets reviewers reproduce a plotted sweep
 ## 4. Aggregate metrics into a dataset
 
 `SimulationDataset.from_results(...)` converts batch outputs into rectangular
-arrays. The `output_fn` should return a one-dimensional numeric feature vector.
+arrays; it is a `rfx.batch` helper rather than part of the documented
+star-import API surface. The `output_fn` should return a one-dimensional
+numeric feature vector.
 
 ```python
 import numpy as np
@@ -177,12 +180,11 @@ from pathlib import Path
 import numpy as np
 
 from rfx.batch import (
-    ParameterSweep,
     run_batch_with_manifest,
     summarize_batch_manifest,
 )
 
-sweep = ParameterSweep(amplitude=[0.5, 1.0, 2.0])
+# The factory and the sweep from sections 2 and 1 are reused unchanged.
 
 
 def metric_fn(result):
@@ -198,16 +200,16 @@ def artifact_fn(case_dir: Path, params, result):
     return {"metric": "metric.json"}
 
 records = run_batch_with_manifest(
-    make_simulation,
+    make_inclusion_sim,
     sweep,
-    "runs/amplitude-sweep",
+    "runs/inclusion-sweep",
     run_kwargs={"n_steps": 200},
     metric_fn=metric_fn,
     artifact_fn=artifact_fn,
     resume=True,
 )
 
-summary = summarize_batch_manifest("runs/amplitude-sweep/manifest.json")
+summary = summarize_batch_manifest("runs/inclusion-sweep/manifest.json")
 print(summary["status_counts"])
 ```
 
