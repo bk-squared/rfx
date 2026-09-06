@@ -1582,7 +1582,7 @@ def _signed_beta_envelope_terms(eps_r: float, w_m: float, h_m: float, t_m: float
 
 
 def _signed_beta_envelope(eps_r: float, w_m: float, h_m: float, t_m: float,
-                          f_band_top_hz: float) -> tuple[float, float]:
+                          f_band_top_hz: float, dx_m: float) -> tuple[float, float]:
     """The SIGNED beta-deviation envelope [lo, hi] a CORRECT QUASI-STATIC line
     may occupy, DERIVED AT RUNTIME from the realized board.
 
@@ -1596,13 +1596,16 @@ def _signed_beta_envelope(eps_r: float, w_m: float, h_m: float, t_m: float,
 
     Rasterization is NOT included -- see
     ``_half_cell_rasterization_beta_dev_frac`` and
-    ``_signed_beta_envelope_terms``, which report it separately. ``t_m`` is
-    the mesh-realized one-cell metal thickness, so pass dx there.
+    ``_signed_beta_envelope_terms``, which report it separately.
+
+    ``t_m`` is the conductor thickness and ``dx_m`` the cell size. On the cv20
+    board they are the same number (the metal is one cell thick) but they are
+    different quantities and the callee reads them as such, so this wrapper
+    takes both rather than forwarding one for the other -- an earlier revision
+    passed ``t_m`` where ``dx_m`` belongs, which was inert here and wrong for
+    any caller whose metal is not one cell thick (review of PR #898).
     """
-    # dx_m only feeds the rasterization band, which this two-value wrapper does
-    # not return; t_m is passed for it because on any board whose metal is one
-    # cell thick they are the same number.
-    terms = _signed_beta_envelope_terms(eps_r, w_m, h_m, t_m, f_band_top_hz, t_m)
+    terms = _signed_beta_envelope_terms(eps_r, w_m, h_m, t_m, f_band_top_hz, dx_m)
     return terms["lo_frac"], terms["hi_frac"]
 
 

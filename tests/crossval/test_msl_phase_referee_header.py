@@ -1703,11 +1703,11 @@ def test_signed_beta_envelope_is_derived_at_runtime_and_moves_with_the_board():
     # (5) NOT PINNED: different boards yield materially different envelopes,
     #     including a narrow (u < 1) line, which the u < 1 branch of the
     #     closed form now covers.
-    lo, hi = module._signed_beta_envelope(er, w, h, t, f_top)
+    lo, hi = module._signed_beta_envelope(er, w, h, t, f_top, module.B_DX_M)
     assert (lo, hi) == (terms["lo_frac"], terms["hi_frac"])
     for er2, w2, h2, t2_m, f2 in ((4.4, 1000e-6, 635e-6, 17.5e-6, 10e9),
                                   (9.8, 300e-6, 635e-6, 35e-6, 8e9)):
-        lo2, hi2 = module._signed_beta_envelope(er2, w2, h2, t2_m, f2)
+        lo2, hi2 = module._signed_beta_envelope(er2, w2, h2, t2_m, f2, module.B_DX_M)
         assert abs(hi2 - hi) > 1e-4, "hi must move with the board (not a pinned constant)"
         assert abs(lo2 - lo) > 1e-4, "lo must move with the board (not a pinned constant)"
 
@@ -1719,6 +1719,23 @@ def test_signed_beta_envelope_is_derived_at_runtime_and_moves_with_the_board():
             > terms["half_cell_rasterization_band_frac"] > 0.0)
     assert coarse["hi_frac"] == pytest.approx(terms["hi_frac"], abs=1e-15)
     assert coarse["lo_frac"] == pytest.approx(terms["lo_frac"], abs=1e-15)
+
+    # (7) The band this test computes IS the band the main path computes: the
+    #     same closed form on the realized board the committed run-2 artifact
+    #     records (w_trace_realized_m / h_sub_realized_m) at the same dx, which
+    #     is 0.4954 % -- the number the PR #898 review read off that artifact.
+    #     A wrapper that forwards the conductor thickness where the cell size
+    #     belongs answers a different question here the moment the two stop
+    #     being the same number.
+    run2_layout = json.loads(_RUN2_RESULT_PATH.read_text())["stage_b"]["layout"]
+    main_path = module._signed_beta_envelope_terms(
+        module.B_EPS_R, run2_layout["w_trace_realized_m"],
+        run2_layout["h_sub_realized_m"], module.B_DX_M,
+        module.B_GATE_F_HI_HZ, module.B_DX_M)
+    assert main_path["half_cell_rasterization_band_frac"] == pytest.approx(
+        terms["half_cell_rasterization_band_frac"], rel=1e-12)
+    assert terms["half_cell_rasterization_band_frac"] == pytest.approx(
+        0.004954, abs=1e-6)
 
 
 def test_signed_beta_envelope_flags_rfx_and_reports_what_it_cannot_attribute(capsys):
