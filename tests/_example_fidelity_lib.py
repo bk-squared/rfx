@@ -327,6 +327,12 @@ CLASSIFICATION: dict[str, Entry] = {
         "no_simulation",
         "shared quasi-1-D TFSF slab rig helpers (record-length derivation, "
         "tail witness, envelope fit) factored out of cv22 -- no Simulation()"),
+    "validation/crossval/comparators/slab_family.py": Entry(
+        "no_simulation",
+        "the slab family's leaf declaration (#928): the cv04 rig constants, "
+        "the gated band, the incident-pulse and ring-down helpers, and the "
+        "calibration-envelope loader that resolves a consumer's adoption "
+        "record against the producer's artifact -- stdlib + numpy, no rfx"),
     "validation/crossval/comparators/ring_mode_judge.py": Entry(
         "no_simulation",
         "plain numpy/scipy mode-list comparator for cv02 (#812) -- compares "

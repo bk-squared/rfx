@@ -33,23 +33,26 @@ TWO_PI = 2.0 * math.pi
 C0 = de.C0
 
 # ---------------------------------------------------------------------------
-# Rig (cv04's; pre-declaration §1)
+# Rig (cv04's; pre-declaration §1) -- DECLARED in ``slab_family``, re-exported
+# here so the modules that import it from this one keep working (#928). The rig
+# belongs to the producer's case, not to this consumer; the values are
+# unchanged and bit-identical (tests/fixtures/slab_family_windows_baseline.json).
 # ---------------------------------------------------------------------------
-DX_M = 1.0e-3
-D_SLAB_M = 10.0e-3
-NX_INTERIOR = 600
-N_CPML = 20
-TFSF_F0_HZ = 10.0e9
-TFSF_BW = 0.5
-NFFT_OVERSAMPLE = 8
-MASK_F_LO_HZ = 3.0e9
-MASK_F_HI_HZ = 15.0e9
-MASK_AMP_FRAC = 0.02
-# cv04 witness constants (04_multilayer_fresnel.py:208-210, :314), unchanged.
-TAIL_WINDOW = 50
-TAIL_PURITY_LIMIT = 1e-3
-TAIL_LIMIT = 0.10
-CONS_MAX_LIMIT = 0.06
+DX_M = slab_family.DX_M
+D_SLAB_M = slab_family.D_SLAB_M
+NX_INTERIOR = slab_family.NX_INTERIOR
+N_CPML = slab_family.N_CPML
+TFSF_F0_HZ = slab_family.TFSF_F0_HZ
+TFSF_BW = slab_family.TFSF_BW
+NFFT_OVERSAMPLE = slab_family.NFFT_OVERSAMPLE
+MASK_F_LO_HZ = slab_family.MASK_F_LO_HZ
+MASK_F_HI_HZ = slab_family.MASK_F_HI_HZ
+MASK_AMP_FRAC = slab_family.MASK_AMP_FRAC
+# cv04's own settling-tail witness constants and per-bin closure ceiling.
+TAIL_WINDOW = slab_family.TAIL_WINDOW
+TAIL_PURITY_LIMIT = slab_family.TAIL_PURITY_LIMIT
+TAIL_LIMIT = slab_family.TAIL_LIMIT
+CONS_MAX_LIMIT = slab_family.CONS_MAX_LIMIT
 
 # ---------------------------------------------------------------------------
 # Round-3 recipe (§12): the record length comes from the slab's OWN ring-down,
@@ -75,15 +78,16 @@ MEEP_PRIMARY_RESOLUTION = 40   # §12: the converged Meep reference (first-order
 # ln(100)/rate. The witness is then ADAPTIVE: extend the record in
 # RECORD_EXTEND_STEPS while the -40 dB bar is not met, and grow the box by
 # NX_GROW_CELLS when the CPML gate is reached (never clip).
-RING_W_MIN = 0.5
-RING_F_MAX_HZ = MASK_F_HI_HZ
+RING_W_MIN = slab_family.RING_W_MIN
+RING_F_MAX_HZ = slab_family.RING_F_MAX_HZ
 RECORD_EXTEND_STEPS = 100
 NX_GROW_CELLS = 200
 TAIL_ENVELOPE_STEPS = 300      # stored in the artifact so the decay can be fitted offline
 MEEP_LADDER_RESOLUTIONS = (10, 20, 40)
 
-# Gated band (§5) and the rig-sanity floor on incident amplitude inside it.
-BAND_GATED_HZ = (4.0e9, 10.0e9)
+# Gated band (§5; declared in slab_family so the producer can mark its own
+# gated bins) and the rig-sanity floor on incident amplitude inside it.
+BAND_GATED_HZ = slab_family.BAND_GATED_HZ
 GATED_BAND_MIN_INC_AMP_FRAC = 0.05
 
 # Meep leg (§7): a = 1 cm as in cv04; Meep default Courant.
@@ -195,9 +199,9 @@ def apply_meep_falsifier(meep_params: dict, name: str) -> dict:
 # Windows (§3, §4)
 # ---------------------------------------------------------------------------
 
-def gated_mask(freqs_hz) -> np.ndarray:
-    f = np.asarray(freqs_hz, dtype=float)
-    return (f >= BAND_GATED_HZ[0]) & (f <= BAND_GATED_HZ[1])
+# Rig-level, declared in slab_family (#928); re-exported for this module's
+# importers and for the pre-declaration's §5 wording.
+gated_mask = slab_family.gated_mask
 
 
 def analytic_rt(freqs_hz, model: str, params: dict):
@@ -576,71 +580,13 @@ def aux_echo_failure_message(echo: dict) -> str:
         f"docs/design_notes/20260904_aux_echo_record_invariant.md.")
 
 
-def incident_amplitude_rel(f_hz):
-    """Amplitude spectrum of the rig's differentiated-Gaussian incident pulse,
-    relative to its peak: |S(f)| ∝ f exp(-(pi f tau)^2), tau = 1/(pi f0 bw)."""
-    tau = 1.0 / (math.pi * TFSF_F0_HZ * TFSF_BW)
-    f = np.asarray(f_hz, dtype=float)
-    s = f * np.exp(-(math.pi * f * tau) ** 2)
-    peak = (1.0 / (math.sqrt(2.0) * math.pi * tau)) * math.exp(-0.5)
-    return s / peak
-
-
-def ring_band_hz():
-    """[f_lo, RING_F_MAX_HZ]: the incident band with amplitude >= RING_W_MIN of peak."""
-    f = np.linspace(1e7, TFSF_F0_HZ, 20000)
-    w = incident_amplitude_rel(f)
-    f_lo = float(f[np.argmax(w >= RING_W_MIN)])
-    return f_lo, RING_F_MAX_HZ
-
-
-def slab_ringdown_rates(model: str, params: dict):
-    """Amplitude decay rates (1/s) of the slab's own ring-down over the incident
-    ring band: the material pole (Debye 1/tau, Lorentz delta, Drude gamma/2)
-    and the etalon round-trip, rho = |r|^2 exp(-2 k0 Im(n) d) per
-    t_rt = 2 Re(n) d / c, each component weighted by its incident amplitude
-    w(f): a component starting at w needs ln(100 w)/rate to reach -40 dB. The
-    slowest entry is the one with the largest ln(100 w)/rate."""
-    f_lo, f_hi = ring_band_hz()
-    f = np.linspace(f_lo, f_hi, 1401)
-    eps = de.eps_analytic(f, model, params)
-    n = np.sqrt(eps)
-    # Forward branch: Re n >= 0 (the principal sqrt already has it; for a
-    # passive medium, Im eps < 0, that branch is the decaying one). The
-    # earlier `where(n.imag > 0, -n, n)` was a no-op for every passive arm
-    # but negated Re n for a GAIN medium (cv23's passivity falsifier),
-    # giving |r|^2 = 9; found while deriving that arm's record.
-    n = np.where(n.real < 0, -n, n)
-    k0 = TWO_PI * f / C0
-    r = (1 - n) / (1 + n)
-    rho = np.abs(r) ** 2 * np.exp(2 * k0 * n.imag * D_SLAB_M)   # |e^{-j k0 n d}|^2 per round trip
-    t_rt = 2 * np.abs(n.real) * D_SLAB_M / C0
-    if np.any(rho >= 1.0):
-        raise ValueError(f"{model}: etalon round-trip gain >= 1 at {f[np.argmax(rho)]/1e9:.2f} GHz "
-                         f"(rho {rho.max():.3f}); the slab does not ring down")
-    rate_et = -np.log(rho) / t_rt
-    if model == "debye":
-        rate_mat = 1.0 / params["tau"]
-    elif model == "lorentz":
-        rate_mat = float(params["delta"])
-    elif model == "conductive":
-        # cv23: J = sigma E is memoryless (no P recurrence, no material
-        # ring-down mode); the charge-relaxation pole sigma/(eps0 eps') is a
-        # longitudinal mode that normal incidence does not excite. Only the
-        # etalon decays, and its absorption per pass is already in rho.
-        rate_mat = float("inf")
-    else:
-        rate_mat = float(params["gamma"]) / 2.0
-    w = incident_amplitude_rel(f)
-    rate = np.minimum(rate_et, rate_mat)
-    t_need = np.log(100.0 * w) / rate       # seconds to -40 dB of the incident peak
-    i = int(np.argmax(t_need))
-    return {"rate_material_1_s": (float(rate_mat) if math.isfinite(rate_mat) else None),
-            "rate_etalon_slowest_1_s": float(rate_et.min()),
-            "f_etalon_slowest_hz": float(f[int(np.argmin(rate_et))]),
-            "ring_band_hz": [f_lo, f_hi], "ring_w_min": RING_W_MIN,
-            "t_ring_s": float(t_need[i]), "f_ring_hz": float(f[i]), "w_ring": float(w[i]),
-            "rate_ring_1_s": float(rate[i]), "rho_etalon": float(rho[i]), "t_rt_s": float(t_rt[i])}
+# The incident pulse's spectrum, the ring band it defines and the slab's own
+# ring-down rates are rig + material physics, not this case's gate policy:
+# cv04's witness and cv23's record recipe need them too, so they are DECLARED
+# in slab_family and re-exported here (#928). Bodies unchanged.
+incident_amplitude_rel = slab_family.incident_amplitude_rel
+ring_band_hz = slab_family.ring_band_hz
+slab_ringdown_rates = slab_family.slab_ringdown_rates
 
 
 def derive_record_length(model: str, params: dict, dt: float, *, nx_interior: int = NX_INTERIOR_R3,

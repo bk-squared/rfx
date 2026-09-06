@@ -57,22 +57,45 @@ def _load_fringe_gate():
 
 fringe_gate = _load_fringe_gate()
 
+
+def _load_slab_family():
+    """The shared slab-family rig declaration (#928).
+
+    This case is the PRODUCER of that rig: its cells, TFSF pulse, mask and
+    settling-tail witness are what cv22 and cv23 replicate. The values were
+    literals here and in ``cv22_dispersive_gates`` at once, which is two homes
+    for one declaration; they live in ``comparators/slab_family.py`` now and
+    this script reads them, so the two cannot drift apart.
+    """
+    import importlib.util
+
+    path = os.path.join(SCRIPT_DIR, "comparators", "slab_family.py")
+    spec = importlib.util.spec_from_file_location("slab_family", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+slab_family = _load_slab_family()
+
 # =============================================================================
 # Parameters
 # =============================================================================
+# Read from the shared declaration (#928); values unchanged.
 eps_slab = 4.0
 n_slab = math.sqrt(eps_slab)
-d_slab = 10.0e-3     # 10 mm
-f0 = 10.0e9
-dx = 1.0e-3           # 1 mm (15 cells/λ at 20 GHz)
-bw = 0.5
+d_slab = slab_family.D_SLAB_M      # 10 mm
+f0 = slab_family.TFSF_F0_HZ        # 10 GHz
+dx = slab_family.DX_M              # 1 mm (15 cells/λ at 20 GHz)
+bw = slab_family.TFSF_BW
 
 # Large domain with thick CPML for clean measurement
 # Probe-to-CPML distance must be large enough that CPML round-trip
 # exceeds the simulation time (otherwise CPML reflections contaminate
 # the probe via multiple bounces).
-n_cpml = 20
-nx_interior = 600     # 600 mm interior — large to delay CPML round-trip
+n_cpml = slab_family.N_CPML
+nx_interior = slab_family.NX_INTERIOR   # 600 mm interior — large to delay CPML round-trip
 
 print("=" * 70)
 print("Crossval 04: Fresnel Slab — TFSF plane wave — rfx vs Analytic")
@@ -229,9 +252,9 @@ ts_scattered_refl = ts_refl - ts_inc_refl
 #     late-time growth, broken time gate) while accepting the documented
 #     committed-config echo residual.
 # -----------------------------------------------------------------------------
-TAIL_WINDOW = 50
-TAIL_PURITY_LIMIT = 1e-3
-TAIL_LIMIT = 0.10
+TAIL_WINDOW = slab_family.TAIL_WINDOW
+TAIL_PURITY_LIMIT = slab_family.TAIL_PURITY_LIMIT
+TAIL_LIMIT = slab_family.TAIL_LIMIT
 inc_peak = max(np.max(np.abs(ts_inc_refl)), np.max(np.abs(ts_inc_trans)))
 tail_inc_rel = max(np.max(np.abs(ts_inc_refl[-TAIL_WINDOW:])),
                    np.max(np.abs(ts_inc_trans[-TAIL_WINDOW:]))) / inc_peak
@@ -287,7 +310,7 @@ print(f"\n{'=' * 70}")
 print("PART 2: rfx R(f), T(f)")
 print("=" * 70)
 
-nfft = int(2**np.ceil(np.log2(n_steps)) * 8)
+nfft = int(2**np.ceil(np.log2(n_steps)) * slab_family.NFFT_OVERSAMPLE)
 freqs = np.fft.rfftfreq(nfft, d=dt)
 S_inc_t = np.fft.rfft(ts_inc_trans, n=nfft)
 S_inc_r = np.fft.rfft(ts_inc_refl, n=nfft)
@@ -301,7 +324,8 @@ inc_power = np.abs(S_inc_t)
 # mean-only gates silently. The mask itself stays as committed (it defines
 # the evaluated band); the per-bin max|R+T-1| ceiling below now bounds the
 # amplified-bin class.
-mask = (freqs > 3e9) & (freqs < 15e9) & (inc_power > inc_power.max() * 0.02)
+mask = ((freqs > slab_family.MASK_F_LO_HZ) & (freqs < slab_family.MASK_F_HI_HZ)
+        & (inc_power > inc_power.max() * slab_family.MASK_AMP_FRAC))
 
 T_rfx = np.abs(S_total_t[mask])**2 / np.abs(S_inc_t[mask])**2
 R_rfx = np.abs(S_scat_r[mask])**2 / np.abs(S_inc_r[mask])**2
@@ -335,7 +359,7 @@ c_ok = cons_rfx.mean() < 0.05
 # collapses it to 0.0002 while band-mean |dT|,|dR| shift < 0.005 (negligible
 # mean-side bias). Ceiling = measured envelope + headroom; it bounds the
 # previously-silent mask-amplified single-bin spike class (up to ~10) to 6%.
-CONS_MAX_LIMIT = 0.06
+CONS_MAX_LIMIT = slab_family.CONS_MAX_LIMIT
 cons_max_ok = bool(cons_rfx.max() <= CONS_MAX_LIMIT)
 
 # -----------------------------------------------------------------------------
@@ -419,16 +443,19 @@ if "--lattice-witness" in sys.argv:
     if _cmp not in sys.path:
         sys.path.insert(0, _cmp)
     import json as _json
-    import cv22_dispersive_gates as _G
     import lattice_witness as _LW
+    import slab_family as _SF
     import slab_rig as _RIG
 
+    # #928: the producer reads the shared rig/family module, never a consumer's
+    # gate module. `slab_ringdown_rates` and `gated_mask` are rig + material
+    # physics and are declared in `slab_family`; cv22 re-exports them.
     _params = {"eps_inf": eps_slab, "sigma": 0.0}
-    _rates = _G.slab_ringdown_rates("conductive", _params)
+    _rates = _SF.slab_ringdown_rates("conductive", _params)
     _arm = {
         "model": "conductive", "params": _params,
         "freqs_hz": freqs[mask].tolist(),
-        "gated": _G.gated_mask(freqs[mask]).tolist(),
+        "gated": _SF.gated_mask(freqs[mask]).tolist(),
         "R_rfx": R_rfx.tolist(), "T_rfx": T_rfx.tolist(), "dt_s": float(dt),
         "inc_amp_rel": (inc_power[mask] / inc_power.max()).tolist(),
         "tail": {"scat_refl_rel": float(tail_refl_rel),
