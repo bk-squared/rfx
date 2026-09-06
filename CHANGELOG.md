@@ -6,6 +6,35 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — two waveguide S-parameter setup checks, in input units
+
+`compute_waveguide_s_matrix(...)` and
+`preflight_sparameters(calculator="waveguide")` now run two setup audits before
+any FDTD step. Both report declared-versus-realized quantities in the units the
+user typed — times, lengths, indices and the knob value that changes them — and
+neither predicts an effect on any S-parameter.
+
+`record_shorter_than_far_boundary_round_trip` compares the record length
+`T = n_steps * dt` against the far-boundary round trip
+`tau_far = 2 * far_path / v_g(f_min)`, per port. `far_path` runs from the port
+plane to the outer wall of the domain in the port's launch direction with the
+absorber pad included, and `v_g` uses that port's own discrete cutoff. Below
+`T/tau_far = 3` the check is a warning and below 1 it is error severity, and the
+message states T, tau_far, the ratio, far_path, `v_g(f_min)/c`, `f_min`, the
+port cutoff, and the `num_periods` that reaches 3. The threshold is a floor:
+the WR-90 chain battery needed 3, 5 and 8 at `a/18`, `a/36` and `a/72`. When
+the lowest measured frequency sits at or below the port's cutoff the check
+reports `record_far_boundary_band_below_cutoff` and no ratio.
+
+`port_index_mirror_asymmetry` audits every plane index a pair of
+opposite-direction ports on one axis actually uses — both source planes, the
+reference and measurement probe planes, and the reference plane in metres —
+and reports each pair sum against the covariant value for that plane's lattice
+(`n_axis - 1` primal, `n_axis - 2` dual). The one known exception,
+`apply_waveguide_port_e` placing the `-` port's E correction at `x_index + 1`,
+is reported separately as `port_index_mirror_known_e_plane_offset` at `info`
+severity rather than counted as an asymmetry.
+
 ### Changed — wire-port current DFT carries the Yee half-step phase correction
 
 The H-derived port current DFT on the wire-port lane is advanced by

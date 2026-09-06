@@ -72,6 +72,12 @@ def test_ports_and_sparams_101_tutorial_runs():
     assert output.count("[PREFLIGHT] All checks passed") >= 4
     assert "Microstrip port setup ready: True" in output
     assert "Waveguide port setup ready: True" in output
+    # The waveguide setup audits are part of what this tutorial teaches, and
+    # this small model draws both of them (2.4 far-boundary round trips at the
+    # default num_periods, plus the informational E-plane offset). Readiness is
+    # report.ok, so those advisories must show WITHOUT flipping it to False.
+    assert "record_shorter_than_far_boundary_round_trip" in output
+    assert "port_index_mirror_known_e_plane_offset" in output
     assert "Coax build-only advisory observed: True" in output
     assert "Coaxial port setup ready: True" in output
 

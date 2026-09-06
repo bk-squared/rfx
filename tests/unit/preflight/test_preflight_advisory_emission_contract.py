@@ -215,8 +215,27 @@ def _enumerate_emission_sites():
 # deliberate sibling of this freeze. EMISSION_CLASSIFICATION is unchanged too:
 # no preflight call was added, so ``compute_waveguide_s_matrix`` stays
 # DIAGNOSTIC_ONLY.
-_FROZEN_TOTAL_SITES = 89
-_FROZEN_LITERAL_CODE_COUNT = 59
+#
+# 89 -> 96 sites / 59 -> 63 literal codes, post-v1.8 plan item 2
+# (docs/design_notes/20260905_post_v18_plan_rasterization_preflight_cst.md
+# sections 2-1 and 2-4): the two waveguide S-parameter setup audits.
+# _validate_cfg_record_vs_far_boundary adds 3 sites and 2 codes
+# (record_shorter_than_far_boundary_round_trip at warning AND error severity
+# -- two explicit constructions rather than one call through a class held in a
+# variable, which the AST walk above could not see -- plus
+# record_far_boundary_band_below_cutoff);
+# _validate_cfg_port_index_mirror_covariance adds 3 sites and 2 codes
+# (port_index_mirror_known_e_plane_offset, and port_index_mirror_asymmetry
+# emitted from two places: the index planes and the metres-valued reference
+# plane). The 7th site is the dynamic-code one below.
+# EMISSION_CLASSIFICATION is UNCHANGED and measured so: the audits are wired
+# into compute_waveguide_s_matrix through the shared hook
+# _preflight_waveguide_setup, which is NOT preflight()/_auto_preflight(), so
+# that method stays DIAGNOSTIC_ONLY -- the advisories reach a direct
+# compute_waveguide_s_matrix caller as plain warnings and reach a
+# preflight_sparameters(calculator="waveguide") caller as report issues.
+_FROZEN_TOTAL_SITES = 96
+_FROZEN_LITERAL_CODE_COUNT = 63
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site
@@ -226,9 +245,13 @@ _FROZEN_LITERAL_CODE_COUNT = 59
 # insertion above them red the suite: #744 added no emission site at all
 # (total 81 and literal codes 53 both unchanged) yet shifted all three
 # dynamic sites by exactly 30 lines and broke main.
+# preflight_sparameters 1 -> 2 (post-v1.8 plan item 2): the waveguide branch
+# folds the setup audits' caught warnings into the returned report, and that
+# conversion reads ``code=`` off the caught PreflightWarning instance rather
+# than naming a slug at the site -- the same shape as preflight()'s own two.
 _FROZEN_DYNAMIC_SITES_BY_FUNCTION = {
     "preflight": 2,
-    "preflight_sparameters": 1,
+    "preflight_sparameters": 2,
 }
 
 

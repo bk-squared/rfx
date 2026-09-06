@@ -2596,10 +2596,12 @@ class _SparamMixin:
         # of production logic (the #576-review class of defect). Pure function of
         # the entries and freq_max, so moving it earlier only makes the
         # matching-grid check fail sooner.
+        from rfx.api._preflight import resolve_waveguide_port_freqs
+
         def _resolve_freqs(entry: _WaveguidePortEntry) -> jnp.ndarray:
-            if entry.freqs is not None:
-                return entry.freqs
-            return jnp.linspace(self._freq_max / 10, self._freq_max, entry.n_freqs)
+            # ONE definition, shared with preflight_sparameters(calculator=
+            # "waveguide") so the setup audits read the run's own band.
+            return resolve_waveguide_port_freqs(self, entry)
 
         freqs = _resolve_freqs(entries[0])
         for entry in entries[1:]:
@@ -2693,6 +2695,17 @@ class _SparamMixin:
                 _warn_thin_absorber_vs_guide_wavelength(
                     _nu_grid, _nu_cfgs, freqs, self._cpml_layers,
                     self._boundary_spec,
+                )
+                # Record-vs-far-boundary and port-index mirror audits
+                # (post-v1.8 plan item 2). Same shared hook the uniform lane
+                # below calls and preflight_sparameters(calculator=
+                # "waveguide") calls; the grid and configs this lane already
+                # built are passed in so no second mode solve is paid for.
+                import warnings as _wg_warnings_nu
+                self._preflight_waveguide_setup(
+                    _wg_warnings_nu, freqs=freqs, num_periods=num_periods,
+                    grid=_nu_grid, cfgs=_nu_cfgs,
+                    n_steps=int(n_steps) if n_steps else None,
                 )
 
             _res_nu = self._compute_waveguide_s_matrix_nu(
@@ -2851,6 +2864,16 @@ class _SparamMixin:
         # covers only the junction path.
         _warn_thin_absorber_vs_guide_wavelength(
             grid, raw_cfgs, freqs, self._cpml_layers, self._boundary_spec,
+        )
+
+        # Record-vs-far-boundary and port-index mirror audits (post-v1.8 plan
+        # item 2). The same shared hook the non-uniform lane above and
+        # preflight_sparameters(calculator="waveguide") call, given this
+        # lane's already-built grid, configs and step count.
+        import warnings as _wg_warnings
+        self._preflight_waveguide_setup(
+            _wg_warnings, freqs=freqs, num_periods=num_periods,
+            grid=grid, cfgs=raw_cfgs, n_steps=int(n_steps),
         )
 
         # Compute Kottke per-component smoothed permittivity if requested.

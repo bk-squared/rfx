@@ -212,12 +212,28 @@ def main() -> None:
 
     waveguide = build_waveguide_ports()
     # The 20 mm broad wall gives TE10 a 7.49 GHz cutoff, so the 8 GHz source
-    # propagates.  Both preflight calls should pass.
+    # propagates.  Neither preflight call reports an error.
+    #
+    # The waveguide S-parameter preflight also runs two SETUP audits that speak
+    # in input units, and both have something to say about this small teaching
+    # model, so readiness is read off report.ok (no error-severity finding)
+    # rather than off an empty report:
+    #
+    #   * record_shorter_than_far_boundary_round_trip -- at the default
+    #     num_periods=20 the record is 2.4 far-boundary round trips long, and
+    #     the message names the num_periods that reaches 3.
+    #   * port_index_mirror_known_e_plane_offset -- informational: the '-'
+    #     port's E correction sits one cell inward of its mirror image, a known
+    #     constant of the source, not an asymmetry in this geometry.
     waveguide_report = waveguide.preflight()
     waveguide_route = waveguide.preflight_sparameters(calculator="waveguide")
     print(
         "Waveguide port setup ready: "
-        f"{not waveguide_report and not waveguide_route}"
+        f"{waveguide_report.ok and waveguide_route.ok}"
+    )
+    print(
+        "Waveguide setup advisories: "
+        + ", ".join(sorted({issue.code for issue in waveguide_route}))
     )
 
     coaxial = build_coaxial_port()

@@ -120,6 +120,53 @@ def _absorber_boundary_for_axis(
     return lo_boundary, hi_boundary
 
 
+def _axis_pad_thickness_m(grid, axis_idx: int, side: str) -> float:
+    """Realized exterior absorber pad thickness (metres) on one axis face.
+
+    Read off the grid the run actually builds (``pad_{axis}_{lo,hi}``, present
+    on both :class:`rfx.grid.Grid` and :class:`rfx.nonuniform.NonUniformGrid`)
+    rather than re-derived from ``cpml_layers`` and the boundary tokens: the
+    pad sits OUTSIDE the user domain, so a port's distance to the outer wall
+    is its interior distance plus this, and a re-derivation would be one more
+    hand copy of allocation logic that already exists.
+    """
+    ax = "xyz"[axis_idx]
+    n = int(getattr(grid, f"pad_{ax}_{side}", 0) or 0)
+    if n <= 0:
+        return 0.0
+    arr = getattr(grid, {"x": "dx_arr", "y": "dy_arr", "z": "dz"}[ax], None)
+    if arr is not None and not is_tracer(arr) and np.ndim(arr) == 1:
+        a = np.asarray(arr, dtype=float)
+        # NonUniformGrid pads its cell-size arrays to the NODE count and
+        # carries one trailing duplicate bounding cell (#562), so the hi-face
+        # pad is the n entries BEFORE that duplicate, not the last n.
+        if side == "lo" and a.size >= n:
+            return float(a[:n].sum())
+        if side == "hi" and a.size >= n + 1:
+            return float(a[a.size - 1 - n:a.size - 1].sum())
+    scalar = float(getattr(grid, "dy", grid.dx)) if ax == "y" else float(grid.dx)
+    return n * scalar
+
+
+# ``compute_waveguide_s_matrix``'s own ``num_periods`` default, mirrored here
+# so ``preflight_sparameters(calculator="waveguide")`` audits the record a user
+# gets when they pass nothing. Pinned to the live signature by
+# tests/unit/preflight/test_waveguide_setup_audits.py.
+WAVEGUIDE_DEFAULT_NUM_PERIODS = 20.0
+
+
+def resolve_waveguide_port_freqs(sim, entry):
+    """The measured frequency grid of one waveguide port entry.
+
+    ONE definition, two users: ``compute_waveguide_s_matrix`` resolves the
+    band with it and so does ``preflight_sparameters(calculator="waveguide")``,
+    so the setup audits can never be reading a different band than the run.
+    """
+    if entry.freqs is not None:
+        return entry.freqs
+    return jnp.linspace(sim._freq_max / 10, sim._freq_max, entry.n_freqs)
+
+
 def _coord_in_absorber(
     coord: float, domain_extent: float, ct_lo: float, ct_hi: float,
 ) -> bool:
@@ -2638,9 +2685,19 @@ class _PreflightMixin:
         -------
         PreflightReport
             A ``list`` subclass of :class:`PreflightIssue` (back-compatible with
-            the historical ``list[str]``). Empty when the selected calculator is
-            valid for the registered port families.  Otherwise contains
-            actionable, coded issues.
+            the historical ``list[str]``). Carries no ERROR-severity issue when
+            the selected calculator is valid for the registered port families —
+            read ``report.ok`` / ``report.errors`` rather than emptiness.
+            ``calculator="waveguide"`` additionally runs the two setup audits
+            (:meth:`_validate_cfg_record_vs_far_boundary` and
+            :meth:`_validate_cfg_port_index_mirror_covariance`), which report
+            advisory and informational findings on a perfectly valid routing —
+            a healthy two-port guide always carries at least the known
+            E-plane-offset note. Those audits are evaluated at
+            ``compute_waveguide_s_matrix``'s own default ``num_periods``
+            (:data:`WAVEGUIDE_DEFAULT_NUM_PERIODS`); the record-length message
+            names the ``num_periods`` that clears the threshold, which does not
+            depend on the value it was evaluated at.
         """
 
         aliases = {
@@ -2707,6 +2764,33 @@ class _PreflightMixin:
                 code=getattr(exc, "code", f"sparam_routing_{key}"),
                 source="preflight_sparameters",
             ))
+
+        # Waveguide setup audits (post-v1.8 plan item 2, sections 2-1/2-4 of
+        # docs/design_notes/20260905_post_v18_plan_rasterization_preflight_cst.md).
+        # Only when the routing check above found nothing: with fewer than two
+        # waveguide ports there is no layout to audit. Emitted as warnings by
+        # the check sites (the repo idiom) and folded into the report here, so
+        # the coded fields survive into PreflightIssue.
+        if key == "waveguide" and not issues:
+            _wg_entries = list(self._waveguide_ports)
+            if _wg_entries:
+                import warnings as _wmod
+                with _wmod.catch_warnings(record=True) as _wg_caught:
+                    _wmod.simplefilter("always")
+                    self._preflight_waveguide_setup(
+                        _wmod,
+                        freqs=resolve_waveguide_port_freqs(self, _wg_entries[0]),
+                        num_periods=WAVEGUIDE_DEFAULT_NUM_PERIODS,
+                    )
+                for _rec in _wg_caught:
+                    _inst = _rec.message
+                    issues.append(PreflightIssue(
+                        str(_inst),
+                        severity=getattr(_inst, "severity", "warning"),
+                        code=getattr(_inst, "code", "uncoded"),
+                        loc=getattr(_inst, "loc", None),
+                        source=getattr(_inst, "source", None),
+                    ))
 
         if include_general:
             # strict=False here: collect the general findings, then aggregate
@@ -5991,6 +6075,366 @@ class _PreflightMixin:
                                 stacklevel=3,
                             )
                             break
+
+    # ------------------------------------------------------------------
+    # Waveguide S-parameter setup audits (post-v1.8 plan item 2).
+    # docs/design_notes/20260905_post_v18_plan_rasterization_preflight_cst.md
+    # sections 2-1 and 2-4. Both speak in INPUT units only — times, lengths,
+    # indices and the knob value that changes them — and neither predicts a
+    # result-side effect.
+    # ------------------------------------------------------------------
+
+    def _waveguide_setup_planes(self, freqs, num_periods, n_steps):
+        """``(grid, one cfg per waveguide port, n_steps, dt, freq_max)``.
+
+        Built with the RUNNER's own builders so the two audits below read the
+        runner's plane indices and the port's own discrete cutoff instead of
+        re-deriving either. Returns ``None`` when the setup cannot be laid out
+        eagerly (a traced mesh or timestep, no ports, a builder that raises) —
+        an audit is never allowed to break a run that would otherwise proceed.
+        """
+        entries = list(getattr(self, "_waveguide_ports", ()) or ())
+        if not entries:
+            return None
+        nonuniform = any(getattr(self, a, None) is not None
+                         for a in ("_dx_profile", "_dy_profile", "_dz_profile"))
+        if any(p is not None and is_tracer(p) for p in
+               (getattr(self, "_dx_profile", None),
+                getattr(self, "_dy_profile", None),
+                getattr(self, "_dz_profile", None))):
+            return None
+        grid = self._build_nonuniform_grid() if nonuniform else self._build_grid()
+        if is_tracer(grid.dt):
+            return None
+        dt = float(grid.dt)
+        freq_max = float(getattr(grid, "freq_max", None) or self._freq_max)
+        if n_steps is None:
+            if hasattr(grid, "num_timesteps"):
+                n_steps = int(grid.num_timesteps(num_periods))
+            else:
+                # NonUniformGrid carries no num_timesteps; this is Grid's own
+                # rule (period = 1/freq_max, ceil(num_periods*period/dt)).
+                n_steps = int(math.ceil(num_periods / freq_max / dt))
+        f = jnp.asarray(freqs)
+        if nonuniform:
+            from rfx.runners.nonuniform import _build_waveguide_port_config_nu
+            cfgs = [_build_waveguide_port_config_nu(self, e, grid, f, int(n_steps))
+                    for e in entries]
+        else:
+            cfgs = [self._build_waveguide_port_config(e, grid, f, int(n_steps))
+                    for e in entries]
+        # A multimode port arrives as a list of per-mode configs. The
+        # lowest-cutoff mode is the LEAST demanding one, the same deliberate
+        # lower-bound fence _warn_thin_absorber_vs_guide_wavelength states.
+        flat = [min(c, key=lambda m: float(m.f_cutoff)) if isinstance(c, list) else c
+                for c in cfgs]
+        return grid, flat, int(n_steps), dt, freq_max
+
+    def _validate_cfg_record_vs_far_boundary(
+        self,
+        _w,
+        *,
+        freqs,
+        num_periods: float = 20.0,
+        grid=None,
+        cfgs=None,
+        n_steps: int | None = None,
+        margin: float = 3.0,
+    ) -> None:
+        """Record length T against the far-boundary round trip tau_far, per port.
+
+        Mechanism (issue #894, and section 2-1 of
+        ``docs/design_notes/20260905_post_v18_plan_rasterization_preflight_cst.md``):
+        energy launched at a port reaches the outer wall of the far absorber pad
+        and comes back, and a rectangular full-record DFT that ends before that
+        arrival integrates a different waveform than one that contains it. The
+        quantity is a TIME, in input units: ``tau_far = 2 * far_path / v_g(f_min)``
+        with ``far_path`` measured from the port plane to the outer wall in the
+        port's launch direction (pad included), against ``T = n_steps * dt``.
+        Measured on the WR-90 battery, ``T/tau_far >= 3`` was needed at a/18,
+        5 at a/36 and 8 at a/72, so the threshold here is a floor, not a target.
+
+        Reports only what the setup declares and what the grid realizes; it
+        never predicts an effect on any |S| number.
+        """
+        built = None
+        if grid is None or cfgs is None:
+            built = self._waveguide_setup_planes(freqs, num_periods, n_steps)
+            if built is None:
+                return
+            grid, cfgs, n_steps, dt, freq_max = built
+        else:
+            if is_tracer(grid.dt):
+                return
+            dt = float(grid.dt)
+            freq_max = float(getattr(grid, "freq_max", None) or self._freq_max)
+            if n_steps is None:
+                n_steps = (int(grid.num_timesteps(num_periods))
+                           if hasattr(grid, "num_timesteps")
+                           else int(math.ceil(num_periods / freq_max / dt)))
+            cfgs = [min(c, key=lambda m: float(m.f_cutoff)) if isinstance(c, list) else c
+                    for c in cfgs]
+        f_arr = np.asarray(freqs, dtype=float).ravel()
+        if f_arr.size == 0:
+            return
+        f_min = float(f_arr.min())
+        T = float(n_steps) * dt
+        axis_map = {"x": 0, "y": 1, "z": 2}
+
+        skipped: list[str] = []
+        findings: list[tuple] = []
+        for i, cfg in enumerate(cfgs):
+            label = f"waveguide_port[{i}]"
+            axis = str(getattr(cfg, "normal_axis", "") or "")
+            direction = str(getattr(cfg, "direction", "") or "")
+            if axis not in axis_map or direction[:1] not in ("+", "-"):
+                skipped.append(f"{label} (direction={direction!r})")
+                continue
+            ax_i = axis_map[axis]
+            domain_ext = float(self._domain[ax_i])
+            x_p = float(cfg.source_x_m)
+            if direction.startswith("+"):
+                side, pad_m = "hi", _axis_pad_thickness_m(grid, ax_i, "hi")
+                far_path = (domain_ext - x_p) + pad_m
+            else:
+                side, pad_m = "lo", _axis_pad_thickness_m(grid, ax_i, "lo")
+                far_path = x_p + pad_m
+            f_c = float(cfg.f_cutoff)
+            findings.append((label, direction, axis, side, x_p, pad_m,
+                             far_path, f_c))
+
+        if not findings:
+            return
+        note = ""
+        if skipped:
+            note = (" Ports skipped because their launch direction could not "
+                    f"be read: {', '.join(skipped)}.")
+
+        for (label, direction, axis, side, x_p, pad_m, far_path, f_c) in findings:
+            geom = (
+                f"far_path = {far_path * 1e3:.4g} mm (port plane "
+                f"{x_p * 1e3:.4g} mm to the {axis}-{side} outer wall on a "
+                f"{float(self._domain[axis_map[axis]]) * 1e3:.4g} mm domain, "
+                f"absorber pad {pad_m * 1e3:.4g} mm included)"
+            )
+            if f_c > 0.0 and f_min <= f_c:
+                _w.warn(PreflightWarning(
+                    f"{label} ({direction}): the lowest measured frequency "
+                    f"f_min = {f_min / 1e9:.5g} GHz is at or below this port's "
+                    f"own discrete cutoff f_c = {f_c / 1e9:.5g} GHz, so the "
+                    f"group velocity and the far-boundary round trip tau_far "
+                    f"are undefined and NO T/tau_far ratio is reported for it. "
+                    f"{geom}; record T = {T * 1e9:.5g} ns "
+                    f"({n_steps} steps x dt = {dt * 1e12:.5g} ps). Raise the "
+                    f"measured band above the port's cutoff (or widen the "
+                    f"guide) before reading the record-length check."
+                    + note,
+                    code="record_far_boundary_band_below_cutoff",
+                    loc=label,
+                    source="_validate_cfg_record_vs_far_boundary",
+                ), stacklevel=3)
+                continue
+            v_g = C0 * math.sqrt(max(0.0, 1.0 - (f_c / f_min) ** 2)) if f_c > 0 else C0
+            if v_g <= 0.0 or far_path <= 0.0:
+                continue
+            tau_far = 2.0 * far_path / v_g
+            ratio = T / tau_far
+            if ratio >= margin:
+                continue
+            required = int(math.ceil(margin * tau_far * freq_max))
+            body = (
+                f"{label} ({direction}): T/tau_far = {ratio:.4g}. "
+                f"T = {T * 1e9:.5g} ns ({n_steps} steps x dt = "
+                f"{dt * 1e12:.5g} ps; num_periods = {float(num_periods):g} at "
+                f"freq_max = {freq_max / 1e9:.5g} GHz), "
+                f"tau_far = 2 x far_path / v_g = {tau_far * 1e9:.5g} ns. "
+                f"{geom}; v_g(f_min)/c = {v_g / C0:.5g} at "
+                f"f_min = {f_min / 1e9:.5g} GHz with the port's discrete "
+                f"cutoff f_c = {f_c / 1e9:.5g} GHz. "
+                f"num_periods >= {required} makes T/tau_far >= {margin:g}. "
+                f"Finer grids need more — measured 3, 5 and 8 at a/18, a/36 "
+                f"and a/72 on the WR-90 battery. A multimode port is audited "
+                f"on its lowest-cutoff mode, so this is a lower bound."
+                + note
+            )
+            if ratio < 1.0:
+                _w.warn(PreflightErrorWarning(
+                    "the record ends BEFORE the far-boundary round trip "
+                    "arrives — " + body,
+                    code="record_shorter_than_far_boundary_round_trip",
+                    loc=label,
+                    source="_validate_cfg_record_vs_far_boundary",
+                ), stacklevel=3)
+            else:
+                _w.warn(PreflightWarning(
+                    "the record is shorter than "
+                    f"{margin:g} x the far-boundary round trip — " + body,
+                    code="record_shorter_than_far_boundary_round_trip",
+                    loc=label,
+                    source="_validate_cfg_record_vs_far_boundary",
+                ), stacklevel=3)
+
+    def _validate_cfg_port_index_mirror_covariance(
+        self,
+        _w,
+        *,
+        freqs=None,
+        num_periods: float = 20.0,
+        grid=None,
+        cfgs=None,
+        n_steps: int | None = None,
+    ) -> None:
+        """Mirror covariance of every plane index an opposite-direction port pair uses.
+
+        Section 2-4 of
+        ``docs/design_notes/20260905_post_v18_plan_rasterization_preflight_cst.md``:
+        the static audit that found the shipped E-plane offset without running
+        FDTD. Two ports facing each other on one axis are mirror images when
+        each plane's two indices sum to the covariant value for that plane's
+        lattice — ``n_axis - 1`` on the primal (E-node) lattice and
+        ``n_axis - 2`` on the dual (H) lattice, since a dual node at
+        ``(j+0.5)*d`` mirrors to ``j' = n_axis - 2 - j``.
+
+        ``apply_waveguide_port_e`` puts the ``-`` port's E correction at
+        ``x_index + 1`` (``rfx/sources/waveguide_port.py``), a KNOWN shipped
+        constant, so the E-plane sum of a mirror-symmetric layout is
+        ``n_axis`` rather than ``n_axis - 1``. That is reported as information
+        with the offset divided out; anything left over after dividing it out
+        is the setup's own asymmetry and is reported as a warning.
+        """
+        built = None
+        if grid is None or cfgs is None:
+            if freqs is None:
+                entries = list(getattr(self, "_waveguide_ports", ()) or ())
+                if not entries or entries[0].freqs is None:
+                    return
+                freqs = entries[0].freqs
+            built = self._waveguide_setup_planes(freqs, num_periods, n_steps)
+            if built is None:
+                return
+            grid, cfgs = built[0], built[1]
+        else:
+            cfgs = [c[0] if isinstance(c, list) else c for c in cfgs]
+
+        axis_map = {"x": 0, "y": 1, "z": 2}
+        entries = list(getattr(self, "_waveguide_ports", ()) or ())
+        by_axis: dict[str, list[int]] = {}
+        for i, cfg in enumerate(cfgs):
+            axis = str(getattr(cfg, "normal_axis", "") or "")
+            direction = str(getattr(cfg, "direction", "") or "")
+            if axis not in axis_map or direction[:1] not in ("+", "-"):
+                continue
+            by_axis.setdefault(axis, []).append(i)
+
+        for axis, idxs in by_axis.items():
+            plus = [i for i in idxs if str(cfgs[i].direction).startswith("+")]
+            minus = [i for i in idxs if str(cfgs[i].direction).startswith("-")]
+            if not plus or not minus:
+                continue
+            ax_i = axis_map[axis]
+            n_axis = int(grid.shape[ax_i])
+            primal_target = n_axis - 1
+            dual_target = n_axis - 2
+            for ip in plus:
+                for im in minus:
+                    cp, cm = cfgs[ip], cfgs[im]
+                    # The runner's OWN plane arithmetic, restated nowhere else:
+                    # apply_waveguide_port_e / apply_waveguide_port_h choose the
+                    # source planes by direction, and _build_waveguide_port_config
+                    # stores ref_x / probe_x already signed by direction.
+                    planes = [
+                        ("source E plane", "primal", primal_target,
+                         int(cp.x_index), int(cm.x_index) + 1, 1),
+                        ("source H plane", "dual", dual_target,
+                         int(cp.x_index) - 1, int(cm.x_index), 0),
+                        ("reference probe plane", "primal", primal_target,
+                         int(cp.ref_x), int(cm.ref_x), 0),
+                        ("measurement probe plane", "primal", primal_target,
+                         int(cp.probe_x), int(cm.probe_x), 0),
+                    ]
+                    loc = f"waveguide_port[{ip}]/waveguide_port[{im}] on {axis}"
+                    for (name, lattice, target, i_plus, i_minus, shipped) in planes:
+                        total = i_plus + i_minus
+                        if total - shipped == target:
+                            if shipped:
+                                _w.warn(PreflightWarning(
+                                    f"waveguide port index mirror audit, {name} "
+                                    f"({axis}-axis): i(+) = {i_plus}, "
+                                    f"i(-) = {i_minus}, sum = {total} on "
+                                    f"n_axis = {n_axis}; the covariant sum for a "
+                                    f"{lattice} plane is {target}. The "
+                                    f"+{shipped} difference is the KNOWN shipped "
+                                    f"offset — apply_waveguide_port_e places the "
+                                    f"'-' port's E correction at x_index + 1 — "
+                                    f"not an asymmetry in this setup. Reported "
+                                    f"as information.",
+                                    code="port_index_mirror_known_e_plane_offset",
+                                    severity="info",
+                                    loc=loc,
+                                    source="_validate_cfg_port_index_mirror_covariance",
+                                ), stacklevel=3)
+                            continue
+                        _w.warn(PreflightWarning(
+                            f"waveguide port index mirror audit, {name} "
+                            f"({axis}-axis): i(+) = {i_plus}, i(-) = {i_minus}, "
+                            f"sum = {total}, but the covariant sum is "
+                            f"{target + shipped} on n_axis = {n_axis} "
+                            f"({lattice} lattice"
+                            + (f", including the known +{shipped} shipped "
+                               f"E-plane offset" if shipped else "")
+                            + "). The two ports are not mirror images on "
+                            "this plane; check x_position, ref_offset / "
+                            "probe_offset and reference_plane.",
+                            code="port_index_mirror_asymmetry",
+                            loc=loc,
+                            source="_validate_cfg_port_index_mirror_covariance",
+                        ), stacklevel=3)
+                    # The reference plane is post-processing (a phase shift),
+                    # not a grid index, so it is audited in metres: the two
+                    # effective planes of a mirror-symmetric pair sum to the
+                    # domain extent.
+                    if ip < len(entries) and im < len(entries):
+                        ep, em = entries[ip], entries[im]
+                        rp = float(ep.reference_plane if ep.reference_plane
+                                   is not None else ep.x_position)
+                        rm = float(em.reference_plane if em.reference_plane
+                                   is not None else em.x_position)
+                        domain_ext = float(self._domain[ax_i])
+                        tol = 0.5 * float(getattr(grid, "dx", 0.0) or 0.0)
+                        if abs((rp + rm) - domain_ext) > tol:
+                            _w.warn(PreflightWarning(
+                                f"waveguide port index mirror audit, reference "
+                                f"plane ({axis}-axis, metres): "
+                                f"{rp * 1e3:.5g} mm + {rm * 1e3:.5g} mm = "
+                                f"{(rp + rm) * 1e3:.5g} mm, but a mirror-"
+                                f"symmetric pair sums to the domain extent "
+                                f"{domain_ext * 1e3:.5g} mm (tolerance "
+                                f"{tol * 1e3:.3g} mm). Check reference_plane / "
+                                f"x_position.",
+                                code="port_index_mirror_asymmetry",
+                                loc=loc,
+                                source="_validate_cfg_port_index_mirror_covariance",
+                            ), stacklevel=3)
+
+    def _preflight_waveguide_setup(
+        self, _w, *, freqs, num_periods: float = 20.0, grid=None, cfgs=None,
+        n_steps: int | None = None,
+    ) -> None:
+        """The single hook both waveguide S-parameter entry points call.
+
+        ``preflight_sparameters(calculator="waveguide")`` calls it with no
+        grid/cfgs (it builds them); ``compute_waveguide_s_matrix`` calls it on
+        each of its two lanes with that lane's already-built grid and configs,
+        so neither lane pays for a second mode solve.
+        """
+        self._validate_cfg_record_vs_far_boundary(
+            _w, freqs=freqs, num_periods=num_periods, grid=grid, cfgs=cfgs,
+            n_steps=n_steps,
+        )
+        self._validate_cfg_port_index_mirror_covariance(
+            _w, freqs=freqs, num_periods=num_periods, grid=grid, cfgs=cfgs,
+            n_steps=n_steps,
+        )
 
     def _msl_assemble_once(self):
         """Grid + materials + per-axis cell sizes on the grid the RUN uses,
