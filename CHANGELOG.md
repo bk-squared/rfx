@@ -29,7 +29,7 @@ The lumped-port lane is NOT corrected: its E sample is not established to be at
 `n+1`, so the dt/2 offset is not derivable there, and deciding it needs a lumped
 known-load run of its own. Recorded crossval outputs for wire-port scripts
 (cv05, cv06b, cv15) were produced before this correction and are stale by the
-magnitude above; they are regenerated under a follow-up issue. No committed gate
+magnitude above; they are regenerated under a follow-up issue (#912). No committed gate
 asserts on those recorded values. PR #897.
 
 ### Changed — MSL preflight advisories no longer quote a pinned realized-board bound
