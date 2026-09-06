@@ -1,0 +1,194 @@
+{
+ "schema": "rfx.crossval_envelope/v1",
+ "producer": "04_multilayer_fresnel",
+ "producer_script": "validation/crossval/04_multilayer_fresnel.py",
+ "calibration_revision": "r1",
+ "latest_revision": "r1",
+ "adopted_by": [
+  "22_dispersive_slab_fresnel",
+  "23_lossy_slab_fresnel"
+ ],
+ "adopted_in": "docs/design_notes/20260902_cv22_dispersive_slab_predeclaration.md",
+ "what_this_is": "The cv04 measurement envelope the slab-family consumers derive their windows from. EVIDENCE, not a gate: the gate is round-up(value * multiplier) at the consumer's quantum (tests/_gate_policy.py), computed from these values and written down nowhere else. Revisions are append-only; a consumer moves only when its own adoption record is edited and reviewed.",
+ "revisions": {
+  "r1": {
+   "status": "active",
+   "bootstrap": true,
+   "witness_status": "carried-unwitnessed",
+   "witness_note": "No rig-variation sibling exists for these values: the run-length and mesh 2x checks that methodology section 3.2 requires of a user-visible number were NOT run as sibling artifacts on this rung. The source comment records that widening to nx=1500 / 1940 steps collapses the per-bin closure to 0.0002, and the case's own claim_scope records that more than half of mean_dT is record truncation at this rung -- both are prose, neither is a committed sibling artifact. These values are CARRIED, not witnessed.",
+   "values": {
+    "mean_dR": 0.0066,
+    "mean_dT": 0.011,
+    "mean_closure": 0.0091,
+    "per_bin_max_RT_closure": 0.0487
+   },
+   "value_provenance": {
+    "mean_dR": {
+     "previous_home": "tests/fixtures/golden_workflows/multilayer_fresnel.json::expected_metrics[0].observed_baseline",
+     "previous_home_key": "expected_metrics[id=mean_reflectance_error].observed_baseline",
+     "also_committed_in": "docs/public/gallery/assets/multilayer_fresnel/manifest.json::validation.metric_value (prose: mean|R_rfx-R_an|=0.0066)"
+    },
+    "mean_dT": {
+     "previous_home": "tests/fixtures/golden_workflows/multilayer_fresnel.json::expected_metrics[1].observed_baseline",
+     "previous_home_key": "expected_metrics[id=mean_transmittance_error].observed_baseline",
+     "also_committed_in": "docs/public/gallery/assets/multilayer_fresnel/manifest.json::validation.metric_value (prose: mean|T_rfx-T_an|=0.0110)"
+    },
+    "mean_closure": {
+     "previous_home": "tests/fixtures/golden_workflows/multilayer_fresnel.json::expected_metrics[2].observed_baseline",
+     "previous_home_key": "expected_metrics[id=mean_energy_closure_error].observed_baseline",
+     "also_committed_in": "docs/public/gallery/assets/multilayer_fresnel/manifest.json::validation.metric_value (prose: R+T dev=0.0091)"
+    },
+    "per_bin_max_RT_closure": {
+     "previous_home": "validation/crossval/04_multilayer_fresnel.py (source comment; no artifact carried it)",
+     "previous_home_quote": "max|R+T-1| = 0.0487, worst bin at the 11.87 GHz mask edge",
+     "also_committed_in": null
+    }
+   },
+   "measurement_identity": {
+    "observables": {
+     "mean_dR": "arithmetic mean over the masked bins of |R_rfx(f) - R_tmm(f)|",
+     "mean_dT": "arithmetic mean over the masked bins of |T_rfx(f) - T_tmm(f)|",
+     "mean_closure": "arithmetic mean over the masked bins of |R_rfx(f) + T_rfx(f) - 1|",
+     "per_bin_max_RT_closure": "max over the masked bins of |R_rfx(f) + T_rfx(f) - 1|"
+    },
+    "units": "absolute power ratio (R, T and their sum are dimensionless powers); every value is an absolute, not relative, difference",
+    "normalization": "R = |FFT(E_total - E_inc, refl probe)|^2 / |FFT(E_inc, refl probe)|^2 and T = |FFT(E_total, trans probe)|^2 / |FFT(E_inc, trans probe)|^2, each bin normalized by the SAME run's 1-D auxiliary incident field at the same x (TFSF two-grid), so no separate reference run enters.",
+    "frequency_mask": "3 GHz < f < 15 GHz AND incident |FFT| > 0.02 of its own peak, on the rFFT grid of the 719-step record zero-padded by nfft_oversample = 8. The mask is the evaluated band; the consumers' 4-10 GHz gated band is a SUBSET declared by the consumers, not by this artifact.",
+    "reference": "exact normal-incidence transfer-matrix (Fresnel) R, T of the same slab; no external solver enters these four values",
+    "extraction_convention": "single-run TFSF, scattered field at the reflection probe by subtracting the 1-D incident, total field at the transmission probe; power ratios, magnitudes only (no phase); float32 fields (jax_x64 false).",
+    "raw_data_identity": {
+     "artifacts": [],
+     "note": "The C4 rung's per-bin R(f)/T(f) arrays are NOT committed anywhere in this repository: cv04 writes plots and a fringe-gate/lattice-witness record, not its own R/T arrays. These four scalars are therefore the narrowest committed form of this measurement, which is exactly why they were being copied into consumer modules and UI fixtures. Recording that gap here is part of the evidence."
+    },
+    "processing_revision": "cv04 as committed at the C4 rung: mean gates and the per-bin closure ceiling of issue #341; the fringe gate (#812) and the lattice witness (2026-09-03) were added later and do not change these four values"
+   },
+   "lattice_identification": {
+    "claim": "the adopted mean_dR is dominated by this slab's Yee-lattice second-order term, not by solver error (cv04 claim_scope, 2026-09-03 lattice-witness standard); mean_dT at this rung is dominated by RECORD TRUNCATION and the identification does NOT cover it",
+    "rfx_vs_lattice_mean_dR_gated": {
+     "value": 0.0016818844941439814,
+     "source": "validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_dR_lattice_gated",
+     "means": "|R_rfx - R_lattice| in the gated mean at THIS rung; the adopted envelope 0.0066 is |R_rfx - R_transfer_matrix|"
+    },
+    "rfx_vs_lattice_mean_dT_gated": {
+     "value": 0.006251101710953211,
+     "source": "validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.mean_dT_lattice_gated",
+     "means": "the same for T; 0.0063 of the 0.011 T envelope is this rung's record truncation, which is why W_MEAN_T is not a discretisation number"
+    },
+    "witness_gated_here": {
+     "value": false,
+     "source": "validation/crossval/_04_fresnel_results/lattice_witness.json::gated_here",
+     "means": "false: at this rung the derived W_witness exceeds cv04's own band-mean window, so the lattice witness is REPORTED, not gated"
+    },
+    "settled_sibling_rung": {
+     "value": 2.9573408548679272e-05,
+     "source": "validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand0p1.mean_dR_lattice_gated",
+     "window": {
+      "value": 0.0012799824834729728,
+      "source": "validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand0p1.mean_W_witness_R_gated"
+     },
+     "means": "the same rig SETTLED (1067 steps, cv23's lossy arm): |rfx - lattice| is 43x inside its own witness window, which is the shape cv04's rung would take if it settled"
+    },
+    "lattice_component_fraction_of_mean_dR": null,
+    "settling_residual_gated": null,
+    "nulls": "The '~100 % lattice fraction' and the 5.3e-06 gated settling residual quoted in the issue #928 discussion are NOT in any tracked artifact under those definitions: _23_lossy_results/lattice_witness.json has no sigma_zero rung (its rungs are the three lossy arms and their dx ladders), and cv04's own lattice witness stores per-bin arrays plus the gated means above, no fraction and no settling residual. They are written null rather than typed in from the discussion. Producing them is a measurement change (a settled cv04 rung), i.e. revision r2 in its own PR."
+   },
+   "run_provenance": {
+    "run_id": "369367246779",
+    "rung": "C4",
+    "producer_run_author": "vessl:369367246779",
+    "measured_on": "the committed cv04 configuration (nx_interior 600, 719 steps)",
+    "code_sha": null,
+    "gallery_snapshot_git_sha": "1eb551bc4971cf6e0e17f080319560149d6d42e7",
+    "backend": "gpu",
+    "jax_x64": false
+   },
+   "rig": {
+    "cons_max_limit": 0.06,
+    "d_slab_m": 0.01,
+    "dt_s": null,
+    "dx_m": 0.001,
+    "eps_slab": 4.0,
+    "grid_freq_max_hz": 20000000000.0,
+    "grid_mode": "2d_tmz",
+    "mask_amp_frac": 0.02,
+    "mask_f_hi_hz": 15000000000.0,
+    "mask_f_lo_hz": 3000000000.0,
+    "n_cpml": 20,
+    "n_steps": 719,
+    "nfft_oversample": 8,
+    "nx_interior_cells": 600,
+    "probe_offset_cells": 30,
+    "record_length_law": "cv04 CPML round-trip rule: v_cells = c0*dt/dx; n_steps = min(int(2*dist_to_cpml_hi/v_cells*0.95), int(2*dist_to_cpml_lo/v_cells*0.95), 8000), the probes 30 cells either side of the slab. NOT the ring-down (-40 dB) law cv22/cv23 derive for their own records.",
+    "tail_limit": 0.1,
+    "tail_purity_limit": 0.001,
+    "tail_window_steps": 50,
+    "tfsf_amplitude": 1.0,
+    "tfsf_bandwidth": 0.5,
+    "tfsf_direction": "+x",
+    "tfsf_f0_hz": 10000000000.0,
+    "tfsf_margin_cells": 5,
+    "tfsf_polarization": "ez"
+   },
+   "rig_provenance": {
+    "cons_max_limit": "cv04-source",
+    "d_slab_m": "gallery-manifest",
+    "dt_s": null,
+    "dx_m": "gallery-manifest",
+    "eps_slab": "gallery-manifest",
+    "grid_freq_max_hz": "cv04-source",
+    "grid_mode": "gallery-manifest",
+    "mask_amp_frac": "cv04-source",
+    "mask_f_hi_hz": "cv04-source",
+    "mask_f_lo_hz": "cv04-source",
+    "n_cpml": "gallery-manifest",
+    "n_steps": "gallery-manifest",
+    "nfft_oversample": "cv04-source",
+    "nx_interior_cells": "gallery-manifest",
+    "probe_offset_cells": "cv04-source",
+    "record_length_law": "cv04-source",
+    "tail_limit": "cv04-source",
+    "tail_purity_limit": "cv04-source",
+    "tail_window_steps": "cv04-source",
+    "tfsf_amplitude": "cv04-source",
+    "tfsf_bandwidth": "cv04-source",
+    "tfsf_direction": "cv04-source",
+    "tfsf_f0_hz": "cv04-source",
+    "tfsf_margin_cells": "cv04-source",
+    "tfsf_polarization": "cv04-source"
+   },
+   "rig_hash": "sha256:70d7289402c7e3cb20d4f3ec166f99c115e1375bed0b245fea1eb7ecb3e5fc60",
+   "adopted_by": [
+    {
+     "case": "22_dispersive_slab_fresnel",
+     "consumer": "validation/crossval/comparators/cv22_dispersive_gates.py",
+     "declaration": "CV04_ADOPTION",
+     "derives": {
+      "W_BIN": "per_bin_max_RT_closure",
+      "W_MEAN_R": "mean_dR",
+      "W_MEAN_T": "mean_dT"
+     },
+     "adopted_in": "docs/design_notes/20260902_cv22_dispersive_slab_predeclaration.md"
+    },
+    {
+     "case": "23_lossy_slab_fresnel",
+     "consumer": "validation/crossval/comparators/cv23_lossy_gates.py",
+     "declaration": "CV04_ADOPTION",
+     "derives": {
+      "W_BIN_A_TIGHT": "per_bin_max_RT_closure",
+      "W_MEAN_A_TIGHT": "mean_closure",
+      "W_BIN/W_MEAN_R/W_MEAN_T": "re-exported from cv22's derivation, same revision"
+     },
+     "adopted_in": "docs/design_notes/20260902_cv23_lossy_slab_predeclaration.md"
+    }
+   ],
+   "revision_hash": "sha256:8dff276ca1c8bce921ba89332aeba42c9d4b6c3b1d589a7e419e63958b14cc2f"
+  }
+ },
+ "notes": [
+  "dt_s is null: no committed artifact records this run's timestep. It follows from the recorded grid, so a reader can recompute it; writing a number here that no committed file holds would be a reconstruction, not evidence.",
+  "code_sha is null: the C4 rung's job id is recorded in the cv04 source comment and in the cv22 pre-declaration, but no committed file carries the commit it was built from. gallery_snapshot_git_sha belongs to a DIFFERENT run (the 1.6.5 gallery precompute) that reports the same three band-mean values; it is a second home for the values, not this run's commit.",
+  "rig_provenance says, per key, whether the value is attested by a committed run snapshot (gallery-manifest) or only declared by the committed producer script (cv04-source). Nothing here is read from today's library defaults.",
+  "The rig is the PRODUCER's. cv22 and cv23 run their own record-length recipe on the same grid and TFSF; that is a consumer property and is not described here.",
+  "Adopting different evidence -- for example cv04 re-run with the corrected injection plane, where the per-bin closure is reported as 0.0043 -- is a NEW revision plus an edit to each consumer's adoption record, in a PR that says so. It is never a consequence of re-running the producer."
+ ]
+}

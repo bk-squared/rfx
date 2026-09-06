@@ -29,6 +29,7 @@ for _p in (_HERE, _REPO_ROOT):
 
 import cv22_dispersive_gates as G  # noqa: E402
 import dispersive_eps as de  # noqa: E402
+import slab_family  # noqa: E402
 from tests._gate_policy import gate_from_envelope  # noqa: E402
 
 MODEL = "conductive"
@@ -91,10 +92,25 @@ W_MEAN_R = G.W_MEAN_R              # 0.010
 W_MEAN_T = G.W_MEAN_T              # 0.017
 W_BIN_A = 2.0 * G.W_BIN            # 0.148   |dA| <= |dR| + |dT|
 W_MEAN_A = G.W_MEAN_R + G.W_MEAN_T  # 0.027
-# tests/fixtures/golden_workflows/multilayer_fresnel.json::expected_metrics[id=mean_energy_closure_error].observed_baseline
-CV04_MEAN_CLOSURE = 0.0091
-W_BIN_A_TIGHT = gate_from_envelope(G.CV04_ENVELOPE["per_bin_max_RT_closure"], quantum=1000)   # 0.074
-W_MEAN_A_TIGHT = gate_from_envelope(CV04_MEAN_CLOSURE, quantum=1000)                         # 0.014
+# This case adopts the SAME cv04 revision cv22 does, and says so in its own
+# declaration rather than inheriting the adoption silently (#928). The closure
+# value used to be copied here out of the UI fixture; it now comes from the
+# producer's artifact, and this record pins which revision of it.
+CV04_ADOPTION = {
+    "envelope": slab_family.CV04_ENVELOPE_REL,
+    "adopted_revision": "r1",
+    "revision_sha256": "sha256:8dff276ca1c8bce921ba89332aeba42c9d4b6c3b1d589a7e419e63958b14cc2f",
+    "rig_hash": "sha256:70d7289402c7e3cb20d4f3ec166f99c115e1375bed0b245fea1eb7ecb3e5fc60",
+    "gate_policy": {"multiplier": 1.5, "quantum": 1000},
+    "adopted_in": "docs/design_notes/20260902_cv23_lossy_slab_predeclaration.md",
+    "adopted_by_reviewer": "cv23 pre-declaration review, 2026-09-02",
+}
+CV04_ADOPTED = slab_family.load_adopted_envelope(CV04_ADOPTION)
+_QUANTUM = CV04_ADOPTION["gate_policy"]["quantum"]
+CV04_MEAN_CLOSURE = CV04_ADOPTED["values"]["mean_closure"]
+W_BIN_A_TIGHT = gate_from_envelope(
+    CV04_ADOPTED["values"]["per_bin_max_RT_closure"], quantum=_QUANTUM)   # 0.074
+W_MEAN_A_TIGHT = gate_from_envelope(CV04_MEAN_CLOSURE, quantum=_QUANTUM)  # 0.014
 
 # ---------------------------------------------------------------------------
 # Falsifiers (note section 6)

@@ -24,7 +24,9 @@
       "comparison": "lt",
       "limit": 0.05,
       "unit": "absolute-power",
-      "observed_baseline": 0.0066
+      "observed_baseline": 0.0066,
+      "observed_baseline_source": "validation/crossval/_04_fresnel_results/envelope.json::revisions.r1.values.mean_dR",
+      "observed_baseline_source_revision": "r1"
     },
     {
       "id": "mean_transmittance_error",
@@ -33,7 +35,9 @@
       "comparison": "lt",
       "limit": 0.05,
       "unit": "absolute-power",
-      "observed_baseline": 0.011
+      "observed_baseline": 0.011,
+      "observed_baseline_source": "validation/crossval/_04_fresnel_results/envelope.json::revisions.r1.values.mean_dT",
+      "observed_baseline_source_revision": "r1"
     },
     {
       "id": "mean_energy_closure_error",
@@ -42,7 +46,9 @@
       "comparison": "lt",
       "limit": 0.05,
       "unit": "absolute-power",
-      "observed_baseline": 0.0091
+      "observed_baseline": 0.0091,
+      "observed_baseline_source": "validation/crossval/_04_fresnel_results/envelope.json::revisions.r1.values.mean_closure",
+      "observed_baseline_source_revision": "r1"
     }
   ],
   "ui_journey": [

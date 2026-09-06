@@ -29,16 +29,17 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from tests._gate_policy import gate_from_envelope
+from tests._gate_policy import ENVELOPE_GATE_MULTIPLIER
 
 _REPO = Path(__file__).resolve().parents[2]
 _RESULTS = _REPO / "validation/crossval/_23_lossy_results"
-_GOLDEN_CV04 = _REPO / "tests/fixtures/golden_workflows/multilayer_fresnel.json"
+_ENVELOPE = _REPO / "validation/crossval/_04_fresnel_results/envelope.json"
 
 
 def _load(name: str, rel: str):
@@ -81,18 +82,48 @@ def _rfx_bins():
 # 1. Artifact-free witnesses
 # ---------------------------------------------------------------------------
 
-def test_windows_are_cv22s_plus_the_triangle_sums_for_absorption():
-    golden = json.loads(_GOLDEN_CV04.read_text())
-    baseline = {m["id"]: m["observed_baseline"] for m in golden["expected_metrics"]}
-    assert L.W_BIN == G.W_BIN == 0.074 and L.W_MEAN_R == G.W_MEAN_R == 0.010 and L.W_MEAN_T == G.W_MEAN_T == 0.017
+def _round_up(value: float, multiplier: float, quantum: float) -> float:
+    """The envelope->gate arithmetic, written out again rather than imported:
+    ``gate_from_envelope`` is one side of the comparison, so it cannot be both."""
+    return math.ceil(value * multiplier * quantum) / quantum
+
+
+def test_windows_are_rederived_from_the_producer_artifact_outside_the_consumer():
+    """cv23's windows, re-derived from cv04's own artifact.
+
+    The closure envelope used to be copied into this module from the STUDIO UI
+    fixture and pinned equal to it here (#928). Both ends are gone: the module
+    reads the producer's `_04_fresnel_results/envelope.json` through its own
+    adoption record, and this test re-derives from that artifact with the
+    arithmetic written out locally.
+    """
+    doc = json.loads(_ENVELOPE.read_text())
+    adoption = L.CV04_ADOPTION
+    rev = doc["revisions"][adoption["adopted_revision"]]
+    assert rev["status"] == "active"
+    assert ENVELOPE_GATE_MULTIPLIER == adoption["gate_policy"]["multiplier"], (
+        "the shared multiplier moved since cv23 adopted its envelope")
+    mult, quantum = adoption["gate_policy"]["multiplier"], adoption["gate_policy"]["quantum"]
+    values = rev["values"]
+
+    # cv22's three, re-exported here: same revision, same derivation.
+    assert L.W_BIN == G.W_BIN == _round_up(values["per_bin_max_RT_closure"], mult, quantum)
+    assert L.W_MEAN_R == G.W_MEAN_R == _round_up(values["mean_dR"], mult, quantum)
+    assert L.W_MEAN_T == G.W_MEAN_T == _round_up(values["mean_dT"], mult, quantum)
+    assert L.CV04_ADOPTION["adopted_revision"] == G.CV04_ADOPTION["adopted_revision"]
+    assert L.CV04_ADOPTION["revision_sha256"] == G.CV04_ADOPTION["revision_sha256"]
+    # the declared A windows: triangle sums of the above, not new evidence
     assert L.W_BIN_A == 2 * G.W_BIN == pytest.approx(0.148)
     assert L.W_MEAN_A == G.W_MEAN_R + G.W_MEAN_T == pytest.approx(0.027)
-    # the tighter A window is DERIVABLE from cv04's closure (reported, not gated)
-    assert L.CV04_MEAN_CLOSURE == baseline["mean_energy_closure_error"] == 0.0091
-    assert L.W_BIN_A_TIGHT == gate_from_envelope(0.0487, quantum=1000) == 0.074
-    assert L.W_MEAN_A_TIGHT == gate_from_envelope(0.0091, quantum=1000) == 0.014
+    # the tighter A windows: derived from the SAME artifact's closure values
+    assert L.CV04_MEAN_CLOSURE == values["mean_closure"]
+    assert L.W_BIN_A_TIGHT == _round_up(values["per_bin_max_RT_closure"], mult, quantum)
+    assert L.W_MEAN_A_TIGHT == _round_up(values["mean_closure"], mult, quantum)
     assert L.W_BIN_A_TIGHT < L.W_BIN_A and L.W_MEAN_A_TIGHT < L.W_MEAN_A
     assert L.MEEP_PRIMARY_RESOLUTION == 40 and L.MEEP_EPS_AVERAGING is False
+    print(f"cv23 calibration: adopted {L.CV04_ADOPTED['revision']} "
+          f"(latest {L.CV04_ADOPTED['latest_revision']}, newer available: "
+          f"{L.CV04_ADOPTED['newer_revisions'] or 'none'})")
 
 
 @pytest.mark.parametrize("arm", L.ARM_ORDER)

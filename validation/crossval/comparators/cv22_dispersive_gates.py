@@ -26,6 +26,7 @@ for _p in (_HERE, _REPO_ROOT):
         sys.path.insert(0, _p)
 
 import dispersive_eps as de  # noqa: E402
+import slab_family  # noqa: E402
 from tests._gate_policy import gate_from_envelope  # noqa: E402
 
 TWO_PI = 2.0 * math.pi
@@ -112,19 +113,37 @@ ARMS = {
 ARM_ORDER = ("debye", "lorentz", "drude")
 
 # ---------------------------------------------------------------------------
-# Committed cv04 envelope on this rig (§4) and the derived rig windows
+# The cv04 envelope this case ADOPTED (§4), and the windows derived from it
+#
+# The values are NOT written here. They live in the producer's own artifact,
+# `validation/crossval/_04_fresnel_results/envelope.json`, which is where cv04
+# records what it measured; before #928 they were copied into this module from
+# a UI fixture and a source comment, so a consumer-named module was the home of
+# a producer's evidence.
+#
+# This declaration is the CALIBRATION: which revision of that evidence this
+# case adopted, that revision's hash, the realized rig's hash, and the gate
+# policy in force when it was adopted. Appending a new revision to the
+# producer's artifact does not move these windows -- only editing this record
+# does, and that edit is reviewed under the repo's no-silent-gate-loosening
+# rule. The windows below are the EXPECTATION, derived from the two and stated
+# nowhere else.
 # ---------------------------------------------------------------------------
-CV04_ENVELOPE = {
-    # tests/fixtures/golden_workflows/multilayer_fresnel.json::expected_metrics[..].observed_baseline
-    "mean_dR": 0.0066,
-    "mean_dT": 0.011,
-    # validation/crossval/04_multilayer_fresnel.py:309 (code comment, rung C4,
-    # job 369367246779) -- the only committed per-bin number on this rig.
-    "per_bin_max_RT_closure": 0.0487,
+CV04_ADOPTION = {
+    "envelope": slab_family.CV04_ENVELOPE_REL,
+    "adopted_revision": "r1",
+    "revision_sha256": "sha256:8dff276ca1c8bce921ba89332aeba42c9d4b6c3b1d589a7e419e63958b14cc2f",
+    "rig_hash": "sha256:70d7289402c7e3cb20d4f3ec166f99c115e1375bed0b245fea1eb7ecb3e5fc60",
+    "gate_policy": {"multiplier": 1.5, "quantum": 1000},
+    "adopted_in": "docs/design_notes/20260902_cv22_dispersive_slab_predeclaration.md",
+    "adopted_by_reviewer": "cv22 pre-declaration review, 2026-09-02",
 }
-W_BIN = gate_from_envelope(CV04_ENVELOPE["per_bin_max_RT_closure"], quantum=1000)   # 0.074
-W_MEAN_R = gate_from_envelope(CV04_ENVELOPE["mean_dR"], quantum=1000)               # 0.010
-W_MEAN_T = gate_from_envelope(CV04_ENVELOPE["mean_dT"], quantum=1000)               # 0.017
+CV04_ADOPTED = slab_family.load_adopted_envelope(CV04_ADOPTION)
+CV04_ENVELOPE = CV04_ADOPTED["values"]
+_QUANTUM = CV04_ADOPTION["gate_policy"]["quantum"]
+W_BIN = gate_from_envelope(CV04_ENVELOPE["per_bin_max_RT_closure"], quantum=_QUANTUM)   # 0.074
+W_MEAN_R = gate_from_envelope(CV04_ENVELOPE["mean_dR"], quantum=_QUANTUM)               # 0.010
+W_MEAN_T = gate_from_envelope(CV04_ENVELOPE["mean_dT"], quantum=_QUANTUM)               # 0.017
 
 # ---------------------------------------------------------------------------
 # Falsifiers (§6)
