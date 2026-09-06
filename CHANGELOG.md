@@ -6,6 +6,32 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Changed — wire-port current DFT carries the Yee half-step phase correction
+
+The H-derived port current DFT on the wire-port lane is advanced by
+`exp(+j*omega*dt/2)` (`rfx.core.dft_utils.half_step_current_phase`), so the
+current and voltage samples share one time reference: the Yee update leaves E
+at `n+1` while H — and with it the Ampere-loop current — sits at `n+1/2`. This
+is the same factor the reference-plane path already applied
+(`rfx/probes/refplane.py`), now on the wire-port accumulators
+(`rfx/probes/probes.py`, `rfx/simulation.py`, `rfx/nonuniform.py`).
+
+What a user sees: wire-port S-parameters rotate in phase by `omega*dt/2` per
+bin. Because a one-port `S11 = (V - Z0*I) / (V + Z0*I)` mixes the two channels,
+the rotation moves magnitude too — up to about 0.002-0.005 absolute near a
+match, which is invisible off resonance but a few percent relative on a deep
+dip's depth. The two-port thru's passivity singular value moves 1.003227 ->
+0.998896, so the test's passivity bound is now the physical 1.0 instead of a
+loosened 1.01. `|S21|` max is unchanged at 0.9954, as a pure phase rotation
+should leave it.
+
+The lumped-port lane is NOT corrected: its E sample is not established to be at
+`n+1`, so the dt/2 offset is not derivable there, and deciding it needs a lumped
+known-load run of its own. Recorded crossval outputs for wire-port scripts
+(cv05, cv06b, cv15) were produced before this correction and are stale by the
+magnitude above; they are regenerated under a follow-up issue. No committed gate
+asserts on those recorded values. PR #897.
+
 ### Changed — MSL preflight advisories no longer quote a pinned realized-board bound
 
 The MSL preflight messages (`rfx/api/_preflight.py`, checks 2/2b) quoted a

@@ -1618,7 +1618,8 @@ def make_core_step(ctx: _StepContext):
                     st, (mi, mj, mk), wp_meta.component, dx, periodic)
                 # Yee half-step: I is H-derived (H^{n+1/2}) while V/V_port are
                 # E-derived (E^{n+1}); advance the current sample by dt/2 so
-                # both DFT channels share a reference time (dft_utils). The
+                # both DFT channels share a reference time
+                # (`dft_utils.half_step_current_phase`). The
                 # E-derived channels keep the uncorrected `phase`.
                 i_phase = phase * _half_i_phase(
                     wp_meta.freqs.astype(jnp.float64), dt).astype(jnp.complex64)

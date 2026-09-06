@@ -1526,7 +1526,8 @@ def _build_nu_scan(
                 phase = jnp.exp(-1j * 2.0 * jnp.pi * sp_freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
                 # Yee half-step: I is H-derived (H^{n+1/2}) while V/V_port are
                 # E-derived (E^{n+1}); advance the current sample by dt/2 so
-                # both DFT channels share a reference time (dft_utils).
+                # both DFT channels share a reference time
+                # (`dft_utils.half_step_current_phase`).
                 i_phase = phase * _half_i_phase(
                     sp_freqs.astype(jnp.float64), dt).astype(jnp.complex64)
                 new_wire_sp.append((
