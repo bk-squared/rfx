@@ -10,7 +10,7 @@
     {
       "id": "01_waveguide_bend",
       "script": "validation/crossval/01_waveguide_bend.py",
-      "role": "claims-bearing",
+      "role": "diagnostic-reporter",
       "public_group": "A",
       "execution_tiers": ["cpu-runner", "scheduled-external"],
       "evidence_levels": ["E1", "E4"],
@@ -18,32 +18,36 @@
         {"kind": "external-solver", "name": "Meep Basics 90-degree waveguide bend", "required_for_script_pass": true},
         {"kind": "self-invariant", "name": "straight-waveguide transmission", "required_for_script_pass": true}
       ],
-      "claim_scope": "2-D dielectric bend transmittance and straight-guide normalization under the script's published thresholds",
+      "claim_scope": "2-D dielectric bend transmittance and straight-guide normalization under the script's published thresholds EVIDENCE CLASSIFICATION 2026-09-06 (issue #928), DEMOTED to diagnostic-reporter: no run of this case has retained output anywhere in this repository -- no results artifact, no frozen fixture, and no gate test that executes its physics. The weekly scheduled lane (.github/workflows/validation.yml, job crossval-external) recomputes it and discards the numbers with the runner, and an Actions log is a schedule, not evidence: it expires and no clone can read it. The physics is not in question and no gate value changed; what is missing is a committed record, so the case cannot carry a validated claim today. RE-PROMOTION: run the external lane once, commit its output JSON under the case's results directory, list it in artifact_paths, restore role = claims-bearing. That is a measurement-lane change, not a governance one.",
       "external_dependencies": ["pymeep"],
       "expected_exit_codes": [0, 1, 2],
       "gate_paths": ["validation/crossval/01_waveguide_bend.py"],
       "artifact_paths": [],
       "cpu_runner": {"order": 1},
       "scheduled_external_order": 1,
+      "evidence_status": "external-scheduled",
+      "evidence_producer": ".github/workflows/validation.yml::crossval-external",
       "failure_sentinel": "SOME CHECKS FAILED"
     },
     {
       "id": "02_ring_resonator",
       "script": "validation/crossval/02_ring_resonator.py",
-      "role": "claims-bearing",
+      "role": "diagnostic-reporter",
       "public_group": "A",
       "execution_tiers": ["cpu-runner", "scheduled-external"],
       "evidence_levels": ["E4"],
       "references": [
         {"kind": "external-solver", "name": "Meep Basics ring-resonator modes", "required_for_script_pass": true}
       ],
-      "claim_scope": "2-D ring-resonator mode frequencies matched to Meep, one-to-one, within the published mode-count and 5% frequency gates (mean AND per mode), with every Meep mode required to have an rfx counterpart and Q gated on each mode whose decay the harminv record actually observed",
+      "claim_scope": "2-D ring-resonator mode frequencies matched to Meep, one-to-one, within the published mode-count and 5% frequency gates (mean AND per mode), with every Meep mode required to have an rfx counterpart and Q gated on each mode whose decay the harminv record actually observed EVIDENCE CLASSIFICATION 2026-09-06 (issue #928), DEMOTED to diagnostic-reporter: no run of this case has retained output anywhere in this repository -- no results artifact, no frozen fixture, and no gate test that executes its physics. The weekly scheduled lane (.github/workflows/validation.yml, job crossval-external) recomputes it and discards the numbers with the runner, and an Actions log is a schedule, not evidence: it expires and no clone can read it. The physics is not in question and no gate value changed; what is missing is a committed record, so the case cannot carry a validated claim today. RE-PROMOTION: run the external lane once, commit its output JSON under the case's results directory, list it in artifact_paths, restore role = claims-bearing. That is a measurement-lane change, not a governance one.",
       "external_dependencies": ["pymeep"],
       "expected_exit_codes": [0, 1, 2],
       "gate_paths": ["validation/crossval/02_ring_resonator.py", "validation/crossval/comparators/ring_mode_judge.py"],
       "artifact_paths": [],
       "cpu_runner": {"order": 7},
       "scheduled_external_order": 2,
+      "evidence_status": "external-scheduled",
+      "evidence_producer": ".github/workflows/validation.yml::crossval-external",
       "failure_sentinel": null
     },
     {
@@ -58,13 +62,17 @@
         {"kind": "external-solver", "name": "Meep Basics straight-waveguide flux", "required_for_script_pass": true},
         {"kind": "self-invariant", "name": "flux identity T = flux_out/flux_in = 1 -- energy conservation in a lossless uniform section. E1 SELF-CHECK ONLY: it holds for any bound mode, any eps and any width, so it is NOT evidence about the guide (#812 audit: eps_wg 12/11/10/8 all PASS while n_eff moved -23.4%)", "required_for_script_pass": true}
       ],
-      "claim_scope": "2-D straight-waveguide guided-mode dispersion against the closed-form slab TE0 oracle for the declared recipe (max |n_eff dev| <= 2.0% over fcen +/- 0.15*df, threshold derived and frozen in docs/design_notes/issue812_cv03_dispersion_regate_predeclaration.md), plus band-mean transmission and flux normalization within the script's measured window. The transmission leg is an E1 identity and carries no guide-dependent claim on its own. The guide is measured to carry a standing wave with |B/A| = 0.393-0.585 which the transmission ratio is blind to; that is an unresolved physics finding recorded in section 8 of the design note, not a validated property.",
+      "claim_scope": "2-D straight-waveguide guided-mode dispersion against the closed-form slab TE0 oracle for the declared recipe (max |n_eff dev| <= 2.0% over fcen +/- 0.15*df, threshold derived and frozen in docs/design_notes/issue812_cv03_dispersion_regate_predeclaration.md), plus band-mean transmission and flux normalization within the script's measured window. The transmission leg is an E1 identity and carries no guide-dependent claim on its own. The guide is measured to carry a standing wave with |B/A| = 0.393-0.585 which the transmission ratio is blind to; that is an unresolved physics finding recorded in section 8 of the design note, not a validated property. EVIDENCE CLASSIFICATION 2026-09-06 (issue #928), evidence_status = committed: the E2 leg's measured record is retained in docs/design_notes/issue812_cv03_dispersion_matched_frequency.json (the analytic oracle band plus the measured n_eff rows at two DFT window lengths and two domain sizes), now listed in artifact_paths. Two limits, stated rather than implied: that file's own provenance block records that the driver which produced the measured operands was not committed, and the E4 Meep leg's numbers are recomputed weekly and retained nowhere. RE-PROMOTION of the E4 leg: commit the lane's Meep output for this case.",
       "external_dependencies": ["pymeep"],
       "expected_exit_codes": [0, 1, 2],
       "gate_paths": ["validation/crossval/03_straight_waveguide_flux.py", "validation/crossval/comparators/slab_te_dispersion.py", "tests/crossval/test_cv03_slab_dispersion_oracle.py"],
-      "artifact_paths": [],
+      "artifact_paths": [
+        "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json"
+      ],
       "cpu_runner": {"order": 8},
       "scheduled_external_order": 3,
+      "evidence_status": "committed",
+      "evidence_producer": null,
       "failure_sentinel": null
     },
     {
@@ -94,6 +102,8 @@
       ],
       "cpu_runner": {"order": 2},
       "scheduled_external_order": 4,
+      "evidence_status": "committed",
+      "evidence_producer": null,
       "failure_sentinel": "rfx accuracy: FAIL"
     },
     {
@@ -115,6 +125,8 @@
       "artifact_paths": ["tests/fixtures/patch_canonical_farfield_e4/patch_farfield_openems.json", "validation/crossval/_05_patch_results/cv05_run_openems_369367257743.json", "scripts/diagnostics/patch_tutorial_openems.py", "scripts/diagnostics/patch_tutorial_rfx.py"],
       "cpu_runner": {"order": 3},
       "scheduled_external_order": null,
+      "evidence_status": "committed",
+      "evidence_producer": null,
       "failure_sentinel": null
     },
     {
@@ -155,6 +167,8 @@
       ],
       "cpu_runner": {"excluded_reason": "CPU-infeasible, now measured rather than projected: a CPU run of the dx=63.5um mesh this script ships (issue #723) was abandoned UNFINISHED at 2h52m wall (JAX CPU held only ~1.9 cores on a 32-core pod), past 2.271x (the cell x timestep ratio) of EITHER measured dx=80um CPU baseline -- 2599.6s (validation/crossval/_06b_notch_uniform_logs/20260809T_run.log) and 1621.2s re-measured on origin/main cdc38bc8 (validation/crossval/_06b_notch_uniform_logs/20260828T054132Z_dx80_origin_main_cdc38bc8_run.log, a different machine), so the linear projection underpredicts here. The same mesh solves in 329.2s on a single RTX4090 (VESSL 369367256574, log _06b_notch_uniform_logs/20260827T131217Z_run.log). Run on GPU; do not budget a CPU slot for it."},
       "scheduled_external_order": null,
+      "evidence_status": "committed",
+      "evidence_producer": null,
       "failure_sentinel": null
     },
     {
@@ -187,6 +201,8 @@
       ],
       "cpu_runner": {"order": 9},
       "scheduled_external_order": null,
+      "evidence_status": "committed",
+      "evidence_producer": null,
       "failure_sentinel": "SOME CHECKS FAILED"
     },
     {
@@ -200,7 +216,7 @@
         {"kind": "analytic", "name": "Pozar rectangular-cavity TE101 resonance", "required_for_script_pass": true},
         {"kind": "self-invariant", "name": "full PEC cavity versus half PEC+PMC cavity", "required_for_script_pass": true}
       ],
-      "claim_scope": "PMC symmetry reduction for the scripted rectangular-cavity mode and mesh, with the REALIZED mirror plane (a_eff = 2 x the H_tan wall) gated to dx/4 and the full-vs-half self-invariant gated to that budget's frequency image 0.356% (issue #812; was 5%, which tolerated a full cell of mirror-plane error)",
+      "claim_scope": "PMC symmetry reduction for the scripted rectangular-cavity mode and mesh, with the REALIZED mirror plane (a_eff = 2 x the H_tan wall) gated to dx/4 and the full-vs-half self-invariant gated to that budget's frequency image 0.356% (issue #812; was 5%, which tolerated a full cell of mirror-plane error) EVIDENCE CLASSIFICATION 2026-09-06 (issue #928), evidence_status = committed: the measured record is retained in docs/design_notes/issue812_cv09_mirror_plane_regate.md, an append-only note whose Measurements section carries the run's own gate output for both sides of the acceptance criterion, and the gates are re-executed by tests/crossval/test_crossval_cv09_mirror_plane_gate.py. Weakness, stated: that record is prose and a verbatim console block, not a machine-readable artifact, so nothing re-resolves its numbers. RE-PROMOTION to a machine-checkable record: have the case write a results JSON and list it here.",
       "external_dependencies": [],
       "expected_exit_codes": [0, 1],
       "gate_paths": [
@@ -208,9 +224,13 @@
         "tests/oracle/test_boundary_pmc_oracle.py",
         "tests/crossval/test_crossval_cv09_mirror_plane_gate.py"
       ],
-      "artifact_paths": [],
+      "artifact_paths": [
+        "docs/design_notes/issue812_cv09_mirror_plane_regate.md"
+      ],
       "cpu_runner": {"order": 4},
       "scheduled_external_order": 5,
+      "evidence_status": "committed",
+      "evidence_producer": null,
       "failure_sentinel": null
     },
     {
@@ -236,6 +256,8 @@
       "artifact_paths": [],
       "cpu_runner": {"order": 5},
       "scheduled_external_order": 6,
+      "evidence_status": "external-scheduled",
+      "evidence_producer": ".github/workflows/validation.yml::crossval-external",
       "failure_sentinel": null
     },
     {
@@ -262,6 +284,8 @@
       ],
       "cpu_runner": {"order": 6},
       "scheduled_external_order": null,
+      "evidence_status": "committed",
+      "evidence_producer": null,
       "failure_sentinel": null
     },
     {
@@ -274,13 +298,17 @@
       "references": [
         {"kind": "analytic", "name": "Pozar closed-form air-filled rectangular-cavity resonance f_mnl = (c/2)*sqrt((m/a)^2+(n/b)^2+(l/d)^2), RE-DERIVED in-file (pozar_cavity_freq) and importing no producer-side mode helper", "required_for_script_pass": true}
       ],
-      "claim_scope": "Deliberately NARROW E2 envelope: the rfx source -> vector-probe -> run -> harminv eigenfrequency pipeline against an EXACT analytic oracle for ONE air-filled PEC cavity (a,b,d) = (50,30,40) mm on a dx = 1 mm mesh chosen as an exact divisor of all three extents, so wall registration contributes zero geometric-quantization error and the residual is pure 2nd-order Yee dispersion. Gated modes (re-declared 2026-08-31, issue #812): Gate 0 wall registration |(n-1)*dx - (a,b,d)| <= 1e-9 m on every axis; Gate 1 TE101 (fundamental) < 1% vs Pozar; Gate 2 EVERY one of the seven declared modes (TE101/TM110/TE011/TM111/TE201/TM210/TE102) < 2% vs Pozar, aggregated with max, with a mode that cannot be extracted a HARD FAILURE; Gate 3 |f_measured - f_yee| <= 0.1/T on every mode against a SECOND in-file exact oracle, the closed-form discrete-Yee eigenvalue of the same box (sin(w*dt/2) = c*dt*sqrt(sum_i sin^2(k_i*h_i/2)/h_i^2)), where T is the span of the record handed to harminv -- evaluated only when Gate 0 passes, since that prediction is exact only for walls on grid planes. Gate 2 previously took min() over the six higher modes at the same 2%; because every axis has a declared target with a zero index on it, a single-axis dimensional error scored identically 0.000% on the mode min() selected, and a -50% shrink of a was measured passing Gate 2. The 2% number is unchanged; only the aggregator and the not-found handling moved. Closed lossless PEC is the correct configuration for a cavity, so the energy-based ring-down settling witness DOES NOT APPLY and is not claimed; harminv Q is a window-length artefact, printed but never gated — only the FREQUENCY is claims-bearing. No external solver and no meshing tolerance enter the oracle. This says nothing about open/CPML structures, lossy or dispersive fills, non-uniform meshes, or any other geometry.",
+      "claim_scope": "Deliberately NARROW E2 envelope: the rfx source -> vector-probe -> run -> harminv eigenfrequency pipeline against an EXACT analytic oracle for ONE air-filled PEC cavity (a,b,d) = (50,30,40) mm on a dx = 1 mm mesh chosen as an exact divisor of all three extents, so wall registration contributes zero geometric-quantization error and the residual is pure 2nd-order Yee dispersion. Gated modes (re-declared 2026-08-31, issue #812): Gate 0 wall registration |(n-1)*dx - (a,b,d)| <= 1e-9 m on every axis; Gate 1 TE101 (fundamental) < 1% vs Pozar; Gate 2 EVERY one of the seven declared modes (TE101/TM110/TE011/TM111/TE201/TM210/TE102) < 2% vs Pozar, aggregated with max, with a mode that cannot be extracted a HARD FAILURE; Gate 3 |f_measured - f_yee| <= 0.1/T on every mode against a SECOND in-file exact oracle, the closed-form discrete-Yee eigenvalue of the same box (sin(w*dt/2) = c*dt*sqrt(sum_i sin^2(k_i*h_i/2)/h_i^2)), where T is the span of the record handed to harminv -- evaluated only when Gate 0 passes, since that prediction is exact only for walls on grid planes. Gate 2 previously took min() over the six higher modes at the same 2%; because every axis has a declared target with a zero index on it, a single-axis dimensional error scored identically 0.000% on the mode min() selected, and a -50% shrink of a was measured passing Gate 2. The 2% number is unchanged; only the aggregator and the not-found handling moved. Closed lossless PEC is the correct configuration for a cavity, so the energy-based ring-down settling witness DOES NOT APPLY and is not claimed; harminv Q is a window-length artefact, printed but never gated — only the FREQUENCY is claims-bearing. No external solver and no meshing tolerance enter the oracle. This says nothing about open/CPML structures, lossy or dispersive fills, non-uniform meshes, or any other geometry. EVIDENCE CLASSIFICATION 2026-09-06 (issue #928), evidence_status = committed: the measured record is retained in docs/design_notes/cv14_rect_cavity_gate_predeclaration.md, whose RESULTS section carries the run's four gate lines and all seven per-mode residuals against the discrete-Yee prediction published before that run, and the gate logic plus three slow FDTD arms are re-executed by tests/crossval/test_crossval_cv14_cavity_gates.py in the weekly suite. Weakness, stated: as for cv09, the record is prose rather than an artifact. RE-PROMOTION to a machine-checkable record: have the case write a results JSON and list it here.",
       "external_dependencies": [],
       "expected_exit_codes": [0, 1],
       "gate_paths": ["validation/crossval/14_rect_cavity_pozar.py"],
-      "artifact_paths": [],
+      "artifact_paths": [
+        "docs/design_notes/cv14_rect_cavity_gate_predeclaration.md"
+      ],
       "cpu_runner": {"order": 10},
       "scheduled_external_order": null,
+      "evidence_status": "committed",
+      "evidence_producer": null,
       "failure_sentinel": null
     },
     {
@@ -305,6 +333,8 @@
       ],
       "cpu_runner": {"order": 11},
       "scheduled_external_order": null,
+      "evidence_status": "committed",
+      "evidence_producer": null,
       "failure_sentinel": "SOME CHECKS FAILED"
     },
     {
@@ -333,6 +363,8 @@
       ],
       "cpu_runner": {"order": 12},
       "scheduled_external_order": null,
+      "evidence_status": "committed",
+      "evidence_producer": null,
       "failure_sentinel": "SOME CHECKS FAILED"
     },
     {
@@ -364,6 +396,8 @@
       ],
       "cpu_runner": {"order": 13},
       "scheduled_external_order": null,
+      "evidence_status": "committed",
+      "evidence_producer": null,
       "failure_sentinel": "SOME CHECKS FAILED"
     }
  ,
@@ -396,6 +430,8 @@
       ],
       "cpu_runner": {"order": 14},
       "scheduled_external_order": null,
+      "evidence_status": "committed",
+      "evidence_producer": null,
       "failure_sentinel": "SOME CHECKS FAILED"
     },
     {
@@ -434,6 +470,8 @@
       ],
       "cpu_runner": {"excluded_reason": "CPU-infeasible: the default path's single gated FDTD run is 1160 s against the lane's 900 s per-script timeout (full regeneration is roughly 6 h of FDTD across the nine-configuration witness population plus the formulation-independent FDFD sweeps). Evidence floor is the frozen fixture plus tests/crossval/test_wr90_iris_filter_gates.py, which runs in 73 s with no FDTD and no network."},
       "scheduled_external_order": null,
+      "evidence_status": "committed",
+      "evidence_producer": null,
       "failure_sentinel": "SOME CHECKS FAILED"
     },
     {
@@ -480,6 +518,8 @@
       ],
       "cpu_runner": {"order": 15},
       "scheduled_external_order": null,
+      "evidence_status": "committed",
+      "evidence_producer": null,
       "failure_sentinel": null
     },
     {
@@ -519,6 +559,8 @@
       ],
       "cpu_runner": {"order": 16},
       "scheduled_external_order": null,
+      "evidence_status": "committed",
+      "evidence_producer": null,
       "failure_sentinel": null
     },
     {
@@ -561,6 +603,8 @@
       ],
       "cpu_runner": {"excluded_reason": "Four arms x (FDTD + three harminv windows on <= 8000 raw samples WITHOUT decimation (measured 20 / 64 / 62 / 45 s on the 16-CPU pod; the decimated path is the 10-20 ppm estimator floor the rig check found) + a source-free energy audit of the arm's own grid) plus the 480 000-cell uniform-fine arm (35 s FDTD + 34 s audit): ~5 min measured on the pod, inside the lane's 900 s timeout but ~10 min on a 2-core CI runner, so it is not budgeted a CPU slot. The evidence lane is VESSL (scripts/vessl_cv24_nu_cavity.yaml: four arms, five falsifiers, the gate test); the evidence floor on a clean checkout is the committed artifact replayed by tests/crossval/test_cv24_nu_cavity_gates.py with no FDTD, plus that test's artifact-free re-derivation of every declared number."},
       "scheduled_external_order": null,
+      "evidence_status": "committed",
+      "evidence_producer": null,
       "failure_sentinel": "rfx accuracy: FAIL"
     },
     {
@@ -614,6 +658,8 @@
       ],
       "cpu_runner": {"order": 17},
       "scheduled_external_order": 7,
+      "evidence_status": "committed",
+      "evidence_producer": null,
       "failure_sentinel": "rfx accuracy: FAIL"
     },
     {
@@ -687,6 +733,8 @@
       ],
       "cpu_runner": {"order": 18},
       "scheduled_external_order": 8,
+      "evidence_status": "committed",
+      "evidence_producer": null,
       "failure_sentinel": "rfx accuracy: FAIL"
     }
   ]

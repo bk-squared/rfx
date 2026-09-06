@@ -27,6 +27,13 @@ ExecutionTier = Literal[
     "gpu-manual",
     "external-manual",
 ]
+# Where a case's evidence actually IS (issue #928):
+#   committed          - git-tracked artifact_paths hold the measured record;
+#   external-scheduled - nothing is retained here, and a named scheduled job
+#                        recomputes it. A schedule is not evidence: the run's
+#                        output expires with the runner and no clone can read
+#                        it, so a claims-bearing case may not sit here.
+EvidenceStatus = Literal["committed", "external-scheduled"]
 
 
 class ReferenceEntry(TypedDict):
@@ -61,6 +68,8 @@ class CrossvalCase(TypedDict):
     artifact_paths: list[str]
     cpu_runner: CpuRunnerEntry
     scheduled_external_order: int | None
+    evidence_status: EvidenceStatus
+    evidence_producer: str | None
     failure_sentinel: str | None
 
 
@@ -146,6 +155,8 @@ def test_manifest_entries_are_self_consistent_and_grounded() -> None:
             "artifact_paths",
             "cpu_runner",
             "scheduled_external_order",
+            "evidence_status",
+            "evidence_producer",
             "failure_sentinel",
         }
         ids.append(case["id"])
@@ -193,6 +204,34 @@ def test_manifest_entries_are_self_consistent_and_grounded() -> None:
 
         if case["role"] == "claims-bearing":
             assert set(case["evidence_levels"]) & {"E2", "E3", "E4", "E5"}
+
+        # #928, the evidence rule. A claim needs a record a clone can read.
+        assert case["evidence_status"] in ("committed", "external-scheduled"), case["id"]
+        if case["evidence_status"] == "committed":
+            assert case["artifact_paths"], (
+                f"{case['id']} claims committed evidence and lists no artifact")
+            assert case["evidence_producer"] is None, case["id"]
+        else:
+            assert not case["artifact_paths"], (
+                f"{case['id']} is external-scheduled but DOES retain artifacts; "
+                f"that is committed evidence")
+            assert case["role"] == "diagnostic-reporter", (
+                f"{case['id']} is claims-bearing with no retained output. A "
+                f"scheduled job is an execution plan, not evidence: its log "
+                f"expires with the runner and no clone can read it. Commit the "
+                f"lane's output for this case, or demote it.")
+            producer = case["evidence_producer"]
+            assert producer and "::" in producer, case["id"]
+            workflow, _, job = producer.partition("::")
+            workflow_path = REPO_ROOT / workflow
+            assert workflow_path.is_file(), producer
+            workflow_text = workflow_path.read_text(encoding="utf-8")
+            assert f"\n  {job}:" in workflow_text, (
+                f"{case['id']} names job {job!r} in {workflow}, which has no "
+                f"such job")
+            assert "\n  schedule:" in workflow_text, (
+                f"{workflow} is not a scheduled workflow")
+            assert case["scheduled_external_order"] is not None, case["id"]
 
         # #928: existence is not evidence of a COMMITTED artifact. A path that
         # exists only in the checkout that wrote it (gitignored scratch, an
