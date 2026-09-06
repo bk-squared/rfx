@@ -799,3 +799,79 @@ OVER it (so the domain claim is checked in both directions), and each within 10 
 of the numbers above.
 
 The 1-D path (`AUX_CPML_R_ASYMPTOTIC_1D = 1e-6`) is untouched: normal incidence only.
+
+---
+
+## 13. What the clean injection did to the RCS chain (2026-09-06)
+
+CI caught what the lane's own suites did not: `tests/oracle/test_rcs_mie_fixture.py`
+drifted 0.57 dB. RCS is a TF/SF consumer, and this is the third absorber of the same
+class in this lane.
+
+### 13.1 The old agreement with Mie was a cancellation
+
+The committed fixture read **0.063 dB** from the exact Mie series. On the clean injection
+the same rig reads **0.510 dB**. The direction of the depth ladder settles which one is
+the accident -- `|monostatic - Mie|` against the rig's own CPML depth:
+
+| main CPML | 8 | 16 | 24 | 32 | 40 |
+|---|---|---|---|---|---|
+| pre-#888 auxiliary (20 cells) | **0.097** | 0.191 | 0.231 | -- | -- |
+| shipped auxiliary (200 cells) | 0.510 | 0.224 | **0.185** | 0.196 | 0.211 |
+
+On the old injection the answer walks AWAY from Mie as its own absorber improves; on the
+clean one it converges. Two errors were cancelling, and the fixture recorded the
+cancellation as agreement.
+
+### 13.2 The fixture rig's depth, derived
+
+Mie is a continuum reference, so "closer to Mie" also rewards mesh error. The depth is
+read off convergence of the ANSWER:
+
+| cpml | 8 | 16 | 24 | 32 | 40 |
+|---|---|---|---|---|---|
+| monostatic (dBsm) | -24.8826 | -25.1685 | -25.2076 | -25.1971 | -25.1815 |
+| step from the previous rung | -- | 0.286 | **0.039** | 0.011 | 0.016 |
+
+Past 24 the value only wanders inside a ~0.02 dB floor. The same ladder at
+`R_asymptotic = 1e-8` lands within 0.002 dB of it at 24, so depth is the lever here too
+and the target stays at the repo default. **CPML_LAYERS 8 -> 24**, converged monostatic
+-25.21 dBsm, 0.185 dB from Mie against a 1.0 dB physics gate. The sibling
+`rcs280_reference_subtraction` fixture moved with it: its claim is that the uncorrected
+path equals this fixture's monostatic on the SAME geometry, which only holds while the
+two rigs match.
+
+### 13.3 One thing this does NOT explain, and it is not this lane's to fix
+
+`rcs280`'s corrected bistatic pattern agrees WORSE with Mie on the clean injection, and
+the cause is the injection, not the depth -- both converge, to different values:
+
+| aux depth | cpml 8 | 16 | 24 | 32 |
+|---|---|---|---|---|
+| 200 (shipped) | 0.886 | 0.719 | **0.705** | 0.714 |
+| 20 (pre-#888) | 0.481 | 0.404 | **0.408** | 0.412 |
+
+mean `|corrected - Mie|` in dB over the 37-point H-plane cut. Everything else improves or
+holds: correlation 0.977 (bar 0.95), backscatter delta -0.22 -> +0.185 (better in
+magnitude), and the forward-oblique lobe the correction exists to remove still goes
+10.66 -> 1.46 dB. Only the pattern MEAN moves, from 0.41 to 0.71, past the 0.6 bar that
+was set at "measured ~0.42".
+
+That says `subtract_incident_reference` was benefiting from a contaminated reference
+field -- the subtraction cancels more of the pattern error when the incident carries the
+4.4 % echo. It is a property of the #280 correction, measured here, not a regression this
+lane introduced in it.
+
+**PI decision, 2026-09-06: re-derive the bar from the clean-injection measurement.**
+`gate_from_envelope(0.705, quantum=100) = 1.06`, through the shared policy, with the
+measurement pinned beside it so a further degradation is visible. A bar that moved
+because the measurement got worse must be shown to still kill what it killed, so
+`test_the_pattern_bar_still_rejects_the_uncorrected_path` asserts the defect the #280
+subtraction exists to remove still fails it: the uncorrected far field reads **3.10 dB**
+mean, 2.9x the new bar, with correlation **-0.09** against Mie -- the shape is gone, not
+merely offset. The other two assertions in that test are unchanged and both improved or
+held (correlation 0.977 against a 0.95 bar; backscatter +0.185 dB against 0.5).
+
+What is NOT closed by this: why a cleaner incident field makes the subtraction worse.
+The measurement above is the whole of what this lane knows. It belongs to #280, not to
+#888, and it wants its own lane.

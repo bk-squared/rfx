@@ -37,7 +37,12 @@ A = 0.0159                     # sphere radius (m); rcs_sphere_mie geometry
 RES = 40                       # dx = lam/40 (6.4 cells/radius)
 DX = LAM / RES
 DOMAIN = 0.10
-CPML = 8
+# 24, was 8. This fixture's claim ("the uncorrected path equals the sibling
+# rcs_sphere_mie monostatic, SAME GEOMETRY") only holds while the two rigs match,
+# and that one moved to a converged 24-cell absorber on 2026-09-06 -- see
+# ../rcs_sphere_mie/generate_fixture.py for the depth derivation and why the old
+# 8-cell agreement with Mie was a cancellation against the pre-#888 auxiliary echo.
+CPML = 24
 N_PHI = 37
 N_STEPS = 700
 KA = 2 * np.pi * A / LAM
