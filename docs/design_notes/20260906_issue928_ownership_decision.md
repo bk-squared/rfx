@@ -212,7 +212,31 @@ the word "validated" was outside the gate for no reason other than that nobody
 had opted it in, which is why the opted-in set is now enumerated with a checked
 exclusion for every file that stays out.
 
-## 6. Pointers
+## 6. Inventory: which claims-bearing cases have a §3.2 rig-variation witness
+
+Methodology §3.2 asks that every user-visible measured number pass a run-length
+or mesh 2× check. This is the inventory for the claims-bearing cases as of
+2026-09-06, taken from what is COMMITTED — a witness that was run and not
+retained does not count here. It is a list, not a relabelling: nothing below
+changes a role or a gate. cv01 and cv02 are absent because the same PR demotes
+them for a different reason (no retained output at all).
+
+| Case | Rig-variation witness in a committed artifact | What it is |
+|---|---|---|
+| `03_straight_waveguide_flux` | yes (partial) | `issue812_cv03_dispersion_matched_frequency.json` carries measured `n_eff` rows at two DFT record lengths (150 and 400 a/c₀) and two domain sizes (16 a, 40 a). Caveat recorded in that file: the driver that produced the measured operands is not committed. |
+| `04_multilayer_fresnel` | **no** | Its own rung does not settle; the lattice witness is reported, not gated; the "widening to nx 1500 / 1940 collapses the closure" comparison exists only as a source comment. The envelope's r1 revision is marked `carried-unwitnessed` for exactly this. |
+| `06b_msl_notch_filter_uniform` | **no** | The E4 legs sit at dx = 50 µm and the shipped case at dx = 63.5 µm — a different board, not a refinement of the same one — and the committed falsifier fixtures vary the geometry, not the rig. |
+| `09_half_symmetric_waveguide` | **no** | The regate note compares two declarations at two meshes at grid-build level; no second mesh of the judged frequency is committed. |
+| `14_rect_cavity_pozar` | **no** (stronger substitute) | One mesh only. Its Gate 3 compares every mode against the exact discrete-Yee eigenvalue of its own grid, an a-priori oracle that a 2× check approximates; that is stronger for the discretisation term and says nothing about record length. |
+| `22_dispersive_slab_fresnel` | yes (partial) | `_22_dispersive_diag/rfx__debye_tail3e4.json` is the same arm at a tighter settling bar, i.e. a longer record — a run-length witness on the Debye arm only. The committed Meep res10/20/40 ladder refines the REFERENCE, not rfx. No committed rfx mesh ladder. |
+| `23_lossy_slab_fresnel` | yes | `rfx__tand{0p1,1,3}_dx2.json` and `..._dx4.json`: every arm at dx, dx/2 and dx/4, all committed and listed. |
+| `24_nu_rect_cavity_pozar` | yes | `rfx.json` carries the `uniform` (1 mm) and `uniform_fine` (0.5 mm) arms of the same cavity alongside the graded ones. |
+
+Read plainly: four of eight claims-bearing cases have no committed
+rig-variation witness for the numbers their public rows quote. That is a
+statement about what is retained, not a claim that any of them is wrong.
+
+## 7. Pointers
 
 * Envelope artifact: `validation/crossval/_04_fresnel_results/envelope.json`
 * Loader and rig: `validation/crossval/comparators/slab_family.py`
