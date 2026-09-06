@@ -17,7 +17,7 @@ leg `main` at `f5ee3b59` and an A/B control leg `ctrl` at `aa888b7a`, which is P
 immediate parent. Both SHA-guarded in the job.
 
 1. **`ctrl` reproduces the 2026-09-02 record's `rfx_s11` array bit-for-bit**
-   (`max |dS11| = 2.5e-16` over all 101 bins), and every openEMS-leg value to the digit
+   (bit-identical: `max |dS11| = 0.000000` over all 101 bins; 2.5e-16 is the mechanism-fit residual at theta~0, not this comparison), and every openEMS-leg value to the digit
    (`max |dS11_openEMS| = 0.0`). The committed record was therefore a faithful pre-#897
    measurement, and the only physics difference between the two files is PR #897.
 2. **PR #897's effect**, isolated on `ctrl` → `main`: `rfx_s11_dip_hz` unchanged at

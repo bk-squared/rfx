@@ -148,7 +148,7 @@ correction's effect is measured, not inferred. Per-record ledgers:
 
 | Record | `max abs(dS11)` | dip frequency | dip depth | attribution |
 |---|---|---|---|---|
-| cv05 `_05_patch_results/cv05_run_openems_369367258715.json` (new; the 369367257743 file is kept as the #812 artifact) | 0.006850 @ 3.5 GHz | 2.32 GHz, **0 Hz shift** | −1.614843 → −1.583059 dB (+0.0318 dB, abs(S11) +0.37 %) | PR #897 alone — the control leg reproduces the old record's S11 to 2.5e-16 and its openEMS leg to 0.0 |
+| cv05 `_05_patch_results/cv05_run_openems_369367258715.json` (new; the 369367257743 file is kept as the #812 artifact) | 0.006850 @ 3.5 GHz | 2.32 GHz, **0 Hz shift** | −1.614843 → −1.583059 dB (+0.0318 dB, abs(S11) +0.37 %) | PR #897 alone — the control leg reproduces the old record's S11 bit-identically (max|dS11| = 0.000000; the 2.5e-16 quoted elsewhere is the mechanism-fit residual at theta~0) and its openEMS leg to 0.0 |
 | cv15 `_15_patch_results/rfx.json` (replaced in place) | 0.9767 over the band | 2.310 → 2.320 GHz (+1 bin) | −4.42984 → −0.31820 dB (+4.1116 dB) | **NOT PR #897.** PR #897 contributes only −0.3448075 → −0.3181958 dB (+0.0266 dB, `max abs(dS11)` 0.007284). The 4.1 dB was already present at #897's parent |
 
 The cv15 finding is the one to read. That leg was recorded at `1f005d0d`
@@ -156,7 +156,10 @@ The cv15 finding is the one to read. That leg was recorded at `1f005d0d`
 wire-port one-port diagonal on 2026-08-30/31, and the committed leg has been stale
 against the shipped solver since. Its `max_abs_s11` moves 0.786966 → 0.998132 —
 still inside cv15's unchanged `max|S11| <= 1.05` passivity bound, with much less
-headroom.
+headroom. The staleness was first bisected in
+`docs/design_notes/20260901_patch_mode_identification_predeclaration.md` §6.6 (2026-09-01) and
+knowingly reverted by the #812 round-1 lane; #912 reverses that revert. The live leg's
+−0.32 dB dip against openEMS's −20.1 dB on the same geometry is tracked as issue #920.
 
 On both records the correction behaves exactly as derived and only there: the
 per-bin current rotation recovered from each A/B pair is `pi*f*dt` (cv15

@@ -267,6 +267,7 @@ three control runs of the identical command:
 |---|---|---|---|---|---|---|
 | `1f005d0` (the leg's own commit, 2026-08-29, PR #768) | 0.786967 | 2.3100 GHz | −4.4298 dB | 2.3139475 GHz | 18.897344 | 7.242423 dBi |
 | committed leg as it stands | 0.786966 | 2.3100 GHz | −4.4298 dB | 2.3139474 GHz | 18.897387 | 7.242423 dBi |
+> (2026-09-06) The "committed leg as it stands" row above describes the pre-#776/#777 file; it was superseded by the #912 regeneration at f5ee3b59 (`rfx.json`: max_abs_s11 0.998132, s11_dip −0.318 dB). See issue #920.
 | `ad13b4c^` (post-#776, pre-#777, 2026-08-31) | **1.546926** | 2.1800 GHz | +1.6670 dB | 2.3139475 GHz | 18.897344 | 7.242423 dBi |
 | `main` today | 0.996699 | 2.3200 GHz | −0.3448 dB | 2.3139475 GHz | 18.897344 | 7.242423 dBi |
 
