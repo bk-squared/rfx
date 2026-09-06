@@ -298,8 +298,12 @@ def main(argv=None) -> int:
         # The oracle is ALWAYS the declared material; a falsifier that were
         # judged against its own defective eps(f) would be self-consistent
         # and pass (caught in review before the first run).
+        # require_complete: this is the claims-bearing invocation, so a gate
+        # whose witness is absent (None) makes the verdict FAIL, never PASS
+        # (#928). The analytic falsifier checks, which have no run behind them,
+        # keep the default.
         e2 = G.evaluate_e2(run["freqs_hz"], run["R_rfx"], run["T_rfx"], model, params, run["dt_s"],
-                           tail=run["tail"])
+                           tail=run["tail"], require_complete=True)
         e2["params_run"] = {k: float(v) for k, v in params_run.items()}
         e2["band_inc_ok"] = run["band_inc_ok"]
         e2["inc_amp_rel"] = np.asarray(run["inc_amp_rel"]).tolist()

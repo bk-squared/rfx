@@ -245,11 +245,20 @@ def _f(x):
 
 
 def evaluate_e2(freqs_hz, R_rfx, T_rfx, model: str, params: dict, dt: float,
-                *, tail: dict | None = None) -> dict:
+                *, tail: dict | None = None, require_complete: bool = False) -> dict:
     """E2 gates G1 (per-bin), G2 (band-mean), G3 (witnesses) for one arm.
 
     ``freqs_hz`` are the masked rfx bins (cv04's mask); the gated subset is
     the 4-10 GHz band. Returns a JSON-ready dict; arrays as lists.
+
+    ``require_complete`` (issue #928): a gate whose evidence is ABSENT is None
+    here -- ``G3_tail`` is None when no tail witness is handed in -- and the
+    default aggregate skips it, which is right for the analytic falsifier
+    checks that legitimately have no run behind them. For a CLAIMS-BEARING
+    invocation that is wrong: a missing required witness would silently make a
+    two-of-three verdict read PASS. Pass ``require_complete=True`` there (the
+    case scripts do) and a None gate makes the verdict False, with the missing
+    names listed in ``incomplete_gates``.
     """
     f = np.asarray(freqs_hz, dtype=float)
     R_rfx = np.asarray(R_rfx, dtype=float)
@@ -292,7 +301,7 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, model: str, params: dict, dt: float,
         "gates": {"G1_R": g1_R, "G1_T": g1_T, "G2_R": g2_R, "G2_T": g2_T,
                   "G3_passivity": g3_pass, "G3_tail": g3_tail},
     }
-    out["e2_ok"] = bool(all(v for v in out["gates"].values() if v is not None))
+    out.update(aggregate_gates(out["gates"], require_complete=require_complete))
     return out
 
 
@@ -587,6 +596,8 @@ def aux_echo_failure_message(echo: dict) -> str:
 incident_amplitude_rel = slab_family.incident_amplitude_rel
 ring_band_hz = slab_family.ring_band_hz
 slab_ringdown_rates = slab_family.slab_ringdown_rates
+# The verdict aggregate, including the completeness rule (#928).
+aggregate_gates = slab_family.aggregate_gates
 
 
 def derive_record_length(model: str, params: dict, dt: float, *, nx_interior: int = NX_INTERIOR_R3,

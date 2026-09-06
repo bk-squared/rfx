@@ -190,12 +190,13 @@ def _f(x):
 
 
 def evaluate_e2(freqs_hz, R_rfx, T_rfx, params: dict, dt: float, *, tail: dict | None = None,
-                dx: float | None = None) -> dict:
+                dx: float | None = None, require_complete: bool = False) -> dict:
     """E2 gates G1 (per-bin R, T, A), G2 (band-mean R, T, A), G3 (witnesses).
     With ``dx`` given, the exact Yee-lattice solution at (dx, dt) is added as
     a REPORTED witness (``lattice``: W_lat per bin and |rfx - lattice|; note
     section 13) -- it enters no gate."""
-    out = G.evaluate_e2(freqs_hz, R_rfx, T_rfx, MODEL, params, dt, tail=tail)
+    out = G.evaluate_e2(freqs_hz, R_rfx, T_rfx, MODEL, params, dt, tail=tail,
+                        require_complete=require_complete)
     f = np.asarray(freqs_hz, dtype=float)
     g = np.asarray(out["gated"], dtype=bool)
     R_x = np.asarray(out["R_rfx"]); T_x = np.asarray(out["T_rfx"])
@@ -238,7 +239,9 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, params: dict, dt: float, *, tail: dict |
             "mean_dT_lattice_gated": _f(rl_T[g].mean()), "max_dT_lattice_gated": _f(rl_T[g].max()),
             "mean_dA_lattice_gated": _f(rl_A[g].mean()), "max_dA_lattice_gated": _f(rl_A[g].max()),
         }
-    out["e2_ok"] = bool(all(v for v in out["gates"].values() if v is not None))
+    # Re-aggregated because the A gates were added after cv22 aggregated its
+    # own; the completeness rule (#928) applies to the whole set.
+    out.update(G.aggregate_gates(out["gates"], require_complete=require_complete))
     return out
 
 

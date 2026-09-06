@@ -324,8 +324,10 @@ def main(argv=None) -> int:
                 raise RuntimeError("record never settled to -40 dB within 4x the declared box")
         run["record"] = None if run["record"] is None else dict(run["record"], nx_grows=grows)
         # The oracle is ALWAYS the declared material (cv22 note section 10.1).
+        # require_complete: claims-bearing invocation -- an absent witness
+        # cannot leave a PASS standing (#928).
         e2 = L.evaluate_e2(run["freqs_hz"], run["R_rfx"], run["T_rfx"], params, run["dt_s"], tail=run["tail"],
-                           dx=run["dx_m"])
+                           dx=run["dx_m"], require_complete=True)
         e2["params_run"] = {k: float(v) for k, v in params_run.items()}
         e2["materials_path"] = path
         e2["materials"] = run["materials"]

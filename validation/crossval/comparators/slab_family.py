@@ -158,6 +158,28 @@ def slab_ringdown_rates(model: str, params: dict):
             "rate_ring_1_s": float(rate[i]), "rho_etalon": float(rho[i]), "t_rt_s": float(t_rt[i])}
 
 
+def aggregate_gates(gates: dict, *, require_complete: bool = False) -> dict:
+    """Turn a per-gate dict into a verdict, and say whether it is COMPLETE.
+
+    A gate whose evidence is absent is None (no witness was handed in), and the
+    default aggregate skips it -- correct for a diagnostic or analytic call
+    that has no run behind it. A claims-bearing caller passes
+    ``require_complete=True``: then a missing required witness cannot leave a
+    PASS standing, because a verdict over two of three gates is not the verdict
+    the case declares (issue #928).
+
+    Returns ``e2_ok``, ``gates_complete`` and ``incomplete_gates`` for the
+    caller to merge into its result dict.
+    """
+    incomplete = sorted(name for name, value in gates.items() if value is None)
+    if require_complete:
+        ok = bool(gates) and all(value is True for value in gates.values())
+    else:
+        ok = all(value for value in gates.values() if value is not None)
+    return {"e2_ok": bool(ok), "gates_complete": not incomplete,
+            "incomplete_gates": incomplete}
+
+
 # ---------------------------------------------------------------------------
 # 2. The calibration envelope
 # ---------------------------------------------------------------------------

@@ -329,6 +329,47 @@ def test_adopting_a_new_revision_moves_the_adopting_consumer_and_nothing_else():
     assert (G.W_BIN, G.W_MEAN_R, G.W_MEAN_T) == live_before
 
 
+def test_a_missing_required_witness_cannot_be_a_pass():
+    """Completeness (#928): an absent gate is None, and the claims-bearing
+    aggregate refuses to call a two-of-three verdict PASS.
+
+    The live instance this closes: `G3_tail` is None when no tail witness is
+    handed in, and the default aggregate skipped it -- so a run whose settling
+    witness never arrived would have read PASS on the rest. The default is
+    kept for the analytic falsifier checks, which have no run behind them and
+    legitimately carry no witness; the case scripts pass require_complete.
+    """
+    f, dt = _rfx_bins()
+    arm = "lorentz"
+    model, params = G.ARMS[arm]["model"], G.ARMS[arm]["params"]
+    R_an, T_an = G.analytic_rt(f, model, params)
+
+    # no witness handed in: passing on the other gates, INCOMPLETE
+    lenient = G.evaluate_e2(f, R_an, T_an, model, params, dt)
+    assert lenient["gates"]["G3_tail"] is None
+    assert lenient["incomplete_gates"] == ["G3_tail"]
+    assert lenient["gates_complete"] is False
+    assert lenient["e2_ok"] is True, "the diagnostic aggregate is unchanged"
+
+    strict = G.evaluate_e2(f, R_an, T_an, model, params, dt, require_complete=True)
+    assert strict["e2_ok"] is False, (
+        "a required witness that never arrived must not leave a PASS standing")
+    assert strict["incomplete_gates"] == ["G3_tail"]
+
+    # and with the witness present the two agree again, so the rule costs
+    # nothing on a complete run
+    tail = {"ok": True}
+    complete = G.evaluate_e2(f, R_an, T_an, model, params, dt, tail=tail,
+                             require_complete=True)
+    assert complete["gates_complete"] and complete["e2_ok"]
+    assert complete["e2_ok"] == G.evaluate_e2(f, R_an, T_an, model, params, dt,
+                                              tail=tail)["e2_ok"]
+    # a failing witness still fails, in both modes
+    bad = G.evaluate_e2(f, R_an, T_an, model, params, dt, tail={"ok": False},
+                        require_complete=True)
+    assert bad["e2_ok"] is False and bad["gates_complete"]
+
+
 def test_a_non_active_revision_cannot_be_adopted():
     """A withdrawn or superseded revision is history, not calibration."""
     for status in ("withdrawn", "superseded", "scope-limited"):
