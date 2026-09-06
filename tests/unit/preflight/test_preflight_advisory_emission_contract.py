@@ -252,8 +252,28 @@ def _enumerate_emission_sites():
 # registration, not any solved field, so it is a preflight check and not a
 # runtime guard. _FROZEN_DYNAMIC_SITES_BY_FUNCTION is unchanged (no new bare
 # except). EMISSION_CLASSIFICATION is unchanged: no new preflight call site.
-_FROZEN_TOTAL_SITES = 98
-_FROZEN_LITERAL_CODE_COUNT = 65
+# 98 -> 99 sites / 65 -> 66 literal codes, post-v1.8 plan item 5 (stacked on
+# every edit above, so the counts sum): section 2-2's
+# ``_validate_cfg_layout_from_band_low_edge`` says, at info severity, how many
+# guide wavelengths at the band's LOWEST bin this layout puts between the port
+# and the far wall and how many of those sit in the absorber -- emitted only in
+# the near-cutoff regime it was measured in (``f_min / f_c < 1.06``). One new
+# site, one new literal code (``layout_measured_from_band_low_edge``): a new
+# check family speaking a length ratio, not another voice inside the
+# record-length check, so it does not reuse that slug the way #823's check 5
+# reused ``msl_port_geometry``. Input-side by construction -- it reads the
+# declared band and the built grid's own pads, never a solved field.
+# _FROZEN_DYNAMIC_SITES_BY_FUNCTION is unchanged (no new bare except).
+# EMISSION_CLASSIFICATION is unchanged: the check is wired into the same
+# ``_preflight_waveguide_setup`` hook the other two setup audits use, which is
+# not preflight()/_auto_preflight(), so compute_waveguide_s_matrix stays
+# DIAGNOSTIC_ONLY. The item's OTHER half, the post-solve S21 phase residual,
+# moves neither number: it is a ``print`` in ``rfx/api/_sparams.py``, invisible
+# to the AST walk above and impossible as a preflight check either way, since
+# it is measured on the extracted S-matrix -- the same boundary the #854 block
+# above records for the reciprocity advisory.
+_FROZEN_TOTAL_SITES = 99
+_FROZEN_LITERAL_CODE_COUNT = 66
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

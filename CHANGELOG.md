@@ -6,6 +6,40 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — near-cutoff layout note, and the S21 phase residual on waveguide S-matrix results
+
+Two report-only additions from the same measurement campaign, one before the
+solve and one after it. Neither gates anything.
+
+- **`layout_measured_from_band_low_edge`** (informational) joins the two
+  waveguide setup audits on `preflight_sparameters(calculator="waveguide")` and
+  on `compute_waveguide_s_matrix()`. For each waveguide port it reports the
+  guide wavelength at the band's lowest bin, how many of them separate the port
+  from the far wall, and how many sit inside the absorber. It is emitted only
+  when the lowest bin is within 6 % of that port's own discrete cutoff — the
+  near-cutoff regime it was measured in — and is silent above that. Measured
+  reason: on the WR-90 validity-envelope sweep a box sized from the band's own
+  guide wavelength at its lowest frequency left that band's bottom bins
+  non-converged at a record 16 round trips long (+16 %), while the same bins
+  read within +3 % in the next-lower band's box. Input units throughout: it
+  reads the declared band and the built grid's own pads, and never predicts an
+  effect on any |S| number.
+- **`WaveguideSMatrixResult.s21_phase_residual_deg_rms`** (plus
+  `s21_phase_residual_meta`) is the post-solve discretization witness: the RMS
+  over the measured bins of the S21 phase against `-beta*L`, in degrees, with
+  `beta` the extractor's own discrete propagation constant at the port's
+  cutoff and `L` the separation of the two reference planes the result already
+  reports. `compute_waveguide_s_matrix()` prints it on one banner line after
+  the settling line, on both the uniform and the non-uniform lane. Unlike a
+  near-cutoff `|S11|` headline it does not pass through the absorber —
+  measured invariant to absorber thickness (3x), record length (2.5x) and
+  precision, and second order in dx at every band down to `f/f_c = 1.010` — so
+  it answers "is the port the problem?" when a reflection number looks wrong.
+  Reported, never gated: the field is `None` on a result that is not a
+  single-mode two-port, on a traced AD run, or when every bin fell below the
+  weak-signal phase mask, and nothing in the library compares it with a
+  threshold.
+
 ### Added — `run()` results carry a ring-down settling witness (absent, never NaN)
 
 `sim.run()` returns `Result.settling_db` and `Result.settling_witness`. Until

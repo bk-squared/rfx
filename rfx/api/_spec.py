@@ -1256,6 +1256,27 @@ class WaveguideSMatrixResult(NamedTuple):
     issue #827 waveguide-instance fix. NaN
     entries mean the run was traced (AD path) and the host-side witness
     was skipped rather than concretised.
+
+    ``s21_phase_residual_deg_rms`` is the post-solve discretization witness
+    (#894, post-v1.8 plan item 5): the RMS over the measured bins of
+    ``wrap(angle(S21) + beta(f)*L)``, in degrees, with ``beta`` the
+    EXTRACTOR'S OWN (``_compute_beta`` at the port config's discrete
+    ``f_cutoff``, ``dt`` and ``dx``) and ``L`` the separation of the two
+    reference planes reported in ``reference_planes``. Unlike a near-cutoff
+    ``|S11|`` headline it does not pass through the absorber: measured
+    invariant to absorber thickness (3x), record length (2.5x) and precision,
+    and second order in dx at every band down to ``f/f_c = 1.010``
+    (``tests/fixtures/waveguide_vi_envelope/s21_phase_residual_witness.json``).
+    So it answers "is the port the problem?" when a reflection number looks
+    wrong. It is REPORTED, never gated — nothing in the library compares it
+    with a threshold. ``None`` when the residual is not defined: a result that
+    is not a single-mode two-port, a traced AD run, two ports with different
+    discrete cutoffs or on different axes, or a band whose every bin fell
+    below the weak-signal phase mask
+    (``rfx.api._sparams.WAVEGUIDE_PHASE_MAG_FLOOR``).
+    ``s21_phase_residual_meta`` always carries ``beta_convention``,
+    ``f_cutoff_hz``, ``L_m``, ``n_bins`` and ``masked_bins``, plus a
+    ``reason`` when the value is ``None``.
     """
     s_params: np.ndarray
     freqs: np.ndarray
@@ -1263,6 +1284,8 @@ class WaveguideSMatrixResult(NamedTuple):
     port_directions: tuple[str, ...]
     reference_planes: np.ndarray
     settling_db: np.ndarray | None = None
+    s21_phase_residual_deg_rms: float | None = None
+    s21_phase_residual_meta: dict | None = None
 
 
 class CoaxialSMatrixResult(NamedTuple):

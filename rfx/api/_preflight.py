@@ -148,6 +148,18 @@ def _axis_pad_thickness_m(grid, axis_idx: int, side: str) -> float:
     return n * scalar
 
 
+def _waveguide_skipped_note(skipped: list) -> str:
+    """The trailing sentence naming ports whose launch direction was unreadable.
+
+    Shared by both audits that consume :meth:`_waveguide_far_geometry`, so the
+    two cannot describe the same skip differently.
+    """
+    if not skipped:
+        return ""
+    return (" Ports skipped because their launch direction could not "
+            f"be read: {', '.join(skipped)}.")
+
+
 # ``compute_waveguide_s_matrix``'s own ``num_periods`` default, mirrored here
 # so ``preflight_sparameters(calculator="waveguide")`` audits the record a user
 # gets when they pass nothing. Pinned to the live signature by
@@ -2717,9 +2729,10 @@ class _PreflightMixin:
             the historical ``list[str]``). Carries no ERROR-severity issue when
             the selected calculator is valid for the registered port families —
             read ``report.ok`` / ``report.errors`` rather than emptiness.
-            ``calculator="waveguide"`` additionally runs the two setup audits
-            (:meth:`_validate_cfg_record_vs_far_boundary` and
-            :meth:`_validate_cfg_port_index_mirror_covariance`), which report
+            ``calculator="waveguide"`` additionally runs the three setup
+            audits (:meth:`_validate_cfg_record_vs_far_boundary`,
+            :meth:`_validate_cfg_port_index_mirror_covariance` and
+            :meth:`_validate_cfg_layout_from_band_low_edge`), which report
             advisory and informational findings on a perfectly valid routing —
             a healthy two-port guide always carries at least the known
             E-plane-offset note. Those audits are evaluated at
@@ -6162,7 +6175,7 @@ class _PreflightMixin:
     def _waveguide_setup_planes(self, _w, freqs, num_periods, n_steps):
         """``(grid, one cfg per waveguide port, n_steps, dt, freq_max)``.
 
-        Built with the RUNNER's own builders so the two audits below read the
+        Built with the RUNNER's own builders so the audits below read the
         runner's plane indices and the port's own discrete cutoff instead of
         re-deriving either. Returns ``None`` when the setup cannot be laid out
         eagerly (a traced mesh or timestep, no ports, a builder that raises) —
@@ -6220,11 +6233,12 @@ class _PreflightMixin:
         except Exception as exc:  # noqa: BLE001 - reported, not swallowed
             _w.warn(PreflightWarning(
                 "the waveguide setup audits (record length vs the far-boundary "
-                "round trip, and the port-index mirror covariance) could not "
+                "round trip, the port-index mirror covariance, and the "
+                "near-cutoff layout note) could not "
                 f"run: building the grid and the port configs raised {exc!r}. "
-                "Those two checks are therefore UNCHECKED for this setup — the "
-                "record length and the port plane indices have to be verified "
-                "by hand. Nothing else about this call is affected.",
+                "Those three checks are therefore UNCHECKED for this setup — "
+                "the record length, the port plane indices and the layout in "
+                "guide wavelengths have to be verified by hand. Nothing else about this call is affected.",
                 code="waveguide_setup_audit_skipped",
                 source="_waveguide_setup_planes",
             ), stacklevel=3)
@@ -6235,6 +6249,132 @@ class _PreflightMixin:
         flat = [min(c, key=lambda m: float(m.f_cutoff)) if isinstance(c, list) else c
                 for c in cfgs]
         return grid, flat, int(n_steps), dt, freq_max
+
+    def _waveguide_far_geometry(self, grid, cfgs):
+        """Per-port launch geometry the waveguide setup audits share.
+
+        ONE reading of the layout, two consumers: the record-length audit
+        (:meth:`_validate_cfg_record_vs_far_boundary`) turns ``far_path`` into
+        a time, and the layout note
+        (:meth:`_validate_cfg_layout_from_band_low_edge`) turns the same
+        ``far_path`` and ``pad_m`` into guide wavelengths. Measuring the same
+        distance twice, in two places, is how the two would drift apart.
+
+        Returns ``(findings, skipped)`` where each finding is
+        ``(label, direction, axis, side, x_p, pad_m, far_path, f_c)`` in input
+        units (metres, hertz) and ``skipped`` names the ports whose launch
+        direction could not be read.
+        """
+        axis_map = {"x": 0, "y": 1, "z": 2}
+        skipped: list[str] = []
+        findings: list[tuple] = []
+        for i, cfg in enumerate(cfgs):
+            label = f"waveguide_port[{i}]"
+            axis = str(getattr(cfg, "normal_axis", "") or "")
+            direction = str(getattr(cfg, "direction", "") or "")
+            if axis not in axis_map or direction[:1] not in ("+", "-"):
+                skipped.append(f"{label} (direction={direction!r})")
+                continue
+            ax_i = axis_map[axis]
+            domain_ext = float(self._domain[ax_i])
+            x_p = float(cfg.source_x_m)
+            if direction.startswith("+"):
+                side, pad_m = "hi", _axis_pad_thickness_m(grid, ax_i, "hi")
+                far_path = (domain_ext - x_p) + pad_m
+            else:
+                side, pad_m = "lo", _axis_pad_thickness_m(grid, ax_i, "lo")
+                far_path = x_p + pad_m
+            f_c = float(cfg.f_cutoff)
+            findings.append((label, direction, axis, side, x_p, pad_m,
+                             far_path, f_c))
+        return findings, skipped
+
+    def _validate_cfg_layout_from_band_low_edge(
+        self,
+        _w,
+        *,
+        freqs,
+        num_periods: float = 20.0,
+        grid=None,
+        cfgs=None,
+        n_steps: int | None = None,
+        ratio_gate: float = 1.06,
+    ) -> None:
+        """Near cutoff, say what the layout measures in guide wavelengths.
+
+        Section 2-2 of
+        ``docs/design_notes/20260905_post_v18_plan_rasterization_preflight_cst.md``.
+        A domain and an absorber pad sized from the guide wavelength at the
+        band's OWN lowest frequency serve that lowest bin worst: every bin of
+        the band gets the clearance the hardest bin needed, and the hardest
+        bin gets exactly it. The effect is invisible until the band edge
+        approaches the port's cutoff, where ``lambda_g`` runs away, so the
+        note is emitted only for ``f_min / f_c < 1.06`` — the near-cutoff
+        regime the WR-90 validity-envelope sweep actually measured. Above
+        that it is silent.
+
+        Informational by construction: it reports the layout in input units
+        (a length ratio) and names the measured lesson. There is no threshold
+        on the reported ratios and no gate — the record-length check
+        (:meth:`_validate_cfg_record_vs_far_boundary`) is what has a number to
+        clear.
+
+        Every number prints at 7 significant digits, one more than the sibling
+        checks: the note carries no threshold, so its only reviewable property
+        is that the arithmetic is right, and
+        ``tests/unit/preflight/test_waveguide_layout_from_band_low_edge.py``
+        checks each printed value against an independent hand computation at
+        1e-6 relative — which a 4-digit print cannot support.
+        """
+        if grid is None or cfgs is None:
+            built = self._waveguide_setup_planes(
+                _w, freqs, num_periods, n_steps)
+            if built is None:
+                return
+            grid, cfgs = built[0], built[1]
+        else:
+            cfgs = [min(c, key=lambda m: float(m.f_cutoff)) if isinstance(c, list) else c
+                    for c in cfgs]
+        f_arr = np.asarray(freqs, dtype=float).ravel()
+        if f_arr.size == 0:
+            return
+        f_min = float(f_arr.min())
+
+        findings, skipped = self._waveguide_far_geometry(grid, cfgs)
+        if not findings:
+            return
+        note = _waveguide_skipped_note(skipped)
+
+        for (label, direction, _axis, _side, _x_p, pad_m, far_path, f_c) in findings:
+            if f_c <= 0.0 or f_min <= f_c:
+                # lambda_g is undefined at or below the port's own cutoff;
+                # the record-length check already speaks about that band.
+                continue
+            ratio = f_min / f_c
+            if ratio >= ratio_gate:
+                continue
+            lam_g = (C0 / f_min) / math.sqrt(1.0 - (f_c / f_min) ** 2)
+            _w.warn(PreflightWarning(
+                f"{label} ({direction}): at f_min/f_c = {ratio:.7g} "
+                f"(f_min = {f_min / 1e9:.7g} GHz, the port's own discrete "
+                f"cutoff f_c = {f_c / 1e9:.7g} GHz) the guide wavelength at "
+                f"the band's lowest bin is lambda_g(f_min) = "
+                f"{lam_g * 1e3:.7g} mm and this layout gives "
+                f"{far_path / lam_g:.7g} guide wavelengths to the far wall "
+                f"(far_path = {far_path * 1e3:.7g} mm) and "
+                f"{pad_m / lam_g:.7g} in the absorber (pad = "
+                f"{pad_m * 1e3:.7g} mm); on the WR-90 validity-envelope sweep "
+                f"a box sized from the band's own lambda_g(f_min) left the "
+                f"band's bottom bins non-converged at T/tau 16 (+16 %) while "
+                f"the same bins read within +3 % in the next-lower band's box "
+                f"— size the layout from below the band, and confirm with the "
+                f"record check above."
+                + note,
+                code="layout_measured_from_band_low_edge",
+                severity="info",
+                loc=label,
+                source="_validate_cfg_layout_from_band_low_edge",
+            ), stacklevel=3)
 
     def _validate_cfg_record_vs_far_boundary(
         self,
@@ -6288,34 +6428,10 @@ class _PreflightMixin:
         T = float(n_steps) * dt
         axis_map = {"x": 0, "y": 1, "z": 2}
 
-        skipped: list[str] = []
-        findings: list[tuple] = []
-        for i, cfg in enumerate(cfgs):
-            label = f"waveguide_port[{i}]"
-            axis = str(getattr(cfg, "normal_axis", "") or "")
-            direction = str(getattr(cfg, "direction", "") or "")
-            if axis not in axis_map or direction[:1] not in ("+", "-"):
-                skipped.append(f"{label} (direction={direction!r})")
-                continue
-            ax_i = axis_map[axis]
-            domain_ext = float(self._domain[ax_i])
-            x_p = float(cfg.source_x_m)
-            if direction.startswith("+"):
-                side, pad_m = "hi", _axis_pad_thickness_m(grid, ax_i, "hi")
-                far_path = (domain_ext - x_p) + pad_m
-            else:
-                side, pad_m = "lo", _axis_pad_thickness_m(grid, ax_i, "lo")
-                far_path = x_p + pad_m
-            f_c = float(cfg.f_cutoff)
-            findings.append((label, direction, axis, side, x_p, pad_m,
-                             far_path, f_c))
-
+        findings, skipped = self._waveguide_far_geometry(grid, cfgs)
         if not findings:
             return
-        note = ""
-        if skipped:
-            note = (" Ports skipped because their launch direction could not "
-                    f"be read: {', '.join(skipped)}.")
+        note = _waveguide_skipped_note(skipped)
 
         for (label, direction, axis, side, x_p, pad_m, far_path, f_c) in findings:
             geom = (
@@ -6532,7 +6648,7 @@ class _PreflightMixin:
 
         ``preflight_sparameters(calculator="waveguide")`` calls it with no
         grid/cfgs and pays ONE grid build plus one mode solve per port here,
-        shared by both audits; ``compute_waveguide_s_matrix`` calls it on each
+        shared by all three audits; ``compute_waveguide_s_matrix`` calls it on each
         of its two lanes with that lane's already-built grid and configs, so
         neither lane pays for a second mode solve. Building once here also
         keeps a builder failure to a single ``waveguide_setup_audit_skipped``
@@ -6548,6 +6664,10 @@ class _PreflightMixin:
             n_steps=n_steps,
         )
         self._validate_cfg_port_index_mirror_covariance(
+            _w, freqs=freqs, num_periods=num_periods, grid=grid, cfgs=cfgs,
+            n_steps=n_steps,
+        )
+        self._validate_cfg_layout_from_band_low_edge(
             _w, freqs=freqs, num_periods=num_periods, grid=grid, cfgs=cfgs,
             n_steps=n_steps,
         )

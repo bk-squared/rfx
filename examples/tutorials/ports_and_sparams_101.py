@@ -214,10 +214,10 @@ def main() -> None:
     # The 20 mm broad wall gives TE10 a 7.49 GHz cutoff, so the 8 GHz source
     # propagates.  Neither preflight call reports an error.
     #
-    # The waveguide S-parameter preflight also runs two SETUP audits that speak
-    # in input units, and both have something to say about this small teaching
-    # model, so readiness is read off report.ok (no error-severity finding)
-    # rather than off an empty report:
+    # The waveguide S-parameter preflight also runs three SETUP audits that
+    # speak in input units, and two of them have something to say about this
+    # small teaching model, so readiness is read off report.ok (no
+    # error-severity finding) rather than off an empty report:
     #
     #   * record_shorter_than_far_boundary_round_trip -- at the default
     #     num_periods=20 the record is 2.4 far-boundary round trips long, and
@@ -225,6 +225,12 @@ def main() -> None:
     #   * port_index_mirror_known_e_plane_offset -- informational: the '-'
     #     port's E correction sits one cell inward of its mirror image, a known
     #     constant of the source, not an asymmetry in this geometry.
+    #
+    # The third audit, layout_measured_from_band_low_edge, is silent here and
+    # that is the interesting part: it reports the layout in guide wavelengths
+    # only when the band's lowest bin is within 6 % of the port's own discrete
+    # cutoff, and 8.0 / 7.4871 = 1.0685 sits just outside.  Move the source
+    # down toward 7.8 GHz and the note appears.
     #
     # Two codes this model does NOT draw, for completeness: a band whose lowest
     # frequency sits at or below the port's own cutoff reports
