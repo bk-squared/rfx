@@ -61,7 +61,7 @@ from pathlib import Path
 
 import pytest
 
-from tests._git_tracked import git_available, is_tracked
+from tests._git_tracked import git_available, tracked_set
 
 _REPO = Path(__file__).resolve().parents[2]
 
@@ -172,6 +172,14 @@ def parse_references(doc: str, site: str, text: str) -> list[Reference]:
 # --------------------------------------------------------------------------
 
 _JSON_CACHE: dict[Path, object] = {}
+_TRACKED_CACHE: list[frozenset[str]] = []
+
+
+def _TRACKED() -> frozenset[str]:
+    """`git ls-files` once per session, not once per citation."""
+    if not _TRACKED_CACHE:
+        _TRACKED_CACHE.append(tracked_set(_REPO))
+    return _TRACKED_CACHE[0]
 
 
 def _load_json(target: Path):
@@ -195,7 +203,7 @@ def resolve(root: Path, ref: Reference):
     # unresolvable in a fresh clone. Only asked of the repo tree -- the (B)-arm
     # falsifiers below resolve against scratch trees, where tracking is not a
     # question git can answer.
-    if root == _REPO and git_available(_REPO) and not is_tracked(ref.path, _REPO):
+    if root == _REPO and git_available(_REPO) and ref.path not in _TRACKED():
         raise AssertionError(
             f"{ref.doc} [{ref.site}] cites `{ref.raw}`, but the artifact "
             f"{ref.path} is NOT git-tracked. It exists in this checkout only; "
@@ -785,13 +793,13 @@ def test_the_gate_fires_on_a_present_but_untracked_artifact() -> None:
     ref = Reference("doc", "site", f"{probe_rel}::value = 1", probe_rel, "value", "1", "")
     try:
         probe.write_text(json.dumps({"value": 1.0}), encoding="utf-8")
-        assert not is_tracked(probe_rel, _REPO)
+        assert probe_rel not in tracked_set(_REPO)
         with pytest.raises(AssertionError, match="NOT git-tracked"):
             check(_REPO, ref)
     finally:
         probe.unlink(missing_ok=True)
     # and the control: the same shape resolves when the artifact IS tracked.
-    assert is_tracked(MANIFEST, _REPO)
+    assert MANIFEST in tracked_set(_REPO)
 
 
 def test_a_malformed_reference_is_rejected() -> None:

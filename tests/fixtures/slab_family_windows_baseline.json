@@ -1,6 +1,6 @@
 {
  "schema": "rfx.slab_family_windows_baseline/v1",
- "purpose": "Bit-identity baseline for the slab-family code motion of issue #928 (development_methodology.md section 2.2: capture before the edit, compare bit-identically after). It is a FROZEN COPY of derived values, not a source for any of them: tests/crossval/test_cv22_dispersive_slab_gates.py compares the live derivation against it, so a pure code motion that moves a window, a realized-rig number, a mask or a replayed verdict is caught.",
+ "purpose": "Bit-identity baseline for the slab-family code motion of issue #928 (development_methodology.md section 2.2: capture before the edit, compare bit-identically after). It is a FROZEN COPY of derived values, not a source for any of them: tests/crossval/test_slab_family_code_motion_identity.py compares the live derivation against it, so a pure code motion that moves a window, a realized-rig number, a mask or a replayed verdict is caught.",
  "captured_from_commit": "d12656ca3c957b81910ceef7c5162882ee6c09f7",
  "captured_before": "the move of the rig block out of cv22_dispersive_gates.py into slab_family.py",
  "verified_identical_to_main_commit": "d990e18ce0870ac7a893a86627e7232d1cf92c7b",

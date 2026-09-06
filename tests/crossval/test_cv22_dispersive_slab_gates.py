@@ -79,7 +79,8 @@ def _tmp_tree():
         comparators = root / "validation/crossval/comparators"
         comparators.mkdir(parents=True)
         (root / "validation/crossval/_04_fresnel_results").mkdir(parents=True)
-        for name in ("cv22_dispersive_gates.py", "dispersive_eps.py", "slab_family.py"):
+        for name in ("cv22_dispersive_gates.py", "cv23_lossy_gates.py",
+                     "dispersive_eps.py", "slab_family.py"):
             shutil.copy(_COMPARATORS / name, comparators / name)
         shutil.copy(_ENVELOPE, root / "validation/crossval/_04_fresnel_results/envelope.json")
         yield root
@@ -92,36 +93,47 @@ def _write_envelope(tree: Path, doc: dict) -> None:
         json.dumps(doc, indent=1), encoding="utf-8")
 
 
-def _load_cv22_from(tree: Path, *, adopt: tuple[str, str] | None = None):
-    """Import a FRESH cv22 gate module out of *tree*, with *tree*'s envelope.
+def _repoint(src: Path, adopt: tuple[str, str] | None) -> None:
+    """Re-point a copied module's adoption record: the deliberate, reviewed
+    edit the real thing would be."""
+    if adopt is None:
+        return
+    revision, digest = adopt
+    text = src.read_text(encoding="utf-8")
+    text, n1 = re.subn(r'"adopted_revision": "r1"',
+                       f'"adopted_revision": "{revision}"', text)
+    text, n2 = re.subn(r'"revision_sha256": "sha256:[0-9a-f]+"',
+                       f'"revision_sha256": "{digest}"', text)
+    assert (n1, n2) == (1, 1), (
+        f"{src.name}'s adoption record changed shape; this scratch re-adoption "
+        f"edits it textually and must be updated with it")
+    src.write_text(text, encoding="utf-8")
 
-    ``adopt`` re-points the copied module's adoption record at another
-    revision -- the deliberate, reviewed edit the real thing would be.
+
+def _load_consumers_from(tree: Path, *, adopt_cv22=None, adopt_cv23=None):
+    """Import FRESH cv22 AND cv23 gate modules out of *tree*.
+
+    Both are loaded because they are two INDEPENDENT adopters of one artifact:
+    re-pointing cv22 alone must move cv22 and leave cv23 where its own record
+    says it is. cv23 binds the scratch cv22 (registered under its plain name
+    first), so the pair is self-consistent inside the tree.
     """
-    src = tree / "validation/crossval/comparators/cv22_dispersive_gates.py"
-    if adopt is not None:
-        revision, digest = adopt
-        text = src.read_text(encoding="utf-8")
-        text, n1 = re.subn(r'"adopted_revision": "r1"',
-                           f'"adopted_revision": "{revision}"', text)
-        text, n2 = re.subn(r'"revision_sha256": "sha256:[0-9a-f]+"',
-                           f'"revision_sha256": "{digest}"', text)
-        assert (n1, n2) == (1, 1), (
-            "the adoption record's shape changed; this scratch re-adoption "
-            "edits it textually and must be updated with it")
-        src.write_text(text, encoding="utf-8")
-    saved_modules = {k: sys.modules.get(k) for k in ("slab_family",)}
+    comparators = tree / "validation/crossval/comparators"
+    _repoint(comparators / "cv22_dispersive_gates.py", adopt_cv22)
+    _repoint(comparators / "cv23_lossy_gates.py", adopt_cv23)
+    names = ("slab_family", "cv22_dispersive_gates", "cv23_lossy_gates")
+    saved_modules = {k: sys.modules.get(k) for k in names}
     saved_path = list(sys.path)
+    loaded = {}
     try:
-        spec = importlib.util.spec_from_file_location(
-            "slab_family", tree / "validation/crossval/comparators/slab_family.py")
-        sf = importlib.util.module_from_spec(spec)
-        sys.modules["slab_family"] = sf
-        spec.loader.exec_module(sf)
-        spec = importlib.util.spec_from_file_location(f"cv22_scratch_{tree.name}", src)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        return mod
+        for name in names:
+            spec = importlib.util.spec_from_file_location(
+                name, comparators / f"{name}.py")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module          # so the next one binds THIS copy
+            spec.loader.exec_module(module)
+            loaded[name] = module
+        return loaded["cv22_dispersive_gates"], loaded["cv23_lossy_gates"]
     finally:
         for key, value in saved_modules.items():
             if value is None:
@@ -129,6 +141,10 @@ def _load_cv22_from(tree: Path, *, adopt: tuple[str, str] | None = None):
             else:
                 sys.modules[key] = value
         sys.path[:] = saved_path
+
+
+def _load_cv22_from(tree: Path, *, adopt: tuple[str, str] | None = None):
+    return _load_consumers_from(tree, adopt_cv22=adopt, adopt_cv23=adopt)[0]
 
 
 def _rig_dt() -> float:
@@ -221,8 +237,14 @@ def test_the_evaluator_applies_exactly_the_rederived_windows():
 
     arm = "lorentz"
     model, params = G.ARMS[arm]["model"], G.ARMS[arm]["params"]
-    R_an, T_an = G.analytic_rt(f, model, params)
-    w_ade_R, w_ade_T, _, _ = G.ade_window(f, model, params, dt)
+    # The oracle and the ADE window term, re-derived HERE from the leaf
+    # `dispersive_eps`, not taken from G.analytic_rt / G.ade_window: the module
+    # under test must not supply both sides of its own comparison.
+    eps_exact = de.eps_analytic(f, model, params)
+    R_an, T_an = de.tmm_slab_rt(f, eps_exact, _SF.D_SLAB_M)
+    eps_ade = de.eps_numerical_ade(f, model, params, dt)
+    R_ade, T_ade = de.tmm_slab_rt(f, eps_ade, _SF.D_SLAB_M)
+    w_ade_R, w_ade_T = np.abs(R_ade - R_an), np.abs(T_ade - T_an)
     e2 = G.evaluate_e2(f, R_an, T_an, model, params, dt)
 
     # the gated mask, recomputed from the declared band
@@ -318,13 +340,42 @@ def test_adopting_a_new_revision_moves_the_adopting_consumer_and_nothing_else():
         doc["revisions"]["r2"] = r2
         doc["latest_revision"] = "r2"
         _write_envelope(tree, doc)
-        mod = _load_cv22_from(tree, adopt=("r2", r2["revision_hash"]))
+        # cv22 re-adopts r2; cv23's own record still says r1.
+        mod, mod23 = _load_consumers_from(tree, adopt_cv22=("r2", r2["revision_hash"]))
         mult = G.CV04_ADOPTION["gate_policy"]["multiplier"]
         quantum = G.CV04_ADOPTION["gate_policy"]["quantum"]
         assert mod.W_BIN == _round_up(r2["values"]["per_bin_max_RT_closure"], mult, quantum)
         assert mod.W_MEAN_R == _round_up(r2["values"]["mean_dR"], mult, quantum)
         assert mod.W_MEAN_T == _round_up(r2["values"]["mean_dT"], mult, quantum)
         assert mod.W_BIN != G.W_BIN and mod.W_MEAN_R != G.W_MEAN_R
+        # THE OTHER ADOPTER DOES NOT MOVE. cv23 used to re-export cv22's three
+        # windows, so this exact scenario doubled cv23's gates with cv23's own
+        # adoption record untouched -- the coupling this test exists to refuse.
+        assert mod23.CV04_ADOPTION["adopted_revision"] == "r1"
+        assert (mod23.W_BIN, mod23.W_MEAN_R, mod23.W_MEAN_T) == (G.W_BIN, G.W_MEAN_R, G.W_MEAN_T)
+        assert mod23.W_BIN_A == 2.0 * G.W_BIN
+        assert mod23.W_MEAN_A_TIGHT == _round_up(
+            doc["revisions"]["r1"]["values"]["mean_closure"], mult, quantum)
+    # ... and the mirror image, in a FRESH tree (the first one's cv22 has been
+    # re-pointed in place): when cv23 re-adopts and cv22 does not, cv23 moves
+    # and cv22 stays.
+    with _tmp_tree() as tree2:
+        doc2 = json.loads(_ENVELOPE.read_text())
+        r2b = json.loads(json.dumps(doc2["revisions"]["r1"]))
+        r2b["bootstrap"] = False
+        r2b["values"] = {k: v * 2.0 for k, v in r2b["values"].items()}
+        r2b["revision_hash"] = _SF.revision_hash({k: v for k, v in r2b.items()
+                                                  if k != "revision_hash"})
+        doc2["revisions"]["r2"] = r2b
+        doc2["latest_revision"] = "r2"
+        _write_envelope(tree2, doc2)
+        mod22b, mod23b = _load_consumers_from(tree2, adopt_cv23=("r2", r2b["revision_hash"]))
+        mult = G.CV04_ADOPTION["gate_policy"]["multiplier"]
+        quantum = G.CV04_ADOPTION["gate_policy"]["quantum"]
+        assert mod22b.W_BIN == G.W_BIN, "cv22 was not re-adopted here"
+        assert mod23b.W_BIN == _round_up(r2b["values"]["per_bin_max_RT_closure"], mult, quantum)
+        assert mod23b.W_BIN != mod22b.W_BIN
+        assert mod23b.W_MEAN_A == mod23b.W_MEAN_R + mod23b.W_MEAN_T
     # the live modules did not move with the scratch tree
     assert (G.W_BIN, G.W_MEAN_R, G.W_MEAN_T) == live_before
 
@@ -368,6 +419,21 @@ def test_a_missing_required_witness_cannot_be_a_pass():
     bad = G.evaluate_e2(f, R_an, T_an, model, params, dt, tail={"ok": False},
                         require_complete=True)
     assert bad["e2_ok"] is False and bad["gates_complete"]
+
+    # ... and a declared gate that is ABSENT is incomplete too, not passing.
+    # Without the declared set the aggregate can only see a key that is present
+    # and None, so an evaluator that stops inserting a key -- an early return, a
+    # dropped branch -- would read as a complete PASS.
+    full = {name: True for name in G.DECLARED_GATES}
+    assert G.aggregate_gates(full, declared=G.DECLARED_GATES,
+                             require_complete=True)["e2_ok"] is True
+    for dropped in G.DECLARED_GATES:
+        partial = {k: v for k, v in full.items() if k != dropped}
+        out = G.aggregate_gates(partial, declared=G.DECLARED_GATES,
+                                require_complete=True)
+        assert out["e2_ok"] is False, dropped
+        assert out["incomplete_gates"] == [dropped]
+        assert out["gates_complete"] is False
 
 
 def test_a_non_active_revision_cannot_be_adopted():

@@ -166,7 +166,8 @@ def slab_ringdown_rates(model: str, params: dict):
             "rate_ring_1_s": float(rate[i]), "rho_etalon": float(rho[i]), "t_rt_s": float(t_rt[i])}
 
 
-def aggregate_gates(gates: dict, *, require_complete: bool = False) -> dict:
+def aggregate_gates(gates: dict, *, declared=None,
+                    require_complete: bool = False) -> dict:
     """Turn a per-gate dict into a verdict, and say whether it is COMPLETE.
 
     A gate whose evidence is absent is None (no witness was handed in), and the
@@ -176,12 +177,20 @@ def aggregate_gates(gates: dict, *, require_complete: bool = False) -> dict:
     PASS standing, because a verdict over two of three gates is not the verdict
     the case declares (issue #928).
 
+    ``declared`` is the case's own gate-name set. Without it, completeness can
+    only see a key that is present and None -- an evaluator that never inserts
+    the key at all (an early return, a refactor that drops a branch) reads as
+    complete, which is the same silence in a different shape. With it, an
+    ABSENT declared name is incomplete too.
+
     Returns ``e2_ok``, ``gates_complete`` and ``incomplete_gates`` for the
     caller to merge into its result dict.
     """
-    incomplete = sorted(name for name, value in gates.items() if value is None)
+    missing = [] if declared is None else [n for n in declared if n not in gates]
+    incomplete = sorted(missing + [name for name, value in gates.items() if value is None])
     if require_complete:
-        ok = bool(gates) and all(value is True for value in gates.values())
+        ok = bool(gates) and not missing and all(
+            value is True for value in gates.values())
     else:
         ok = all(value for value in gates.values() if value is not None)
     return {"e2_ok": bool(ok), "gates_complete": not incomplete,

@@ -247,6 +247,11 @@ def _f(x):
     return float(x)
 
 
+# The gate names this case declares. A name that never appears in the result
+# is INCOMPLETE, not passing (#928).
+DECLARED_GATES = ("G1_R", "G1_T", "G2_R", "G2_T", "G3_passivity", "G3_tail")
+
+
 def evaluate_e2(freqs_hz, R_rfx, T_rfx, model: str, params: dict, dt: float,
                 *, tail: dict | None = None, require_complete: bool = False) -> dict:
     """E2 gates G1 (per-bin), G2 (band-mean), G3 (witnesses) for one arm.
@@ -304,7 +309,8 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, model: str, params: dict, dt: float,
         "gates": {"G1_R": g1_R, "G1_T": g1_T, "G2_R": g2_R, "G2_T": g2_T,
                   "G3_passivity": g3_pass, "G3_tail": g3_tail},
     }
-    out.update(aggregate_gates(out["gates"], require_complete=require_complete))
+    out.update(aggregate_gates(out["gates"], declared=DECLARED_GATES,
+                               require_complete=require_complete))
     return out
 
 

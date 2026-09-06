@@ -19,11 +19,14 @@ Posture (honest, additive):
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import numpy as np
 import pytest
 from scipy.special import spherical_jn, spherical_yn
+
+from tests._git_tracked import git_available, is_tracked
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _FIXTURE = _REPO_ROOT / "tests/fixtures/rcs_sphere_three_way/fixture.json"
@@ -90,15 +93,44 @@ def test_bempp_h_refinement_converges_to_mie(fx):
     assert resid[-1] <= 0.1, resid[-1]
 
 
+_KEYSTEP = re.compile(r"\[(\d+)\]|([A-Za-z0-9_][A-Za-z0-9_-]*)")
+
+
 def _resolve(reference: str):
-    """Walk a `path.json::a.b.c` reference (issue #928): the three-way fixture
-    REFERENCES the sibling's committed value instead of holding a copy of it,
-    so there is one home for the number and no way for the two to drift."""
-    rel, _, keypath = reference.partition("::")
-    node = json.loads((_REPO_ROOT / rel).read_text())
-    for step in keypath.split("."):
-        assert isinstance(node, dict) and step in node, f"{reference}: {step!r} missing"
-        node = node[step]
+    """Walk a `path.json::a.b[2].c` reference (issue #928).
+
+    The three-way fixture REFERENCES the sibling's committed value instead of
+    holding a copy, so the number has one home. A reference is only worth that
+    if it cannot point outside the repository or at a file no clone has, so
+    this resolver checks both before reading -- the first version accepted any
+    path the filesystem would open, including an absolute one and an untracked
+    one, which is a reference to this machine rather than to the repository.
+    """
+    rel, sep, keypath = reference.partition("::")
+    assert sep and keypath, f"{reference!r} is not a path::keypath reference"
+    assert not Path(rel).is_absolute() and ".." not in Path(rel).parts, (
+        f"{reference}: the path must be repo-relative")
+    target = _REPO_ROOT / rel
+    assert target.is_file(), f"{reference}: {rel} does not exist"
+    if git_available(_REPO_ROOT):
+        assert is_tracked(rel, _REPO_ROOT), (
+            f"{reference}: {rel} exists here but is NOT git-tracked, so the "
+            f"reference resolves on this machine and nowhere else.")
+    node = json.loads(target.read_text())
+    walked = ""
+    for step in _KEYSTEP.finditer(keypath):
+        index, name = step.group(1), step.group(2)
+        if index is not None:
+            walked += f"[{index}]"
+            assert isinstance(node, list) and int(index) < len(node), (
+                f"{reference}: {walked} is not a list index that exists")
+            node = node[int(index)]
+        else:
+            walked = f"{walked}.{name}" if walked else name
+            assert isinstance(node, dict) and name in node, (
+                f"{reference}: {walked} does not exist")
+            node = node[name]
+    assert walked.replace(".", "").replace("[", "").replace("]", ""), reference
     return node
 
 

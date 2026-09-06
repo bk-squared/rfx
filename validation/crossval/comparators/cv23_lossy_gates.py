@@ -87,15 +87,12 @@ API_MATERIAL_NAME = "lossy_slab"
 # the triangle-inequality sums (DECLARED gate). The closure-derived tighter A
 # window is REPORTED (A_tight_ok), never gated.
 # ---------------------------------------------------------------------------
-W_BIN = G.W_BIN                    # 0.074
-W_MEAN_R = G.W_MEAN_R              # 0.010
-W_MEAN_T = G.W_MEAN_T              # 0.017
-W_BIN_A = 2.0 * G.W_BIN            # 0.148   |dA| <= |dR| + |dT|
-W_MEAN_A = G.W_MEAN_R + G.W_MEAN_T  # 0.027
 # This case adopts the SAME cv04 revision cv22 does, and says so in its own
-# declaration rather than inheriting the adoption silently (#928). The closure
-# value used to be copied here out of the UI fixture; it now comes from the
-# producer's artifact, and this record pins which revision of it.
+# declaration rather than inheriting the adoption silently (#928). Every window
+# below is DERIVED from that adoption -- including the three R/T ones, which
+# used to be `G.W_BIN` and friends. Re-exporting them made this module a
+# consumer of a consumer: a review re-pointed cv22 at a doubled revision and
+# cv23's windows doubled with it, silently, with cv23's own record untouched.
 CV04_ADOPTION = {
     "envelope": slab_family.CV04_ENVELOPE_REL,
     "adopted_revision": "r1",
@@ -107,10 +104,19 @@ CV04_ADOPTION = {
 }
 CV04_ADOPTED = slab_family.load_adopted_envelope(CV04_ADOPTION)
 _QUANTUM = CV04_ADOPTION["gate_policy"]["quantum"]
-CV04_MEAN_CLOSURE = CV04_ADOPTED["values"]["mean_closure"]
-W_BIN_A_TIGHT = gate_from_envelope(
-    CV04_ADOPTED["values"]["per_bin_max_RT_closure"], quantum=_QUANTUM)   # 0.074
-W_MEAN_A_TIGHT = gate_from_envelope(CV04_MEAN_CLOSURE, quantum=_QUANTUM)  # 0.014
+_VALUES = CV04_ADOPTED["values"]
+CV04_MEAN_CLOSURE = _VALUES["mean_closure"]
+# The R/T windows: this case's own derivation from its own adoption.
+W_BIN = gate_from_envelope(_VALUES["per_bin_max_RT_closure"], quantum=_QUANTUM)
+W_MEAN_R = gate_from_envelope(_VALUES["mean_dR"], quantum=_QUANTUM)
+W_MEAN_T = gate_from_envelope(_VALUES["mean_dT"], quantum=_QUANTUM)
+# The absorption windows: triangle-inequality sums of the above (DECLARED
+# gate), |dA| <= |dR| + |dT|. The closure-derived tighter pair is REPORTED
+# (A_tight_ok), never gated.
+W_BIN_A = 2.0 * W_BIN
+W_MEAN_A = W_MEAN_R + W_MEAN_T
+W_BIN_A_TIGHT = gate_from_envelope(_VALUES["per_bin_max_RT_closure"], quantum=_QUANTUM)
+W_MEAN_A_TIGHT = gate_from_envelope(CV04_MEAN_CLOSURE, quantum=_QUANTUM)
 
 # ---------------------------------------------------------------------------
 # Falsifiers (note section 6)
@@ -189,6 +195,10 @@ def _f(x):
     return float(x)
 
 
+# cv22's six plus this case's absorption pair (#928).
+DECLARED_GATES = G.DECLARED_GATES + ("G1_A", "G2_A")
+
+
 def evaluate_e2(freqs_hz, R_rfx, T_rfx, params: dict, dt: float, *, tail: dict | None = None,
                 dx: float | None = None, require_complete: bool = False) -> dict:
     """E2 gates G1 (per-bin R, T, A), G2 (band-mean R, T, A), G3 (witnesses).
@@ -241,7 +251,8 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, params: dict, dt: float, *, tail: dict |
         }
     # Re-aggregated because the A gates were added after cv22 aggregated its
     # own; the completeness rule (#928) applies to the whole set.
-    out.update(G.aggregate_gates(out["gates"], require_complete=require_complete))
+    out.update(G.aggregate_gates(out["gates"], declared=DECLARED_GATES,
+                                 require_complete=require_complete))
     return out
 
 

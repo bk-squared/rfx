@@ -116,14 +116,30 @@ beyond this arc:
   and the two hashes. Unknowns (the run's timestep, its commit) are null with
   the reason, not reconstructed from today's defaults.
 * `comparators/slab_family.py` — a leaf module holding the slab rig, the gated
-  band, the incident-pulse and ring-down helpers, the envelope loader and the
-  verdict aggregate. cv22 re-exports every name, so its importers are
-  unchanged; `04_multilayer_fresnel.py` reads the leaf and imports no consumer.
-* cv22 and cv23 each declare `CV04_ADOPTION` and hold none of the envelope
-  values.
-* Contracts: outside re-derivation with the three evidence scenarios, the
-  policy pin and the staleness report; ownership, same-commit and fan-out
-  contracts; the completeness flip; the code-motion identity gate.
+  band, the incident-pulse and ring-down helpers, the cell bookkeeping and the
+  auxiliary-echo geometry, `staged_commit`, the envelope loader and the verdict
+  aggregate. cv22 and `slab_rig` re-export every name, so their importers are
+  unchanged; `04_multilayer_fresnel.py` reads the leaf and reaches no consumer,
+  directly or through `lattice_witness` / `slab_rig` — a review found both of
+  those longer edges after the direct one was removed, and
+  `tests/crossval/test_producer_import_graph.py` now holds the property
+  statically (an AST scan that also sees an import inside a function) and
+  dynamically (a fresh interpreter per producer-side import).
+* cv22 and cv23 each declare `CV04_ADOPTION`, DERIVE every window from it —
+  cv23 included, which used to re-export cv22's three and therefore moved
+  whenever cv22 re-adopted, with its own record untouched — and hold none of
+  the envelope values in any spelling.
+* Contracts, four of them and not three: the outside re-derivation with its
+  three evidence scenarios (unadopted evidence inert, altered evidence refused
+  from two directions, an explicit re-adoption moving only the adopter), and
+  the same-commit guard, which is a fourth and is where the review found the
+  hole — its exemption keyed on "the adopted revision is marked bootstrap",
+  and r1 stays marked bootstrap forever, so every later rewrite was waived. It
+  keys on the artifact's absence at the diff base now, and a written revision
+  is immutable regardless. Alongside them: the policy pin, the staleness
+  report, the ownership and fan-out contracts, the completeness flip (with the
+  case's declared gate-name set, so an ABSENT gate is incomplete rather than
+  invisible) and the code-motion identity gate.
 * `tests/_git_tracked.py` — one shared answer to "is this a committed
   artifact?", used by both evidence gates. `Path.exists()` was not it.
 
@@ -201,5 +217,6 @@ exclusion for every file that stays out.
   a consumer's adoption record pins the values it adopted under)
 * Contracts: `tests/contracts/test_calibration_envelope_ownership.py`,
   `tests/contracts/test_evidence_numeric_provenance.py`,
-  `tests/crossval/test_slab_family_code_motion_identity.py`
+  `tests/crossval/test_slab_family_code_motion_identity.py`,
+  `tests/crossval/test_producer_import_graph.py`
 * Identity baseline: `tests/fixtures/slab_family_windows_baseline.json`
