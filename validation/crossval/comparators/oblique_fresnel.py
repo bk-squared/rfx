@@ -65,7 +65,26 @@ RESULTS_DIRNAME = "_26_oblique_results"
 DX_M = 1.0e-3
 D_SLAB_M = 10.0e-3
 EPS_R_SLAB = 4.0
-N_CPML = 20                 # cv04's absorber depth
+# Two declared absorber depths, for two rigs with two jobs (close note section 9):
+#   PRIMARY rig (nx_interior 1500, the Fresnel claim): 80 cells. DERIVED from the
+#     (depth, target) grid on the arms' own gated bins: at 20 the MAIN-grid CPML's
+#     echo is 2.5e-02 in the band mean (the residual physics failure after #888);
+#     at 40 it is 0.002-0.006, the same size as the lattice-vs-continuum floor
+#     the gates must also absorb; at 80 it is 1e-04 to 7e-04, a tenth of that
+#     floor, so the band-mean gates judge the solver and not the rig. 160 is the
+#     convergence witness (~0). R_asymptotic stays the repo default 1e-15: 1e-8
+#     would be ~5x better at 80 but a term at 1/10 of the floor does not justify
+#     touching _cpml_profile's global default. Was 20 (cv04's depth) through
+#     round 2; cv04 keeps 20 because at normal incidence its 20-cell term is
+#     under its own gate.
+#   COMPACT box (nx_interior 100, the absorber witness): 20 cells, ON PURPOSE.
+#     The grazing arms exist to characterise the absorber cv04 ships (G6 judges
+#     rfx against the exact lattice model OF that absorber; the depth ladder and
+#     depth_half falsifier are defined against it). Deepening the witness's own
+#     absorber would leave G6 nothing to judge.
+N_CPML_PRIMARY = 80
+N_CPML_COMPACT = 20
+N_CPML = N_CPML_PRIMARY     # the default every primary-rig call site reads
 CPML_ORDER = 3              # rfx/boundaries/cpml.py _cpml_profile default
 CPML_KAPPA_MAX = 1.0        # cv04 (Grid default)
 CPML_R_ASYMPTOTIC = 1e-15   # rfx/boundaries/cpml.py _cpml_profile default
@@ -432,6 +451,13 @@ def aux_overrides(aux_kwargs: dict | None = None) -> dict:
     return out
 
 
+def declared_n_cpml(spec: dict) -> int:
+    """The declared MAIN-grid absorber depth of the rig this arm runs on: the compact
+    box (the absorber witness) keeps N_CPML_COMPACT; the primary rig carries
+    N_CPML_PRIMARY (close note section 9)."""
+    return N_CPML_COMPACT if spec.get("compact") else N_CPML_PRIMARY
+
+
 def rig_cells(nx_interior: int, n_cpml: int = N_CPML, d_slab_m: float = D_SLAB_M,
               dx: float = DX_M, margin: int = TFSF_MARGIN, probe_off: int = PROBE_OFFSET_CELLS,
               dx_div: int = 1) -> dict:
@@ -642,7 +668,16 @@ def yee_lattice_full(f_hz, ky: float, cells: dict, *, eps_slab: float = 1.0, mu_
         eps_t = eps - Ky ** 2 / (wh[m] ** 2 * mu)
         a = Sinv / (jw * mu * dx)                                   # link coefficient, link i -> i+1
         if aux == "model":
-            Einc = E_aux[m][idx + off]                             # the aux field at every 3-D node
+            # The aux field at every 3-D node the forcing and the probes read. Nodes
+            # OUTSIDE the auxiliary array (deep in the main grid's absorber, where a
+            # deeper main CPML than the aux margin puts them) carry no incident field
+            # by construction: the incident exists only inside the total-field box,
+            # and the forcing reads it only at x_lo-1..x_hi+1. The 20-cell rig hid
+            # this because its x_lo (25) equalled the aux margin (25) exactly.
+            j = idx + off
+            Einc = np.zeros(nx, dtype=complex)
+            ok = (j >= 0) & (j < E_aux.shape[1])
+            Einc[ok] = E_aux[m][j[ok]]
         else:
             Einc = np.exp(-1j * kx[m] * (idx - x_lo) * dx)         # unit +x lattice plane wave at x_lo
         Hinc = (np.roll(Einc, -1) - Einc) / (jw * MU_0 * dx)       # H_{i+1/2} (aux interior: no CPML there)
@@ -805,7 +840,7 @@ RECORD_AMP_FLOOR = 1e-9      # source bins kept (relative amplitude); 1e-9 is 6 
 
 
 def record_probe_series(spec: dict, *, nx_interior: int | None = None, dx_div: int = 1,
-                        n_cpml: int = N_CPML, nfft: int = RECORD_NFFT,
+                        n_cpml: int | None = None, nfft: int = RECORD_NFFT,
                         amp_floor: float = RECORD_AMP_FLOOR, ideal_absorber: bool = False,
                         aux_echo_free: bool = False, aux_kwargs: dict | None = None) -> dict:
     """The four probe time series the case records (total / incident at both
@@ -820,6 +855,7 @@ def record_probe_series(spec: dict, *, nx_interior: int | None = None, dx_div: i
     AUXILIARY one; a control that is meant to carry no absorber echo at all
     needs both (#888).  ``aux_kwargs`` are init_tfsf_2d's auxiliary-absorber
     overrides."""
+    n_cpml = declared_n_cpml(spec) if n_cpml is None else int(n_cpml)
     K = int(dx_div)
     dt = DT_S / K
     nx_int = int(spec["nx_interior"] if nx_interior is None else nx_interior)
@@ -893,7 +929,7 @@ def absorber_window(spec: dict, e_absorber: float) -> dict:
 
 
 def predict_settling(spec: dict, *, nx_interior: int | None = None, dx_div: int = 1,
-                     n_cpml: int = N_CPML, nfft: int = RECORD_NFFT,
+                     n_cpml: int | None = None, nfft: int = RECORD_NFFT,
                      with_absorber_term: bool = True, aux_kwargs: dict | None = None) -> dict:
     """The DERIVED record of one arm at one rung: the first step at which all
     three witnesses sit under their (unchanged) bars, plus the a-priori
@@ -920,6 +956,7 @@ def predict_settling(spec: dict, *, nx_interior: int | None = None, dx_div: int 
     ``e_absorber_main_only`` so the two terms stay separable.  The control is
     NOT ``aux="plane"``: the auxiliary grid, its source and the normalisation
     are unchanged, only its echo is removed."""
+    n_cpml = declared_n_cpml(spec) if n_cpml is None else int(n_cpml)
     K = int(dx_div)
     ser = record_probe_series(spec, nx_interior=nx_interior, dx_div=K, n_cpml=n_cpml, nfft=nfft,
                               aux_kwargs=aux_kwargs)
@@ -1024,18 +1061,18 @@ def predict_settling(spec: dict, *, nx_interior: int | None = None, dx_div: int 
 #     records at 45 and 60 deg came down when the auxiliary absorber stopped
 #     echoing, and the closed form did not move with them.
 RECORD_DECLARED: dict[tuple[str, int, int, int], dict] = {
-    ('te_00', 1, 20, 1500): {"n_settle": 1511, "e_absorber": 2.3163071228933127e-06, "theta_eff_deg": 13.94},
-    ('tm_00', 1, 20, 1500): {"n_settle": 1512, "e_absorber": 2.319317948039465e-06, "theta_eff_deg": 14.13},
-    ('te_30', 1, 20, 1500): {"n_settle": 3099, "e_absorber": 4.4326122381647744e-06, "theta_eff_deg": 64.69},
-    ('te_30', 2, 20, 1500): {"n_settle": 6238, "e_absorber": 3.302665718249719e-05, "theta_eff_deg": 65.26},
-    ('te_45', 1, 20, 1500): {"n_settle": 6047, "e_absorber": 0.06673552045505318, "theta_eff_deg": 77.68},
-    ('te_45', 2, 20, 1500): {"n_settle": 11087, "e_absorber": 0.029885520903827935, "theta_eff_deg": 76.57},
-    ('te_60', 1, 20, 1500): {"n_settle": 10258, "e_absorber": 0.03678582937335072, "theta_eff_deg": 82.54, "nfft_converged": False, "n_settle_ladder_2e17_to_2e20": [9627, 9623, 10258, 9632]},
-    ('te_60', 2, 20, 1500): {"n_settle": 18448, "e_absorber": 0.017845485253995007, "theta_eff_deg": 81.67},
-    ('tm_45', 1, 20, 1500): {"n_settle": 6124, "e_absorber": 0.04794914433654528, "theta_eff_deg": 77.85},
-    ('tm_45', 2, 20, 1500): {"n_settle": 11405, "e_absorber": 0.022375547906149734, "theta_eff_deg": 77.0},
-    ('tm_60', 1, 20, 1500): {"n_settle": 10258, "e_absorber": 0.05607186203624842, "theta_eff_deg": 82.54, "nfft_converged": False, "n_settle_ladder_2e17_to_2e20": [9619, 9512, 10258, 9524]},
-    ('tm_60', 2, 20, 1500): {"n_settle": 18448, "e_absorber": 0.02654603205764698, "theta_eff_deg": 81.67},
+    ('te_00', 1, 80, 1500): {"n_settle": 1511, "e_absorber": 2.5537415369448446e-06, "theta_eff_deg": 13.94},
+    ('tm_00', 1, 80, 1500): {"n_settle": 1512, "e_absorber": 2.5627932715188506e-06, "theta_eff_deg": 14.13},
+    ('te_30', 1, 80, 1500): {"n_settle": 3099, "e_absorber": 4.501760088678528e-06, "theta_eff_deg": 64.69},
+    ('te_30', 2, 80, 1500): {"n_settle": 6238, "e_absorber": 3.442980815667582e-05, "theta_eff_deg": 65.26},
+    ('te_45', 1, 80, 1500): {"n_settle": 5253, "e_absorber": 0.00025277836249250677, "theta_eff_deg": 75.49},
+    ('te_45', 2, 80, 1500): {"n_settle": 11635, "e_absorber": 0.00017584532100455813, "theta_eff_deg": 76.26, "nfft_converged": False, "n_settle_ladder_2e17_to_2e20": [11635, 11208, 10875, 10535], "n_settle_at_2e19": 10875},
+    ('te_60', 1, 80, 1500): {"n_settle": 10258, "e_absorber": 0.0007205451941851098, "theta_eff_deg": 82.54, "nfft_converged": False, "n_settle_ladder_2e17_to_2e20": [9619, 9424, 10258, 9245], "n_settle_at_2e19": 10258},
+    ('te_60', 2, 80, 1500): {"n_settle": 18448, "e_absorber": 0.0005441217717796193, "theta_eff_deg": 81.67},
+    ('tm_45', 1, 80, 1500): {"n_settle": 5253, "e_absorber": 0.00020188106982594223, "theta_eff_deg": 75.49},
+    ('tm_45', 2, 80, 1500): {"n_settle": 11635, "e_absorber": 0.00015241973349177805, "theta_eff_deg": 76.26, "nfft_converged": False, "n_settle_ladder_2e17_to_2e20": [11635, 11208, 10875, 10535], "n_settle_at_2e19": 10875},
+    ('tm_60', 1, 80, 1500): {"n_settle": 10258, "e_absorber": 0.0009439091600187962, "theta_eff_deg": 82.54, "nfft_converged": False, "n_settle_ladder_2e17_to_2e20": [9619, 9424, 10258, 9245], "n_settle_at_2e19": 10258},
+    ('tm_60', 2, 80, 1500): {"n_settle": 18448, "e_absorber": 0.000581671551187709, "theta_eff_deg": 81.67},
     ('graze_vac', 1, 20, 100): {"n_settle": 21735, "e_absorber": 0.0008324974239487657, "theta_eff_deg": 86.94},
     ('graze_pec', 1, 20, 100): {"n_settle": 21735, "e_absorber": 0.07241269112138844, "theta_eff_deg": 86.94},
     ('graze_te', 1, 20, 100): {"n_settle": 21735, "e_absorber": 0.06213502478342781, "theta_eff_deg": 86.94},
@@ -1048,12 +1085,12 @@ RECORD_DECLARED: dict[tuple[str, int, int, int], dict] = {
 RECORD_DECLARED_CLOSED_FORM_RATIO = {
     ("te_30", 1): 1.4268,
     ("te_30", 2): 1.452,
-    ("te_45", 1): 1.9885,
-    ("te_45", 2): 1.8417,
+    ("te_45", 1): 1.7274,
+    ("te_45", 2): 1.9327,
     ("te_60", 1): 2.0524,
     ("te_60", 2): 1.8691,
-    ("tm_45", 1): 2.0759,
-    ("tm_45", 2): 1.9532,
+    ("tm_45", 1): 1.7807,
+    ("tm_45", 2): 1.9926,
     ("tm_60", 1): 2.1424,
     ("tm_60", 2): 1.9522
 }
@@ -1092,7 +1129,7 @@ def aux_echo_arrival_report(spec: dict, cells: dict, *, dx: float, dt: float, n_
                               else "record OUTLIVES the auxiliary echo -- answered for by e_absorber only"))}
 
 
-def derive_record(spec: dict, dt: float | None = None, *, n_cpml: int = N_CPML, nx_interior: int | None = None,
+def derive_record(spec: dict, dt: float | None = None, *, n_cpml: int | None = None, nx_interior: int | None = None,
                   dx_div: int = 1) -> dict:
     """n_steps_min = n_pulse_end + n_ring + TAIL_WINDOW (cv22 section 13
     adapted to the oblique path length):
@@ -1108,6 +1145,7 @@ def derive_record(spec: dict, dt: float | None = None, *, n_cpml: int = N_CPML, 
                     is added (the primary rig time-gates it out instead).
     The CPML gate (first echo at the FASTEST gated component, cv04's 0.95
     rule) must exceed n_steps on the primary rig (asserted by the case)."""
+    n_cpml = declared_n_cpml(spec) if n_cpml is None else int(n_cpml)
     K = int(dx_div)
     dt = DT_S / K if dt is None else float(dt)
     nx_int = spec["nx_interior"] if nx_interior is None else int(nx_interior)
@@ -1188,9 +1226,10 @@ def derive_record(spec: dict, dt: float | None = None, *, n_cpml: int = N_CPML, 
 
 def evaluate_e2(freqs_hz, R_rfx, T_rfx, spec: dict, dt: float, *, tail: dict, oracle_pol: str | None = None,
                 oracle_ky: float | None = None, oracle_eps: float = EPS_R_SLAB, cells: dict | None = None,
-                n_cpml: int = N_CPML) -> dict:
+                n_cpml: int | None = None) -> dict:
     """The E2 gates of one arm against the DECLARED oracle (the arm's pol and
     k_y unless a falsifier judges against another declared value)."""
+    n_cpml = declared_n_cpml(spec) if n_cpml is None else int(n_cpml)
     f = np.asarray(freqs_hz, dtype=float)
     R_rfx = np.asarray(R_rfx, dtype=float); T_rfx = np.asarray(T_rfx, dtype=float)
     pol = spec["pol"] if oracle_pol is None else oracle_pol
@@ -1272,7 +1311,7 @@ def lattice_margin(arm: str, dx_div: int = 1) -> dict:
     f = np.fft.rfftfreq(nfft, d=dt)
     f = f[(f > MASK_F_LO_HZ) & (f < MASK_F_HI_HZ)]
     g = gated_mask(f, spec)
-    cells = rig_cells(spec["nx_interior"], N_CPML, dx_div=K)
+    cells = rig_cells(spec["nx_interior"], declared_n_cpml(spec), dx_div=K)
     lat = yee_lattice_full(f[g], spec["ky"], cells, eps_slab=spec["eps_slab_rfx"], mu_slab=spec["mu_slab_rfx"],
                            dx=cells["dx"], dt=dt, ideal_absorber=True, aux="plane")
     R_an, T_an = oracle_RT(f[g], spec["ky"], spec["pol"])
@@ -1325,7 +1364,7 @@ def evaluate_leakage(freqs_hz, R_rfx, spec: dict) -> dict:
 
 
 def evaluate_grazing_pec(freqs_hz, R_rfx, spec: dict, dt: float, cells: dict, *, n_cpml: int,
-                         declared_n_cpml: int = N_CPML, declared_cpml_kwargs: dict | None = None) -> dict:
+                         declared_n_cpml: int = N_CPML_COMPACT, declared_cpml_kwargs: dict | None = None) -> dict:
     """G6 (note section 4.5): the PEC compact-box arm. Fresnel gives R = 1 at
     every angle; the unit reflected wave hits the lo absorber and returns, so
     the measured excess R - 1 = |1 + r_pml e^{j phi}|^2 - 1 IS the absorber's
@@ -1454,8 +1493,8 @@ FALSIFIERS = {
     "te_45_swap_tm": ("te_45", "F2: TE run judged against the TM oracle", {}, {"oracle_pol": "tm"}),
     "tm_60_swap_te": ("tm_60", "F2: TM (dual) run judged against the TE oracle (fails the Brewster bin)", {}, {"oracle_pol": "te"}),
     "te_45_eps_x1p2": ("te_45", "F3: slab eps x 1.2 (4.8), judged against eps = 4", {"eps_scale": 1.2}, {}),
-    "graze_pec_depth_half": ("graze_pec", "F5: CPML depth halved (10 cells), judged against the 20-cell prediction",
-                             {"n_cpml": 10}, {}),
+    "graze_pec_depth_half": ("graze_pec", f"F5: CPML depth halved ({N_CPML_COMPACT // 2} cells), judged against the {N_CPML_COMPACT}-cell prediction",
+                             {"n_cpml": N_CPML_COMPACT // 2}, {}),
     "graze_pec_sigma_half": ("graze_pec", "F5b: CPML sigma_max halved (R_asym 1e-15 -> 10^-7.5), judged against the declared profile",
                              {"cpml_kwargs": {"R_asymptotic": 10 ** -7.5}}, {}),
 }
@@ -1622,12 +1661,12 @@ def falsifier_prediction(name: str, dt: float | None = None) -> dict:
     g = gated_mask(f, spec)
     out = {"name": name, "arm": arm, "description": desc, "n_bins_gated": int(g.sum()), "dx_div": K}
     if arm in GRAZE_ARMS:
-        cells = rig_cells(spec["nx_interior"], run_def.get("n_cpml", N_CPML), dx_div=K)
-        cells_decl = rig_cells(spec["nx_interior"], N_CPML, dx_div=K)
-        lat_def = yee_lattice_full(f, spec["ky"], cells, dx=dx, dt=dt, n_cpml=run_def.get("n_cpml", N_CPML),
+        cells = rig_cells(spec["nx_interior"], run_def.get("n_cpml", N_CPML_COMPACT), dx_div=K)
+        cells_decl = rig_cells(spec["nx_interior"], N_CPML_COMPACT, dx_div=K)
+        lat_def = yee_lattice_full(f, spec["ky"], cells, dx=dx, dt=dt, n_cpml=run_def.get("n_cpml", N_CPML_COMPACT),
                                    cpml_kwargs=run_def.get("cpml_kwargs"), pec=True)
-        lat_decl = yee_lattice_full(f, spec["ky"], cells_decl, dx=dx, dt=dt, n_cpml=N_CPML, pec=True)
-        lat3_decl = yee_lattice_full(f, spec["ky"], cells_decl, dx=dx, dt=dt, n_cpml=N_CPML, pec=True, aux="plane")
+        lat_decl = yee_lattice_full(f, spec["ky"], cells_decl, dx=dx, dt=dt, n_cpml=N_CPML_COMPACT, pec=True)
+        lat3_decl = yee_lattice_full(f, spec["ky"], cells_decl, dx=dx, dt=dt, n_cpml=N_CPML_COMPACT, pec=True, aux="plane")
         term_decl = lat_decl["R"] - 1.0
         term3_decl = lat3_decl["R"] - 1.0
         gg = g & (np.abs(term3_decl) >= PML_MIN_TERM)

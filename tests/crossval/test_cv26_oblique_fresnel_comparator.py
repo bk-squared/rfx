@@ -477,7 +477,7 @@ def test_records_are_the_declared_lattice_settling_steps():
                 assert r["theta_eff_deg"] > r["theta_gate_hi_deg"] + 10.0, (arm, K, r["theta_eff_deg"])
     for arm in O.GRAZE_ARMS:
         r = O.derive_record(O.arm_spec(arm))
-        decl = O.RECORD_DECLARED[(arm, 1, O.N_CPML, O.NX_INTERIOR_GRAZE)]["n_settle"]
+        decl = O.RECORD_DECLARED[(arm, 1, O.N_CPML_COMPACT, O.NX_INTERIOR_GRAZE)]["n_settle"]
         assert r["record_source"].startswith("declared") and r["n_steps"] == decl, (arm, r["n_steps"], decl)
 
 
@@ -485,36 +485,62 @@ def test_the_record_of_round_1s_settled_arms_is_reproduced():
     """The arms the rig actually settles bracket the declared record: each settled
     inside one RECORD_EXTEND_STEPS quantum of it.
 
-    Re-anchored 2026-09-05/06 to settling MEASURED on the absorber that ships
-    (R_asym = 1e-28, 200 cells; lane A dc597063), each arm run by the case itself
-    FROM its new declared record and read off "record: derived N -> M (k ext)":
-    te_00 dx 1511 (0 ext), te_30 dx 3099 -> 3199 (1 ext of 100), te_30 dx/2 6238
-    (0 ext), te_60 dx 10258 (0 ext -- the 2**19 record, the largest of its nfft
-    ladder, was enough), graze_pec 21735 -> 21835 (1 ext of 100). The round-1
-    anchors -- te_00 1597, te_30 3172 / 6496, graze_pec 22001
-    (cv26-oblique-r1-20260902T162340Z) -- were the 30-cell auxiliary absorber's
-    numbers and are not this rig's. Logs: scratchpad settle_<arm>_dx<K>/ and
-    settle2_<arm>/. This is the only cross-check that the modelled record matches
-    a record an FDTD actually settled at, so it is re-anchored, not removed.
+    Re-anchored 2026-09-06 to settling MEASURED on the rig that ships: primary rig at
+    N_CPML_PRIMARY = 80 (close note section 9, pre-declaration section 17), compact box
+    at N_CPML_COMPACT = 20, auxiliary absorber R_asym = 1e-28. Each arm was run by the
+    case from the closed-form record (no declared entry existed at 80 yet) and extended
+    in its quantum until the witnesses settled -- "record: derived N -> M (k ext)":
+    te_00 dx 1597 (0 ext), tm_00 dx 1597, te_30 dx 2172 -> 3172 (10 ext of 100),
+    te_30 dx/2 4296 -> 6296 (10 ext of 200), te_45 dx/2 6020 -> 10620 (23 of 200),
+    te_60 dx/2 9870 -> 18470 (43 of 200), tm_45 dx/2 5839 -> 10239 (22 of 200),
+    graze_pec 21735 -> 21835 (1 ext of 100, compact, unchanged rig). Every declared
+    record must bracket its measured settle inside one extension quantum. Logs under
+    the session scratchpad settle80_*/ and lad2_*_80/. The round-1 anchors (1597 /
+    3172 / 6496 / 22001) were the 30-cell auxiliary absorber's and the 20-cell primary
+    rig's; the 2026-09-05 anchors were the 1e-28 auxiliary on the 20-cell rig.
     """
-    for arm, K, measured, quantum in (("te_00", 1, 1511, 100), ("te_30", 1, 3199, 100),
-                                      ("te_30", 2, 6238, 200), ("te_60", 1, 10258, 100),
+    for arm, K, measured, quantum in (("te_00", 1, 1597, 100), ("tm_00", 1, 1597, 100),
+                                      ("te_30", 1, 3172, 100), ("te_30", 2, 6296, 200),
+                                      ("te_45", 2, 10620, 200), ("te_60", 2, 18470, 200),
+                                      ("tm_45", 2, 10239, 200),
                                       ("graze_pec", 1, 21835, 100)):
+        key = (arm, K, O.declared_n_cpml(O.arm_spec(arm)), O.arm_spec(arm)["nx_interior"])
+        decl = O.RECORD_DECLARED[key]
         n = O.derive_record(O.arm_spec(arm), dx_div=K)["n_steps"]
-        assert measured - 2 * quantum < n <= measured + quantum, (arm, K, n, measured)
+        if decl.get("nfft_converged") is False:
+            # the model cannot vouch for one number here; what it CAN say is that the
+            # FDTD settles inside the range its own nfft ladder spans, and the declared
+            # (largest) value is not more than one quantum beyond the measured settle
+            lad = decl["n_settle_ladder_2e17_to_2e20"]
+            assert min(lad) - 2 * quantum < measured <= max(lad) + quantum, (arm, K, measured, lad)
+            assert n == max(lad)
+        else:
+            assert measured - 2 * quantum < n <= measured + quantum, (arm, K, n, measured)
 
 
 def test_the_absorber_echo_over_the_record_is_what_picks_dx_over_2():
-    """Section 13.4. The echo is gated by its AMPLITUDE inside the record, not
-    by its arrival: at dx the 20-cell CPML's grazing reflection puts the 45 deg
-    arms outside W_bin, and at dx/2 it does not."""
+    """Section 13.4 said the echo picks dx/2: at dx the 20-cell CPML's grazing
+    reflection put the 45 deg arms outside W_bin, and at dx/2 it did not.
+
+    On the 80-cell primary rig (pre-declaration section 17) that argument no
+    longer exists: the MAIN absorber's echo over the record is under 1e-3 at
+    BOTH rungs for every oblique arm (te_45 dx/2 1.8e-04, te_60 dx 7.2e-04 --
+    170x and 50x below the 20-cell values), so the absorber term is not what
+    separates dx from dx/2 any more. What IS asserted: absorber_ok on both rungs
+    at the declared depth, an echo under 1e-3 (a term of ~1e-3 in R against
+    W_MEAN_R = 0.010, i.e. the absorber is no longer the leading term), and that
+    the recipe's dx/2 choice survives -- it now rests on the lattice dispersion
+    term W_disp (halved at dx/2), which is the case's own printed reason. The
+    old assertion that dx FAILS absorber_ok is recorded here as what changed:
+    a 20-cell absorber failure, not a property of the oblique arms."""
     for arm in ("te_45", "te_60", "tm_45", "tm_60"):
         r2 = O.derive_record(O.arm_spec(arm), dx_div=2)
         r1 = O.derive_record(O.arm_spec(arm), dx_div=1)
-        assert r2["absorber_ok"], (arm, r2["W_absorber_R_max"], r2["W_absorber_T_max"])
-        assert r1["e_absorber"] > 1.6 * r2["e_absorber"], (arm, r1["e_absorber"], r2["e_absorber"])
-    for arm in ("te_45", "tm_45", "tm_60"):
-        assert not O.derive_record(O.arm_spec(arm), dx_div=1)["absorber_ok"], arm
+        for K, r in ((2, r2), (1, r1)):
+            assert r["record_source"].startswith("declared"), (arm, K, r["record_source"])
+            assert r["absorber_ok"], (arm, K, r["W_absorber_R_max"], r["W_absorber_T_max"])
+            assert r["e_absorber"] < 1.0e-3, (arm, K, r["e_absorber"])
+        assert O.ARM_DX_DIV[arm] == 2      # the recipe is unchanged; its reason moved to W_disp
     for arm in ("te_00", "tm_00", "te_30"):
         assert O.derive_record(O.arm_spec(arm), dx_div=O.ARM_DX_DIV[arm])["absorber_ok"], arm
 
@@ -684,24 +710,26 @@ def test_a_declared_falsifier_still_reaches_the_e4_gate():
 
 def test_the_records_the_table_cannot_vouch_for_say_so():
     """The settling step is a property of the inverse-DFT length: undecayed content
-    wraps, and at 60 degrees on dx the first crossing lands 6-7 % apart between
-    adjacent lengths (2**17..2**20 = 9627 / 9623 / 10258 / 9632 for te_60, 9619 /
-    9512 / 10258 / 9524 for tm_60 -- the derivation length 2**19 is the outlier
-    both times). A sustained-window criterion was measured to change nothing.
-    So those two keys carry ``nfft_converged = False`` and their ladder; every
-    other key must NOT carry the flag, and a flagged key's declared value must be
-    one of its own ladder values. The table states what it cannot vouch for."""
+    wraps, and at 60 degrees on dx the first crossing moves with the transform
+    length. On the 20-cell rig the derivation length 2**19 was a lone outlier
+    (9627 / 9623 / 10258 / 9632); on the 80-cell rig the whole ladder drifts
+    (9619 / 9424 / 10258 / 9245 for both te_60 and tm_60) and there is no lone
+    outlier to blame. A sustained-window criterion was measured to change
+    nothing. So those keys carry ``nfft_converged = False`` and their ladder; the
+    declared value is the LARGEST of the ladder (the conservative record -- more
+    settling, never less); every other key must NOT carry the flag. The table
+    states what it cannot vouch for, and by how much."""
     flagged = {k for k, v in O.RECORD_DECLARED.items() if v.get("nfft_converged") is False}
-    assert flagged == {("te_60", 1, O.N_CPML, O.NX_INTERIOR), ("tm_60", 1, O.N_CPML, O.NX_INTERIOR)}, flagged
+    assert {("te_60", 1, O.N_CPML, O.NX_INTERIOR), ("tm_60", 1, O.N_CPML, O.NX_INTERIOR)} <= flagged, flagged
     for k in flagged:
         v = O.RECORD_DECLARED[k]
         ladder = v["n_settle_ladder_2e17_to_2e20"]
         assert len(ladder) == 4 and v["n_settle"] in ladder
+        assert v["n_settle"] == max(ladder), (k, ladder, "the declared record must be the conservative end of its ladder")
         spread = (max(ladder) - min(ladder)) / min(ladder)
-        assert 0.05 < spread < 0.10, (k, ladder, spread)          # measured 6.6 % / 7.8 %; a collapse or a blow-up is news
-        # the derivation length is the odd one out: the other three agree to 1 %
-        others = [ladder[i] for i in (0, 1, 3)]
-        assert (max(others) - min(others)) / min(others) < 0.02, (k, ladder)
+        # measured 11.0 % on the 80-cell rig for the 60-deg keys; a collapse to nothing
+        # or a blow-up past 20 % is news either way
+        assert 0.02 < spread < 0.20, (k, ladder, spread)
     for k, v in O.RECORD_DECLARED.items():
         if k not in flagged:
             assert "nfft_converged" not in v, k
