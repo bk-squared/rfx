@@ -43,9 +43,11 @@ in the same commit as its reason.
 - **(A)** the opted-in documents pass on the committed tree, with every reference resolving
   and every value inside its stated precision.
 - **(B)** the gate fails on a measured round-1 defect, for the right reason. The instance is
-  cv15: the round-1 lane regenerated the committed rfx leg so that
-  `validation/crossval/_15_patch_results/rfx.json::s11_dip_db = -4.4298` moved to
-  −0.3448 dB, while the prose describing it did not move. `test_the_gate_fires_on_the_measured_cv15_regression`
+  cv15: the round-1 lane regenerated the committed rfx leg so that its `s11_dip_db`
+  moved from −4.4298 dB to −0.3448 dB, while the prose describing it did not move.
+  (The live value that key holds today is cited in the appended 2026-09-06 section;
+  see it for why the reference moved out of this paragraph. The two numbers here are
+  round-1 history and are unchanged.) `test_the_gate_fires_on_the_measured_cv15_regression`
   reproduces that artifact mutation in a scratch tree and asserts the gate reports the
   document, the reference and both values. A second arm asserts the same for a sign
   inversion of the cited literal.
@@ -86,3 +88,52 @@ gate) — and re-registers their floors from 4 → 2 (cv15) and 3 → 2 (cv18) i
 floor comment demands. The cv11 and cv19 manifest `claim_scope` texts, which no
 later PR touched, keep this branch's citation-form rewrite (4 references each).
 The gate test itself moved to `tests/contracts/` with the test reorg.
+
+## The cv15 anchor moves with the artifact (appended 2026-09-06, issue #912)
+
+Appended, not edited above. Issue #912 regenerated the wire-port crossval records
+that predate PR #897 (the Yee half-step current-DFT phase correction). One of them
+is this note's criterion-(B) anchor, `validation/crossval/_15_patch_results/rfx.json`,
+whose producer is `validation/crossval/15_patch_antenna_rt5880.py rfx`. The
+regenerated leg (VESSL run 369367258715 on remilab-c0, repo SHA
+`f5ee3b59c3e83832f7df1682f0ad30abb260a42e`, SHA-guarded in the job) holds
+
+  `validation/crossval/_15_patch_results/rfx.json::s11_dip_db = -0.3182` dB
+
+so the reference in §4 — which asserted −4.4298 on this same key — no longer
+resolves. Written root cause, measured, before anything was changed:
+
+1. The regeneration is legitimate and the artifact was the stale side. In the same
+   job an A/B control leg ran the identical script at `aa888b7a` (PR #897's
+   immediate parent). It reproduced `s11_dip_db = -0.3448075` — i.e. the round-1
+   value this note records in §4, to 6e-7 relative. The committed −4.4298 does not
+   reproduce at either SHA.
+2. The −4.4298 → −0.3448 move is **not** PR #897. It is already fully present at
+   #897's parent. The committed leg dates from `1f005d0d` (PR #768, 2026-08-29) and
+   PRs #776 (`7c80714c`, whole-port driven diagonal) and #777 (`ad13b4c7`,
+   uniform-lane POST flip + decomposer recalibration) rewrote the wire-port
+   one-port diagonal on 2026-08-30/31, after it. Round 1 regenerated the leg
+   correctly and the #812 lane reverted that regeneration; the revert restored an
+   artifact the committed solver no longer produces.
+3. PR #897's own contribution, isolated on the A/B pair, is the advertised
+   rotation and nothing else: `s11_dip_db` −0.3448075 → −0.3181958 (+0.0266 dB),
+   `f_dip_hz` unchanged, `max |dS11|` 0.007284 over the band, and the measured
+   per-bin current rotation is `pi f dt` to 6.4e-6 rad with the run's own
+   `dt = 1.5134e-12` s recovered to 1 part in 1e4 from the fit.
+
+What changed here, and what did not. The §4 sentence keeps both of its historical
+numbers verbatim; only its *citation form* was dropped, because a live artifact
+reference cannot also be a historical one. The live reference now sits in this
+section, so `_cv15_dip_references()` still finds an anchor,
+`test_the_gate_fires_on_the_measured_cv15_regression` still fires on the
+−0.3448069 mutation (which is no longer the committed value either), and the
+reference census is unchanged (one reference moved, none added or removed). **No
+gate, tolerance, window, floor or `REQUIRED_SITES` entry was changed by #912.**
+
+What this episode says about the gate itself, stated plainly because it is the
+uncomfortable half: this gate is a provenance instrument, and §5.2 already says it
+cannot tell a wrong-but-self-consistent artifact from a right one. It held a stale
+cv15 leg green for six days (2026-08-31 → 2026-09-06) because the prose and the
+artifact agreed with each other. What caught it was re-running the producer, not
+this gate. A freshness instrument — "the committed leg reproduces on today's
+solver" — is a different check and this note does not claim to be one.

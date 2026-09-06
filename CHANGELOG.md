@@ -131,6 +131,46 @@ and reports each pair sum against the covariant value for that plane's lattice
 `apply_waveguide_port_e` placing the `-` port's E correction at `x_index + 1`,
 is reported separately as `port_index_mirror_known_e_plane_offset` at `info`
 severity rather than counted as an asymmetry.
+### Changed — the cv05 and cv15 wire-port crossval records are regenerated on the corrected extractor (issue #912)
+
+PR #897 (v1.8.0) advanced the H-derived wire-port current DFT by
+`exp(+j*omega*dt/2)` and said the recorded outputs for cv05, cv06b and cv15
+predate it. cv05 and cv15 are regenerated here. **cv06b is not touched**: issue
+#912 assigns it to the #812 regate lane.
+
+Both were produced by one VESSL job, **run 369367258715** on `remilab-c0`, image
+`ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8`, `jax[cpu]==0.6.2`, from a clean
+clone SHA-guarded at `f5ee3b59c3e83832f7df1682f0ad30abb260a42e`. The same job ran
+an **A/B control leg** at `aa888b7a` — PR #897's immediate parent — so the
+correction's effect is measured, not inferred. Per-record ledgers:
+`validation/crossval/_05_patch_results/README.md` and
+`validation/crossval/_15_patch_results/README.md`.
+
+| Record | `max abs(dS11)` | dip frequency | dip depth | attribution |
+|---|---|---|---|---|
+| cv05 `_05_patch_results/cv05_run_openems_369367258715.json` (new; the 369367257743 file is kept as the #812 artifact) | 0.006850 @ 3.5 GHz | 2.32 GHz, **0 Hz shift** | −1.614843 → −1.583059 dB (+0.0318 dB, abs(S11) +0.37 %) | PR #897 alone — the control leg reproduces the old record's S11 to 2.5e-16 and its openEMS leg to 0.0 |
+| cv15 `_15_patch_results/rfx.json` (replaced in place) | 0.9767 over the band | 2.310 → 2.320 GHz (+1 bin) | −4.42984 → −0.31820 dB (+4.1116 dB) | **NOT PR #897.** PR #897 contributes only −0.3448075 → −0.3181958 dB (+0.0266 dB, `max abs(dS11)` 0.007284). The 4.1 dB was already present at #897's parent |
+
+The cv15 finding is the one to read. That leg was recorded at `1f005d0d`
+(PR #768, 2026-08-29); PR #776 (`7c80714c`) and PR #777 (`ad13b4c7`) rewrote the
+wire-port one-port diagonal on 2026-08-30/31, and the committed leg has been stale
+against the shipped solver since. Its `max_abs_s11` moves 0.786966 → 0.998132 —
+still inside cv15's unchanged `max|S11| <= 1.05` passivity bound, with much less
+headroom.
+
+On both records the correction behaves exactly as derived and only there: the
+per-bin current rotation recovered from each A/B pair is `pi*f*dt` (cv15
+`dt = 1.513304e-12` s fitted against the grid's `1.513439e-12` s, linearity
+residual 6.4e-6 rad; cv05 `dt = 7.78397e-13` s, residual 1.1e-5 rad), and
+re-rotating the control leg reproduces the new leg to 3.8e-6 (cv15) and 8.9e-6
+(cv05). Every ring-down, settling, preflight and mode-identification field is
+unchanged, as a DFT-accumulator change must leave them.
+
+No gate, tolerance, window or floor changed. One documentation reference moved:
+`docs/design_notes/20260901_numeric_provenance_gate.md` anchored criterion (B) on
+the cv15 `s11_dip_db` value, so its live citation now sits in that note's appended
+2026-09-06 section with the written root cause; the §4 history keeps both of its
+original numbers.
 
 ## [1.8.0] - 2026-09-06
 
