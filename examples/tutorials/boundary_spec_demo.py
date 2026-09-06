@@ -1,32 +1,31 @@
-"""Choosing boundaries — the four patterns you actually need.
+"""Choosing boundaries — the four patterns that cover most RF work.
 
 Every simulation starts with one decision: what happens at the edge of the
 domain? rfx expresses it with ``BoundarySpec`` (per-axis, per-face). This
-tutorial builds the four patterns that cover almost all RF work and runs a
-tiny simulation with each so you can see them execute.
+tutorial builds the four patterns and runs a tiny simulation with each.
 
-THE RULE (worth memorising):
+THE RULE:
   * **CPML** for OPEN structures — antennas, scattering, anything that
     radiates. The absorber emulates infinite free space.
   * **PEC** for CLOSED structures — cavities, shielded fixtures. Energy is
-    conserved by design; resonances ring forever (that is the physics, not
-    a bug).
+    conserved by design, so resonances ring forever; that is the physics,
+    not a defect.
   * Do NOT mix the two roles: a cavity with one absorbing wall is neither a
     cavity nor an antenna, and its Q means nothing.
   * **PMC** is a symmetry tool: an E-field symmetric structure can be cut in
     half with a PMC wall on the symmetry plane — same physics, half the cells.
-  * **periodic** for infinite arrays (metasurfaces / frequency-selective
+  * **periodic** for infinite arrays (metasurfaces, frequency-selective
     surfaces); the paired faces must be used together.
 
 Run as::
 
     python examples/tutorials/boundary_spec_demo.py
 
-Each pattern prints the resolved spec (``BoundarySpec.to_dict()``) and the
-peak |Ez| after a short run, so you can confirm the configuration executed.
-All four sources pass ``amplitude_kind="current"``, which makes the drive mean
-the same thing under every boundary — without it the source convention itself
-varies per boundary and the four peaks are not comparable.
+Each pattern prints the resolved spec (``BoundarySpec.to_dict()``) and the peak
+|Ez| after a short run, so the configuration is visibly executing.  All four
+sources pass ``amplitude_kind="current"`` so the drive means the same thing
+under every boundary; without it the source convention varies per boundary and
+the four peaks are not comparable.
 """
 
 from __future__ import annotations
@@ -59,9 +58,9 @@ if __name__ == "__main__":
 
     # 2) Antenna over a ground plane — one PEC face (the ground), open
     #    everywhere else. Per-face control uses Boundary(lo=..., hi=...).
-    #    (For a FINITE ground plane, prefer a PEC Box inside an all-CPML
-    #    domain instead — an infinite boundary ground turns the antenna
-    #    into a cavity and shifts its resonance.)
+    #    For a FINITE ground plane use a PEC Box inside an all-CPML domain
+    #    instead: a boundary ground is infinite, which turns the antenna into
+    #    a cavity and shifts its resonance.
     _run_and_report("ground plane", BoundarySpec(
         x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")))
 

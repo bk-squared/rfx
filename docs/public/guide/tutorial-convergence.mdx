@@ -84,11 +84,10 @@ Convergence order  : 1.85
 ```
 
 Use a short trial run first, then rerun the final study with the time window
-required by your observable. Keep geometry, source, absorber thickness where the model has one,
-probe, and run duration fixed as closely as grid quantization permits. The
-example selects the lowest mode in a fixed band, so the same mode is tracked at
-every resolution, and it handles an empty `find_resonances(...)` result
-explicitly rather than indexing into it.
+your observable needs. Hold geometry, source, probe and run duration fixed
+across the sweep — only `dx` changes. The example selects the lowest mode in a
+fixed band, so the same mode is tracked at every resolution, and it handles an
+empty `find_resonances(...)` result explicitly rather than indexing into it.
 
 ## 4. Interpret the result
 

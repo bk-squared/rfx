@@ -144,11 +144,9 @@ broad wall as it travels.
 
 ## Result
 
-Across the X-band, |S21| sits at about 0 dB and |S11| is essentially zero
-(`max|S11| = 0.0000` with the thick CPML) — so the empty matched guide passes the
-TE10 mode essentially perfectly, which is exactly what an ideal guide above cutoff
-should do. (Thinning the absorber raises the reflection floor toward ~0.09; see
-the limit note under Validation.)
+Across the X-band |S21| sits at about 0 dB and `max|S11| = 0.0000` with the
+20-layer CPML. An empty matched guide above cutoff should pass the TE10 mode with
+no reflection, and it does.
 
 ![Reflection and transmission vs frequency for the empty WR-90 guide](/rfx/gallery/assets/waveguide_wr90/sparams.png)
 
@@ -171,16 +169,12 @@ frequency above cutoff. The figure overlays the rfx values on that reference.
 ![|S11| and |S21| vs the exact matched empty-guide answer](/rfx/gallery/assets/waveguide_wr90/validation.png)
 
 Reference: analytic matched-load (`|S11| = 0`, `|S21| = 1` above cutoff),
-cross-checked against MEEP/OpenEMS/Palace. With the thick
-20-layer CPML this run produces, the published result is `max|S11| = 0.0000` and
-`min|S21| = 1.0000` to the figure's precision — the empty matched guide passes
-the TE10 mode essentially perfectly, as an ideal guide above cutoff should.
+cross-checked against MEEP/OpenEMS/Palace.
 
-**Limit — absorber floor.** The residual `|S11|` is a CPML back-reflection floor,
-not a solver error. The 20-layer absorber holds it at the `≈0` published here;
-*thinning* the CPML to the default 10–12 layers raises the reflection floor toward
-about 0.09. So the floor is a sensitivity to the absorber thickness, not the
-guide's reflection.
+**Limit — absorber floor.** The residual `|S11|` is CPML back-reflection, not a
+solver error. The 20-layer absorber holds it at the `≈0` published here; thinning
+to the default 10–12 layers raises the floor toward about 0.09. That number
+tracks the absorber thickness, not the guide's reflection.
 
 ## Autodiff
 
@@ -199,40 +193,33 @@ within 5% and a matching sign.
 |---|---|---|---|---|
 | `∂\|S21\|²/∂εr` | `−0.2201` | central FD `−0.2197` (h = 0.05) | 0.0017 (0.17%) | yes |
 
-It agrees to 0.17% with matching sign — well inside the 5% asked of it. That
-number validates the differentiation of this computation; it is not a
-chain-closure verdict for the family. The rectangular-waveguide S-matrix row of
-`docs/guides/support_matrix.md` (source checkout) records: "**Chain battery:
-chain-closed (v1.8) for uniform single-mode S on the `normalize=False` and
-`normalize="flux"` lanes**" — contract criteria 1 (forward identity) and 3(a)
-(AD-vs-FD) read under `JAX_ENABLE_X64` on the flux lane, the forward default
-still float32. The 0.17% figure above is a **float32** flux-lane gradient: the
-declaration leaves a float32 gradient pipeline on that lane outside it (its
-forward identity misses the contract bound at 1.08–1.76 of the allowance),
-so read this page's number as an AD-vs-FD agreement on this computation, not
-as a chain-closed gradient. Chain-closed is not "supported"; the row stays
-**limited**.
+The gradient agrees to 0.17% with matching sign, inside the 5% this check asks
+for. It checks the differentiation of this one computation, not the whole
+waveguide family. The chain battery closed at v1.8 for uniform single-mode S on
+the `normalize=False` and `normalize="flux"` lanes, with contract criteria 1
+(forward identity) and 3(a) (AD-vs-FD) read under `JAX_ENABLE_X64` on the flux
+lane; the forward default is still float32. The 0.17% above is a float32
+flux-lane gradient, and in float32 the forward identity sits at 1.08–1.76 of its
+allowance — outside that closure declaration. The support row stays **limited**
+{/* docs/guides/support_matrix.md, Rectangular-waveguide S-matrix */}.
 
 ![Transmission sensitivity to the dielectric fill — AD gradient vs central finite differences](/rfx/gallery/assets/waveguide_wr90/autodiff.png)
 
-The AD gradient `∂|S21|²/∂εr ≈ −0.220` matches the central finite difference to
-about `0.2 %`, with matching sign. The sign is physical: a dielectric fill lowers
-the cutoff toward the band through `f_c,d = f_c / √εr` (so
-`∂f_c,d/∂εr = −f_c / (2·εr^{3/2})`, about `−1.8 GHz`), which moves the band edge
-and reduces transmission. The closed-form cutoff relation points the same way the
-solver gradient does.
+The sign is physical: a dielectric fill lowers the cutoff toward the band through
+`f_c,d = f_c / √εr` (so `∂f_c,d/∂εr = −f_c / (2·εr^{3/2})`, about `−1.8 GHz`),
+which moves the band edge and reduces transmission. The closed-form cutoff
+relation points the same way the solver gradient does.
 
-**Limits.** The reflection floor is the CPML, not the physics — the 20-layer
-absorber drives the published `|S11|` to ~0, and thinning to the default 10–12
-layers raises it toward ~0.09 (a known trap). The broad-wall width `a` is **not**
-a `jax.grad` input: `a/dx` is a discrete cell count and the analytic mode profile
-is rebuilt for each width, so its sensitivity is shown by re-meshing and finite
-differences, alongside the analytic cutoff relation `f_c = c/(2·a)` — not by
-automatic differentiation. The differentiable lanes are `normalize=False` and
-`normalize="flux"`. `normalize=True` is the host-assembled two-run lane and is
-outside the differentiable chain: it raises `NotImplementedError` for a traced
-`eps_override`/`sigma_override` under `jax.grad`/`jax.jit`
-{/* rfx/api/_sparams.py:2730-2743 */}. The Run block above passes a concrete
+**Limits.** The broad-wall width `a` is **not** a `jax.grad` input: `a/dx` is a
+discrete cell count and the analytic mode profile is rebuilt for each width, so
+its sensitivity comes from re-meshing and finite differences, alongside the
+analytic cutoff relation `f_c = c/(2·a)` — not from automatic differentiation.
+
+The differentiable lanes are `normalize=False` and `normalize="flux"`.
+`normalize=True` is the host-assembled two-run lane and is outside the
+differentiable chain: under `jax.grad`/`jax.jit`, a traced
+`eps_override`/`sigma_override` makes `compute_waveguide_s_matrix` raise
+`NotImplementedError` before any FDTD run. The Run block above passes a concrete
 `normalize=True` and runs forward; the same call under `jax.grad` raises.
 
 ## Next

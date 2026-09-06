@@ -11,7 +11,8 @@ substrate, a coating, or a narrow gap forces a small timestep on the whole
 domain even when the wavelength is large. That is the stiff-mesh problem.
 
 `solver="adi"` (Alternating-Direction-Implicit, the Zheng–Chen–Zhang two-sub-step
-3D scheme) is **unconditionally stable**: it stays bounded at any timestep.
+3D scheme since #338) is **unconditionally stable**: it stays bounded at any
+timestep.
 `adi_cfl_factor` sets how far past the standard limit you push. Stability is
 free; wavelength-scale accuracy is not.
 
@@ -90,8 +91,4 @@ python examples/tutorials/adi_solver_demo.py
 ```
 
 The demo resonates a vacuum PEC cavity three ways — explicit Yee, ADI at factor
-2, ADI at factor 5 — and prints the frequency error each way, so the
-accuracy-versus-timestep trade is visible rather than asserted.
-
-_The Zheng–Chen–Zhang 3D scheme replaced the earlier LOD path in issue #338;
-earlier releases carried the older, over-dissipative LOD implementation._
+2, ADI at factor 5 — and prints the frequency error each way.

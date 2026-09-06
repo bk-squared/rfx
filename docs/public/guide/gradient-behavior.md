@@ -43,7 +43,8 @@ sim.add_port(
 )
 sim.add_probe((0.032, 0.015, 0.010), "ez")
 
-# Values the later snippets read.
+# Values the later snippets read. 600 steps only gives those snippets array
+# shapes to work on; it is far too short to be a settled S11.
 s11 = sim.run(n_steps=600, compute_s_params=True).s_params[0, 0, :]
 eps_min, eps_max = 1.0, 12.0
 latent = jnp.zeros((8, 8, 4))

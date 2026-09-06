@@ -6,8 +6,8 @@ sidebar:
 ---
 
 This tutorial builds a finite-ground-plane patch model and runs a short setup
-check. It does not assign a resonant frequency, return loss, or Q to the model
-without a mesh/time-window study and an independent reference.
+check. Resonance, return loss and Q come later: each needs a mesh and
+time-window study plus an independent reference.
 
 ## 1. Calculate starting dimensions
 
@@ -113,24 +113,24 @@ sim.add_probe(probe, "ez")
 sim.preflight(strict=True)
 ```
 
-The thin-conductor calls warn that the copper sheet is routed to PEC. That is
-the represented model: conductor skin depth, surface roughness, and finite
-copper loss are not included. Two routes put loss back.
+Both `add_thin_conductor` calls warn: `sigma_bulk=5.80e+07 S/m is at or above
+the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet`. That is the
+model you get — skin depth, surface roughness and finite copper loss are
+absent, and `thickness` is not read on this path. Two routes put loss back.
 
 The documented one is
-`add_thin_conductor(shape, sigma_bulk=5.8e7, surface_impedance_f0=f0)`, which
-models the sheet as a resistive sheet of sheet resistance
-`Rs0 = sqrt(pi*f0*mu0/sigma_bulk)` — the thick-conductor surface resistance at
-the band centre `f0` {/* rfx/api/__init__.py:1379-1420 */}. Its scope, from the
-"Surface-impedance sheets" row of `docs/guides/support_matrix.md`: it "supports
-patterned shapes that rasterize to exactly one cell layer and at least one cell
-on its documented uniform and graded-mesh lanes. It is not a general dispersive
-or multi-runner conductor model." One frequency, one cell layer.
+`add_thin_conductor(shape, sigma_bulk=5.8e7, surface_impedance_f0=f0)`, a
+resistive sheet of sheet resistance `Rs0 = sqrt(pi*f0*mu0/sigma_bulk)` — the
+thick-conductor surface resistance at band centre `f0`
+{/* rfx/api/__init__.py:1379-1420 */}. Its scope, from the
+"Surface-impedance sheets" row of `docs/guides/support_matrix.md`: patterned
+shapes that rasterize to exactly one cell layer and at least one cell, on the
+documented uniform and graded-mesh lanes; not a general dispersive or
+multi-runner conductor model. One frequency, one cell layer.
 
-The cruder route is a finite sheet-resistance approximation through
-`sigma_bulk`, which requires an explicitly justified value below 1e6 S/m — that
-is the threshold at which the sheet stops being routed to PEC, so anything above
-it silently reverts to the lossless model.
+The cruder route is a finite sheet resistance through `sigma_bulk` alone, which
+needs an explicitly justified value below 1e6 S/m. At or above 1e6 S/m the
+sheet takes the PEC route and warns.
 
 ## 4. Check execution before interpreting RF results
 
@@ -150,8 +150,8 @@ longer fixed window, discard the driven portion, and handle the case where
 larger air margins, and longer windows. Report the movement of the selected
 mode, not just the finest result.
 
-The short run may emit the ring-down-truncated advisory. That is expected for
-this short window and is another reason not to interpret its spectrum.
+The short run may emit the ring-down-truncated advisory: two periods is far too
+short for the tail to settle.
 
 The source above is a soft field source, not a 50-ohm feed. It cannot establish
 return loss. An impedance-referenced study must use the matching port family and
@@ -168,5 +168,4 @@ The script's evidence applies only to its committed geometry, mesh, frequency
 band, metric, and tolerances. Do not transfer its frequency or Q to the model
 above or to a modified feed without a new comparison.
 
-Continue with [Examples](/rfx/examples/) for the ordered learning sequence; the
-cross-validation script above is an accuracy fixture, not a lesson.
+Continue with [Examples](/rfx/examples/) for the ordered learning sequence.

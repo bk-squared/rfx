@@ -128,20 +128,19 @@ if the incident pulse and reflection overlap in time on a very short round trip,
 narrow the source bandwidth to compress the incident pulse — or use an
 impedance-referenced port (`add_port(..., impedance=Z0)` with
 `forward(port_s11_freqs=...)`), which separates incident and reflected waves
-exactly. Note that an AD-vs-finite-difference check will *not* catch an empty
-window: both differentiate the same window and agree (see
+exactly. An AD-vs-finite-difference check will *not* catch an empty window:
+both differentiate the same window and agree (see
 [Autodiff and Adjoint Background](/rfx/guide/autodiff-adjoint/#a-passing-finite-difference-check-is-necessary-not-sufficient)).
 
 For NTFF/directivity optimization, `maximize_directivity(...)` defaults to
 `log_ratio=True`, which is sign-correct for every degree of freedom, including
 design variables that change total radiated power (conductors/PEC, lossy, or
 magnitude-changing dielectric DoFs). <!-- rfx/optimize_objectives.py:290 -->
-`log_ratio=False` is the legacy mode kept for back-compatibility: it drops a
-quotient-rule term and yields wrong-sign gradients for power-changing DoFs, so
-it is correct only for shape-preserving, constant-radiated-power ones. The
-default flipped in 1.6.7 (CHANGELOG `[1.6.7] - 2026-07-28`, GitHub #129); code
-written against the older default should pass `log_ratio=False` explicitly if it
-relied on it.
+`log_ratio=False` drops a quotient-rule term and yields wrong-sign gradients for
+power-changing DoFs, so it is correct only for shape-preserving,
+constant-radiated-power ones. The default flipped in 1.6.7 (CHANGELOG
+`[1.6.7] - 2026-07-28`, GitHub #129), so code that relied on the old behaviour
+must now pass `log_ratio=False` explicitly.
 
 ## Design-region API
 

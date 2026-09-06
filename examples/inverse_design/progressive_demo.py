@@ -4,10 +4,6 @@ NOT a cross-validation. Minimal API demo that shows how
 ``rfx.progressive_optimize`` runs inverse design at a sequence of
 increasing mesh resolutions, upsampling the latent between stages.
 
-Moved out of the cross-validation tree (now ``validation/crossval/``) in the
-2026-04-20 audit — self-tests belong in ``examples/inverse_design/``, not next
-to external-solver cross-validations.
-
 Setup (deliberately small for a fast demo):
 
   24 x 24 x 24 mm domain, CPML on all sides.
@@ -29,38 +25,39 @@ Loss scale — why the objective is divided by a reference
 --------------------------------------------------------
 The source passes ``amplitude_kind="current"``, so its amplitude is a drive
 current in amperes and the injected field carries a ``1/dV`` cell-volume
-factor.  Raw ``mean|E_probe|^2`` is therefore ~1e10 here, not ~1.  Two
-consequences, both measured on this pod (2026-09-05, 64-core CPU, 10
-iterations):
+factor.  Raw ``mean|E_probe|^2`` is therefore ~1e10 here, not ~1.  ``main()``
+runs one extra forward at the coarse dx and divides the loss by that mean probe
+power, which puts the reported loss and its gradient at O(1).  The loss starts
+at -1.81 rather than -1 because the reference uses a 10-period run and the
+optimizer a longer one.  Adam is scale-invariant, so normalizing does not move
+the design: the per-stage percentages below are identical with and without it.
 
-1. The raw number startles a reader, so ``main()`` runs ONE extra forward at
-   the coarse dx and divides the loss by that mean probe power.  The reported
-   loss then starts at O(1) (-1.81 measured: the reference uses a 10-period
-   run, the optimizer a longer one, so the ratio is not exactly 1).  Adam is scale-invariant, so this does not move
-   the design — the per-stage percentages below are identical before and
-   after normalizing.
-2. The scale decides whether this demo optimizes AT ALL.  Adam's update is
-   ``lr * m / (sqrt(v) + 1e-8)`` (``eps_adam``, ``rfx/optimize.py``).  Under
-   the pre-1.7 per-path default (``amplitude_kind=None``) the loss was ~1e-8
-   and its gradient ~1e-12, so ``eps_adam`` dominated the denominator and the
-   latent barely moved:
+The scale does decide whether this demo optimizes at all.  Adam's update is
+``lr * m / (sqrt(v) + 1e-8)`` (``eps_adam``, ``rfx/optimize.py``).  Passing
+``amplitude_kind=None`` selects the legacy per-path amplitude convention —
+deprecated since #571, still the default in 1.7 and 1.8 with a
+DeprecationWarning.  Under it the loss is ~1e-8 and its gradient ~1e-12, so
+``eps_adam`` dominates the denominator and the latent barely moves.  Measured
+2026-09-05, 64-core CPU, 10 iterations:
 
-   ===================  ==================  ==================  ==============
-   convention           stage 1 improvement stage 2 improvement boundary jump
-   ===================  ==================  ==================  ==============
-   legacy (``None``)    +0.006 %            0.000 %             70x (mesh)
-   ``"current"``        +3.86 %             +1.29 %             8 %
-   normalized (now)     +3.86 %             +1.29 %             8 %
-   ===================  ==================  ==================  ==============
+===================  ==================  ==================  ==============
+convention           stage 1 improvement stage 2 improvement boundary jump
+===================  ==================  ==================  ==============
+legacy (``None``)    +0.006 %            0.000 %             70x (mesh)
+``"current"``        +3.86 %             +1.29 %             8 %
+normalized (now)     +3.86 %             +1.29 %             8 %
+===================  ==================  ==================  ==============
 
-   Stage 2 under the legacy default was frozen — identical to seven digits.
-   The old headline "Loss: -2.594e-08 -> -3.720e-10" looked like a 70-fold
-   change but was entirely the dx halving: the legacy per-path amplitude is
-   resolution-DEPENDENT, so refining the mesh rescaled the loss.  With
-   ``amplitude_kind="current"`` the injected power is resolution-independent
-   and that artefact drops to 8 %.  The run now reports each stage separately
-   for this reason. For a substantive inverse-design run,
-use a resonance or far-field objective over many more iterations.
+Legacy: stage 2 is frozen, identical to seven digits, and the 70x boundary jump
+is the dx halving rather than optimizer progress — the legacy amplitude is
+resolution-DEPENDENT, so refining the mesh rescales the loss.
+``"current"``: the injected power is resolution-independent, so the jump drops
+to 8 % and both stages move.  Normalized: identical percentages, because
+dividing by a constant is invisible to Adam.  The run reports each stage
+separately for this reason.
+
+For a substantive inverse-design run, use a resonance or far-field objective
+over many more iterations.
 
 Usage:
     python examples/inverse_design/progressive_demo.py
@@ -116,9 +113,9 @@ def sim_factory(dx: float) -> Simulation:
 
 
 # Reference power, set in main() before the optimizer runs. Dividing the loss
-# by it puts the reported value at O(1) and — the part that matters — puts the
-# GRADIENT at O(1) too, clear of the ``eps_adam = 1e-8`` floor in the Adam
-# update (``rfx/optimize.py``). See "Loss scale" in the module docstring.
+# by it puts the reported value at O(1) and, with it, the GRADIENT clear of the
+# ``eps_adam = 1e-8`` floor in the Adam update (``rfx/optimize.py``). See
+# "Loss scale" in the module docstring.
 LOSS_REF = 1.0
 
 
@@ -131,10 +128,9 @@ def reference_power(dx: float) -> float:
 
 
 def objective(result):
-    # Maximise AVERAGE power at the probe. ``mean`` (not ``sum``) keeps
-    # the loss roughly scale-invariant across stages that have different
-    # n_steps — otherwise the stage boundary shows a discontinuous jump
-    # that has nothing to do with the design.
+    # Maximise AVERAGE power at the probe. ``mean`` (not ``sum``) keeps the
+    # loss roughly scale-invariant across stages with different n_steps;
+    # otherwise the stage boundary jumps for reasons unrelated to the design.
     return -jnp.mean(result.time_series[:, 0] ** 2) / LOSS_REF
 
 
@@ -149,7 +145,7 @@ def main():
     # One extra forward at the coarse dx fixes the loss scale (see "Loss
     # scale" in the module docstring). One reference for BOTH stages, not one
     # per stage: a per-stage reference would divide the mesh-change jump away
-    # and hide it, and that jump is a thing the reader should see.
+    # and hide it.
     LOSS_REF = reference_power(schedule[0].dx)
     print(f"Loss reference (mean probe power, un-optimized, "
           f"dx={schedule[0].dx * 1e3:.1f} mm): {LOSS_REF:.4e}")
@@ -165,8 +161,7 @@ def main():
     print(f"Stage boundaries: {result.stage_boundaries}")
     print(f"Final eps_design shape: {result.final_eps_design.shape}")
     # Report PER STAGE. A single first->last figure spans the dx change
-    # between stages, so it mixes optimizer progress with a mesh-change jump
-    # and reads as progress that did not happen.
+    # between stages, so it mixes optimizer progress with the mesh-change jump.
     bounds = list(result.stage_boundaries)
     for i, (lo, hi) in enumerate(zip(bounds[:-1], bounds[1:]), start=1):
         first, last = result.loss_history[lo], result.loss_history[hi - 1]
@@ -177,8 +172,8 @@ def main():
           f"{result.loss_history[bounds[1] - 1]:.4f} -> "
           f"{result.loss_history[bounds[1]]:.4f} (not optimizer progress)")
     print(f"Loss overall: {result.loss_history[0]:.4f} -> "
-          f"{result.loss_history[-1]:.4f} (spans the mesh change; read the "
-          f"per-stage lines above instead)")
+          f"{result.loss_history[-1]:.4f} (spans the mesh change — read the "
+          f"per-stage lines above)")
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
 

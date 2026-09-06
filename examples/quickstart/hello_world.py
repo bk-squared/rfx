@@ -1,17 +1,15 @@
-"""hello_world.py — the simplest possible rfx simulation.
+"""hello_world.py — the smallest rfx run: an install check.
 
 Run it::
 
     python examples/quickstart/hello_world.py
 
-This is the canonical first thing to run after installing rfx. It builds a
-tiny empty box, drops a pulse source in the middle, watches one field point,
-steps the simulation a few dozen times, and prints a short summary. It is
-deliberately small so it finishes in well under ten seconds on a laptop CPU —
-the point is to see rfx actually run, not to model a real device.
+A 20 mm vacuum box with PEC walls, one Gaussian pulse source at the centre, one
+Ez probe two cells away, 120 time steps, then a short summary. It finishes in
+well under ten seconds on a laptop CPU. This checks the install; it does not
+model a device.
 
-Everything below uses only the stable public API
-(``rfx.Simulation`` + ``GaussianPulse``).
+Uses only the stable public API: ``rfx.Simulation`` and ``GaussianPulse``.
 """
 
 from __future__ import annotations
@@ -28,11 +26,10 @@ def main() -> None:
     t_start = time.time()
 
     # 1. Build the domain.
-    #    A 20 mm cube of empty space (vacuum). `freq_max` tells rfx the
-    #    highest frequency we care about; here 10 GHz. `dx` is the cell size
-    #    (2 mm), so the box is about 10 cells on each side — tiny on purpose.
-    #    `boundary="pec"` wraps the box in perfect electric conductor walls
-    #    (a closed metal box), which is the cheapest boundary to simulate.
+    #    A 20 mm vacuum cube. `freq_max` is the highest frequency of interest,
+    #    here 10 GHz. `dx` is the cell size (2 mm), so the box is about 10
+    #    cells per axis. `boundary="pec"` closes it with perfect electric
+    #    conductor walls — the cheapest boundary, with no absorber to size.
     sim = Simulation(
         freq_max=10e9,            # 10 GHz upper frequency of interest
         domain=(0.02, 0.02, 0.02),  # 20 mm x 20 mm x 20 mm, in metres
@@ -41,15 +38,15 @@ def main() -> None:
     )
 
     # 2. Add a source.
-    #    A soft point source at the centre of the box that injects an Ez
-    #    (vertical electric field) pulse. The `GaussianPulse` is a short
-    #    broadband "ping" centred at 5 GHz — like tapping the box to see how
-    #    it rings.
-    #    `amplitude_kind` says what the waveform's amplitude MEANS. "current"
-    #    reads it as a drive current in amperes, which is why the printed
-    #    peak |Ez| below is large: 1 A into a 2 mm cell is a strong drive.
-    #    "field" instead reads it as a raw volts-per-metre increment per step.
-    #    Always pass one — it is required from rfx 1.8.
+    #    A soft point source at the box centre driving Ez with a Gaussian
+    #    pulse centred at 5 GHz: broadband enough to excite the box modes
+    #    across the band.
+    #    `amplitude_kind` fixes what the waveform amplitude means. "current"
+    #    is a drive current in amperes, which is why the peak |Ez| printed
+    #    below is large: 1 A into a 2 mm cell is a strong drive. "field" is a
+    #    raw volts-per-metre increment per step instead. Pass one explicitly:
+    #    1.8 warns when it is omitted, 1.9 requires it, and 2.0 makes
+    #    "current" the default (#914).
     sim.add_source(
         (0.01, 0.01, 0.01),                  # centre of the box, in metres
         "ez",                                # drive the z-component of E
@@ -59,15 +56,15 @@ def main() -> None:
     )
 
     # 3. Add a probe.
-    #    A point "microphone" that records the Ez field at one location over
-    #    time, two cells away from the source so we see the pulse arrive.
+    #    Records the Ez field at one point over time, two cells from the
+    #    source so the pulse arrival is visible in the trace.
     sim.add_probe((0.014, 0.01, 0.01), "ez")
 
     # 4. Run the time-stepping.
-    #    Step the FDTD update enough times for the pulse to reach the probe
-    #    and ring inside the little PEC box, so the trace shows a peak that is
-    #    distinct from its final value. We pass `compute_s_params=False`
-    #    because this toy run has no ports — we just want raw field data.
+    #    120 steps is enough for the pulse to reach the probe and ring inside
+    #    the PEC box, so the trace peak is distinct from its final value.
+    #    `compute_s_params=False` because this run has no ports: raw field
+    #    data only.
     n_steps = 120
     result = sim.run(n_steps=n_steps, compute_s_params=False)
 

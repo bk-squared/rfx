@@ -1,12 +1,12 @@
-"""CAD mesh import tutorial (issue #358) — bring an STL part straight into the solver.
+"""CAD mesh import tutorial (issue #358) — an STL part straight into the solver.
 
-Shows the full workflow: export a simple part to STL, import it with ``MeshShape`` (an
-explicit mm→m ``scale``), assign it PEC, watch the preflight resolution advisory
-(``mesh_import_underresolved``) fire on the plate's 1.5 mm thickness — 1.5 cells at
-dx = 1 mm, under the 2-cell floor — and run a few FDTD steps.
+The full workflow: export a part to STL, import it with ``MeshShape`` and an
+explicit mm->m ``scale``, assign it PEC, read the preflight resolution advisory
+(``mesh_import_underresolved``) that fires on the plate's 1.5 mm thickness — 1.5
+cells at dx = 1 mm, under the 2-cell floor — and step it.
 
 Requires the optional CAD extra:  pip install 'rfx-fdtd[cad]'  (trimesh + rtree).
-Degrades gracefully (prints guidance, exits 0) if the extra is absent.
+Without it the script prints guidance and exits 0.
 """
 import sys
 import tempfile
@@ -23,9 +23,9 @@ def main() -> int:
     from rfx.api import Simulation
     from rfx.geometry import MeshShape
 
-    # 1. A "CAD" part — a 30x20x1.5 mm rectangular plate, drawn in MILLIMETRES like a
-    #    real CAD export. (Swap this for trimesh.load('your_part.stl').) The 1.5 mm
-    #    thickness is deliberate: it is under-resolved at dx=1 mm, so step 4 fires.
+    # 1. A "CAD" part — a 30x20x1.5 mm plate, drawn in MILLIMETRES like a real CAD
+    #    export. (Swap this for trimesh.load('your_part.stl').) The 1.5 mm thickness
+    #    is deliberate: under-resolved at dx = 1 mm, so the advisory in step 4 fires.
     part_mm = trimesh.creation.box(extents=(30.0, 20.0, 1.5))
     with tempfile.TemporaryDirectory() as td:
         stl = Path(td) / "patch.stl"
@@ -48,11 +48,10 @@ def main() -> int:
 
         # 4. Preflight — the advisory fires here. The check (rfx/api/_preflight.py,
         #    code "mesh_import_underresolved") compares the mesh's thinnest bbox extent
-        #    against 2 cells: 1.5 mm at dx=1 mm is 1.5 cells, so it warns. A 2.0 mm
-        #    plate sits exactly AT the 2-cell floor and stays silent — the advisory is
-        #    the last warning you get before a feature is staircased away, not a wide
-        #    margin. Preflight output is part of the result: quote it before trusting
-        #    any number.
+        #    against 2 cells: 1.5 mm at dx = 1 mm is 1.5 cells, so it warns. A 2.0 mm
+        #    plate sits exactly AT the 2-cell floor and stays silent, so this is the
+        #    last warning before a feature is staircased away, not a wide margin.
+        #    Preflight output is part of the result: quote it before trusting a number.
         report = sim.preflight()
         print("\n--- preflight ---")
         for msg in report:

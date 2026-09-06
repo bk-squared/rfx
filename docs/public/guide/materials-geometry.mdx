@@ -263,10 +263,10 @@ cause in the standard update equations. This threshold captures library `pec`
 loss is not represented on this path.
 
 !!! warning
-    To model a genuinely lossy conductor, keep σ below 10⁶ S/m; any material at or
-    above that threshold is silently promoted to PEC. The library `copper` and
-    `aluminum` entries are already above it, so they behave as perfect conductors,
-    not lossy metals, unless `surface_impedance_f0` is explicitly selected on
+    To model a genuinely lossy conductor, keep σ below 10⁶ S/m; at or above that
+    threshold the material becomes PEC. The library `copper` and `aluminum`
+    entries are already above it, so they behave as perfect conductors, not lossy
+    metals, unless `surface_impedance_f0` is selected on
     `add_thin_conductor(...)`.
 
 For a PEC body that rasterizes to one cell along an axis, `sim.add(...,

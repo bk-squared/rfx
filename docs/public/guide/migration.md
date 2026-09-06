@@ -38,7 +38,7 @@ boundary, source or port, and observable restrictions.
 ### Meep: Rectangular Cavity Resonance
 
 ```text
-# Meep (for comparison only — not part of the rfx sequence on this page)
+# Meep (for comparison only — not part of the rfx sequence)
 import meep as mp
 
 sim = mp.Simulation(

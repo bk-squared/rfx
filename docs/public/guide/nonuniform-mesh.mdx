@@ -6,9 +6,9 @@ sidebar:
 ---
 
 
-rfx supports a **non-uniform (graded) Yee grid**. This guide covers the common
-case — a graded z-profile (`dz_profile`) with uniform `dx` and `dy` — for thin
-layered structures. `dx_profile` and `dy_profile` can grade the transverse axes,
+rfx supports a **non-uniform (graded) Yee grid**. The common case below is a
+graded z-profile (`dz_profile`) with uniform `dx` and `dy`, for thin layered
+structures. `dx_profile` and `dy_profile` can grade the transverse axes,
 but their boundary-cell and domain-extent contracts differ from `dz_profile`.
 For concrete arrays, both `dx_profile` endpoints must equal the scalar `dx`,
 while the two concrete `dy_profile` endpoints must equal each other. For traced

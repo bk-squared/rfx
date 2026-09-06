@@ -289,6 +289,13 @@ reliable = msl.reliable  # (port, frequency), or None while tracing
 the fields. Do not expect `run(compute_s_params=True)` to include MSL ports in
 `Result.s_params`.
 
+This board is coarse — 0.25 mm cells across a 1 mm substrate — so the run prints
+the extractor's advisory that the reported Z0 deviates from the analytic
+Hammerstad–Jensen value by more than 10 %. Z0 rides on the N-probe fit, which
+carries Yee-staircase bias at this cell size, and the rasterized board is not
+exactly the declared one (issue #752). The V·I-split S11/S21 are unaffected;
+refine the mesh before quoting Z0.
+
 #### Low-signal MSL bins
 
 During normal Python execution outside JAX tracing,
