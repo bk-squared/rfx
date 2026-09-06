@@ -171,6 +171,28 @@ def test_bootstrap_is_used_at_most_once_per_artifact():
             "the bootstrap flag belongs to the FIRST revision, not a later one")
 
 
+def same_commit_violation(touched, records: dict, doc: dict) -> str | None:
+    """The predicate, separated from the branch it runs on so it can be
+    falsified: a message when the producer's artifact and an adoption record
+    that cites it move in one change outside the bootstrap exemption, else
+    None."""
+    if _ENVELOPE_REL not in touched:
+        return None
+    also_touched = sorted(set(records) & set(touched))
+    if not also_touched:
+        return None
+    bootstraps = {name for name, block in doc["revisions"].items()
+                  if block.get("bootstrap")}
+    adopted = {record["adopted_revision"] for record in records.values()}
+    if adopted <= bootstraps:
+        return None
+    return (
+        f"this change touches {_ENVELOPE_REL} AND the adoption record(s) in "
+        f"{also_touched}, while the adopted revision(s) {sorted(adopted)} are "
+        f"not the bootstrap revision. Split it: append the revision in one "
+        f"change (evidence), adopt it in another (calibration, reviewed).")
+
+
 def test_the_producer_artifact_and_an_adoption_record_do_not_move_together():
     """A re-run touches the artifact. An adoption touches the record. A change
     that does both in one diff is a producer widening the gates that judge it.
@@ -187,21 +209,40 @@ def test_the_producer_artifact_and_an_adoption_record_do_not_move_together():
                              cwd=_REPO, capture_output=True, text=True)
     if changed.returncode != 0:
         pytest.skip("git diff unavailable")
-    touched = set(changed.stdout.split())
-    if _ENVELOPE_REL not in touched:
-        return
-    records = _adoption_records()
-    also_touched = sorted(set(records) & touched)
-    if not also_touched:
-        return
+    violation = same_commit_violation(set(changed.stdout.split()),
+                                      _adoption_records(), _envelope_doc())
+    assert violation is None, violation
+
+
+def test_the_same_commit_guard_fires_when_the_exemption_does_not_apply():
+    """(B) arm: the guard is worth what it catches.
+
+    Synthetic inputs, so the detection power is tested rather than inferred
+    from a branch that happens to be exempt. Three shapes: the artifact alone
+    (a re-run) passes; the record alone (an adoption) passes; both together
+    fail once the adopted revision is no longer the bootstrap one.
+    """
     doc = _envelope_doc()
-    bootstraps = {n for n, b in doc["revisions"].items() if b.get("bootstrap")}
-    adopted = {r["adopted_revision"] for r in records.values()}
-    assert adopted <= bootstraps, (
-        f"this branch changes {_ENVELOPE_REL} AND the adoption record(s) in "
-        f"{also_touched}, while the adopted revision(s) {sorted(adopted)} are "
-        f"not the bootstrap revision. Split the change: append the revision in "
-        f"one PR (evidence), adopt it in another (calibration, reviewed).")
+    records = _adoption_records()
+    consumer = sorted(records)[0]
+    both = {_ENVELOPE_REL, consumer}
+
+    # today: r1 is the bootstrap revision, so both-together is allowed once
+    assert same_commit_violation(both, records, doc) is None
+
+    # r2 appended and adopted, artifact edited in the same change: refused
+    later = json.loads(json.dumps(doc))
+    later["revisions"]["r2"] = json.loads(json.dumps(later["revisions"]["r1"]))
+    later["revisions"]["r2"]["bootstrap"] = False
+    adopting_r2 = {name: {**record, "adopted_revision": "r2"}
+                   for name, record in records.items()}
+    message = same_commit_violation(both, adopting_r2, later)
+    assert message is not None
+    assert consumer in message and "r2" in message
+
+    # each half alone is fine: a re-run, and an adoption
+    assert same_commit_violation({_ENVELOPE_REL}, adopting_r2, later) is None
+    assert same_commit_violation({consumer}, adopting_r2, later) is None
 
 
 # ---------------------------------------------------------------------------
