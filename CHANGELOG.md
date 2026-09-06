@@ -34,10 +34,15 @@ solve and one after it. Neither gates anything.
   near-cutoff `|S11|` headline it does not pass through the absorber —
   measured invariant to absorber thickness (3x), record length (2.5x) and
   precision, and second order in dx at every band down to `f/f_c = 1.010` — so
-  it answers "is the port the problem?" when a reflection number looks wrong.
+  it answers "is the port the problem?" when a reflection number looks wrong
+  — for an empty or matched guide between the two reference planes. A device
+  between them adds its own transmission phase to the same number, so on a
+  loaded two-port it reads the device against `-beta*L`, not the port.
   Reported, never gated: the field is `None` on a result that is not a
-  single-mode two-port, on a traced AD run, or when every bin fell below the
-  weak-signal phase mask, and nothing in the library compares it with a
+  single-mode two-port, on a traced AD run, when every bin fell below the
+  weak-signal phase mask, or on a `normalize=True` lane (that lane divides
+  the empty-guide reference's propagation phase out of S21; `normalize="flux"`
+  and `normalize=False` keep it), and nothing in the library compares it with a
   threshold.
 
 ### Added — `run()` results carry a ring-down settling witness (absent, never NaN)

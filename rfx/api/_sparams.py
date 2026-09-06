@@ -1291,6 +1291,12 @@ def s21_phase_residual_deg_rms(
 ):
     """RMS of ``wrap(angle(S21) + beta(f) * L)`` over the measured bins, degrees.
 
+    Defined for an EMPTY or matched guide between the two reference planes:
+    a device between them adds its own transmission phase to ``angle(S21)``,
+    and this number then measures the device against ``-beta*L``, not the
+    port. It also needs the modal phase intact -- ``normalize=True`` divides
+    the reference run's propagation phase out of S21 and is refused upstream.
+
     The discretization witness for the waveguide port (#894). On the empty
     matched WR-90 guide the |S11| magnitude near cutoff carries a
     dx-independent term set by whether the far-boundary round trip fits inside
@@ -1370,7 +1376,7 @@ def s21_phase_residual_deg_rms(
 
 
 def _waveguide_s21_phase_residual(s_params, freqs, reference_planes, cfgs,
-                                  *, announce: bool = True):
+                                  *, normalize=None, announce: bool = True):
     """The S21 phase residual for one assembled two-port waveguide result.
 
     Reads the beta ingredients off the port configs the extractor itself ran
@@ -1380,7 +1386,16 @@ def _waveguide_s21_phase_residual(s_params, freqs, reference_planes, cfgs,
     Post-solve and report-only: no gate, no tolerance, no effect on any
     returned number. Silent (and ``None``) whenever the residual is not
     defined — a non-two-port result, a traced AD run, two ports on different
-    axes or with different discrete cutoffs, or a fully masked band.
+    axes or with different discrete cutoffs, a fully masked band, or a
+    ``normalize=True`` lane: that lane divides the empty-guide reference
+    run's propagation phase out of S21, so ``angle(S21) + beta*L`` is not
+    the port residual there (``normalize="flux"`` and ``False`` keep the
+    modal phase and are reported).
+
+    Scope of the claim: a port witness only for an EMPTY or matched guide
+    between the two reference planes. A device between them adds its own
+    transmission phase to ``angle(S21)``, and the same number then reads the
+    device against ``-beta*L``. The banner says so.
     """
     meta = {
         "beta_convention": WAVEGUIDE_PHASE_BETA_CONVENTION,
@@ -1388,7 +1403,15 @@ def _waveguide_s21_phase_residual(s_params, freqs, reference_planes, cfgs,
         "L_m": None,
         "n_bins": 0,
         "masked_bins": 0,
+        "normalize": normalize,
     }
+    if normalize is True:
+        meta["reason"] = (
+            "normalize=True divides the empty-guide reference run's propagation "
+            "phase out of S21, so wrap(angle(S21) + beta*L) is not the port "
+            "residual on this lane; normalize='flux' or normalize=False keep it"
+        )
+        return None, meta
     cfgs = [c[0] if isinstance(c, list) else c for c in cfgs]
     if len(cfgs) != 2:
         meta["reason"] = f"{len(cfgs)} waveguide ports; the residual is two-port"
@@ -1413,13 +1436,17 @@ def _waveguide_s21_phase_residual(s_params, freqs, reference_planes, cfgs,
         f_cutoff_hz=fc[0], dt=float(cfgs[0].dt), dx=float(cfgs[0].dx),
         length_m=abs(float(planes[1]) - float(planes[0])),
     )
+    # The helper builds its own meta; carry the lane over so the record says
+    # which normalisation the number was read under.
+    meta["normalize"] = normalize
     if rms is not None and announce:
         print(
             f"  [WAVEGUIDE S-MATRIX] S21 phase residual vs -beta*L: "
             f"{rms:.4g} deg rms over {meta['n_bins']} bins (beta from the "
             f"port's discrete cutoff {meta['f_cutoff_hz'] / 1e9:.5g} GHz, "
-            f"L = {meta['L_m']:.6g} m; discretization-only witness, not a "
-            f"gate; second order in dx on the WR-90 sweep)"
+            f"L = {meta['L_m']:.6g} m; port discretization witness for an "
+            f"EMPTY or matched guide between the planes -- a device between "
+            f"them adds its own transmission phase; not a gate)"
         )
     return rms, meta
 
@@ -3488,7 +3515,7 @@ class _SparamMixin:
         # Post-solve discretization witness (post-v1.8 plan item 5): one
         # banner line after the settling line. Report-only.
         _ph_rms, _ph_meta = _waveguide_s21_phase_residual(
-            s_params, freqs, reference_planes, cfgs,
+            s_params, freqs, reference_planes, cfgs, normalize=normalize,
         )
         _res_sm = WaveguideSMatrixResult(
             s_params=s_params,
@@ -8356,6 +8383,7 @@ class _SparamMixin:
         # banner and same field as the uniform lane. Report-only.
         _ph_rms_nu, _ph_meta_nu = _waveguide_s21_phase_residual(
             _s_params_nu, port_freqs, _reference_planes_nu, final_cfgs or [],
+            normalize=normalize,
         )
         return WaveguideSMatrixResult(
             s_params=_s_params_nu,

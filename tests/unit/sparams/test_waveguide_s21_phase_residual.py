@@ -194,3 +194,81 @@ def test_a_real_two_port_run_carries_the_field_and_prints_the_banner(capsys):
     assert "deg rms over" in banner[0]
     assert "not a gate" in banner[0]
     assert f"{rms:.4g}" in banner[0]
+
+
+# ---------------------------------------------------------------------------
+# Lane scoping (independent review of PR #925): the residual needs the modal
+# phase intact. ``normalize=True`` divides the empty-guide reference run's
+# propagation phase out of S21 (the coarse thru read 116.5 deg rms there with
+# |S21| identically 1), so the reporter must decline rather than print a
+# number labelled as a port witness. ``normalize='flux'`` and ``False`` keep it.
+# ---------------------------------------------------------------------------
+
+def _fake_cfgs():
+    from types import SimpleNamespace
+    return [SimpleNamespace(f_cutoff=F_C_HZ, dt=DT_S, dx=DX_M, normal_axis="x")
+            for _ in range(2)]
+
+
+def _planes():
+    return np.asarray([F.REF_LEFT_DEFAULT_M, F.REF_RIGHT_DEFAULT_M], dtype=float)
+
+
+def test_normalize_true_reports_none_with_the_reason():
+    from rfx.api._sparams import _waveguide_s21_phase_residual
+    s21 = np.exp(-1j * _beta() * L_M)
+    rms, meta = _waveguide_s21_phase_residual(
+        _two_port(s21), FREQS, _planes(), _fake_cfgs(),
+        normalize=True, announce=False)
+    assert rms is None
+    assert meta["normalize"] is True
+    assert "normalize=True" in meta["reason"]
+    assert meta["n_bins"] == 0
+
+
+@pytest.mark.parametrize("normalize", ["flux", False])
+def test_flux_and_false_lanes_keep_the_residual_and_scope_the_banner(
+        normalize, capsys):
+    from rfx.api._sparams import _waveguide_s21_phase_residual
+    s21 = np.exp(-1j * _beta() * L_M)
+    rms, meta = _waveguide_s21_phase_residual(
+        _two_port(s21), FREQS, _planes(), _fake_cfgs(), normalize=normalize)
+    assert rms is not None and rms == pytest.approx(0.0, abs=1e-9)
+    assert meta["normalize"] == normalize
+    assert meta["n_bins"] == FREQS.size
+    banner = [ln for ln in capsys.readouterr().out.splitlines()
+              if "S21 phase residual vs -beta*L" in ln]
+    assert len(banner) == 1, banner
+    # The claim is scoped in the line itself: a port witness only for an
+    # empty or matched guide; a device between the planes adds its own phase.
+    assert "EMPTY or matched guide" in banner[0]
+    assert "device between them" in banner[0]
+    assert "not a gate" in banner[0]
+
+
+def test_a_loaded_two_port_reads_the_device_not_the_port(capsys):
+    """Scope pin (independent review of PR #925). Between the reference planes
+    the battery's slab DUT puts 10.16 mm of eps_r = 4 dielectric, whose
+    transmission phase enters the same number. Measured once on the coarse
+    rung (dx = a/9, default normalisation): thru 0.1162 deg rms, slab
+    156.2 deg rms over the same 17 bins. So on a loaded two-port the field is
+    the device against ``-beta*L`` and must not be read as a port witness.
+
+    Pinned as a FLOOR on the slab and a ratio against the thru on the same
+    rung, so a later re-widening of the claim to loaded guides cannot pass
+    this file. Not a gate on any physics number; the slab's own S-parameters
+    are refereed elsewhere (chain battery, cv11).
+    """
+    thru = F.build_simulation("thru", F.DX_LADDER[0]).compute_waveguide_s_matrix(
+        num_periods=F.NUM_PERIODS)
+    slab = F.build_simulation("slab", F.DX_LADDER[0]).compute_waveguide_s_matrix(
+        num_periods=F.NUM_PERIODS)
+    r_thru, r_slab = thru.s21_phase_residual_deg_rms, slab.s21_phase_residual_deg_rms
+    assert isinstance(r_thru, float) and isinstance(r_slab, float)
+    assert 0.0 < r_thru < 35.0, r_thru                    # the empty guide, as above
+    assert r_slab > 30.0, r_slab                          # the device phase, not the port
+    assert r_slab > 100.0 * r_thru, (r_slab, r_thru)
+    assert slab.s21_phase_residual_meta["n_bins"] == thru.s21_phase_residual_meta["n_bins"]
+    banners = [ln for ln in capsys.readouterr().out.splitlines()
+               if "S21 phase residual vs -beta*L" in ln]
+    assert len(banners) == 2 and all("EMPTY or matched guide" in b for b in banners)
