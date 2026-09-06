@@ -90,11 +90,35 @@ def test_bempp_h_refinement_converges_to_mie(fx):
     assert resid[-1] <= 0.1, resid[-1]
 
 
-def test_rfx_fine_value_is_sourced_not_fabricated(fx):
-    """The rfx column of the three-way is the committed fine-resolution monostatic
-    value from the sibling fixture, not a number invented here."""
-    rfx_fine = json.loads(_RFX_FINE.read_text())["monostatic"]["rfx_sigma_over_pi_a2"]
-    assert np.isclose(fx["three_way_ka1"]["rfx_fine_over_pi_a2"], rfx_fine, rtol=1e-12)
+def _resolve(reference: str):
+    """Walk a `path.json::a.b.c` reference (issue #928): the three-way fixture
+    REFERENCES the sibling's committed value instead of holding a copy of it,
+    so there is one home for the number and no way for the two to drift."""
+    rel, _, keypath = reference.partition("::")
+    node = json.loads((_REPO_ROOT / rel).read_text())
+    for step in keypath.split("."):
+        assert isinstance(node, dict) and step in node, f"{reference}: {step!r} missing"
+        node = node[step]
+    return node
+
+
+def _rfx_fine(fx) -> float:
+    return float(_resolve(fx["three_way_ka1"]["rfx_fine_ref"]))
+
+
+def test_rfx_fine_column_is_a_resolvable_reference_not_a_copy(fx):
+    """The rfx column resolves to the sibling fixture's committed monostatic
+    value. It carries no copy of that number, and its witness status is stated:
+    the reference fixes where the value comes from, not whether the value is
+    converged."""
+    three_way = fx["three_way_ka1"]
+    assert "rfx_fine_over_pi_a2" not in three_way, (
+        "the copied value is back; the reference is the only home")
+    assert three_way["rfx_fine_ref"].endswith("::monostatic.rfx_sigma_over_pi_a2")
+    expected = json.loads(_RFX_FINE.read_text())["monostatic"]["rfx_sigma_over_pi_a2"]
+    assert _rfx_fine(fx) == expected
+    assert three_way["rfx_fine_witness_status"] == "carried-unwitnessed"
+    assert "CPML" in three_way["rfx_fine_witness_note"]
 
 
 def test_three_way_spread_self_consistent_and_close(fx):
@@ -103,7 +127,7 @@ def test_three_way_spread_self_consistent_and_close(fx):
     sigmas and checked against the stored values (humble: rfx-centric distances,
     not a pass/fail verdict on any solver)."""
     t = fx["three_way_ka1"]
-    mie, rfx, bem = (t["sigma_mie_over_pi_a2"], t["rfx_fine_over_pi_a2"], t["bempp_over_pi_a2"])
+    mie, rfx, bem = (t["sigma_mie_over_pi_a2"], _rfx_fine(fx), t["bempp_over_pi_a2"])
     want = {
         "rfx_vs_mie": 10 * np.log10(rfx / mie),
         "bempp_vs_mie": 10 * np.log10(bem / mie),

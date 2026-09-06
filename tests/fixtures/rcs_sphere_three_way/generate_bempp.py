@@ -137,13 +137,26 @@ def main():
         "three_way_ka1": {
             "ka": 1.0,
             "sigma_mie_over_pi_a2": mie1,
-            "rfx_fine_over_pi_a2": rfx_val,
-            "rfx_fine_source": (
-                "tests/fixtures/rcs_sphere_mie/fixture.json monostatic "
-                f"(ka={rfx_fine['geometry']['ka']:.4f}, "
+            # #928: a resolvable REFERENCE, not a copy. The rfx column is the
+            # sibling fixture's committed monostatic value; the gate resolves
+            # it and the number lives in exactly one place.
+            "rfx_fine_ref": ("tests/fixtures/rcs_sphere_mie/fixture.json"
+                             "::monostatic.rfx_sigma_over_pi_a2"),
+            "rfx_fine_context": (
+                f"ka={rfx_fine['geometry']['ka']:.4f}, "
                 f"dx=lambda/{rfx_fine['geometry']['resolution_cells_per_lambda']}, "
                 f"{rfx_fine['geometry']['cells_per_radius']:.2f} cells/radius; the "
-                "0.0004 dB ka=0.9997-vs-1.0 mismatch is below any rounded figure)"),
+                "0.0004 dB ka=0.9997-vs-1.0 mismatch is below any rounded figure"),
+            "rfx_fine_witness_status": "carried-unwitnessed",
+            "rfx_fine_witness_note": (
+                "The reference fixes the SOURCE of this column, not its value. The "
+                "sibling run used an 8-cell CPML rig, and a depth ladder on the "
+                "#928 investigation branch reads 3.7957 at 24 cells -- i.e. the "
+                "0.063 dB agreement with Mie at this rung may be a cancellation "
+                "rather than a converged number. That ladder is NOT on main and is "
+                "not evidence here. Correcting the value is a measurement change: "
+                "it goes with a section-3.2 rig-variation witness (CPML depth) in "
+                "its own PR, not with this reference fix."),
             "bempp_over_pi_a2": bempp1,
             "spread_db": {
                 "rfx_vs_mie": 10 * np.log10(rfx_val / mie1),
