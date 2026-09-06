@@ -10,6 +10,15 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 Headline: the rectangular-waveguide family is **chain-closed (v1.8)** for uniform single-mode S on the two differentiable lanes, with contract criterion 1 and 3(a) read under x64 on the flux lane (forward default float32); the wire-port current DFT carries the Yee half-step phase correction; finite-region flux monitors run on the graded mesh; the MSL preflight advisories no longer pin a realized-board bound; the waveguide settling witness skips float32-underflowed records; realized geometry no longer depends on `JAX_ENABLE_X64`. Entries below are the v1.8 cycle in reverse chronological order.
 
+### Changed — the `amplitude_kind` deprecation window moves one release: required in 1.9, default `'current'` in 2.0
+
+The 1.6.x notice said `add_port(..., amplitude_kind=None)` becomes required in
+1.8 and defaults to `'current'` in 1.9. At the 1.8.0 tag the argument still
+only warns; the v1.8 cycle went to the waveguide chain closure and enforcing
+the argument untested at tag time is the wrong moment. The warning text and
+the public docs now say 1.9 / 2.0. Behaviour is unchanged: omitting the
+argument warns and keeps the legacy meaning.
+
 ### Changed — wire-port current DFT carries the Yee half-step phase correction
 
 The H-derived port current DFT on the wire-port lane is advanced by
