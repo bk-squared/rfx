@@ -4569,6 +4569,10 @@ class _PreflightMixin:
 
         Silent when a probe exists, and silent when the run asks for neither
         NTFF nor a field DFT (the rule scopes to those).
+        
+        Entry points: ``run()`` attaches the witness (probe route); ``forward()``
+        attaches none yet, so for a forward()-driven simulation this advisory
+        reports a gap a probe alone does not close.
         """
         if self._ntff is None and not self._dft_planes:
             return
@@ -4581,11 +4585,13 @@ class _PreflightMixin:
             wants.append("field-DFT plane probe(s)")
         _w.warn(PreflightWarning(
             f"this simulation requests {' and '.join(wants)} but registers no "
-            "point probe, and run() scores its ring-down settling witness "
-            "from the probe time series — the result will carry "
-            "settling_db=None and those DFT numbers will have no truncation "
-            "guard (#885). Add sim.add_probe(position, component) somewhere "
-            "the field is live.",
+            "point probe. run() scores its ring-down settling witness from "
+            "the probe time series, so its Result will carry settling_db=None "
+            "and those DFT numbers will have no truncation guard (#885); add "
+            "sim.add_probe(position, component) somewhere the field is live. "
+            "forward() attaches no settling witness at all yet, so a "
+            "forward()-driven simulation stays unguarded whatever it "
+            "registers (tracked separately).",
             code="settling_witness_will_be_absent",
             source="_validate_cfg_settling_witness_present",
         ))
