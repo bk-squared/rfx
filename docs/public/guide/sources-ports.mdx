@@ -132,7 +132,7 @@ Omitting it
 keeps a deprecated per-path legacy meaning (raw add on uniform+PEC,
 `Cb`-normalized add on uniform+CPML/UPML, current on non-uniform meshes)
 and emits one `DeprecationWarning` per simulation naming which one applies.
-`amplitude_kind` becomes required in 1.8, and the default becomes
+`amplitude_kind` becomes required in 1.9, and the default becomes
 `'current'` in 1.9.
 To migrate an open-boundary uniform script exactly, multiply the waveform
 amplitude by the cell volume `dV` and pass `amplitude_kind='current'`.

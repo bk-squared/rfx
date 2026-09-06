@@ -202,13 +202,16 @@ within 5% and a matching sign.
 It agrees to 0.17% with matching sign — well inside the 5% asked of it. That
 number validates the differentiation of this computation; it is not a
 chain-closure verdict for the family. The rectangular-waveguide S-matrix row of
-`docs/guides/support_matrix.md` (source checkout) records: "**Chain battery
-(v1.8): measured, gates red — this family is NOT chain-closed.**" and
-"Criterion 1 (forward identity) is red on all eight `normalize="flux"` legs:
-float32 reassociation of the Poynting DFT under the reverse-mode tape moves S by
-up to 1.09e-5 against `rtol=1e-5, atol=1e-7`, while the same traced call under a
-scoped x64 context agrees with the untraced call to 1.5e-15; the
-`normalize=False` lane is bit-identical."
+`docs/guides/support_matrix.md` (source checkout) records: "**Chain battery:
+chain-closed (v1.8) for uniform single-mode S on the `normalize=False` and
+`normalize="flux"` lanes**" — contract criteria 1 (forward identity) and 3(a)
+(AD-vs-FD) read under `JAX_ENABLE_X64` on the flux lane, the forward default
+still float32. The 0.17% figure above is a **float32** flux-lane gradient: the
+declaration leaves a float32 gradient pipeline on that lane outside it (its
+forward identity misses the contract bound at 1.08–1.76 of the allowance),
+so read this page's number as an AD-vs-FD agreement on this computation, not
+as a chain-closed gradient. Chain-closed is not "supported"; the row stays
+**limited**.
 
 ![Transmission sensitivity to the dielectric fill — AD gradient vs central finite differences](/rfx/gallery/assets/waveguide_wr90/autodiff.png)
 

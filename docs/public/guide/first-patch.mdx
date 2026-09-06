@@ -107,7 +107,7 @@ src_z = z_sub_lo + 2.5 * dz_sub
 feed = (px0 + 8e-3, dom_y / 2, src_z)
 probe = (dom_x / 2 + 5e-3, dom_y / 2 + 5e-3, src_z)
 sim.add_source(feed, "ez", waveform=GaussianPulse(f0=f0, bandwidth=0.8),
-               amplitude_kind="current")   # required from 1.8
+               amplitude_kind="current")   # required from 1.9
 sim.add_probe(probe, "ez")
 
 sim.preflight(strict=True)

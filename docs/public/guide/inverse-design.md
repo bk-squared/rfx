@@ -42,7 +42,7 @@ sim = Simulation(freq_max=10e9, domain=(0.03, 0.02, 0.02), dx=2e-3,
                  boundary="cpml", cpml_layers=6)
 sim.add_source((0.010, 0.010, 0.010), "ez",
                waveform=GaussianPulse(f0=5e9, bandwidth=0.8),
-               amplitude_kind="current")   # required from 1.8; see Sources & Ports
+               amplitude_kind="current")   # required from 1.9; see Sources & Ports
 sim.add_probe((0.020, 0.010, 0.010), "ez")
 
 # Discover the grid shape from a quick run (result.grid is always populated):
