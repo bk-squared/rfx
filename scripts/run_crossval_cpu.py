@@ -50,9 +50,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CROSSVAL_DIR = REPO_ROOT / "validation" / "crossval"
 MANIFEST_PATH = CROSSVAL_DIR / "manifest.json"
 
-# Per-script timeout (seconds). The empirically-slowest member of the CPU
-# subset is 05 (~6 min when it short-circuits on missing OpenEMS); 900 s gives
-# headroom without letting a wedged run hang the suite.
+# Per-script timeout (seconds). The empirically-slowest members of the CPU
+# subset are 05 (~6 min when it short-circuits on missing OpenEMS) and 02 on
+# its Meep-absent lane (~4.3 min: the record ladder runs three rungs and
+# harminv analyses 48,296 samples on the last one); 900 s gives headroom
+# without letting a wedged run hang the suite.
 PER_SCRIPT_TIMEOUT_S: Final = 900
 
 

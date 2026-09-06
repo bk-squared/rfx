@@ -255,10 +255,14 @@ HARMINV_AMP_FLOOR = 1e-10
 SETTLE_TARGET_EFOLDS = 1.0
 
 #: CHOSEN compute budget (no-verdict lane only): how many times the record
-#: ladder may re-run to re-measure a tau it could not resolve. This is a
-#: wall-clock budget, not a physics tolerance -- each rung's LENGTH is derived
+#: ladder may re-run to re-measure a tau it could not resolve. This is a STEP
+#: budget, not a physics tolerance: it bounds how long the record may become,
+#: and nothing else -- each rung's LENGTH is derived
 #: (ring_mode_judge.plan_record clamps every rung at the present record's
 #: resolvable-tau bound T/0.25, so a rung can at most quadruple the record).
+#: What that step budget COSTS is dominated by harminv, whose cost grows
+#: super-linearly in the record: the three rungs' 6,928 / 23,929 / 48,296
+#: analysed samples took 1.4 / 69.9 / 219.5 s on the review host.
 #: Bound, stated precisely: the loop RUNS at most 1 + budget records, the
 #: longest of which is at most 4**budget x the bootstrap free decay (16x here);
 #: the plan printed on the last rung may ask for up to 4**(1+budget) x, but it
@@ -352,7 +356,17 @@ signal = ts[skip:]
 # skip lands well after source-off, so the "peak" the whole-signal witness
 # below divides by is an already-decayed one. The witness prints this.
 peak_offset_after_source = max(0.0, skip * dt - source_off_time)
-rfx_modes_raw = harminv(signal, dt, fmin_hz, fmax_hz)
+if HAVE_MEEP:
+    rfx_modes_raw = harminv(signal, dt, fmin_hz, fmax_hz)
+else:
+    # Reuse the last ladder rung's harminv rather than recomputing it. That
+    # rung ran harminv on THIS array over THIS band: `ts_r[skip_r:]` is
+    # `ts[skip:]` (same run object, same source-off skip, same fmin/fmax), so
+    # the mode list is identical by construction. The recomputation cost
+    # ~220 s of the CPU runner's 900 s per-script budget (harminv on 48,296
+    # samples). `modes_r` is already amplitude-floored; the filter below
+    # applies the same floor again, so the outcome is unchanged.
+    rfx_modes_raw = modes_r
 
 rfx_modes = [(m.freq, m.Q, m.amplitude)
              for m in rfx_modes_raw
@@ -375,8 +389,20 @@ print(f"\n  Found {len(rfx_modes)} modes")
 print(f"\n{'-' * 70}")
 print("  Ring-down settling witness (per extracted mode)")
 record_after_source = len(signal) * dt   # seconds of observed free decay
-settling_rows = [ring_mode_judge.mode_settling(freq, Q, record_after_source)
-                 for freq, Q, _ in rfx_modes]
+# Witness pool = the JUDGE's band, taken through the judge's own admit().
+# rfx.harminv searches a deliberately 10%-widened band, and the modes it
+# returns outside [fmin_hz, fmax_hz] are band-edge content no gate reads --
+# on this board f=0.2027 reads Q=1.0e3 on one record and Q=1.0e6 on another.
+# Unfiltered they entered the settling table untagged and could set the
+# printed slowest-mode tau. This is the same band filter plan_record already
+# applies to the ladder, reused rather than re-implemented.
+witness_modes = ring_mode_judge.admit(
+    [ring_mode_judge.SolverMode(freq=f, Q=Q, amplitude=amp)
+     for f, Q, amp in rfx_modes],
+    fmin_hz, fmax_hz)
+settling_rows = [ring_mode_judge.mode_settling(m.freq, m.Q,
+                                               record_after_source)
+                 for m in witness_modes]
 signal_db = ring_mode_judge.signal_settling_db(signal)
 if settling_rows:
     print(ring_mode_judge.format_settling_report(
@@ -384,8 +410,7 @@ if settling_rows:
         peak_offset_after_source=peak_offset_after_source))
     # The record length the SLOWEST mode WOULD need, computed at runtime from
     # its own tau -- the physical limitation, quantified (not a gate).
-    tau_max = ring_mode_judge.slowest_amplitude_tau(
-        [ring_mode_judge.SolverMode(f, Q) for f, Q, _ in rfx_modes])
+    tau_max = ring_mode_judge.slowest_amplitude_tau(witness_modes)
     if tau_max:
         need_gate = source_off_time + \
             ring_mode_judge.Q_RECORD_MIN_EFOLDS * tau_max
@@ -408,7 +433,7 @@ if settling_rows:
               f"{(need_40db - source_off_time) * scale:.0f} span "
               f"= {need_40db * scale:.0f} total (Meep units).")
 else:
-    print("  (no modes extracted -- no settling witness)")
+    print("  (no in-band modes extracted -- no settling witness)")
 
 # =============================================================================
 # PART 3: Frequency comparison

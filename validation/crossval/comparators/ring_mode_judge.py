@@ -642,9 +642,23 @@ def mode_settling(freq: float, Q: float, record_after_source: float,
 def signal_settling_db(signal, tail_fraction: float = 0.1) -> float:
     """Measured energy ring-down of ONE recorded time series, in dB.
 
-    Same end/peak arithmetic as the S-parameter settling witness
+    The same end/peak ARITHMETIC as the S-parameter settling witness
     (:func:`rfx.sources.waveguide_port.settling_db_from_port_records`):
     ``10*log10(mean(P[last tail_fraction]) / max(P))`` with ``P = |signal|**2``.
+    The arithmetic is all it shares. It does NOT carry that witness's #869
+    underflow floor (``_settling_record_floor_amplitude``: a record whose peak
+    amplitude is below ``tiny_normal * 10**(40/20)`` -- 1.1754944e-36 for
+    float32 -- is dropped and named instead of scored, because the tail the
+    decision reads would be subnormal). This function guards only ``peak > 0``.
+    The floor is deliberately not ported: this module declares "no rfx import"
+    in its header, which is what lets the judge tests drive it without a
+    solver, and hand-copying the threshold would leave a second copy of a
+    number derived from ``rfx.api._sparams._SETTLING_WITNESS_DB`` in a file
+    that cannot see that constant change. On cv02 the guard is unreachable in
+    any case -- the probe sits on the ring and the record peaks at the driven
+    field (largest extracted mode amplitude 1.08e-07 on the Meep-absent lane),
+    some 29 decades above the float32 floor. A caller that feeds this function
+    near-underflow records must apply the floor itself.
 
     Two things this number is NOT, both of which matter when it is printed
     beside the per-mode witness:
@@ -669,8 +683,8 @@ def signal_settling_db(signal, tail_fraction: float = 0.1) -> float:
 
     On cv02 this single number is also dominated by the largest-amplitude
     mode's decay rather than by the slowest mode -- on the measured run the
-    whole-signal figure (-26.3 dB) sits 18 dB below the slowest mode's
-    (-8.4 dB), which is the mode-2/mode-3 amplitude ratio (13 dB) plus the
+    whole-signal figure (-26.9 dB) sits 18 dB below the slowest in-band mode's
+    (-8.9 dB), which is the mode-2/mode-3 amplitude ratio (13 dB) plus the
     3 dB offset plus decay. It is reported next to, never instead of, the
     per-mode witness, which resolves each mode separately.
     """
