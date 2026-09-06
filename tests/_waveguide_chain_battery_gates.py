@@ -110,8 +110,15 @@ LEGS_RUNG_DEFAULT = "fine"                               # AD / FD / plane legs
 D_PLANE_TO_PEC_FACE_M = F.PEC_SHORT_X_M[0] - F.REF_LEFT_DEFAULT_M     # 0.03810
 D_PLANE_TO_SLAB_FACE_M = F.SLAB_X_M[0] - F.REF_LEFT_DEFAULT_M         # 0.03556
 SLAB_THICKNESS_M = F.SLAB_X_M[1] - F.SLAB_X_M[0]                      # 0.01016
-SHIFT_LEFT_M = F.REF_LEFT_SHIFTED_M - F.REF_LEFT_DEFAULT_M            # +0.01016
-SHIFT_RIGHT_M = F.REF_RIGHT_SHIFTED_M - F.REF_RIGHT_DEFAULT_M         # −0.01270
+# The ACTIVE shift pair, i.e. the one the builder currently realizes and the one
+# a new measurement runs at. A replayed artifact is read against the pair IT was
+# measured with (``plane_shift[key]["shift_m"]``), never against this one — the
+# two artifacts in tests/fixtures/waveguide_chain_battery/ carry different pairs.
+SHIFT_LEFT_M = F.REF_LEFT_SHIFTED_M - F.REF_LEFT_DEFAULT_M            # +0.00508
+SHIFT_RIGHT_M = F.REF_RIGHT_SHIFTED_M - F.REF_RIGHT_DEFAULT_M         # −0.00254
+SHIFT_PAIRS_M = {name: (l - F.REF_LEFT_DEFAULT_M, r - F.REF_RIGHT_DEFAULT_M)
+                 for name, (l, r) in F.SHIFT_PAIRS_M.items()}
+DEFAULT_SHIFT_PAIR_NAME = "half_turn_pair"   # what a schema_version 1 artifact was measured with
 FC_TE10_HZ = C0_LOCAL / (2.0 * F.A_M)
 
 OBJECTIVES = {
@@ -131,6 +138,25 @@ AD_LEGS = {
     ("pec_short", "eps"): ("s11_mag2", "re_s11", "im_s11"),
 }
 EXPECTED_ULP_SKIP = {("pec_short", "eps", "s11_mag2")}
+# v1.8 closing declaration (PI, 2026-09-05; docs/design_notes/20260905_v18_close_predeclaration.md):
+# contract criterion 1 (forward identity) and 3(a) (AD-vs-FD) are evaluated under x64 on the
+# lanes named here. The forward default stays float32. `normalize=False` is bit-identical at 0
+# in float32 and is not declared. Both readings are stored in the artifact; `primary_precision`
+# on each leg says which one the gate read, and RFX_CHAIN_PRIMARY=float32 at measurement time
+# is the pre-declaration's section-4 falsifier (must reproduce run 2's 9 red).
+X64_DECLARED_LANES = {"flux"}
+# Zero-derivative legs (EXPECTED_ULP_SKIP) whose FD nonetheless resolves above the ULP floor
+# are gated on SIGN and ORDER of the x64 gradient against FD, not on rel <= 0.05: the
+# remeasure pre-declaration's own section (ii) branch ("within a factor 3 of -9.821e-7 and
+# keep its sign"), promoted from a report to a gate for that leg only. rel on a ~1e-6 gradient
+# of a 16.0 loss is a ULP question, which is why rel 38 there was never an accuracy finding.
+ZERO_DERIVATIVE_RATIO_MAX = 3.0
+# The closing pre-declaration's section-3 fail branch for that leg (row 3): report_only is
+# admissible only while the x64 AD and FD keep one sign AND both stay at or below 1e-5 in
+# magnitude — "sign flip, or either |g| above 1e-5: float64 tape and FD disagree on a NON-zero
+# derivative — defect on both precisions, root-cause, do not close". Outside it the leg is
+# fail, whatever EXPECTED_ULP_SKIP says (independent review of PR #908, finding 6).
+ZERO_DERIVATIVE_ABS_MAX = 1e-5
 LADDER_OBSERVABLES = (
     # name, dut, entry, kind
     ("slab_s11_mag", "slab", (0, 0), "mag"),
@@ -339,13 +365,22 @@ def referee_slab_phase_pass(r: dict) -> bool:
 
 # --- plane shift (§5(b)) ----------------------------------------------------
 
-def rotation_predictions_deg(beta: np.ndarray) -> dict[str, np.ndarray]:
+def rotation_predictions_deg(beta: np.ndarray, shift_left_m: float | None = None,
+                             shift_right_m: float | None = None) -> dict[str, np.ndarray]:
+    """Pre-declared rotation per entry for a shift pair.
+
+    The pair defaults to the ACTIVE one (what a live measurement runs at). Replay
+    passes the pair the artifact under test was measured with, so an artifact
+    written under one pair is never scored against another.
+    """
     b = np.asarray(beta)
+    dl = SHIFT_LEFT_M if shift_left_m is None else float(shift_left_m)
+    dr = SHIFT_RIGHT_M if shift_right_m is None else float(shift_right_m)
     return {
-        "S11": wrap_deg(np.degrees(2.0 * b * SHIFT_LEFT_M)),
-        "S22": wrap_deg(np.degrees(2.0 * b * abs(SHIFT_RIGHT_M))),
-        "S21": wrap_deg(np.degrees(b * (SHIFT_LEFT_M + abs(SHIFT_RIGHT_M)))),
-        "S12": wrap_deg(np.degrees(b * (SHIFT_LEFT_M + abs(SHIFT_RIGHT_M)))),
+        "S11": wrap_deg(np.degrees(2.0 * b * dl)),
+        "S22": wrap_deg(np.degrees(2.0 * b * abs(dr))),
+        "S21": wrap_deg(np.degrees(b * (dl + abs(dr)))),
+        "S12": wrap_deg(np.degrees(b * (dl + abs(dr)))),
     }
 
 
@@ -353,7 +388,9 @@ _ENTRY = {"S11": (0, 0), "S22": (1, 1), "S21": (1, 0), "S12": (0, 1)}
 
 
 def plane_shift_rotation(S_base: np.ndarray, S_shift: np.ndarray, freqs_hz,
-                         dt_s: float, dx_m: float, fc_port_hz: float | None = None) -> dict:
+                         dt_s: float, dx_m: float, fc_port_hz: float | None = None,
+                         shift_left_m: float | None = None,
+                         shift_right_m: float | None = None) -> dict:
     """Rotation of every entry under the shift, against the pre-declared
     prediction (β of the guide's TE10 cutoff c/2a: Yee-discrete and
     continuous) and, when ``fc_port_hz`` is given, against the extractor's
@@ -361,9 +398,10 @@ def plane_shift_rotation(S_base: np.ndarray, S_shift: np.ndarray, freqs_hz,
     S_base = np.asarray(S_base, dtype=complex)
     S_shift = np.asarray(S_shift, dtype=complex)
     f = np.asarray(freqs_hz, dtype=float)
-    pred_yee = rotation_predictions_deg(beta_yee(f, dt_s, dx_m))
-    pred_cont = rotation_predictions_deg(beta_continuous(f))
-    pred_port = (rotation_predictions_deg(beta_yee_fc(f, fc_port_hz, dt_s, dx_m))
+    pred_yee = rotation_predictions_deg(beta_yee(f, dt_s, dx_m), shift_left_m, shift_right_m)
+    pred_cont = rotation_predictions_deg(beta_continuous(f), shift_left_m, shift_right_m)
+    pred_port = (rotation_predictions_deg(beta_yee_fc(f, fc_port_hz, dt_s, dx_m),
+                                          shift_left_m, shift_right_m)
                  if fc_port_hz is not None else None)
     out = {
         "abs_s_max_diff": float(np.max(np.abs(np.abs(S_shift) - np.abs(S_base)))),
@@ -458,6 +496,30 @@ def ad_fd_entry(*, g_ad: float, f_plus: float, f_minus: float, h: float, loss_dt
     return {"f_plus": float(f_plus), "f_minus": float(f_minus), "fd_ulp_span": span,
             "ulp_floor": FD_ULP_FLOOR, "g_ad": float(g_ad), "g_fd": g_fd, "rel": float(rel),
             "gate": AD_FD_REL_GATE, "verdict": verdict, "loss_dtype": str(np.dtype(loss_dtype))}
+
+
+def zero_derivative_entry(*, g_ad_x64: float, g_fd: float, fd_ulp_span: float) -> dict:
+    """Gate for a pre-declared zero-derivative leg whose FD still resolves (span >= floor).
+
+    pass iff sign(g_ad_x64) == sign(g_fd) and 1/R <= |g_ad_x64|/|g_fd| <= R, R = 3.
+    Run 2's numbers: g_ad_x64 = -9.821e-7, g_fd = -7.245e-7 -> ratio 1.356, same sign.
+    """
+    if fd_ulp_span < FD_ULP_FLOOR:
+        return {"verdict": "skipped_under_ulp_floor", "ratio": None, "same_sign": None,
+                "ratio_max": ZERO_DERIVATIVE_RATIO_MAX}
+    ratio = abs(float(g_ad_x64)) / max(abs(float(g_fd)), 1e-300)
+    same_sign = (float(g_ad_x64) >= 0) == (float(g_fd) >= 0)
+    ok = same_sign and (1.0 / ZERO_DERIVATIVE_RATIO_MAX) <= ratio <= ZERO_DERIVATIVE_RATIO_MAX
+    return {"verdict": "pass" if ok else "fail", "ratio": ratio, "same_sign": same_sign,
+            "ratio_max": ZERO_DERIVATIVE_RATIO_MAX}
+
+
+def zero_derivative_report_only_admissible(*, g_ad_x64: float, g_fd: float) -> bool:
+    """The closing note's section-3 row-3 branch: report_only only while the x64 AD and FD
+    keep one sign and both are at or below ZERO_DERIVATIVE_ABS_MAX; otherwise the leg is a
+    fail (a non-zero derivative the two precisions disagree on)."""
+    same_sign = (float(g_ad_x64) >= 0) == (float(g_fd) >= 0)
+    return same_sign and max(abs(float(g_ad_x64)), abs(float(g_fd))) <= ZERO_DERIVATIVE_ABS_MAX
 
 
 def forward_identity_pass(max_abs_diff_scaled: float) -> bool:
@@ -693,8 +755,31 @@ def recompute_verdicts(fx: dict) -> dict:
         key = f"{leg['dut']}|{leg['lane']}|{leg['theta_kind']}|{leg['objective']}"
         e = ad_fd_entry(g_ad=leg["g_ad"], f_plus=leg["f_plus"], f_minus=leg["f_minus"],
                         h=leg["h"], loss_dtype=np.dtype(leg["loss_dtype"]))
-        v[f"ad_vs_fd|{key}"] = e["verdict"]
+        verdict = e["verdict"]
+        # v1.8 closing declaration (schema_version 3): on a lane in X64_DECLARED_LANES the
+        # stored ``g_ad`` / ``forward_identity`` are the x64 readings and ``primary_precision``
+        # says so. A declared lane whose leg was read at float32 has not been measured under
+        # the declaration — not_interpretable, never pass. The pre-declared zero-derivative
+        # leg is report_only on that lane when its x64 reading is not an ULP-floor skip
+        # (closing pre-declaration section 2): the sign / factor-3 entry stored beside it
+        # under ``zero_derivative`` is a report, never the verdict.
+        primary = leg.get("primary_precision", "float32")
+        # schema_version 1 and 2 artifacts were measured under their own pre-declarations
+        # with float32 primary on every lane; their stored verdicts are the record and
+        # the declaration does not re-read them.
+        declared = fx.get("schema_version", 1) >= 3 and leg["lane"] in X64_DECLARED_LANES
+        if declared and primary != "x64":
+            verdict = "not_interpretable"
+        elif (declared and primary == "x64"
+              and (leg["dut"], leg["theta_kind"], leg["objective"]) in EXPECTED_ULP_SKIP
+              and verdict != "skipped_under_ulp_floor"):
+            # report_only only inside the pre-declared branch; a sign flip or a gradient
+            # above ZERO_DERIVATIVE_ABS_MAX is a fail, not a report
+            verdict = ("report_only" if zero_derivative_report_only_admissible(
+                g_ad_x64=leg["g_ad"], g_fd=leg["g_fd"]) else "fail")
+        v[f"ad_vs_fd|{key}"] = verdict
         v[f"forward_identity|{key}"] = (
+            "not_interpretable" if declared and primary != "x64" else
             "pass" if forward_identity_pass(leg["forward_identity"]["max_scaled_diff"]) else "fail")
 
     # plane shift (§5(b))
@@ -759,6 +844,75 @@ def pin_lower_from_envelope(measured: float, *, quantum: int) -> float:
 
 RICHARDSON_PIN_QUANTUM = {"mag": 100, "phase": 10}   # cv18 precedent (0.0051 -> 0.01); 0.1 deg for phases
 MONOTONE_PIN_QUANTUM = 100
+
+
+def rebase_gradient_invariance_float32(fx: dict) -> dict:
+    """Criterion 3(b) (gradient invariance under a reference-plane shift) is NOT under the
+    v1.8 closing declaration: both sides of every ``rel_change`` are float32, as in run 2.
+
+    The measurement driver's plane-shift stage sources its base-plane gradient from the AD
+    stage's ``g_ad``; on a lane in ``X64_DECLARED_LANES`` that is the x64 primary from
+    schema_version 3 on, while the shifted-plane gradient is float32. The closing run
+    (VESSL 369367258638) stored that mixed reading. This pass rebuilds each affected entry
+    from the stored numbers — the float32 base from the leg's ``ad_vs_fd_float32`` reading,
+    the shifted gradient from ``value_shifted``, the measured φ from ``phi_measured_deg`` —
+    and keeps the mixed reading under ``gradient_invariance_x64_base``, where it reports the
+    float32 gradient's distance from x64 on that lane. Idempotent: an entry already marked
+    ``base_precision == "float32"`` is left alone. Nothing measured is discarded.
+    """
+    if fx.get("schema_version", 1) < 3:
+        return fx
+    f32_by_key = {}
+    for leg in fx["ad_vs_fd"]:
+        f32 = leg.get("ad_vs_fd_float32")
+        if leg.get("primary_precision") == "x64" and f32 is not None:
+            f32_by_key[(leg["dut"], leg["lane"], leg["theta_kind"], leg["objective"])] = f32["g_ad"]
+    for key, p in fx["plane_shift"].items():
+        if key == "cheap_refute":
+            continue
+        dut, lane = p["dut"], p["lane"]
+        ginv = p["gradient_invariance"]
+        mixed = p.setdefault("gradient_invariance_x64_base", {})
+        for gi_key, gi in list(ginv.items()):
+            if gi.get("skipped_under_ulp_floor"):
+                continue
+            if gi.get("base_precision") == "float32":
+                gi.setdefault("shift_precision", "float32")
+                continue
+            kind_theta, obj = gi_key.split(":", 1)
+            if gi["kind"] == "magnitude":
+                base = f32_by_key.get((dut, lane, kind_theta, obj))
+                if base is None:
+                    # no x64 primary on this leg: the stored base already IS float32
+                    gi.update(base_precision="float32", shift_precision="float32")
+                    continue
+                rebuilt = gradient_invariance_entry("magnitude", base, 0.0, gi["value_shifted"], 0.0, None)
+            else:
+                re_n, im_n = gi["from_objectives"]
+                b_re = f32_by_key.get((dut, lane, kind_theta, re_n))
+                b_im = f32_by_key.get((dut, lane, kind_theta, im_n))
+                if b_re is None or b_im is None:
+                    gi.update(base_precision="float32", shift_precision="float32")
+                    continue
+                sh_re, sh_im = gi["value_shifted"]
+                phi_pre = (np.radians(gi["phi_predeclared_deg"])
+                           if gi.get("phi_predeclared_deg") is not None else None)
+                rebuilt = gradient_invariance_entry("complex", b_re, b_im, sh_re, sh_im,
+                                                    np.radians(gi["phi_measured_deg"]), phi_pre)
+                rebuilt["from_objectives"] = [re_n, im_n]
+            mixed[gi_key] = {**gi, "base_precision": "x64", "shift_precision": "float32",
+                             "note": "the closing run's stored reading: x64 base against a float32 "
+                                     "shifted gradient — reports the float32 gradient error on this "
+                                     "lane, not the plane invariance"}
+            for carry in ("pinned_gate", "pinned_gate_envelope", "excluded_from_envelope"):
+                if carry in gi:
+                    rebuilt[carry] = gi[carry]
+            rebuilt["base_precision"] = "float32"
+            rebuilt["shift_precision"] = "float32"
+            ginv[gi_key] = rebuilt
+        if not mixed:
+            p.pop("gradient_invariance_x64_base", None)
+    return fx
 
 
 def pin_fixture(fx: dict) -> dict:

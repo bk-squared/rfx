@@ -1,5 +1,20 @@
 # WR-90 chain battery — pre-declaration (v1.8 WP2, before the first run)
 
+> **SUPERSEDED for any new measurement — read
+> [`waveguide_chain_battery_remeasure_predeclaration.md`](waveguide_chain_battery_remeasure_predeclaration.md)
+> instead.** This note governed exactly one run (VESSL 369367257823), and under R2 a
+> pre-declaration is a one-run artifact. Two defects in the instrument have since been fixed
+> on main — PR #881 (`d6a3df5d`, the settling witness scored float32-underflowed records) and
+> PR #889 (`0141f39e`, the port solved its transverse eigenproblem on N+1 cells for an N-cell
+> guide) — so `tests/fixtures/waveguide_chain_battery/fixture.json` is a frozen record of a
+> port that no longer exists, and three live tests are `xfail(strict=True)` pointing at the
+> re-measurement. The §5(b) shift pair declared below was additionally degenerate for the
+> wrong-sign discriminator: `2βΔ` crosses 180° inside the band, where the +sign and −sign
+> hypotheses coincide modulo 360°, which is why `wrong_sign_resid_min` read 0.734° against a
+> 10° floor on all four cases at any cutoff. The successor note re-declares the shift and
+> leaves everything else in this note in force, by pointer rather than by copy. **Nothing here
+> is edited**: it stands as the contract the first run was measured under.
+
 Status: pre-declaration. Committed **before** any S-parameter of this fixture set is
 measured, so that in git history every tolerance, position and drive setting provably
 predates the first number. This note carries no measured S value; the first measurement

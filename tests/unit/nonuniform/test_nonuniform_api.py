@@ -9,7 +9,12 @@ from rfx.auto_config import auto_configure
 from rfx.geometry.csg import Box
 from rfx.nonuniform import make_nonuniform_grid, make_current_source
 from rfx.core.yee import MaterialArrays
-from rfx.sources.sources import GaussianPulse
+from rfx.sources.sources import GaussianPulse, ModulatedGaussian
+
+try:  # jax >= 0.8.0
+    from jax import enable_x64
+except ImportError:  # older jax
+    from tests._x64_compat import enable_x64
 
 
 class TestNonUniformGrid:
@@ -593,10 +598,10 @@ class TestNonUniformDispersive:
 
 
 class TestFluxMonitorOnNonUniform:
-    """``add_flux_monitor`` is now supported on the NU path for full-plane
-    monitors (issue #88 flux-extractor prerequisite). Finite-region
-    (``size=``) monitors still raise until the cumulative-edge index
-    conversion lands."""
+    """``add_flux_monitor`` is supported on the NU path for full-plane
+    monitors (issue #88 flux-extractor prerequisite) and, since the
+    cumulative-edge index conversion landed, for finite-region (``size=``)
+    monitors as well."""
 
     def _make_nu_sim(self):
         dz = np.array([0.4e-3] * 4 + [0.5e-3] * 8, dtype=np.float64)
@@ -623,12 +628,122 @@ class TestFluxMonitorOnNonUniform:
         flux = np.asarray(flux_spectrum(mon))
         assert np.all(np.isfinite(flux))
 
-    def test_finite_region_flux_monitor_on_nu_run_raises(self):
-        """Finite-region (size=) monitors are still rejected on NU."""
-        sim = self._make_nu_sim()
-        sim.add_flux_monitor(axis="z", coordinate=0.002, size=(0.004, 0.004))
-        with pytest.raises(NotImplementedError, match="finite-region"):
-            sim.run(n_steps=20)
+    def test_finite_region_flux_monitor_z_normal_on_dy_graded_mesh_matches_full_plane_window(self):
+        """Value-asserting replacement for the removed raises-test.
+
+        It replaces ``test_finite_region_flux_monitor_on_nu_run_raises``,
+        which asserted the NU lane rejects ``size=``; the lane now resolves
+        the window instead of raising.
+
+        It also closes the axis-0 tangential mapping gap: every test in
+        ``tests/unit/nonuniform/test_nu_flux_monitor_finite_size.py`` uses an
+        x-normal plane, so the x entry of the runner's per-tangential-axis
+        tables and the ``(x, y)`` tangential ordering a z-normal plane needs
+        are never exercised there.
+
+        Fixture: x uniform (32 cells of 0.5 mm), y graded (16 x 0.5 mm,
+        8 x 0.25 mm, 16 x 0.5 mm; 40 cells), z uniform (24 cells of 0.5 mm),
+        open CPML with 8 layers. The 16 uniform cells against each y absorber
+        face keep the graded-cell-in-absorber advisory quiet. The requested
+        window is deliberately unequal in the two tangential directions
+        (8 mm along x, 4 mm along y) so a swapped axis changes the cell counts.
+
+        Preflight emits one advisory on this fixture, quoted because preflight
+        output is part of the result: "dy_profile max adjacent cell ratio 2.000
+        exceeds the in-plane grading threshold ... 1.3". It bounds the ACCURACY
+        of a field crossing that 2:1 transition. The assertions here are window
+        bookkeeping - index mapping, face-area weights, and a restriction
+        identity taken against the full plane on the SAME fields - so the
+        advisory does not bear on any of them.
+        """
+        from rfx.probes.probes import flux_spectrum
+        with enable_x64(True):
+            dx = 0.5e-3
+            Lx = 32 * dx
+            dy_profile = np.array(
+                [0.5e-3] * 16 + [0.25e-3] * 8 + [0.5e-3] * 16, dtype=float)
+            dz_profile = np.array([0.5e-3] * 24, dtype=float)
+            Ly = float(np.sum(dy_profile))
+            Lz = float(np.sum(dz_profile))
+            sim = Simulation(
+                freq_max=20e9, domain=(Lx, Ly, Lz), dx=dx,
+                dy_profile=dy_profile, dz_profile=dz_profile,
+                boundary="cpml", cpml_layers=8,
+            )
+            sim.add_source(
+                (Lx * 0.30, Ly * 0.5, Lz * 0.35), "ez",
+                waveform=ModulatedGaussian(f0=9e9, bandwidth=0.6,
+                                           amplitude=1.0))
+            grid = sim._build_nonuniform_grid()
+            freqs = jnp.asarray(np.linspace(6e9, 12e9, 4))
+            z_plane = Lz * 0.6
+            sim.add_flux_monitor(axis="z", coordinate=z_plane, freqs=freqs,
+                                 name="full")
+            sim.add_flux_monitor(axis="z", coordinate=z_plane, freqs=freqs,
+                                 size=(Lx * 0.5, 4.0e-3),
+                                 center=(Lx * 0.5, Ly * 0.5), name="fin")
+            res = sim.run(n_steps=400, compute_s_params=False)
+            mon_full = res.flux_monitors["full"]
+            mon_fin = res.flux_monitors["fin"]
+
+            n_x = mon_fin.hi1 - mon_fin.lo1
+            n_y = mon_fin.hi2 - mon_fin.lo2
+
+            # (a) the face-area weights are the realized graded cell widths of
+            #     the selected window, in the (x, y) order a z-normal plane
+            #     needs. Recomputed here from the grid, not from mon.dA.
+            dx_arr = np.asarray(grid.dx_arr)
+            dy_arr = np.asarray(grid.dy_arr)
+            exp_dA = float(np.sum(np.outer(dx_arr[mon_fin.lo1:mon_fin.hi1],
+                                           dy_arr[mon_fin.lo2:mon_fin.hi2])))
+            got_dA = float(np.sum(np.asarray(mon_fin.dA)))
+            rel_dA = abs(got_dA - exp_dA) / max(exp_dA, 1e-300)
+            print(f"\n[z-normal dA] window=({mon_fin.lo1}:{mon_fin.hi1},"
+                  f"{mon_fin.lo2}:{mon_fin.hi2}) cells=({n_x},{n_y}) "
+                  f"got={got_dA:.9e} exp={exp_dA:.9e} rel={rel_dA:.2e}")
+            # float32 store of the cell widths -> ~1e-6 relative; the gate sits
+            # far above that and far below one 0.25 mm x 0.5 mm cell area.
+            assert rel_dA < 1e-4, (
+                f"summed dA {got_dA:.9e} != the realized graded window area "
+                f"{exp_dA:.9e} (rel {rel_dA:.2e}) - the z-normal window does "
+                "not weight the cells it selected")
+            assert np.shape(np.asarray(mon_fin.dA)) == (n_x, n_y), (
+                f"dA shape {np.shape(np.asarray(mon_fin.dA))} != the window "
+                f"shape ({n_x},{n_y}) - the two tangential axes are swapped")
+
+            # (b) the finite window is exactly the full-plane integrand
+            #     restricted to the reported window: it adds a window, not new
+            #     field math. x64-scoped so the gate is machine precision.
+            e1 = np.asarray(mon_full.e1_dft)
+            e2 = np.asarray(mon_full.e2_dft)
+            h1 = np.asarray(mon_full.h1_dft)
+            h2 = np.asarray(mon_full.h2_dft)
+            acc = float(np.max(np.abs(e1)))
+            assert acc > 1e-25, (
+                f"flux DFT at the noise floor ({acc:.3e}); the window "
+                "comparison would be vacuous")
+            integrand = e1 * np.conj(h2) - e2 * np.conj(h1)
+            dA_full = np.asarray(mon_full.dA)
+            w1 = slice(mon_fin.lo1, mon_fin.hi1)
+            w2 = slice(mon_fin.lo2, mon_fin.hi2)
+            ref = np.real(np.sum(integrand[:, w1, w2] * dA_full[w1, w2][None],
+                                 axis=(-2, -1)))
+            fin = np.asarray(flux_spectrum(mon_fin))
+            scale = max(np.max(np.abs(fin)), np.max(np.abs(ref)), 1e-300)
+            reldev = float(np.max(np.abs(fin - ref) / scale))
+            print(f"[z-normal window] max reldev={reldev:.3e} "
+                  f"fin[0]={fin[0]:.6e} ref[0]={ref[0]:.6e}")
+            assert reldev < 1e-11, (
+                f"finite z-normal flux deviates from the full-plane integrand "
+                f"over the SAME window by {reldev:.3e} (>1e-11) - a window "
+                "bookkeeping bug, not the expected machine-eps match")
+
+            # (c) the fixture can see an axis swap at all: the two tangential
+            #     cell counts must differ.
+            assert n_x != n_y, (
+                f"both tangential axes selected {n_x} cells, so an axis swap "
+                "would pass unnoticed - the fixture must request unequal "
+                "tangential extents")
 
     def test_no_flux_monitor_nu_runs_fine(self):
         """Sanity: without a flux monitor the NU path stays green."""

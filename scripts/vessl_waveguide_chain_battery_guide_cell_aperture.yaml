@@ -1,0 +1,140 @@
+name: rfx-waveguide-chain-battery-guide-cell-aperture
+description: "WR-90 chain battery, the ONE pre-declared SECOND measurement of v1.8 WP2 (docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md) - the same battery on the corrected port (PR #889: the transverse eigenproblem now runs on the guide's own N cells, not the node span's N+1) with the re-declared reference-plane shift pair (Delta_L +5.08 mm, Delta_R -2.54 mm). The first run's artifact tests/fixtures/waveguide_chain_battery/fixture.json is frozen and is not touched. scripts/diagnostics/waveguide_chain_battery_measure.py on the fixture set of tests/_waveguide_chain_battery_fixture.py — 3 DUTs x 3 rungs (2.54 / 1.27 / 0.635 mm) x 2 lanes (normalize=False, 'flux'), AD-vs-FD legs (float32 reverse-mode AD, float64 central FD under a scoped x64 context, ULP-span validity before the accuracy gate), the reference-plane shift with its gradient leg, and the cheap sign-flip refute. One JSON per case persisted to the NFS run dir the moment it finishes; the fixture is assembled at the end from those JSONs. Fetches RFX_EXPECT_SHA fresh from GitHub; does not use the mounted primary checkout. gpu-rtx4090 because the projected CPU wall time is about 90 min (fine rung: 14 s per forward run measured on the 128-core box, 32 reverse-mode legs, 12 float64 S-matrices) against the 45 min CPU line."
+tags: [rfx, waveguide, chain-battery, v18, wp2, measurement, guide-cell-aperture]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  # Precision is part of the pre-declaration (§2.5): float32 fields, the
+  # Simulation default; the FD legs flip x64 inside a scoped context only.
+  JAX_ENABLE_X64: "0"
+  # RFX_BRANCH is informational; the fetch is keyed by RFX_EXPECT_SHA alone.
+  RFX_BRANCH: "v18/battery-remeasure-run"
+  RFX_EXPECT_SHA: "5b588f3c6cdc2aeeb9af1eb528889cec3813525d"
+  # The commit the re-measurement pre-declaration landed in (PR #891), recorded
+  # in the artifact as predeclaration_sha; it must predate RFX_EXPECT_SHA.
+  RFX_PREDECLARATION_SHA: "68c8c340"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx WR-90 chain battery (the one pre-declared measurement) ==="
+  date
+  if [ "$RFX_EXPECT_SHA" = "FILL_AFTER_PUSH" ]; then
+    echo "FATAL: RFX_EXPECT_SHA still holds the FILL_AFTER_PUSH placeholder"
+    exit 3
+  fi
+  echo "branch (informational): $RFX_BRANCH"
+  echo "pinned commit: $RFX_EXPECT_SHA"
+
+  ROOT=/tmp/rfx-waveguide-chain-battery
+  rm -rf "$ROOT"
+  mkdir -p "$ROOT"
+  if command -v git >/dev/null 2>&1; then
+    cd "$ROOT"
+    git init -q
+    git fetch -q --depth 1 https://github.com/bk-squared/rfx.git "$RFX_EXPECT_SHA"
+    git checkout -q FETCH_HEAD
+  else
+    TARBALL="/tmp/rfx-${RFX_EXPECT_SHA}.tar.gz"
+    URL="https://github.com/bk-squared/rfx/archive/${RFX_EXPECT_SHA}.tar.gz"
+    if command -v curl >/dev/null 2>&1; then curl -fsSL -o "$TARBALL" "$URL";
+    else wget -q -O "$TARBALL" "$URL"; fi
+    tar -xzf "$TARBALL" -C "$ROOT" --strip-components=1
+    cd "$ROOT"
+  fi
+  test -f scripts/diagnostics/waveguide_chain_battery_measure.py || { echo "FATAL: driver missing in the fetched tree"; exit 3; }
+  test -f tests/_waveguide_chain_battery_fixture.py || { echo "FATAL: builder missing in the fetched tree"; exit 3; }
+  test -f tests/_waveguide_chain_battery_gates.py || { echo "FATAL: gate module missing in the fetched tree"; exit 3; }
+  test -f docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md || { echo "FATAL: pre-declaration missing in the fetched tree"; exit 3; }
+  # Identity guard: the fetched tree must carry the stamped driver and the
+  # re-declared shift pair, or this is not the run the note pre-declared.
+  grep -q "SCHEMA_VERSION = 2" scripts/diagnostics/waveguide_chain_battery_measure.py || { echo "FATAL: driver is not stamped schema_version 2"; exit 3; }
+  grep -q "waveguide_chain_battery_remeasure_predeclaration.md" scripts/diagnostics/waveguide_chain_battery_measure.py || { echo "FATAL: driver does not point at the re-measurement note"; exit 3; }
+  grep -q "sign_discriminating_pair" tests/_waveguide_chain_battery_fixture.py || { echo "FATAL: builder does not carry the re-declared shift pair"; exit 3; }
+  echo "=== provenance ==="
+  git rev-parse HEAD 2>/dev/null || echo "(no .git: tarball fetch of $RFX_EXPECT_SHA)"
+
+  echo "=== runtime deps ==="
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  export PYTHONPATH="$ROOT"
+  python -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| devices', jax.devices(), '| rfx', getattr(rfx, '__version__', '?'), 'from', os.path.dirname(rfx.__file__), '| x64', jax.config.x64_enabled)"
+  python -c "from tests import _waveguide_chain_battery_fixture as F; assert F.SHIFT_PAIR_NAME == 'sign_discriminating_pair', F.SHIFT_PAIR_NAME; assert abs(F.REF_LEFT_SHIFTED_M - 0.02540) < 1e-12 and abs(F.REF_RIGHT_SHIFTED_M - 0.09906) < 1e-12, (F.REF_LEFT_SHIFTED_M, F.REF_RIGHT_SHIFTED_M); print('shift pair guard ok |', F.SHIFT_PAIR_NAME, F.REF_LEFT_SHIFTED_M, F.REF_RIGHT_SHIFTED_M)"
+
+  SHORT=$(echo "$RFX_EXPECT_SHA" | cut -c1-8)
+  OUT="/root/workspace/claude-workspace/rfx/runs/waveguide_chain_battery/$(date -u +%Y%m%dT%H%M%SZ)-$SHORT"
+  mkdir -p "$OUT"
+  echo "artifacts: $OUT"
+  # 2026-09-04: VESSL_RUN_ID was unset in the pod on run 369367258205, the
+  # old "${VESSL_RUN_ID:-vessl}" fallback fired silently, and the artifact
+  # stamped the literal "vessl" — so the record did not name its own run and
+  # the id had to be recovered from the backed-up log afterwards. Say it
+  # loudly instead of substituting a placeholder: the run still proceeds
+  # (losing the whole battery to a missing label would be worse), but the
+  # banner is unmissable in the log and the stamped value says it is unknown.
+  if [ -z "${VESSL_RUN_ID:-}" ]; then
+    RUN_ID="UNSET-see-log-filename"
+    echo "########################################################"
+    echo "WARNING: VESSL_RUN_ID is unset. provenance.run_id will be"
+    echo "         '$RUN_ID'. Recover the real id from the backed-up"
+    echo "         log filename and correct the artifact before the PR."
+    echo "########################################################"
+  else
+    RUN_ID="$VESSL_RUN_ID"
+  fi
+  echo "run id (env VESSL_RUN_ID): $RUN_ID"
+
+  # Stages in order; every case is persisted as its own JSON before the next
+  # starts, so an earlier case is never lost to a later one. The loop
+  # continues past a failed stage for the same reason.
+  fails=0
+  for stage in cells ad_fd plane_shift; do
+    echo "===== stage $stage ====="
+    date
+    set +e
+    timeout 14400 python -u scripts/diagnostics/waveguide_chain_battery_measure.py \
+      --out-dir "$OUT" --stages "$stage" --run-id "$RUN_ID" --run-lane vessl \
+      --git-sha "$RFX_EXPECT_SHA" --predeclaration-sha "$RFX_PREDECLARATION_SHA" \
+      --vessl-yaml scripts/vessl_waveguide_chain_battery_guide_cell_aperture.yaml \
+      > "$OUT/stage_$stage.log" 2>&1
+    rc=$?
+    set -e
+    echo "$rc" > "$OUT/stage_$stage.rc"
+    echo "stage $stage rc=$rc (log tail)"
+    grep "chain-battery" "$OUT/stage_$stage.log" | tail -n 30 || true
+    [ "$rc" -eq 0 ] || fails=$((fails + 1))
+  done
+
+  echo "===== cheap refute (flipped shift sign, coarse rung) ====="
+  set +e
+  timeout 3600 python -u scripts/diagnostics/waveguide_chain_battery_measure.py \
+    --out-dir "$OUT" --refute-flip-shift-sign --legs-rung coarse --run-id "$RUN_ID" --run-lane vessl \
+    --git-sha "$RFX_EXPECT_SHA" > "$OUT/stage_refute.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/stage_refute.rc"
+  grep "chain-battery" "$OUT/stage_refute.log" | tail -n 12 || true
+  [ "$rc" -eq 0 ] || fails=$((fails + 1))
+
+  echo "===== assemble ====="
+  set +e
+  timeout 1800 python -u scripts/diagnostics/waveguide_chain_battery_measure.py \
+    --out-dir "$OUT" --stages assemble --run-id "$RUN_ID" --run-lane vessl \
+    --git-sha "$RFX_EXPECT_SHA" --predeclaration-sha "$RFX_PREDECLARATION_SHA" \
+    --vessl-yaml scripts/vessl_waveguide_chain_battery_guide_cell_aperture.yaml \
+    --fixture-out "$OUT/fixture.json" > "$OUT/stage_assemble.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/stage_assemble.rc"
+  grep "chain-battery" "$OUT/stage_assemble.log" | tail -n 60 || true
+  [ "$rc" -eq 0 ] || fails=$((fails + 1))
+
+  ls -la "$OUT"
+  echo "artifacts persisted (mounted, survives teardown): $OUT"
+  echo "waveguide_chain_battery_failed_stages=$fails"
+  [ "$fails" -eq 0 ]

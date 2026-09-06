@@ -3095,6 +3095,13 @@ class _SparamMixin:
                 grid, cfgs, freqs, self._cpml_layers,
             )
 
+        # ``cfg.u_lo/u_hi`` are CELL spans (the entries ``_plane_indexer``
+        # slices), so this compares exactly the field-array ranges the two
+        # ports would write to. Two apertures that meet at a shared wall node
+        # abut without sharing a cell and are NOT an overlap; the builders used
+        # to hand over node spans, one entry too long, so such a pair was
+        # rejected. ``test_abutting_apertures_on_one_face_share_no_cell``
+        # (tests/unit/ports/test_waveguide_port_aperture_cell_count.py) pins it.
         def _slices_overlap(a: tuple[int, int], b: tuple[int, int]) -> bool:
             return max(a[0], b[0]) < min(a[1], b[1])
 

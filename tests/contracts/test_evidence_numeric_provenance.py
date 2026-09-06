@@ -273,6 +273,11 @@ CV11_NOTE = "docs/design_notes/20260831_cv11_broad_e4_artifact_provenance.md"
 # reconstruction"). Opting it in is what stops that recurring.
 LATTICE_NOTE = "docs/design_notes/20260903_lattice_witness_standard.md"
 CV19_WITNESS_NOTE = "docs/design_notes/20260903_cv19_fdfd_unitarity_witness.md"
+# 2026-09-04 (#888): the auxiliary-echo record invariant. The note's whole claim
+# is a table of per-rung ratios read out of three committed artifacts, and its
+# falsifier argument is "no committed rung is near 1.0" -- exactly the shape that
+# is worthless if the numbers stop resolving. Opted in with its section 3.
+AUX_ECHO_NOTE = "docs/design_notes/20260904_aux_echo_record_invariant.md"
 
 # Markdown documents, with the regex that cuts them into named sites.
 MARKDOWN_SITES: dict[str, str] = {
@@ -284,6 +289,8 @@ MARKDOWN_SITES: dict[str, str] = {
     # committed self-test scalars, so the committed scalars it quotes are
     # opted in here rather than retyped and trusted.
     CV19_WITNESS_NOTE: r"^#+\s+(.*\S)\s*$",
+    # 2026-09-04 (#888): see AUX_ECHO_NOTE above.
+    AUX_ECHO_NOTE: r"^#+\s+(.*\S)\s*$",
 }
 
 DOCUMENTS = (MANIFEST, *MARKDOWN_SITES)
@@ -318,15 +325,22 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # numbers still resolving.
     (CV19_WITNESS_NOTE, "6.2 The three checks, with the shipped measurements"): 1,
     (CV19_WITNESS_NOTE, "6.3 What did NOT change"): 2,
+    # 2026-09-04 (#888): section 3 IS the finding -- 13 per-rung ratios plus
+    # cv04's arrival, record and fitted reflector index, every one of them read
+    # back out of the artifact the run wrote rather than retyped from a note.
+    (AUX_ECHO_NOTE, "3. The per-case ratios, read from the committed artifacts"): 18,
 }
 
 # Anti-vacuity census. A green gate must mean the references are right, not that
 # somebody deleted them.
 # 2026-09-03 (#884): +8, the cv19 unitarity-witness note's citations. Raised in
 # the same commit that adds them, so the census tracks the opted-in surface.
-MIN_REFERENCES = 52
-MIN_VALUE_CHECKED = 52
-MIN_DISTINCT_ARTIFACTS = 6
+# 2026-09-04 (#888): +18, the auxiliary-echo record invariant's section 3, and
+# +1 distinct artifact (cv04's lattice_witness.json, cited here for the first
+# time). Raised in the same commit that adds them.
+MIN_REFERENCES = 70
+MIN_VALUE_CHECKED = 70
+MIN_DISTINCT_ARTIFACTS = 7
 
 
 def _sites(root: Path, doc: str) -> list[tuple[str, str]]:

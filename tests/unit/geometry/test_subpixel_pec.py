@@ -395,8 +395,27 @@ def test_waveguide_port_skips_drop_on_conformal_face():
     Dey-Mittra eps_correction at the same cell is the principled
     handler. Otherwise the cell is zeroed twice (DROP in V/I + 1/α
     eps scaling) which over-corrects and caps PEC-short closure
-    (the 2026-04-29 first-attempt failure mode)."""
+    (the 2026-04-29 first-attempt failure mode).
+
+    TWO PATHS, and after issue #868 they differ. The DROP fires only when
+    the aperture slice reaches the array edge, i.e. only when the aperture
+    contains a cell PAST the +face wall:
+
+    * the ``Simulation`` builder now hands the port the guide's CELL span,
+      so its aperture stops at the last real guide cell and there is nothing
+      past the wall to drop — the double correction this test guards against
+      cannot arise on that path at all, in either conformal setting. That is
+      asserted below as an equality between the two settings plus an exact
+      aperture area, which is a STRONGER statement than "the last row is
+      zero": under the old node span the area came out right only BECAUSE
+      the extra row was dropped.
+    * a low-level caller that hands ``WaveguidePort`` the whole node plane
+      (``y_slice=(0, grid.ny)``) still has that cell inside its aperture, and
+      the suppression logic still has to discriminate there. That is where
+      the original assertion is re-run, so the guard keeps a firing path.
+    """
     import jax.numpy as jnp
+    from rfx.sources.waveguide_port import WaveguidePort, init_waveguide_port
 
     freqs = jnp.linspace(5e9, 9e9, 5)
 
@@ -415,19 +434,42 @@ def test_waveguide_port_skips_drop_on_conformal_face():
     dA_off = np.asarray(cfg_off.aperture_dA)
     dA_on = np.asarray(cfg_on.aperture_dA)
 
-    # Without conformal: y_hi DROP zeroes the last u-row.
-    assert np.all(dA_off[-1, :] == 0.0), (
-        f"expected DROP at u_hi (y_hi) without conformal; got "
-        f"dA[-1,:]={dA_off[-1, :]}"
-    )
-    # With conformal: the DROP is skipped → boundary cell preserved.
-    assert np.all(dA_on[-1, :] > 0.0), (
+    # --- builder path: no cell past the wall, so nothing to drop ---------
+    dx = grid_off.dx
+    n_u, n_v = grid_off.ny - 1, grid_off.nz - 1     # guide cells, not nodes
+    assert dA_off.shape == (n_u, n_v), (dA_off.shape, (n_u, n_v))
+    assert np.all(dA_off > 0.0), (
+        f"the builder aperture is the guide's {n_u} x {n_v} cells; none of "
+        f"them sits past a wall, so none may be dropped; got dA={dA_off}")
+    assert np.all(dA_on > 0.0), dA_on
+    # Same aperture either way — the conformal branch has nothing to suppress.
+    assert np.array_equal(dA_off, dA_on)
+    # And the area is the rasterized guide's, exactly.
+    assert float(dA_off.sum()) == pytest.approx(n_u * dx * n_v * dx, rel=1e-6)
+
+    # --- low-level path: the node plane still contains the ghost cell -----
+    def _lowlevel_dA(grid):
+        port = WaveguidePort(
+            x_index=int(0.030 / grid.dx) + grid.axis_pads[0],
+            y_slice=(0, grid.ny), z_slice=(0, grid.nz),
+            a=(grid.ny - 1) * grid.dx, b=(grid.nz - 1) * grid.dx,
+            mode=(1, 0), mode_type="TE", direction="+x", normal_axis="x",
+            u_slice=(0, grid.ny), v_slice=(0, grid.nz),
+        )
+        cfg = init_waveguide_port(port, grid.dx, freqs, f0=8e9, bandwidth=0.5,
+                                  dft_total_steps=200, dt=float(grid.dt),
+                                  grid=grid)
+        return np.asarray(cfg.aperture_dA)
+
+    ll_off, ll_on = _lowlevel_dA(grid_off), _lowlevel_dA(grid_on)
+    assert np.all(ll_off[-1, :] == 0.0), (
+        f"expected DROP at u_hi (y_hi) without conformal on the node-plane "
+        f"aperture; got dA[-1,:]={ll_off[-1, :]}")
+    assert np.all(ll_on[-1, :] > 0.0), (
         f"expected aperture preserved at u_hi when conformal=True; "
-        f"got dA[-1,:]={dA_on[-1, :]}"
-    )
-    # Symmetric check on v_hi (z_hi).
-    assert np.all(dA_off[:, -1] == 0.0)
-    assert np.all(dA_on[:, -1] > 0.0)
+        f"got dA[-1,:]={ll_on[-1, :]}")
+    assert np.all(ll_off[:, -1] == 0.0)
+    assert np.all(ll_on[:, -1] > 0.0)
 
 
 def test_run_battery_geometry_auto_routes():

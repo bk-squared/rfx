@@ -130,6 +130,66 @@ realized-board anchor to within 0.4% at all six points, aligned or not
 same directory). See ``rfx/api/_preflight.py``'s
 ``_check_msl_port_geometry`` class docstring and checks 2/2b for the
 corrected advisory text this drives.
+
+POST-RUN REVIEW NOTE (2026-09-02, audit finding A1; appended after the
+fact, pre-declared body/JSON untouched)
+--------------------------------------------------------------------------
+The "within 0.4% at all six points" reading just above is a PRE-#802
+result. The realized-board anchor reused each point's z0_measured_ohm
+from THIS file's JSON, solved on the pre-#802 f32 rasterization. Main's
+exact-coordinate rasterizer (#802/#834) moves three of the six aligned
+points' realized trace width (h_sub/3 677.3->592.7um, h_sub/5
+609.6->558.8um, h_sub/6 592.7->635.0um), so both the measured Z0 and the
+realized-board HJ anchor on those points change and the 0.4% figure is no
+longer a live bound for them. The user-facing preflight advisories were
+corrected (finding A1) to state only the qualitative realized-board claim
+and to point here for the OWED re-solve. RE-SOLVE: run this script (6 FDTD
+points) on main, then regenerate the anchor with
+``msl_z0_bias_floor_sweep_realized_anchor.py``; a single-point check of
+the h_sub/3 re-solve (2026-09-02, jax_enable_x64=False, settling
+-110.0/-113.1 dB) read Z0=48.16 ohm against HJ(592.7um,254um)=48.27 ohm,
+dev -0.23% -- consistent with the 0.4% band still holding on the
+post-#802 board, but the full six-point re-solve is what a live bound
+requires.
+
+SECOND PASS (2026-09-02, same audit, findings A1-F1 and A1-F3; again
+appended, pre-declared body/JSON untouched)
+--------------------------------------------------------------------------
+F1 -- the DECLARED-board sequence is stale too. The note above retired
+only the realized-board "within 0.4%" reading. The four aligned
+DECLARED-board deviations "-7.9%/-3.8%/-1.2%/+0.7%" quoted in the
+2026-08-27 note above, and the ">5% below 4 cells" prediction they
+supported, come from the SAME six frozen rows and fall to the SAME
+argument -- in fact harder, because the declared anchor does NOT follow
+the realized W, so a W move shifts the declared-board deviation by the
+full amount. Only h_sub/4 (W unmoved at #802) survives as an as-solved
+figure. Measured on the post-#802 rasterization, aligned h_sub/3 reads
+Z0=48.162 ohm vs the declared-board HJ 47.895 ohm = +0.56%, where the
+frozen row says -7.9% and the old advisory predicted ">5%". Those numbers
+were therefore removed from ``rfx/api/_preflight.py``'s check-2 message
+and class docstring; the check now states the O(dx) convergence order,
+its <5% accuracy TARGET, and this re-solve pointer, and quotes no measured
+percentage.
+
+F3 -- the misaligned pair's "~0.2% still representative" sentence was
+asserted, not measured. Geometry invariance (realized W unchanged at #802)
+is necessary but not sufficient: the MSL extractor lane itself moved after
+this sweep ran (#698 port metric sizing, #771 N-probe fit span, #791,
+#798). It has now been MEASURED rather than argued. Re-solve of
+"misaligned 80um" on the post-#802 tree (2026-09-02, jax_enable_x64=False,
+CPU, 149 s; ring-down settling -100.3/-101.0 dB, well past the -40 dB
+open-domain floor; mean|S11|raw=0.11607 vs the frozen row's 0.11609):
+Z0=57.572 ohm vs frozen 57.576 ohm; against HJ(560um,320um)=57.463 ohm
+that is +0.190%, vs the frozen row's +0.197%. So the misaligned half of
+the anchor IS live-representative, on evidence. The aligned half is still
+re-solve-owed, and two measured points do not make a six-point bound.
+
+COST OF THE OWED RE-SOLVE (measured, so nobody has to guess again): the
+frozen JSON's own ``wallclock_s`` column sums to 5686.6 s = 94.8 min on
+the machine that produced it. The two points re-solved on 2026-09-02 ran
+at 131.6 s (h_sub/3, frozen 312.5 s) and 149.1 s (misaligned 80um, frozen
+375.3 s) -- 0.42x and 0.40x -- so the full six points are ~39 min of CPU
+here, i.e. one background job, not a GPU-lane errand.
 """
 
 from __future__ import annotations

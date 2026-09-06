@@ -219,6 +219,73 @@ def gate(ok, label, detail):
     return bool(ok)
 
 
+def f7b_not_run_text():
+    """F7b flux-box referee: the pre-declared outcome, reported verbatim.
+
+    Pre-declaration (``docs/design_notes/issue764_wireport_norm_predeclaration.md``
+    L139-145): six ``add_flux_monitor`` planes forming a closed box around the
+    driven column only, "faces at x = 4.75+-0 mm..., i.e. between the driven and
+    load columns, and above/below the plates" -- and, binding: "If the NU flux
+    plumbing cannot express the box, that sub-check is reported NOT-RUN with the
+    plumbing gap named -- the gate is not re-aimed at another referee."
+
+    B1 (audit c) implemented finite-region ``add_flux_monitor(size=...)`` on the
+    NU lane, so the earlier NOT-RUN reason ("the runner raises
+    NotImplementedError") is obsolete. It is NOT the reason the box is
+    inexpressible. The remaining gap is the plane discretization: both the
+    monitor plane (``pos_to_nu_index``) and the tangential window edges
+    (``_nu_flux_tangential_bounds``, argmin against the cumulative CELL edges)
+    snap to integer index planes (E lives at x_i and the monitor reads H at
+    x_{i+1/2} un-averaged, so a face is pinned to one integer index, not to a
+    half-index). With FIX-A's dx = 0.5 mm and the driven Ez column at
+    (5.0, 5.0) mm, the nearest expressible faces are the node planes
+    at 4.5 / 5.0 / 5.5 mm; x = 4.75 mm is exactly half a cell away and has no
+    representation. And no expressible box can satisfy the pre-declared "driven
+    column only" requirement at all: the driven node (5.0 mm) and the four load
+    nodes (4.5 / 5.5 mm on each axis) lie on the SAME 0.5 mm node lattice, so a
+    box that strictly encloses the first and excludes the others would need faces
+    at 4.75 and 5.25 mm -- neither of which exists.
+
+    Measured, this session (2026-09-05, FIX-A matched, N_STEPS_A = 3000, 4 bins;
+    reproduces review2 PR900_B1 F1). For the substitute box x,y in [5.0, 5.5]
+    that PR #900 ran: xL/Pdel = 5.3e-06 .. 5.9e-04 and yL/Pdel likewise ~ 0,
+    while xR/Pdel = yR/Pdel = 0.1250 .. 0.1236 -- i.e. HALF of ONE load column's
+    absorbed power (each of the four loads absorbs 0.2500 .. 0.2481 of Pdel), and
+    P_box/Pdel = 0.2500 / 0.2499 / 0.2496 / 0.2486. The two faces that carry
+    power are the two that a LOAD column sits on ((11,10) on xR, (10,11) on yR):
+    a flux plane co-located with an absorbing column reads half its absorbed
+    power. The faces at the DRIVEN node read ~zero. That refutes the
+    "half-cell of the outward source H is captured" mechanism PR #900 asserted --
+    it names the wrong faces.
+
+    Expressing the pre-declared box needs a flux monitor on the DUAL (H-plane,
+    half-index-offset) grid, which does not exist in either lane. Until it does,
+    F7b stays NOT-RUN and the whole-port normalization is UNTESTED by a field
+    referee. F7a cannot substitute: |a|^2 - |b|^2 == Re(V.I*) is an algebraic
+    identity of the wave decomposition that holds for ANY complex V, I, so it
+    tests harness wiring only and carries no information about whether |a|^2 is
+    the correct incident-power normalization.
+    """
+    return (
+        "  F7b flux-box referee: NOT-RUN -- the pre-declared box (faces at "
+        "x = y = 4.75 mm, between the driven and the load columns) is NOT "
+        "expressible: add_flux_monitor snaps both the plane and the tangential "
+        "window edges to integer index planes -- E at x_i, H read at "
+        "x_{i+1/2} un-averaged (pos_to_nu_index / "
+        "_nu_flux_tangential_bounds on the cumulative CELL edges), and with "
+        "dx = 0.5 mm and the driven Ez column at (5.0, 5.0) mm the nearest "
+        "expressible faces are 4.5 / 5.0 / 5.5 mm -- half a cell away. Every "
+        "expressible box puts the driven column on an edge and/or load columns "
+        "ON its faces, so it is not the pre-declared referee; per the "
+        "pre-declaration the gate is NOT re-aimed at another box. PLUMBING GAP: "
+        "integer-index-plane snapping -- the pre-declared half-cell box needs a "
+        "dual/H-plane (half-index-offset) flux monitor, which no lane has. "
+        "CONSEQUENCE: the whole-port normalization remains UNTESTED by a field "
+        "referee. F7a is not a substitute: |a|^2-|b|^2 == Re(V.I*) is an "
+        "algebraic identity that holds for ANY V, I (harness wiring only)."
+    )
+
+
 def main():
     print(f"rfx: {rfx.__file__}")
     print(f"bins (GHz): {FREQS / 1e9}")
@@ -368,11 +435,9 @@ def main():
         f"wiring max={np.max(wiring):.2e} "
         f"(gate {1e-5 * np.max(np.abs(a) ** 2):.2e}); "
         f"short 1-|S11|^2={np.round(1 - np.abs(s_sh) ** 2, 4)}")
-    print("  F7b flux-box referee: NOT-RUN — the NU lane implements only "
-          "full-plane flux monitors (runners/nonuniform.py raises "
-          "NotImplementedError for finite-region add_flux_monitor(size=...)),"
-          " so the closed box around the driven column is not expressible; "
-          "the gate is not re-aimed at another referee.")
+    # F7b flux-box referee: NOT-RUN. Reported with the plumbing gap named, per
+    # the pre-declaration's own rule; the gate is NOT re-aimed at another box.
+    print(f7b_not_run_text())
 
     # ---------------- F8: KVL witness (short) -----------------------------
     _, (v_mid, i_s8, _, vp_s8) = driven_acc(runs["short"])
@@ -421,7 +486,9 @@ def main():
     for k_, v_ in verdicts.items():
         print(f"  {k_:7s}: {'PASS' if v_ else 'FAIL'}")
         n_fail += (not v_)
-    print("F7b: NOT-RUN (NU finite-region flux monitors unimplemented)")
+    print("F7b: NOT-RUN (pre-declared half-cell flux box not expressible — "
+          "integer-index-plane snapping, E at x_i / H at x_{i+1/2} un-averaged; "
+          "see the F7b block above)")
     print("F10/F11: run separately (see module docstring / test suite)")
     if n_fail:
         print(f"\n{n_fail} falsifier(s) FIRED — stop and report; "

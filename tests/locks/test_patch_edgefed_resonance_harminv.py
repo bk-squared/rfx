@@ -216,7 +216,11 @@ LEG_A_HALF_PCT = 1.125          # = 0.935 configuration + 0.190 extractor
 #   also the dirtiest port in the set: preflight counts are 8 advisories at h/3 against
 #   6 at h/4 and 3 at h/5, and only h/3 adds "MSL port 'msl_0': only 3 substrate cell(s)
 #   in z ... Z0 staircase error >5% expected" and "no compliant n_probe_offset exists on
-#   this feed length (interval empty)". The clean second mesh sample, h/5, is only
+#   this feed length (interval empty)". (That first message is quoted AS PRINTED AT THE
+#   TIME; audit 2026-09-02 retired its ">5% expected" clause as a pre-#802 artefact, so
+#   current runs print the same advisory with the qualitative O(dx) wording instead —
+#   the advisory COUNT and which meshes raise it, which is all this argument uses, are
+#   unchanged.) The clean second mesh sample, h/5, is only
 #   +0.89 pp away. THE MEASUREMENT THAT WOULD TIGHTEN THIS: re-run the h/3 pair with a
 #   feed whose port clears the Z0-staircase advisory (wider W_MSL, or a substrate cell
 #   count that satisfies the port check). If the clean h/3 lands near h/5 the half-width

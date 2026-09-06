@@ -127,6 +127,18 @@ that creates new differentiable surface on a lane memory excludes. Re-pin the go
 `docs/design_notes/waveguide_chain_battery_predeclaration.md` — **written and committed before
 the first run**.
 
+> **A SECOND run is pre-declared.** Two defects in the instrument were found after the first
+> run and fixed on main — PR #881 (`d6a3df5d`, settling witness scored float32-underflowed
+> records) and PR #889 (`0141f39e`, the port solved its transverse eigenproblem on N+1 cells
+> for an N-cell guide). The committed `fixture.json` is therefore a frozen record of a port
+> that no longer exists, and its reference-plane shift pair was additionally degenerate for
+> the wrong-sign discriminator (`2βΔ` crosses 180° inside the band). Under R2 the
+> pre-declaration is a one-run artifact, so the second run has its own:
+> **`docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md`** — it inherits
+> the guide, the ladder, the DUT set, the band and every gate unchanged, re-declares only the
+> shift (Δ_L = +5.08 mm, Δ_R = −2.54 mm), and carries the predictions with their outcome
+> branches. Read it, not this section, before the re-measurement.
+
 **What this battery is claims-bearing for (decision 4).** Criteria 1, 2 and 3(a)–(c) rest on this
 battery alone. Criterion 3(d)'s referee set is the battery's Airy slab and PEC-short **plus** the
 five broad-E5 replay bands — WR-340, WR-62, WR-28, WR-15, WR-10

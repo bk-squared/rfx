@@ -70,9 +70,40 @@ B_M = 0.01016   # WR-90 narrow wall (z), metres
 DX_COARSE = 0.00254
 DX_LADDER: tuple[float, ...] = (0.00254, 0.00127, 0.000635)
 N_LADDER: tuple[int, ...] = (9, 18, 36)
+# The finer rungs the VI-envelope sweep adds
+# (``docs/design_notes/waveguide_vi_envelope_sweep_predeclaration.md`` §5.1).
+# That section adds 0.0003175 (N=72) and says of the next one, verbatim,
+# "0.00015875 is not added: R5-X is dropped". It is carried here anyway,
+# unused by any emitted case, so the literal value and its integrality assert
+# stay on the record rather than being re-derived by hand if R5-X is ever
+# revived — recomputing it as A_M/144 is the mistake this block exists to stop.
+# They are LITERAL cell sizes, never ``A_M / N``: 0.0003175 = DX_COARSE / 8 and
+# 0.00015875 = DX_COARSE / 16 are exact binary halvings of the coarse cell, so
+# ``|dx*N - A_M| = 3.5e-18``, ``b/dx`` stays integral (32 / 64 cells) and the
+# reference/probe planes land on integer cell counts. Recomputing ``dx = A_M/N``
+# lands one ULP low and moves the N=9 grid from (65,10,5) to (66,10,6) — a whole
+# extra z node, i.e. a different guide.
+#
+# They are a SEPARATE tuple, not an extension of ``DX_LADDER``: the committed
+# chain-battery artifacts record ``dx_ladder_m`` and
+# ``tests/oracle/test_waveguide_chain_battery.py::test_fixture_constants_match_builder``
+# compares that frozen record against ``list(DX_LADDER)``. Growing ``DX_LADDER``
+# in place would redden a committed measurement gate and silently add N=72/144
+# rungs to every ``@pytest.mark.parametrize("dx", F.DX_LADDER)`` in the battery's
+# geometry suite. The sweep reads ``DX_LADDER_SWEEP``; the battery keeps its own.
+DX_LADDER_SWEEP: tuple[float, ...] = DX_LADDER + (0.0003175, 0.00015875)
+N_LADDER_SWEEP: tuple[int, ...] = N_LADDER + (72, 144)
 for _dx, _n in zip(DX_LADDER, N_LADDER):
     assert abs(_dx * _n - A_M) < 1e-15, (_dx, _n)
     assert abs(_dx * _n * 4 / 9 - B_M) < 1e-15, (_dx, _n)
+for _dx, _n in zip(DX_LADDER_SWEEP, N_LADDER_SWEEP):
+    assert abs(_dx * _n - A_M) < 1e-15, (_dx, _n)
+    assert abs(_dx * _n * 4 / 9 - B_M) < 1e-15, (_dx, _n)
+    # b/dx integral at every rung, checked here rather than trusted downstream:
+    # a non-integral b/dx puts the narrow wall between nodes and fires the
+    # declared-vs-rasterized z-width notice (#729 site 2).
+    _b_cells = B_M / _dx
+    assert abs(_b_cells - round(_b_cells)) < 1e-9, (_dx, _n, _b_cells)
 
 # --- x layout, in coarse cells (integers) -----------------------------------
 # Every position is ``k * DX_COARSE``; the integers are the source of truth
@@ -85,8 +116,22 @@ _K_REF = 3               # default reference plane, cells inward of each port
 _K_PROBE = 10            # probe plane, cells inward of each port
 _K_PEC_LO, _K_PEC_HI = 23, 25     # PEC-short: 2 coarse cells = 5.08 mm thick
 _K_SLAB_LO, _K_SLAB_HI = 22, 26   # eps_r=4 slab: 4 coarse cells = 10.16 mm
-_K_SHIFT_LEFT = 12       # shifted reference plane, left port (WP2(b))
-_K_SHIFT_RIGHT = 35      # shifted reference plane, right port (WP2(b))
+# Shifted reference planes, one integer pair per named shift pair. Both pairs
+# live here so each artifact can name the one it was measured with; the builder
+# realizes exactly one of them at a time (SHIFT_PAIR_NAME below).
+_K_SHIFT_PAIRS = {
+    # Run 1 (fixture.json). 2*beta*Delta passes through a half turn inside the
+    # band on all three entries, which makes the wrong-sign discriminator
+    # degenerate by arithmetic -- it measured 0.734 deg against a 10 deg floor.
+    "half_turn_pair": (12, 35),
+    # Run 2 (fixture_guide_cell_aperture.json). The largest admissible unequal
+    # pair on the coarse lattice: Delta_L = +5.08 mm (2 cells),
+    # Delta_R = -2.54 mm (1 cell); 2*beta*Delta stays clear of 0 and 180 deg
+    # across the band, so the discriminator's binding margin is 64.05 deg.
+    "sign_discriminating_pair": (10, 39),
+}
+SHIFT_PAIR_NAME = "sign_discriminating_pair"
+_K_SHIFT_LEFT, _K_SHIFT_RIGHT = _K_SHIFT_PAIRS[SHIFT_PAIR_NAME]
 
 DOMAIN_X_M = _NX_DOMAIN * DX_COARSE            # 0.12192
 PORT_LEFT_X_M = _K_PORT_LEFT * DX_COARSE       # 0.01270
@@ -102,12 +147,14 @@ REF_RIGHT_DEFAULT_M = PORT_RIGHT_X_M - D_REF_M   # 0.10160
 # Probe (sampling) planes = port plane + D_PROBE inward.
 PROBE_LEFT_M = PORT_LEFT_X_M + D_PROBE_M         # 0.03810
 PROBE_RIGHT_M = PORT_RIGHT_X_M - D_PROBE_M       # 0.08382
-# WP2(b) shifted pair — asymmetric on purpose (4 vs 5 coarse cells inward),
-# the same reason the source pair at
-# tests/unit/sparams/test_waveguide_twoport_contract_v1.py:257 is asymmetric: a sign
-# error on one port must not be cancelled by the other.
-REF_LEFT_SHIFTED_M = _K_SHIFT_LEFT * DX_COARSE   # 0.03048 (+10.16 mm)
-REF_RIGHT_SHIFTED_M = _K_SHIFT_RIGHT * DX_COARSE  # 0.08890 (-12.70 mm)
+# WP2(b) shifted pair — asymmetric on purpose, the same reason the source pair
+# at tests/unit/sparams/test_waveguide_twoport_contract_v1.py:257 is asymmetric:
+# a sign error on one port must not be cancelled by the other. The active pair
+# is sign_discriminating_pair: +5.08 mm on the left, -2.54 mm on the right.
+REF_LEFT_SHIFTED_M = _K_SHIFT_LEFT * DX_COARSE   # 0.02540 (+5.08 mm)
+REF_RIGHT_SHIFTED_M = _K_SHIFT_RIGHT * DX_COARSE  # 0.09906 (-2.54 mm)
+SHIFT_PAIRS_M = {name: (kl * DX_COARSE, kr * DX_COARSE)
+                 for name, (kl, kr) in _K_SHIFT_PAIRS.items()}
 
 # --- band and drive ---------------------------------------------------------
 # 17 bins, 0.2 GHz apart, centre bin (index 8) exactly 10.0 GHz. The top
@@ -221,8 +268,8 @@ def build_simulation(
     """
     if dut not in DUTS:
         raise ValueError(f"unknown dut {dut!r}; expected one of {DUTS}")
-    if not any(abs(dx - d) < 1e-15 for d in DX_LADDER):
-        raise ValueError(f"dx={dx} is not a ladder rung {DX_LADDER}")
+    if not any(abs(dx - d) < 1e-15 for d in DX_LADDER_SWEEP):
+        raise ValueError(f"dx={dx} is not a ladder rung {DX_LADDER_SWEEP}")
     if cpml_layers is None:
         probe = _build(dut, dx, cpml_layers=8, reference_planes=(None, None),
                        precision=precision)

@@ -6154,14 +6154,52 @@ class _PreflightMixin:
         2. **Substrate resolution** n_z_sub = h_sub/dx ≥ 4 cells, on an
            ALIGNED mesh (h_sub/dx integer). Yee staircase at the
            dielectric interface is O(dx) (not O(dx²)) for inhomogeneous
-           ε; <4 cells gives Z0 staircase error >5%. Re-verified post-
-           #511/#507 by ``scripts/diagnostics/msl_z0_bias_floor_sweep.py``
-           (2026-08-02, committed artifact under that directory): aligned
-           dx=h_sub/{3,4,5,6} measured Z0 deviation -7.9%/-3.8%/-1.2%/+0.7%
-           FROM THE DECLARED-board Hammerstad-Jensen anchor (S is
-           normalized to that anchor — issue #723 — so this deviation is
-           real and user-facing) — the "<5% at 4+ cells" promise holds
-           when aligned.
+           ε, so Z0 accuracy degrades LINEARLY as the substrate is
+           under-resolved; the check's stated accuracy target is "<5% Z0
+           bias" (that phrase is check 2c's error budget — see the
+           threshold derivation near the top of this module — so it is a
+           target this check publishes, not a measurement). Alignment is
+           the second half of the requirement because S is normalized to
+           the DECLARED-board Hammerstad-Jensen anchor (issue #723): a
+           misaligned mesh rasterizes a THICKER substrate, so the board
+           the user is handed S for is not the board they declared.
+
+           AUDIT 2026-09-02 (finding A1, second pass) — RETIRED NUMBERS.
+           This item used to add: "<4 cells gives Z0 staircase error >5%.
+           Re-verified post-#511/#507 by msl_z0_bias_floor_sweep.py
+           (2026-08-02): aligned dx=h_sub/{3,4,5,6} measured Z0 deviation
+           -7.9%/-3.8%/-1.2%/+0.7% FROM THE DECLARED-board
+           Hammerstad-Jensen anchor ... this deviation is real and
+           user-facing". Those four percentages are the DECLARED-board
+           column of the SAME frozen 2026-08-02 rows whose realized-board
+           reading ("within 0.4%") was retired in the first pass of this
+           finding, and the same argument retires them: main's
+           exact-coordinate rasterizer (#802/#834) moves the realized
+           TRACE WIDTH at h_sub/3 (677.3→592.7µm), h_sub/5 (609.6→558.8µm)
+           and h_sub/6 (592.7→635.0µm), so those rows' measured Z0 is not
+           main's. The declared-board column is in fact MORE exposed to
+           that move than the realized-board one, because the declared
+           anchor does not follow W. Only h_sub/4 (W unmoved) survives as
+           an as-solved figure, and one point is not a sequence.
+
+           EVIDENCE THAT THE OLD FIGURES ARE STALE (spot check, NOT a
+           replacement bound): re-solving aligned dx=h_sub/3 on this
+           branch (2026-09-02, jax_enable_x64=False, CPU; ring-down
+           settling -110.0/-113.1 dB, i.e. well past the -40 dB
+           open-domain floor; mean|S11|raw=0.00686) reads Z0=48.162 Ω
+           against the declared-board anchor 47.895 Ω = +0.56% — where
+           the retired sequence claimed -7.9% and the runtime message
+           claimed ">5% expected". A single point cannot replace a sweep,
+           so NO specific percentage is quoted here any more, and the
+           monotone "refinement reduces the bias" narrative the sequence
+           supported is withdrawn with it. A live "<X%" figure for this
+           check requires RE-SOLVING all six points on main's
+           rasterization
+           (``scripts/diagnostics/msl_z0_bias_floor_sweep.py``) and
+           regenerating the realized-board anchor beside it. What needs no
+           re-measurement, and is all this check now asserts, is the O(dx)
+           convergence order above plus the alignment/board-fidelity
+           argument, which check 2c gates on its own axis.
 
            ISSUE #752 CORRECTION (2026-08-27): this docstring, and check
            2b below, used to also report that a misaligned mesh (h_sub/dx
@@ -6179,9 +6217,19 @@ class _PreflightMixin:
            each mesh point actually solves (Hammerstad-Jensen on the
            REALIZED h/W from ``fidelity_report()``; see the sibling
            ``msl_z0_bias_floor_sweep_realized_anchor.json`` artifact next
-           to the pre-declared sweep JSON), the extractor tracks
-           Hammerstad-Jensen to within 0.4% at EVERY point in the sweep,
-           aligned or misaligned alike. The "2.56-2.94x worse" ratio and
+           to the pre-declared sweep JSON), the extractor tracks the
+           realized-board Hammerstad-Jensen anchor closely at every point
+           in the sweep, aligned or misaligned alike (that sibling
+           artifact carries the per-point deviations). NOTE (audit
+           2026-09-02): the artifact's ALIGNED rows are the pre-#802 f32
+           as-solved record — main's exact-coordinate rasterizer
+           (#802/#834) moves three aligned points' realized trace width
+           (h_sub/3 677.3→592.7µm, h_sub/5 609.6→558.8µm, h_sub/6
+           592.7→635.0µm), so those rows' realized-board deviations are
+           RE-SOLVE-OWED before any specific "within X%" bound may be
+           quoted as a LIVE extractor property; run
+           ``scripts/diagnostics/msl_z0_bias_floor_sweep.py`` to refresh
+           them. The "2.56-2.94x worse" ratio and
            the "+20.2%/+11.0% Z0 bias" framing are RETRACTED as
            extractor-bias claims (the pre-declared sweep JSON and its
            as-run verdict block are left untouched — they remain the
@@ -6440,14 +6488,25 @@ class _PreflightMixin:
                     PreflightWarning(
                         f"MSL port '{pe.name}': only {n_z_sub} substrate cell(s) "
                         f"in z (h_sub={h_sub*1e6:.0f}µm, {_dx_note}). "
-                        f"Yee staircase at dielectric interface is O(dx) — "
-                        f"Z0 staircase error >5% expected. Refine to dx ≤ "
+                        f"Yee staircase at the dielectric interface is "
+                        f"O(dx), not O(dx²), for inhomogeneous ε, so Z0 "
+                        f"accuracy degrades linearly as the substrate is "
+                        f"under-resolved. Refine to dx ≤ "
                         f"{h_sub*1e6/4:.1f}µm (4+ substrate cells) AND keep "
-                        f"h_sub/dx an integer (aligned) for <5% Z0 bias — "
-                        f"measured post-#511/#507 at -3.8%/-1.2%/+0.7% for "
-                        f"h_sub/4, h_sub/5, h_sub/6 vs the DECLARED-board "
-                        f"Hammerstad-Jensen anchor (scripts/diagnostics/"
-                        f"msl_z0_bias_floor_sweep.py).{_extra}",
+                        f"h_sub/dx an integer (aligned); this check's "
+                        f"accuracy target is <5% Z0 bias against the "
+                        f"DECLARED-board Hammerstad-Jensen anchor (S is "
+                        f"normalized to that anchor, issue #723). No "
+                        f"specific measured bias percentage is quoted here "
+                        f"(audit 2026-09-02): the 2026-08-02 sweep's "
+                        f"aligned rows are a pre-#802 as-solved record — "
+                        f"the exact-coordinate rasterizer (#802/#834) moved "
+                        f"three of their realized trace widths, and a "
+                        f"re-solve of aligned h_sub/3 on the current "
+                        f"rasterizer contradicted the retired figure — so "
+                        f"re-run scripts/diagnostics/"
+                        f"msl_z0_bias_floor_sweep.py before quoting one as "
+                        f"a live bound.{_extra}",
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),
@@ -6510,9 +6569,14 @@ class _PreflightMixin:
             # each point actually solves (Hammerstad-Jensen on the
             # REALIZED h/W; see the sibling
             # ``msl_z0_bias_floor_sweep_realized_anchor.json`` next to
-            # the pre-declared sweep JSON), the extractor tracks
-            # Hammerstad-Jensen to within 0.4% at every one of the six
-            # sweep points, aligned or misaligned. The "2.56-2.94x worse"
+            # the pre-declared sweep JSON), the extractor tracks the
+            # realized-board Hammerstad-Jensen anchor closely at every one
+            # of the six sweep points, aligned or misaligned (that sibling
+            # artifact carries the per-point deviations; audit 2026-09-02:
+            # its aligned rows are the pre-#802 f32 as-solved record and
+            # are re-solve-owed before a specific "within X%" bound may be
+            # quoted live — main's #802/#834 rasterizer moves three aligned
+            # points' realized trace width). The "2.56-2.94x worse"
             # / "+20.2%/+11.0%" framing is RETRACTED as an extractor-bias
             # claim (the pre-declared JSON and its as-run verdict are
             # left untouched as the auditable record; only this reading
@@ -6626,11 +6690,14 @@ class _PreflightMixin:
                         f"declared-board Z0 comparison used to attribute "
                         f"to 'misalignment' (retracted: see "
                         f"msl_z0_bias_floor_sweep_realized_anchor.json — "
-                        f"the extractor tracks Hammerstad-Jensen on the "
-                        f"board it actually solves to within 0.4% at every "
-                        f"point in scripts/diagnostics/"
-                        f"msl_z0_bias_floor_sweep.py's sweep, aligned or "
-                        f"not). {_snap_txt}",
+                        f"scored against the board each mesh point actually "
+                        f"solves rather than the declared board, the "
+                        f"extractor tracks the realized-board Hammerstad-"
+                        f"Jensen anchor closely; that artifact carries the "
+                        f"per-point deviations, which must be re-solved "
+                        f"(scripts/diagnostics/msl_z0_bias_floor_sweep.py) "
+                        f"after any rasterization change — its aligned rows "
+                        f"are the pre-#802 as-solved record). {_snap_txt}",
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),
@@ -6711,8 +6778,12 @@ class _PreflightMixin:
                         f"{_MSL_REALIZED_THICKNESS_Z0_SENSITIVITY:.3f} = "
                         f"{_MSL_REALIZED_THICKNESS_TOL*100:.1f}%; it is NOT "
                         f"a claim about extractor bias (scored against the "
-                        f"board it actually solves, the extractor tracks "
-                        f"Hammerstad-Jensen to within 0.4%). {_fix}; or "
+                        f"board it actually solves rather than the declared "
+                        f"board, the extractor tracks the realized-board "
+                        f"Hammerstad-Jensen anchor closely; see "
+                        f"msl_z0_bias_floor_sweep_realized_anchor.json for "
+                        f"the per-point deviations, re-solve-owed after a "
+                        f"rasterization change). {_fix}; or "
                         f"accept the realized board and quote its "
                         f"{_h_real_m*1e6:.1f}µm thickness rather than the "
                         f"declared one.",

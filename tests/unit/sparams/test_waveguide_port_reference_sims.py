@@ -12,9 +12,17 @@ Coverage
   junction must fire the clearance advisory (band kept below the TE20 cutoff so
   the advisory is not skipped).
 * Behavioral witness: on the compact T-junction the matched reference lowers
-  ``|S11|`` (vacuum-reference blow-up 9.8 -> 3.1 here; |S11| band-mean well
+  ``|S11|`` (vacuum-reference blow-up 11.0 -> 3.15 here; |S11| band-mean well
   below 1) yet the overall matrix stays NON-physical (max|S| > 1.05), locking
-  the necessary-but-not-sufficient finding. Companion committed evidence lives
+  the necessary-but-not-sufficient finding. Those two numbers were 9.8 -> 3.1
+  before the port aperture was corrected to the guide's N cells: this port
+  declares ``y_range=(0.04, 0.08)`` inside a 0.12 m domain with interior PEC-box
+  walls, so its transverse span is a SUB-APERTURE and the +face DROP weight
+  never fired on ``u``. The pre-correction template therefore carried a
+  full-weight cell one past the wall (21 x 11 cells, ``aperture_dA.sum()``
+  8.4000e-04, ``f_cutoff`` 3.565631 GHz); corrected it is 20 x 10, 8.0000e-04
+  and 3.743554 GHz. The assertions here are inequalities and hold either way;
+  the two figures above are prose and are refreshed with the correction. Companion committed evidence lives
   at ``tests/fixtures/waveguide_tjunction_e4/`` /
   ``tests/crossval/test_waveguide_tjunction_e4e5_gates.py``.
 """
