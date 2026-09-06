@@ -84,7 +84,12 @@ The port is now anchored on the two conductors' own realized node planes (see
 patch sheet, both dead/shorted, every cell between them live.
 ``assert_galvanic_feed()`` re-derives that from the assembled PEC mask and
 refuses to quote a number otherwise; the #556 one-cell-short preflight
-advisory is silent at both ends. MEASURED (scratch variants, --num-periods 45
+advisory is silent at both ends. ``compare()`` then RE-verifies the recorded
+``feed_check`` against this module's own constants and GATES on it, the same
+way it does for #740's wall planes -- ``assert_galvanic_feed`` only ever sees
+the leg it is producing, so without that gate an archived floating-post leg
+still passes every gate (measured; item-A review, section 3 issue 1).
+MEASURED (scratch variants, --num-periods 45
 --n-freqs 181, docs/research_notes/audit-2026-09-02/i920/
 PI_SESSION_SPOTCHECK.md): -21.92 dB @ 2.360 GHz, Z_in 52.1 + 7.9j, against
 openEMS -20.1 dB @ 2.330 GHz. Contacting the patch alone changed nothing
@@ -399,6 +404,25 @@ def assert_galvanic_feed(sim, grid, geom):
       * every cell between them is live (a conducting bridge would short the
         cavity, not feed it).
     Returns a dict of the measured cell classification for the result leg.
+
+    SCOPE OF THE CRITERION -- it is STRICTER than "galvanic contact", and a
+    refusal is therefore NOT a physics claim that the rejected feed is
+    non-galvanic. What is enforced here is the first/last-cell-INSIDE-a-
+    conductor form of a galvanic post, which is the form that is (a)
+    preflight-silent, because neither end cell is live so the #556
+    one-cell-short advisory has nothing to flag at either end, and (b)
+    two_plane-safe, because ``run()`` leaves dead extent cells PEC and so the
+    end cells short into the sheets without punching a hole in the wall planes
+    ``assert_realized_stack`` checks. A post that runs from the ground's
+    tangential node plane to the patch's with NO dead end cells (measured
+    variant (b) of the #920 spot-check: 4 live cells,
+    ``[z_sub_lo, z_sub_hi]``) is equally galvanic and solves to bit-identical
+    fields -- ``max|S11_b - S11_c| = 0.0``, same f0, same Q, verified in
+    docs/research_notes/audit-2026-09-02/i920/solve/A_cv15_fix.verify.md
+    section 1.2 -- yet this assert refuses it, because it fires the #556
+    advisory at both ends and leaves the reviewer nothing to distinguish it
+    from the floating post by. That refusal is a FIXTURE CONVENTION chosen for
+    reviewability, not a verdict on the physics.
     """
     from rfx.sources.sources import WirePort, _wire_port_cells, _wire_port_live_cells
 
@@ -423,16 +447,21 @@ def assert_galvanic_feed(sim, grid, geom):
     interior_live = all(live[1:-1]) if len(live) > 2 else False
     if not (ends_shorted and interior_live):
         raise RuntimeError(
-            "assert_galvanic_feed: the rasterized feed is NOT galvanic "
-            f"ground-sheet-to-patch-sheet. Port cells (axis "
-            f"{'xyz'[axis]}) = {[tuple(int(v) for v in c) for c in cells]}, "
+            "assert_galvanic_feed: the rasterized feed does not have the "
+            "required first/last-cell-inside-a-conductor form. Port cells "
+            f"(axis {'xyz'[axis]}) = "
+            f"{[tuple(int(v) for v in c) for c in cells]}, "
             f"live = {live} (True = vacuum/dielectric, False = inside PEC). "
-            "A galvanic post has its FIRST and LAST cell inside a conductor "
-            "(dead -> shorted, and left PEC by run()'s live-only clearing) "
-            "and every cell between them live. Ends shorted: "
-            f"{ends_shorted}; interior all live: {interior_live}. Refuse to "
-            "quote S11 for a feed the reference solver's AddLumpedPort does "
-            "not model (issue #920).")
+            "Required: FIRST and LAST cell inside a conductor (dead -> "
+            "shorted, and left PEC by run()'s live-only clearing), every "
+            f"cell between them live. Ends shorted: {ends_shorted}; interior "
+            f"all live: {interior_live}. NOTE this criterion is stricter "
+            "than galvanic contact (see this function's docstring): a post "
+            "ending ON the conductors' tangential node planes with no dead "
+            "cells is galvanic too and is refused here for reviewability, so "
+            "read this as 'not the required form', not as 'proven "
+            "capacitive'. Refuse to quote S11 until the feed matches the "
+            "reference solver's AddLumpedPort form (issue #920).")
 
     print(f"[FEED CHECK #920] galvanic post: {len(cells)} rasterized cells, "
           f"{n_dead} dead/shorted (first+last, inside the ground and patch "
@@ -1022,6 +1051,74 @@ def _stack_check_ok(sc, tol=1e-9, eps_tol=1e-4):
     return ok, detail
 
 
+def _feed_check_ok(fc, tol=1e-9):
+    """Re-verify a leg's ``feed_check`` dict against THIS MODULE's OWN
+    geometry constants -- the #920 counterpart of ``_stack_check_ok``, and the
+    item-A review's required change: ``assert_galvanic_feed`` runs inside
+    ``run_rfx``, so it only ever sees the leg being produced. ``compare()`` is
+    the path crossval actually consumes, and without this gate an ARCHIVED or
+    stale leg whose feed was a floating post still passes ALL GATES -- measured
+    on the archived floating-post leg, which came through ``compare()`` clean
+    (docs/research_notes/audit-2026-09-02/i920/solve/A_cv15_fix.verify.md,
+    section 3 issue 1).
+
+    A missing ``feed_check`` is a FAIL, not a skip, for the same reason
+    ``_stack_check_ok`` treats a missing ``stack_check`` that way: the #920
+    defect is exactly a leg that looks fine without it.
+
+    Nothing here is typed for this board. The two expected node planes are
+    recomputed from ``AIR_BELOW``/``H_SUB``/``DX`` -- the ground body is the
+    one-cell face-registered Box ``[z_sub_lo - DX, z_sub_lo)``, so its realized
+    lo-face node is ``AIR_BELOW - DX``; the patch body's is ``z_sub_hi ==
+    AIR_BELOW + H_SUB``. The expected cell count follows from the same
+    constants: ``N_SUB`` live substrate cells plus the two dead end cells
+    (``_wire_port_cells`` is inclusive of both endpoint edges). Edit the stack
+    and both move with it.
+
+    Pure function (synthetic dicts in, bool+detail out) so
+    ``tests/crossval/test_crossval_cv15_wall_planes.py`` can pin the gate MATH
+    without a solve, matching ``_stack_check_ok``'s precedent.
+    """
+    if not fc:
+        return False, ("missing feed_check (leg predates the #920 "
+                       "galvanic-feed self-check)")
+
+    def _num(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return float("nan")
+
+    z_ground_node = AIR_BELOW - DX          # ground body's realized lo-face node
+    z_patch_node = AIR_BELOW + H_SUB        # patch body's realized lo-face node
+    n_expected = N_SUB + 2                  # N_SUB live cells + 2 dead ends
+    flags = [bool(f) for f in (fc.get("live_flags") or [])]
+    z0 = _num(fc.get("port_z0"))
+    z1 = z0 + _num(fc.get("port_extent"))
+    shape_ok = (
+        len(flags) == n_expected
+        and not flags[0] and not flags[-1]
+        and all(flags[1:-1])
+    )
+    ok = (
+        bool(fc.get("galvanic"))
+        and shape_ok
+        and fc.get("n_port_cells") == n_expected
+        and fc.get("n_dead_cells") == 2
+        and abs(z0 - z_ground_node) < tol
+        and abs(z1 - z_patch_node) < tol
+    )
+    detail = (
+        f"galvanic={fc.get('galvanic')}, "
+        f"live_flags={flags} (want [F] + {N_SUB}x[T] + [F]), "
+        f"n_port_cells={fc.get('n_port_cells')} (want {n_expected}), "
+        f"n_dead_cells={fc.get('n_dead_cells')} (want 2), "
+        f"span z=[{z0:.6g}, {z1:.6g}] (want "
+        f"[{z_ground_node:.6g}, {z_patch_node:.6g}])"
+    )
+    return ok, detail
+
+
 def compare(f0_env_pct):
     R, O = _load_legs()
     fr_an = R["f_analytic_hz"]
@@ -1096,6 +1193,8 @@ def compare(f0_env_pct):
          f"{d_rfx_oe:.2f}% <= {f0_env_pct:.0f}%")
     sc_ok, sc_detail = _stack_check_ok(R.get("stack_check"))
     gate("stack geometry fidelity (realized wall planes, #740)", sc_ok, sc_detail)
+    fc_ok, fc_detail = _feed_check_ok(R.get("feed_check"))
+    gate("galvanic feed fidelity (probe shorted GP->patch, #920)", fc_ok, fc_detail)
     gate("settling witness (open CPML, -40 dB bar)", bool(R["settled"]),
          f"{R['settle_db']:.1f} dB")
     # Passivity is GATED on both legs: |S11| > ~1.05 on a passive radiator is an

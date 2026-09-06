@@ -20,6 +20,16 @@ the FEED (#920); both have the correct wall plane. Any comparison that crosses
 both axes at once is comparing two changes.
 
 Extractor caveat on the floating-post leg: it was written under the pre-#776
-wire-port extractor. Re-running that same fixture on today's extractor gives
--0.3448 dB, not -4.43 dB — #776/#777 changed how fully the frame reports the
-gap reactance, not the fixture. See the #920 CHANGELOG entry.
+wire-port extractor, so its -4.43 dB is not what that fixture reads on a later
+tree. Re-runs of the SAME span, each dated to the code state that produced it:
+-0.3448 dB on 2026-09-01 (design note
+`docs/design_notes/20260901_patch_mode_identification_predeclaration.md`
+section 6.6) and -0.3182 dB on 2026-09-06 at `495e180c`
+(`docs/research_notes/audit-2026-09-02/i920/solve/A2_pre920_span_495e180c.json`).
+#776/#777 changed how fully the frame reports the gap reactance, not the
+fixture. The 2.7 mdB between the two re-runs is unattributed: the only
+wire-lane extraction change merged between those two dates is #897 (Yee
+half-step phase correction for the H-derived port current DFT), which makes it
+the candidate, but no bisect was run and none is owed — the fixture is retired.
+Do not quote either number as "today's": quote it with its commit. See the #920
+CHANGELOG entry.

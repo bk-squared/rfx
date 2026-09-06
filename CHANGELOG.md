@@ -217,6 +217,22 @@ to patch conductively. The two solvers were not modelling the same feed.
   clearing, so the feed shorts into each sheet without punching a hole in it.
   A new `assert_galvanic_feed()` re-derives that from the assembled PEC mask
   and refuses to quote a number otherwise; `#556` is now silent at both ends.
+  The criterion it enforces — first and last cell INSIDE a conductor — is
+  deliberately stricter than galvanic contact: a post ending on the two
+  conductors' tangential node planes with no dead cells solves to bit-identical
+  fields and is still refused, because that form fires `#556` at both ends and
+  leaves a reviewer nothing to tell it from the floating post by. Its docstring
+  says so, so a refusal is not read as a physics verdict.
+- **`compare()` gates on it too.** `assert_galvanic_feed` runs inside
+  `run_rfx()`, so it only ever sees the leg it is producing, while `compare()`
+  is the path crossval consumes. A new `galvanic feed fidelity (probe shorted
+  GP->patch, #920)` gate re-derives the recorded `feed_check` against the
+  script's own `AIR_BELOW`/`H_SUB`/`DX`/`N_SUB` — no cell index typed for this
+  board — and treats a missing `feed_check` as FAIL, not skip. Measured before
+  it existed: the archived floating-post leg went through `compare()` with
+  `ALL GATES PASSED`; it now reports `[FAIL] galvanic feed fidelity … missing
+  feed_check (leg predates the #920 galvanic-feed self-check)` and
+  `compare()` returns False, while the shipping leg still passes all seven.
 - **Before / after** (CPU, `rfx --num-periods 45 --n-freqs 181 --gain`;
   settling -52.6 dB, SETTLED; all gates PASS):
 
@@ -227,8 +243,17 @@ to patch conductively. The two solvers were not modelling the same feed.
   | openEMS (`_15_patch_results/openems.json`) | -20.10 dB | 2.330 GHz | — | — | 0.992 | 7.34 dBi |
 
   The archived row is that leg exactly as committed at `1f005d0d`, i.e. under
-  the pre-#776 extractor; re-running the same floating-post fixture on today's
-  extractor gives -0.3448 dB, which is the bullet below.
+  the pre-#776 extractor. Re-running the same floating-post fixture on a later
+  extractor gives a dip of about -0.3 dB, not -4.43 dB, which is the bullet
+  below. Two measurements, one code state apart, and neither is "today's":
+  -0.3448 dB was measured 2026-09-01 (design note
+  `20260901_patch_mode_identification_predeclaration.md` section 6.6, `main`
+  today row) and -0.3182 dB on 2026-09-06 at `495e180c`
+  (`docs/research_notes/audit-2026-09-02/i920/solve/A2_pre920_span_495e180c.json`,
+  Z_in 45.77 - 347.00j at 2.320 GHz, settling -54.0 dB SETTLED; independently
+  the #920 spot-check's E1_a run reads the same to four digits). The 2.7 mdB
+  between them is the extractor moving again, not the fixture; it is not
+  bisected and does not need to be, the fixture being retired.
 
   The f0 gate moves from 0.69 % to 1.49 % versus openEMS (bar 8 %), which is
   the honest cost of the fix: `Q` 18.90 -> 10.30 is the patch finally being

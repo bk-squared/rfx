@@ -365,7 +365,21 @@ def test_cv15_current_leg_is_the_galvanic_feed_and_moved_the_ringdown():
     """The counterpart of the re-anchor above: cv15's SHIPPING leg is the
     galvanic-feed regeneration (#920), and it is a different measurement from
     the fixtures -- pinned here so the substitution above cannot be read as
-    "the leg did not really change"."""
+    "the leg did not really change".
+
+    Where the Q bar comes from (item-A review nit 4 -- it was an undocumented
+    0.75). A probe that actually loads a resonator adds its own dissipation:
+    at critical coupling the loaded Q is HALF the lightly-loaded one
+    (Q_L = Q_0 / (1 + beta), beta = 1 at match). The floating post barely
+    loaded the patch, the galvanic one lands at Z_in = 52 + 8j, so the
+    expected ratio is ~0.5 -- measured 10.2961 / 18.8974 = 0.545. The bar is
+    NOT that measurement: it sits halfway between the physics expectation
+    (0.5) and no loading at all (1.0), so the test fires if the probe stops
+    loading the patch and does not re-pin the measured ratio. The -10 dB
+    return-loss threshold is the script's own ``S11_MATCHED_DB`` convention,
+    imported rather than retyped."""
+    cv15 = _load_cv15()
+    q_loading_bar = 0.5 * (0.5 + 1.0)   # halfway: match (0.5) <-> no load (1.0)
     leg = json.loads(
         (REPO_ROOT / "validation/crossval/_15_patch_results/rfx.json")
         .read_text(encoding="utf-8"))
@@ -378,9 +392,9 @@ def test_cv15_current_leg_is_the_galvanic_feed_and_moved_the_ringdown():
     assert leg["feed_check"]["live_flags"][-1] is False
     # the probe now loads the patch: f0 up, Q down, dip matched
     assert leg["f_harminv_hz"] > old["f_harminv_hz"]
-    assert leg["q_harminv"] < 0.75 * old["q_harminv"]
-    assert leg["s11_dip_db"] < -10.0
-    assert old["s11_dip_db"] > -10.0                    # the floating post
+    assert leg["q_harminv"] < q_loading_bar * old["q_harminv"]
+    assert leg["s11_dip_db"] < cv15.S11_MATCHED_DB
+    assert old["s11_dip_db"] > cv15.S11_MATCHED_DB      # the floating post
 
 
 def test_cv15_740_defect_is_a_common_mode_dilation():

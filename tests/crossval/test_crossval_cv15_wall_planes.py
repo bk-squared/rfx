@@ -185,3 +185,161 @@ def test_stack_check_ok_ignores_realization_label():
     sc["ground_realization"] = "some_future_mechanism"
     ok, detail = cv15._stack_check_ok(sc)
     assert ok, detail
+
+
+# ---------------------------------------------------------------------------
+# compare()'s GALVANIC-FEED gate (issue #920) -- the feed-side twin of the
+# wall-plane gate above, added in the item-A review's required change:
+# ``assert_galvanic_feed`` runs inside ``run_rfx``, so it only ever sees the
+# leg it is producing, while ``compare()`` is the path crossval consumes.
+# Measured before this gate existed: the archived floating-post leg passed
+# ALL GATES through ``compare()``
+# (docs/research_notes/audit-2026-09-02/i920/solve/A_cv15_fix.verify.md sec 3).
+# Same synthetic-dict style as the stack gate above -- no solve.
+# ---------------------------------------------------------------------------
+
+def _good_feed_check(cv15):
+    """The classification a galvanic post produces, expressed in the module's
+    own constants (never this board's cell indices): first and last cell dead
+    inside the two sheets, ``N_SUB`` live cells across the substrate, span
+    from the ground body's realized lo-face node to the patch body's."""
+    return dict(
+        n_port_cells=cv15.N_SUB + 2,
+        n_dead_cells=2,
+        live_flags=[False] + [True] * cv15.N_SUB + [False],
+        port_z0=cv15.AIR_BELOW - cv15.DX,
+        port_extent=cv15.H_SUB + cv15.DX,
+        galvanic=True,
+    )
+
+
+def test_feed_check_ok_accepts_the_galvanic_classification():
+    cv15 = _load_cv15()
+    ok, detail = cv15._feed_check_ok(_good_feed_check(cv15))
+    assert ok, detail
+
+
+def test_feed_check_ok_accepts_the_committed_leg():
+    """The synthetic dict above must be the same shape the SHIPPING leg
+    carries -- otherwise the gate math is pinned against a fiction."""
+    cv15 = _load_cv15()
+    import json
+    leg = json.loads(
+        (REPO_ROOT / "validation/crossval/_15_patch_results/rfx.json")
+        .read_text(encoding="utf-8"))
+    ok, detail = cv15._feed_check_ok(leg["feed_check"])
+    assert ok, detail
+
+
+def test_feed_check_ok_rejects_missing_leg():
+    """A leg from before #920 has no ``feed_check`` key -- FAIL, not skip.
+    This is the gap the item-A review measured: the archived floating-post
+    leg (no ``feed_check``) otherwise passes every gate."""
+    cv15 = _load_cv15()
+    ok, detail = cv15._feed_check_ok(None)
+    assert not ok
+    assert "missing" in detail
+
+
+def test_feed_check_ok_rejects_the_archived_floating_post_leg():
+    """The measured #920 defect itself, through the committed artifact."""
+    cv15 = _load_cv15()
+    import json
+    old = json.loads(
+        (REPO_ROOT / "validation/crossval/_15_patch_results"
+         / "rfx_floating_post_1f005d0d.json").read_text(encoding="utf-8"))
+    ok, detail = cv15._feed_check_ok(old.get("feed_check"))
+    assert not ok, detail
+
+
+def test_feed_check_ok_rejects_a_live_end_cell():
+    """The pre-#920 span's signature: an end cell that is LIVE, i.e. the post
+    stops short of the conductor and couples capacitively."""
+    cv15 = _load_cv15()
+    fc = _good_feed_check(cv15)
+    fc["live_flags"] = [True] + [True] * cv15.N_SUB + [False]
+    fc["n_dead_cells"] = 1
+    ok, detail = cv15._feed_check_ok(fc)
+    assert not ok, detail
+
+
+def test_feed_check_ok_rejects_a_dead_interior_cell():
+    """A dead cell BETWEEN the ends is a conducting bridge shorting the
+    cavity, not a feed -- and it would keep ``galvanic`` True."""
+    cv15 = _load_cv15()
+    fc = _good_feed_check(cv15)
+    flags = fc["live_flags"]
+    flags[len(flags) // 2] = False
+    fc["n_dead_cells"] = 3
+    ok, detail = cv15._feed_check_ok(fc)
+    assert not ok, detail
+
+
+def test_feed_check_ok_rejects_a_displaced_span():
+    """A leg whose cell classification looks right but whose post sits
+    somewhere else entirely (the classification alone cannot see that the
+    span moved off the two conductors' node planes)."""
+    cv15 = _load_cv15()
+    fc = _good_feed_check(cv15)
+    fc["port_z0"] = fc["port_z0"] + cv15.DX
+    ok, detail = cv15._feed_check_ok(fc)
+    assert not ok, detail
+
+
+def test_feed_check_ok_rejects_a_self_declared_galvanic_flag():
+    """``galvanic`` is a recorded label; the gate must not rest on it. A leg
+    claiming galvanic=True with a non-galvanic classification FAILS (and the
+    converse: an honest classification with the flag dropped also FAILS, so
+    the label can neither rescue nor be rescued by the measurement)."""
+    cv15 = _load_cv15()
+    fc = _good_feed_check(cv15)
+    fc["live_flags"] = [True] * (cv15.N_SUB + 2)
+    fc["n_dead_cells"] = 0
+    ok, _ = cv15._feed_check_ok(fc)
+    assert not ok
+    fc2 = _good_feed_check(cv15)
+    fc2["galvanic"] = False
+    ok2, _ = cv15._feed_check_ok(fc2)
+    assert not ok2
+
+
+# ---------------------------------------------------------------------------
+# assert_galvanic_feed on the REAL rasterized geometry (no solve), and the
+# round trip into the gate.
+# ---------------------------------------------------------------------------
+
+def test_cv15_committed_geometry_rasterizes_a_galvanic_feed(capsys):
+    """The production builder's port must classify as galvanic on the real
+    assembled PEC mask, and what it records must satisfy ``compare()``'s
+    gate -- the two halves of the #920 fix pinned against each other."""
+    cv15 = _load_cv15()
+    sim, patch_shape, geom = cv15.build_rfx_sim(do_gain=False)
+    grid = sim._build_grid()
+    fc = cv15.assert_galvanic_feed(sim, grid, geom)
+    capsys.readouterr()
+
+    assert fc["galvanic"] is True
+    assert fc["n_dead_cells"] == 2
+    assert fc["n_port_cells"] == cv15.N_SUB + 2
+    assert fc["live_flags"][0] is False and fc["live_flags"][-1] is False
+    assert all(fc["live_flags"][1:-1])
+    ok, detail = cv15._feed_check_ok(fc)
+    assert ok, detail
+
+
+def test_cv15_negative_control_pre920_span_is_refused(capsys):
+    """FAIL-BEFORE-FIX for #920, through the script's OWN assert: feed it the
+    span cv15 shipped until 2026-09-06 -- ``z_sub_lo + DX`` for ``2*DX``, the
+    two INTERIOR substrate cells -- and it must refuse.
+
+    Expressed in the module's constants, not as cell indices for this board.
+    """
+    cv15 = _load_cv15()
+    sim, patch_shape, geom = cv15.build_rfx_sim(do_gain=False)
+    grid = sim._build_grid()
+    pre920 = dict(geom)
+    pre920["port_z0"] = geom["z_sub_lo"] + cv15.DX
+    pre920["port_extent"] = 2.0 * cv15.DX
+    with pytest.raises(RuntimeError, match="assert_galvanic_feed"):
+        cv15.assert_galvanic_feed(sim, grid, pre920)
+    capsys.readouterr()
