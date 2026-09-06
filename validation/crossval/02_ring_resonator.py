@@ -488,6 +488,122 @@ matched = [(row.ref_freq, row.ref_Q, row.rfx_freq, row.rfx_Q)
            for row in verdict.rows if row.matched]
 
 # =============================================================================
+# Retained output (issue #928)
+#
+# Written HERE -- after the judge, before PART 4's narrowband visualisation --
+# because printing is not persisting: this case's numbers used to exist only in
+# a scheduled runner's log, which expires with the runner. The file carries
+# both mode lists, the assignment and its per-mode error and Q window, the gate
+# table, the exit code this run is about to return, the run's provenance and
+# the realized rig, as values.
+# =============================================================================
+def _exit_code(rfx_ok: bool, have_meep: bool, judged_ok: bool) -> int:
+    """The one place the verdict is decided; the tail prints it unchanged."""
+    if not have_meep:
+        return 2 if rfx_ok else 1
+    return 0 if (rfx_ok and judged_ok) else 1
+
+
+_dataclasses = __import__("dataclasses")
+_json = __import__("json")
+_dt = __import__("datetime")
+_platform = __import__("platform")
+_subprocess = __import__("subprocess")
+
+_rfx_self_ok = len(rfx_modes) >= 1
+_rc = _exit_code(_rfx_self_ok, HAVE_MEEP, bool(verdict.passed))
+try:
+    _commit = _subprocess.check_output(["git", "rev-parse", "HEAD"],
+                                       cwd=SCRIPT_DIR, text=True,
+                                       stderr=_subprocess.DEVNULL).strip()
+except Exception:
+    _commit = None
+try:
+    import rfx as _rfx_pkg
+    _rfx_version = getattr(_rfx_pkg, "__version__", None)
+except Exception:
+    _rfx_version = None
+_meep_version = getattr(mp, "__version__", None) if HAVE_MEEP else None
+
+_doc = {
+    "schema": "cv02-ring-resonator/v1",
+    "case_id": "02_ring_resonator",
+    "commit": _commit,
+    "date_utc": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "provenance": {
+        "rfx_version": _rfx_version,
+        "meep_version": _meep_version,
+        "jax_enable_x64": os.environ.get("JAX_ENABLE_X64"),
+        "rfx_boundary": os.environ.get("RFX_BOUNDARY"),
+        "python": _platform.python_version(),
+        "platform": _platform.platform(),
+    },
+    "rig": {
+        "n_wg": float(n_wg), "eps_wg": float(eps_wg),
+        "ring_width_over_a": float(w), "ring_inner_radius_over_a": float(r),
+        "pad_over_a": float(pad), "dpml_over_a": float(dpml),
+        "cell_over_a": float(sxy), "resolution_cells_per_a": int(resolution),
+        "a_m": float(a), "dx_m": float(dx), "cpml_layers": int(cpml_n),
+        "interior_over_a": float(interior), "domain_m": float(domain),
+        "fcen_c_over_a": float(fcen), "df_c_over_a": float(df),
+        "band_c_over_a": [float(fmin_meep), float(fmax_meep)],
+        "rfx_source_bandwidth_frac": float(bw_rfx),
+        "rfx_dt_s": float(dt), "rfx_n_steps": int(n_steps_rfx),
+        "rfx_source_off_time_s": float(source_off_time),
+        "harminv_skip_samples": int(skip),
+        "harminv_span_samples": int(len(signal)),
+        "harminv_amp_floor": float(HARMINV_AMP_FLOOR),
+        "harminv_min_Q": float(ring_mode_judge.MIN_Q),
+        "record_length_meep_units": float(record_T_meep),
+        "record_after_source_s": float(len(signal) * dt),
+        "peak_offset_after_source_s": float(peak_offset_after_source),
+        "meep_leg": None if not HAVE_MEEP else {
+            "resolution": int(resolution), "cell_over_a": float(sxy),
+            "dpml_over_a": float(dpml), "harminv_at": "source point",
+        },
+    },
+    "measured": {
+        "meep_modes": [{"freq_c_over_a": float(m.freq), "Q": float(m.Q),
+                        "abs_amp": float(abs(m.amp))} for m in meep_modes],
+        "rfx_modes": [{"freq_hz": float(f), "freq_c_over_a": float(f * a / C0),
+                       "Q": float(Q), "amplitude": float(amp)}
+                      for f, Q, amp in rfx_modes],
+        "assignment": [_dataclasses.asdict(row) for row in verdict.rows],
+        "surplus_rfx_modes": [_dataclasses.asdict(m) for m in verdict.surplus],
+        "n_matched": int(verdict.n_matched),
+        "n_unmatched": int(verdict.n_unmatched),
+        "mean_freq_err_pct": (None if verdict.mean_err_pct is None
+                              else float(verdict.mean_err_pct)),
+        "max_freq_err_pct": (None if verdict.max_err_pct is None
+                             else float(verdict.max_err_pct)),
+        "signal_settling_db": float(signal_db),
+    },
+    "gates": dict(verdict.gates),
+    "gate_limits": {
+        "freq_tol_pct": float(ring_mode_judge.FREQ_TOL_PCT),
+        "min_matched_modes": int(ring_mode_judge.MIN_MATCHED),
+        "q_record_min_efolds": float(ring_mode_judge.Q_RECORD_MIN_EFOLDS),
+        "note": ("the Q window is tau_ref/T per mode, derived from the "
+                 "reference Q and THIS record length -- not a chosen number"),
+    },
+    "verdict": {
+        "rfx_self_ok": bool(_rfx_self_ok),
+        "meep_present": bool(HAVE_MEEP),
+        "judge_passed": bool(verdict.passed),
+        "exit_code": _rc,
+        "summary": ("ALL CHECKS PASSED" if _rc == 0 else
+                    ("[SKIP] Meep reference unavailable — crossval inconclusive (exit 2)"
+                     if _rc == 2 else "SOME CHECKS FAILED")),
+    },
+}
+_out_dir = os.path.join(SCRIPT_DIR, "_02_ring_resonator_results")
+os.makedirs(_out_dir, exist_ok=True)
+_artifact = os.path.join(_out_dir, "crossval.json")
+with open(_artifact, "w") as _fh:
+    _json.dump(_doc, _fh, indent=1)
+print(f"\n  artifact: {_artifact}")
+
+# =============================================================================
 # PART 4: Mode pattern visualization (narrowband)
 # =============================================================================
 print(f"\n{'=' * 70}")
@@ -705,9 +821,11 @@ if not HAVE_MEEP:
     if rfx_self_ok:
         print("\nrfx SELF-CHECK PASSED")
         print("[SKIP] Meep reference unavailable — crossval inconclusive (exit 2)")
-        sys.exit(2)
-    print("\nSOME CHECKS FAILED — rfx Harminv found no ring modes (exit 1)")
-    sys.exit(1)
+    else:
+        print("\nSOME CHECKS FAILED — rfx Harminv found no ring modes (exit 1)")
+    # Same prints, same codes; the value comes from _exit_code() above so the
+    # retained artifact records the code this script actually returns (#928).
+    sys.exit(_rc)
 
 # Meep present → evaluate the full cross-check.
 #
@@ -730,4 +848,4 @@ if PASS:
 else:
     print("\nSOME CHECKS FAILED")
 
-sys.exit(0 if PASS else 1)
+sys.exit(_rc)

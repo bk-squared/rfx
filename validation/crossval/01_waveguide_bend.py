@@ -249,6 +249,136 @@ if meep_mean is not None:
         PASS = False
 
 # =============================================================================
+# Retained output (issue #928)
+#
+# Written HERE -- after the gates, before the plot -- because printing is not
+# persisting: this case's numbers used to exist only in a scheduled runner's
+# log, which expires with the runner, so no clone could check them. The file
+# carries the gate table, the quantities the gates read (per bin, not only the
+# headline means), the exit code this run is about to return, the run's
+# provenance and the rig it realized, as values.
+# =============================================================================
+def _exit_code(rfx_ok: bool, meep_present: bool) -> int:
+    """The one place the verdict is decided; the tail prints it unchanged."""
+    if not meep_present:
+        return 2 if rfx_ok else 1
+    return 0 if rfx_ok else 1
+
+
+_rfx_self_ok = bool(0.3 <= mean_T <= 1.0 and 0.95 <= mean_self <= 1.05)
+_gate_meep = None if meep_mean is None else bool(abs(mean_T - meep_mean) < 0.10)
+_rc = _exit_code(PASS, meep_mean is not None)
+
+_json = __import__("json")
+_dt = __import__("datetime")
+_platform = __import__("platform")
+_subprocess = __import__("subprocess")
+
+try:
+    _commit = _subprocess.check_output(["git", "rev-parse", "HEAD"],
+                                       cwd=SCRIPT_DIR, text=True,
+                                       stderr=_subprocess.DEVNULL).strip()
+except Exception:
+    _commit = None
+try:
+    import rfx as _rfx_pkg
+    _rfx_version = getattr(_rfx_pkg, "__version__", None)
+except Exception:
+    _rfx_version = None
+_meep_version = getattr(mp, "__version__", None) if meep_mean is not None else None
+
+_doc = {
+    "schema": "cv01-waveguide-bend/v1",
+    "case_id": "01_waveguide_bend",
+    "commit": _commit,
+    "date_utc": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "provenance": {
+        "rfx_version": _rfx_version,
+        "meep_version": _meep_version,
+        "jax_enable_x64": os.environ.get("JAX_ENABLE_X64"),
+        "rfx_boundary": boundary,
+        "python": _platform.python_version(),
+        "platform": _platform.platform(),
+        "wall_s_since_bend_run_start": float(time.time() - t0),
+    },
+    "rig": {
+        "a_m": float(a),
+        "eps_wg": float(eps_wg),
+        "w_wg_over_a": float(w_wg / a),
+        "resolution_cells_per_a": int(round(a / dx)),
+        "dx_m": float(dx),
+        "boundary": boundary,
+        "boundary_layers": int(cpml_n),
+        "pml_m": float(pml),
+        "domain_over_a": [float(sx / a), float(sy / a)],
+        "domain_m": [float(sx), float(sy), float(dx)],
+        "src_x_m": float(src_x),
+        "fcen_c_over_a": float(fcen * a / C0),
+        "fwidth_c_over_a": float(fwidth * a / C0),
+        "n_freqs": int(n_freqs),
+        "freq_lo_c_over_a": float(freqs[0] * a / C0),
+        "freq_hi_c_over_a": float(freqs[-1] * a / C0),
+        "n_steps": int(n_steps),
+        "f_cutoff_c_over_a": float(f_cutoff),
+        "eval_band": "f_cutoff + 0.005 < f (c/a) < 0.20",
+        "smoothing_window_bins": 20,
+        "method": "single-run input/output flux normalization; T = (out/in)_bend / (out/in)_straight",
+        "meep_leg": {
+            "resolution": 10,
+            "pml_over_a": 1.0,
+            "cell_over_a": [float(sx / a + 2), float(sy / a + 2)],
+            "fcen_c_over_a": 0.15, "df_c_over_a": 0.1, "n_freqs": 200,
+            "stop_when_fields_decayed": [50, 1e-3],
+        } if meep_mean is not None else None,
+    },
+    "measured": {
+        "freqs_c_over_a": [float(v) for v in f_meep],
+        "eval_mask": [bool(v) for v in above],
+        "T_self": [float(v) for v in T_self],
+        "T_self_smooth": [float(v) for v in T_self_smooth],
+        "T_norm": [float(v) for v in T_norm],
+        "T_norm_smooth": [float(v) for v in T_norm_smooth],
+        "mean_self_smoothed_over_band": float(mean_self),
+        "mean_T_smoothed_over_band": float(mean_T),
+        "min_T_smoothed_over_band": float(np.min(T_norm_smooth[above])),
+        "max_T_smoothed_over_band": float(np.max(T_norm_smooth[above])),
+        "meep": None if meep_mean is None else {
+            "present": True,
+            "freqs_c_over_a": [float(v) for v in f_ref],
+            "T": [float(v) for v in T_meep],
+            "eval_mask": [bool(v) for v in above_r],
+            "mean_T_smoothed_over_band": float(meep_mean),
+            "abs_rfx_minus_meep": float(abs(mean_T - meep_mean)),
+        },
+    },
+    "gates": {
+        "G1_smoothed_T_in_0p3_1p0": bool(0.3 <= mean_T <= 1.0),
+        "G2_straight_self_T_in_0p95_1p05": bool(0.95 <= mean_self <= 1.05),
+        "G3_abs_rfx_minus_meep_lt_0p10": _gate_meep,
+    },
+    "gate_limits": {
+        "G1_smoothed_T_in_0p3_1p0": [0.3, 1.0],
+        "G2_straight_self_T_in_0p95_1p05": [0.95, 1.05],
+        "G3_abs_rfx_minus_meep_lt_0p10": 0.10,
+    },
+    "verdict": {
+        "rfx_self_ok": _rfx_self_ok,
+        "meep_present": meep_mean is not None,
+        "all_gates_ok": bool(PASS),
+        "exit_code": _rc,
+        "summary": ("ALL CHECKS PASSED" if _rc == 0 else
+                    ("[SKIP] Meep reference unavailable — crossval inconclusive (exit 2)"
+                     if _rc == 2 else "SOME CHECKS FAILED")),
+    },
+}
+_out_dir = os.path.join(SCRIPT_DIR, "_01_waveguide_bend_results")
+os.makedirs(_out_dir, exist_ok=True)
+_artifact = os.path.join(_out_dir, "crossval.json")
+with open(_artifact, "w") as _fh:
+    _json.dump(_doc, _fh, indent=1)
+print(f"\n  artifact: {_artifact}")
+
+# =============================================================================
 # Plot
 # =============================================================================
 fig, axes = plt.subplots(1, 3, figsize=(16, 5))
@@ -324,12 +454,12 @@ if meep_mean is None:
     if PASS:
         print("\nrfx SELF-CHECKS PASSED")
         print("[SKIP] Meep reference unavailable — crossval inconclusive (exit 2)")
-        sys.exit(2)
-    print("\nSOME CHECKS FAILED")
-    sys.exit(1)
-
-if PASS:
+    else:
+        print("\nSOME CHECKS FAILED")
+elif PASS:
     print("\nALL CHECKS PASSED")
-    sys.exit(0)
-print("\nSOME CHECKS FAILED")
-sys.exit(1)
+else:
+    print("\nSOME CHECKS FAILED")
+# Same prints, same codes; the value comes from _exit_code() above so the
+# retained artifact records the code this script actually returns (#928).
+sys.exit(_rc)
