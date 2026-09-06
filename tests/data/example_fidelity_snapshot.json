@@ -8468,7 +8468,15 @@
           "realization": null
         }
       },
-      "preflight": []
+      "preflight": [
+        {
+          "code": "settling_witness_will_be_absent",
+          "loc": null,
+          "message": "this simulation requests NTFF far-field output but registers no point probe, and run() scores its ring-down settling witness from the probe time series \u2014 the result will carry settling_db=None and those DFT numbers will have no truncation guard (#885). Add sim.add_probe(position, component) somewhere the field is live.",
+          "severity": "warning",
+          "source": "_validate_cfg_settling_witness_present"
+        }
+      ]
     },
     "validation/tmtt_paper/lumped_port_gradient_check.py::build::default": {
       "fidelity": {
@@ -8836,6 +8844,13 @@
           "message": "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.",
           "severity": "warning",
           "source": "_validate_cfg_pec_faces_with_finite_pec"
+        },
+        {
+          "code": "settling_witness_will_be_absent",
+          "loc": null,
+          "message": "this simulation requests field-DFT plane probe(s) but registers no point probe, and run() scores its ring-down settling witness from the probe time series \u2014 the result will carry settling_db=None and those DFT numbers will have no truncation guard (#885). Add sim.add_probe(position, component) somewhere the field is live.",
+          "severity": "warning",
+          "source": "_validate_cfg_settling_witness_present"
         }
       ]
     },
