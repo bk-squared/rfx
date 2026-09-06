@@ -4569,7 +4569,7 @@ class _PreflightMixin:
 
         Silent when a probe exists, and silent when the run asks for neither
         NTFF nor a field DFT (the rule scopes to those).
-        
+
         Entry points: ``run()`` attaches the witness (probe route); ``forward()``
         attaches none yet, so for a forward()-driven simulation this advisory
         reports a gap a probe alone does not close.
