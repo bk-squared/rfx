@@ -61,6 +61,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._git_tracked import git_available, is_tracked
+
 _REPO = Path(__file__).resolve().parents[2]
 
 # --------------------------------------------------------------------------
@@ -169,6 +171,16 @@ def parse_references(doc: str, site: str, text: str) -> list[Reference]:
 # Resolution
 # --------------------------------------------------------------------------
 
+_JSON_CACHE: dict[Path, object] = {}
+
+
+def _load_json(target: Path):
+    """Load once per path: the census reaches ~650 references over ~30 files."""
+    if target not in _JSON_CACHE:
+        _JSON_CACHE[target] = json.loads(target.read_text(encoding="utf-8"))
+    return _JSON_CACHE[target]
+
+
 def resolve(root: Path, ref: Reference):
     """Walk ``ref.keypath`` into the committed JSON at ``ref.path``."""
     target = root / ref.path
@@ -177,7 +189,20 @@ def resolve(root: Path, ref: Reference):
             f"{ref.doc} [{ref.site}] cites `{ref.raw}`, but the artifact "
             f"{ref.path} does not exist."
         )
-    data = json.loads(target.read_text(encoding="utf-8"))
+    # #928: existing is not committed. A results directory can hold a file that
+    # lives in one checkout and no other (gitignored scratch, an un-added VESSL
+    # leftover); a citation resolved against such a file is green here and
+    # unresolvable in a fresh clone. Only asked of the repo tree -- the (B)-arm
+    # falsifiers below resolve against scratch trees, where tracking is not a
+    # question git can answer.
+    if root == _REPO and git_available(_REPO) and not is_tracked(ref.path, _REPO):
+        raise AssertionError(
+            f"{ref.doc} [{ref.site}] cites `{ref.raw}`, but the artifact "
+            f"{ref.path} is NOT git-tracked. It exists in this checkout only; "
+            f"a fresh clone cannot resolve the citation. Commit the artifact "
+            f"or cite one that is committed."
+        )
+    data = _load_json(target)
     node = data
     walked = ""
     for step in _STEP.finditer(ref.keypath):
@@ -278,6 +303,28 @@ CV19_WITNESS_NOTE = "docs/design_notes/20260903_cv19_fdfd_unitarity_witness.md"
 # falsifier argument is "no committed rung is near 1.0" -- exactly the shape that
 # is worthless if the numbers stop resolving. Opted in with its section 3.
 AUX_ECHO_NOTE = "docs/design_notes/20260904_aux_echo_record_invariant.md"
+# 2026-09-06 (#928): the public benchmarks page is the single largest carrier of
+# measured numbers in the repository (93 references) and was NOT under this gate.
+# Every public "Validated comparison" row quotes an artifact value; a page that
+# says what is validated, with numbers nobody re-resolves, is the exact shape
+# this gate exists for.
+BENCHMARKS = "docs/public/guide/benchmarks.mdx"
+# 2026-09-06 (#928): the enumerate-and-classify pass over docs/public/**/*.mdx
+# and docs/design_notes/*.md (see CLASSIFICATION below) found eight further
+# notes whose references already resolve, with no unparseable `::` span to trip
+# the reader. Leaving a document that cites artifacts outside the gate because
+# nobody opted it in is how coverage stays accidental, so they are opted in
+# here; all eight were green at the commit that added them.
+NEWLY_GATED_NOTES = (
+    "docs/design_notes/20260901_patch_mode_identification_predeclaration.md",
+    "docs/design_notes/20260902_cv24_nu_cavity_predeclaration.md",
+    "docs/design_notes/estimator_resolution_regate.md",
+    "docs/design_notes/issue812_cv03_dispersion_regate_predeclaration.md",
+    "docs/design_notes/issue812_cv03_dispersion_regate_results.md",
+    "docs/design_notes/issue812_cv17_cv18_geometry_sensitivity_predeclaration.md",
+    "docs/design_notes/issue812_phase_identity_predeclaration.md",
+    "docs/design_notes/issue812_phase_identity_results.md",
+)
 
 # Markdown documents, with the regex that cuts them into named sites.
 MARKDOWN_SITES: dict[str, str] = {
@@ -285,6 +332,8 @@ MARKDOWN_SITES: dict[str, str] = {
     CV11_NOTE: r"^#+\s+(.*\S)\s*$",
     "docs/design_notes/20260901_numeric_provenance_gate.md": r"^#+\s+(.*\S)\s*$",
     LATTICE_NOTE: r"^#+\s+(.*\S)\s*$",
+    BENCHMARKS: r"^#+\s+(.*\S)\s*$",
+    **{note: r"^#+\s+(.*\S)\s*$" for note in NEWLY_GATED_NOTES},
     # 2026-09-03 (#884): the cv19 unitarity-witness note argues *from* the
     # committed self-test scalars, so the committed scalars it quotes are
     # opted in here rather than retyped and trusted.
@@ -329,6 +378,10 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # cv04's arrival, record and fitted reflector index, every one of them read
     # back out of the artifact the run wrote rather than retyped from a note.
     (AUX_ECHO_NOTE, "3. The per-case ratios, read from the committed artifacts"): 18,
+    # 2026-09-06 (#928): the public benchmarks table. This is the page a reader
+    # takes "validated" from, so its measured numbers are the ones that must
+    # keep resolving; 91 of them do today.
+    (BENCHMARKS, "Reference cases"): 85,
 }
 
 # Anti-vacuity census. A green gate must mean the references are right, not that
@@ -338,9 +391,167 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # 2026-09-04 (#888): +18, the auxiliary-echo record invariant's section 3, and
 # +1 distinct artifact (cv04's lattice_witness.json, cited here for the first
 # time). Raised in the same commit that adds them.
-MIN_REFERENCES = 70
-MIN_VALUE_CHECKED = 70
-MIN_DISTINCT_ARTIFACTS = 7
+# 2026-09-06 (#928): +benchmarks.mdx (93) and +8 design notes, all green at the
+# commit that opted them in; the population went 566 -> 1147 references (+581)
+# over 60 -> 64 distinct artifacts. Raised here in the same commit, as above.
+MIN_REFERENCES = 1140
+MIN_VALUE_CHECKED = 1095
+MIN_DISTINCT_ARTIFACTS = 60
+
+
+# --------------------------------------------------------------------------
+# Enumerate-and-classify (methodology 2.3): which documents are under this
+# gate, and -- for every one that is not -- a reason this file can CHECK.
+#
+# Before #928 the opted-in set was a hand-kept tuple and its complement was
+# invisible: a new evidence document simply was not gated, and nothing said so.
+# The surface is enumerated dynamically below (docs/public/**/*.mdx and
+# docs/design_notes/*.md); an unclassified file fails.
+#
+# The three classifications, and what makes each one falsifiable:
+#   GATED                     - in DOCUMENTS; every reference is resolved above.
+#   NO_ARTIFACT_REFERENCE     - the document contains NO backtick span that
+#                               parses as `<path>.json::<key>`. Verified here,
+#                               so "it has no citations" cannot be an excuse a
+#                               document quietly outgrows.
+#   SYMBOL_SPAN_PARSER_SCOPE  - the document DOES carry resolvable artifact
+#                               references AND at least one `::` span this
+#                               parser rejects by construction (`module.py::sym`,
+#                               `expected_metrics[id=...]`, an elided `…::key`).
+#                               Opting it in would raise on the symbol spans, so
+#                               the blocker is the reference syntax, not the
+#                               document. Both halves are verified.
+# There is deliberately NO "resolvable but not opted in" class: that would be a
+# note saying the gate could have covered a document and chose not to.
+# --------------------------------------------------------------------------
+
+GATED = "gated"
+NO_ARTIFACT_REFERENCE = "no-artifact-reference"
+SYMBOL_SPAN_PARSER_SCOPE = "symbol-span-parser-scope"
+
+CLASSIFIED_DOC_DIRS = ("docs/public/**/*.mdx", "docs/design_notes/*.md")
+
+CLASSIFICATION: dict[str, str] = {
+    "docs/public/api/automation.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/api/geometry-materials.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/api/index.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/api/results-observables.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/api/simulation.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/api/sources-ports.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/api/support-boundaries.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/examples/index.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/gallery/index.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/gallery/multilayer_fresnel.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/gallery/patch_antenna.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/gallery/waveguide_wr90.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/adi-solver.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/api-reference.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/autodiff-adjoint.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/benchmarks.mdx": GATED,
+    "docs/public/guide/changelog.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/first-patch.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/installation.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/materials-geometry.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/memory-reduction.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/nonuniform-mesh.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/parametric-sweeps.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/probes-sparams.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/quickstart.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/sources-ports.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/studio-experiments.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/tutorial-convergence.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/tutorial-patch-antenna.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/validation.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/index.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/validation/cross-solver.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/validation/index.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/validation/reference-lane.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260829_spec01_multiband_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260830_issue786_convergence_floor.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260831_cv02_ring_judge_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260831_cv11_broad_e4_artifact_provenance.md": GATED,
+    "docs/design_notes/20260901_numeric_provenance_gate.md": GATED,
+    "docs/design_notes/20260901_patch_mode_identification_predeclaration.md": GATED,
+    "docs/design_notes/20260902_cv22_dispersive_slab_predeclaration.md": SYMBOL_SPAN_PARSER_SCOPE,
+    "docs/design_notes/20260902_cv23_lossy_slab_predeclaration.md": SYMBOL_SPAN_PARSER_SCOPE,
+    "docs/design_notes/20260902_cv24_nu_cavity_predeclaration.md": GATED,
+    "docs/design_notes/20260902_test_reorg_tier4b_plan.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260903_cv19_fdfd_unitarity_witness.md": GATED,
+    "docs/design_notes/20260903_e4_all_solver_classes_plan.md": SYMBOL_SPAN_PARSER_SCOPE,
+    "docs/design_notes/20260903_lattice_witness_standard.md": GATED,
+    "docs/design_notes/20260903_test_reorg_tier3b_consolidation.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260904_aux_echo_record_invariant.md": GATED,
+    "docs/design_notes/20260905_post_merge_review_20_prs.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260905_post_v18_plan_rasterization_preflight_cst.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260905_v18_close_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/chain_closure_contract.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/cv10_pmc_realization_regate.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/cv14_rect_cavity_gate_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/estimator_resolution_regate.md": GATED,
+    "docs/design_notes/geometry_setup_interop.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/graded_z_lowz_demo_closure.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/graded_z_lowz_demo_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/i489_stage2_two_port_fdtd_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/i636_cpml_pole_pad_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue683_decomposer_flip_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue683_sampling_order_decision_protocol.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue763_dz_profile_preserve_regions.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue764_wireport_norm_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue764_wireport_norm_results.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue770_offdiag_adjudication_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue770_offdiag_adjudication_results.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue782_retired_resonance_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue802_807_rasterization_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue808_debye_pad_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue811_dz_dispatch_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue812_cv03_dispersion_regate_predeclaration.md": GATED,
+    "docs/design_notes/issue812_cv03_dispersion_regate_results.md": GATED,
+    "docs/design_notes/issue812_cv04_fringe_gate_predeclaration.md": SYMBOL_SPAN_PARSER_SCOPE,
+    "docs/design_notes/issue812_cv09_mirror_plane_regate.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue812_cv17_cv18_geometry_sensitivity_predeclaration.md": GATED,
+    "docs/design_notes/issue812_phase_identity_predeclaration.md": GATED,
+    "docs/design_notes/issue812_phase_identity_results.md": GATED,
+    "docs/design_notes/mixed_refplane_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/portgrid_m0m1_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/portgrid_m0m1_results.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/portgrid_m1b_retry_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/preflight_lessons_from_a_long_crossval.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/thin_sheet_plane_bc_direction.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/thru_feedpost_deembed_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/thru_feedpost_joint_extraction_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/thru_feedpost_junction_windows_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/thru_feedpost_twoseg_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/thru_singular_value_dx_ladder_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/v18_waveguide_s_chain_plan.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/waveguide_chain_battery_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/waveguide_false_lane_column_power_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/waveguide_false_lane_column_power_results.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/waveguide_vi_envelope_sweep_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/waveguide_vi_envelope_sweep_results.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/wp4e_lumped_component_value_ad_spike.md": NO_ARTIFACT_REFERENCE,
+}
+
+
+def _enumerate_classified_docs(root: Path) -> list[str]:
+    found: list[str] = []
+    for pattern in CLASSIFIED_DOC_DIRS:
+        base, _, glob = pattern.partition("/**/")
+        if glob:
+            found += [str(p.relative_to(root)) for p in (root / base).rglob(glob)]
+        else:
+            base, _, glob = pattern.rpartition("/")
+            found += [str(p.relative_to(root)) for p in (root / base).glob(glob)]
+    return sorted(found)
+
+
+def _reference_spans(root: Path, doc: str) -> tuple[list[str], list[str]]:
+    """(parseable artifact references, other ``::`` spans) in *doc*."""
+    text = strip_code_blocks((root / doc).read_text(encoding="utf-8"))
+    spans = [s.group(1).strip() for s in _SPAN.finditer(text) if "::" in s.group(1)]
+    parses = [s for s in spans if _REFERENCE.match(s)]
+    others = [s for s in spans if not _REFERENCE.match(s)]
+    return parses, others
 
 
 def _sites(root: Path, doc: str) -> list[tuple[str, str]]:
@@ -410,6 +621,54 @@ def test_each_registered_site_still_carries_its_references(site, floor) -> None:
         f"references drops the only mechanical link between this claim and its "
         f"evidence."
     )
+
+
+def test_every_enumerated_document_is_classified() -> None:
+    """No document in the two evidence-carrying trees may be unclassified.
+
+    This is the half that stops the opted-in set from being accidental: adding
+    a design note or a public page now fails here until someone says, in this
+    table, whether it is gated and -- if not -- why the gate cannot reach it.
+    """
+    found = set(_enumerate_classified_docs(_REPO))
+    listed = set(CLASSIFICATION)
+    assert found - listed == set(), (
+        f"unclassified documents: {sorted(found - listed)}. Add each to "
+        f"CLASSIFICATION as {GATED!r} (and to MARKDOWN_SITES), "
+        f"{NO_ARTIFACT_REFERENCE!r}, or {SYMBOL_SPAN_PARSER_SCOPE!r}."
+    )
+    assert listed - found == set(), (
+        f"CLASSIFICATION lists documents that no longer exist: "
+        f"{sorted(listed - found)}."
+    )
+
+
+@pytest.mark.parametrize("doc", sorted(CLASSIFICATION))
+def test_each_classification_holds_mechanically(doc: str) -> None:
+    """Each reason is checked, not asserted in prose."""
+    kind = CLASSIFICATION[doc]
+    parses, others = _reference_spans(_REPO, doc)
+    if kind == GATED:
+        assert doc in DOCUMENTS, f"{doc} is classified gated but is not in DOCUMENTS"
+        return
+    assert doc not in DOCUMENTS, f"{doc} is in DOCUMENTS but classified {kind}"
+    if kind == NO_ARTIFACT_REFERENCE:
+        assert not parses, (
+            f"{doc} is classified {NO_ARTIFACT_REFERENCE!r} but now carries "
+            f"{len(parses)} resolvable artifact reference(s), e.g. `{parses[0]}`. "
+            f"Opt it into DOCUMENTS/MARKDOWN_SITES and re-classify it as gated."
+        )
+    elif kind == SYMBOL_SPAN_PARSER_SCOPE:
+        assert parses, (
+            f"{doc} is classified {SYMBOL_SPAN_PARSER_SCOPE!r} but carries no "
+            f"resolvable artifact reference; it is {NO_ARTIFACT_REFERENCE!r}."
+        )
+        assert others, (
+            f"{doc} is classified {SYMBOL_SPAN_PARSER_SCOPE!r} but every `::` "
+            f"span in it now parses, so nothing blocks opting it in. Gate it."
+        )
+    else:  # pragma: no cover - the closed set is enforced here
+        raise AssertionError(f"{doc}: unknown classification {kind!r}")
 
 
 # --------------------------------------------------------------------------
@@ -508,6 +767,30 @@ def test_an_unresolvable_key_is_an_error_not_a_skip(tmp_path: Path) -> None:
     dst.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(AssertionError, match="does not exist"):
         check(tmp_path, ref)
+
+
+def test_the_gate_fires_on_a_present_but_untracked_artifact() -> None:
+    """#928's (B) arm: an artifact that exists here and in no clone.
+
+    Written into the repo tree deliberately -- the property under test is
+    "present but untracked", which cannot be staged anywhere else -- and
+    removed in the finally.
+    """
+    if not git_available(_REPO):
+        pytest.skip("git unavailable; tracking is not a question git can answer")
+    probe_rel = "docs/design_notes/.untracked_probe_928.json"
+    probe = _REPO / probe_rel
+    assert not probe.exists(), "probe path is not clean; a previous run leaked"
+    ref = Reference("doc", "site", f"{probe_rel}::value = 1", probe_rel, "value", "1", "")
+    try:
+        probe.write_text(json.dumps({"value": 1.0}), encoding="utf-8")
+        assert not is_tracked(probe_rel, _REPO)
+        with pytest.raises(AssertionError, match="NOT git-tracked"):
+            check(_REPO, ref)
+    finally:
+        probe.unlink(missing_ok=True)
+    # and the control: the same shape resolves when the artifact IS tracked.
+    assert is_tracked(MANIFEST, _REPO)
 
 
 def test_a_malformed_reference_is_rejected() -> None:

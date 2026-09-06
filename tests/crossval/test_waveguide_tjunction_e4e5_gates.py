@@ -60,6 +60,8 @@ import numpy as np
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
+
+from tests._git_tracked import git_available, is_tracked  # noqa: E402
 sys.path.insert(0, str(REPO / "scripts" / "diagnostics"))
 from build_waveguide_tjunction_committed_fixtures import (  # noqa: E402
     cross_fdtd_bandmean,
@@ -410,23 +412,15 @@ def test_cross_fixture_consistency() -> None:
 # --------------------------------------------------------------------------- #
 # Committed-artifact guard (the whole point of the recommit).                  #
 # --------------------------------------------------------------------------- #
+# Both helpers moved to tests/_git_tracked.py (issue #928) so the evidence
+# gates in tests/contracts/ ask the same question the same way; the names here
+# are kept so this file's guards read unchanged.
 def _git_available() -> bool:
-    try:
-        r = subprocess.run(
-            ["git", "rev-parse", "--is-inside-work-tree"],
-            cwd=REPO, capture_output=True, text=True,
-        )
-        return r.returncode == 0 and r.stdout.strip() == "true"
-    except OSError:
-        return False
+    return git_available(REPO)
 
 
 def _is_tracked(rel_path: str) -> bool:
-    r = subprocess.run(
-        ["git", "ls-files", "--error-unmatch", rel_path],
-        cwd=REPO, capture_output=True, text=True,
-    )
-    return r.returncode == 0
+    return is_tracked(rel_path, REPO)
 
 
 def test_both_fixtures_git_tracked() -> None:

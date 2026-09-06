@@ -10,6 +10,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Literal, TypedDict
 
+from tests._git_tracked import git_available, is_tracked
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CROSSVAL_DIR = REPO_ROOT / "validation" / "crossval"
@@ -193,12 +194,21 @@ def test_manifest_entries_are_self_consistent_and_grounded() -> None:
         if case["role"] == "claims-bearing":
             assert set(case["evidence_levels"]) & {"E2", "E3", "E4", "E5"}
 
+        # #928: existence is not evidence of a COMMITTED artifact. A path that
+        # exists only in the checkout that wrote it (gitignored scratch, an
+        # un-added pod leftover) satisfies exists() here and nothing in a fresh
+        # clone. Tracking is asked whenever git can answer.
         for relative_path in [
             case["script"],
             *case["gate_paths"],
             *case["artifact_paths"],
         ]:
             assert (REPO_ROOT / relative_path).exists(), relative_path
+            if git_available(REPO_ROOT):
+                assert is_tracked(relative_path, REPO_ROOT), (
+                    f"{case['id']} lists {relative_path}, which exists but is "
+                    f"NOT git-tracked: a fresh clone does not have it."
+                )
 
         cpu_entry = case["cpu_runner"]
         assert set(cpu_entry) in ({"order"}, {"excluded_reason"})
