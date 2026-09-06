@@ -35,6 +35,11 @@ post-correction record alongside it.
 | `rung_dx_over_4.json` | `c9b06e6684cd0ad16fad52467a008159990a66601f8b0fb1a59b71e8612d6361` |
 | `verdict.json` | the pre-declared outcome table re-applied by `docs/research_notes/audit-2026-09-02/followup/i2_819_adjudicate.py` |
 
+Note on condition B: section 3 writes the spread threshold as `0.20 * e1` (signed); the adjudicator
+applies `0.20 * |e1|`. With e1 < 0 the signed literal is negative and B is false under either
+reading, so the outcome is unchanged here, but the selftest (e1 > 0) cannot distinguish the two
+readings — the |e1| form is the one applied.
+
 The adjudicator's thresholds are the pre-declaration's section-3 literals, and it was
 proved before this run's numbers were read (`--selftest`) to reproduce `../verdict.json`
 on every computed key. It was not re-aimed at this result.
@@ -53,7 +58,9 @@ on every computed key. It was not re-aimed at this result.
 - The dx rung lands on #897's own recorded corrected number: `0.9988960135` vs the
   quoted `0.998896`, delta `1.35e-8`.
 - The residual is a **converging** negative deficit, not a halving one:
-  |e2|/|e4| = 0.959. It is a loss floor, not a dt/2 artefact.
+  |e2|/|e4| = 0.959. It is not a dt/2 artefact. Its attribution to a loss floor (radiation / CPML absorption / port
+  termination) is an INFERENCE, not a measurement: no flux monitor in this ladder separates radiated
+  power from absorber loss, so the residual's mechanism is left open.
 - What #897 removed IS a dt/2 artefact: `max|ΔS|` per rung halves (`1.880`, `1.880`)
   and `Δe(3 GHz)/θ(3 GHz)` = −0.482 / −0.491 / −0.498 → −1/2 with θ = ω·dt/2.
 - `|S11|` at 7 GHz still grows 0.2782 → 0.3861 → 0.4825 across the ladder, moved from
