@@ -260,9 +260,12 @@ SETTLE_TARGET_EFOLDS = 1.0
 #: and nothing else -- each rung's LENGTH is derived
 #: (ring_mode_judge.plan_record clamps every rung at the present record's
 #: resolvable-tau bound T/0.25, so a rung can at most quadruple the record).
-#: What that step budget COSTS is dominated by harminv, whose cost grows
-#: super-linearly in the record: the three rungs' 6,928 / 23,929 / 48,296
-#: analysed samples took 1.4 / 69.9 / 219.5 s on the review host.
+#: What that step budget COSTS: on a quiet host the whole Meep-absent lane
+#: is 58-69 s wall, of which ~47 s is the three FDTD rung solves (10 / 17 /
+#: 31 s) and all three harminv calls together are under 10 s. Under CPU
+#: contention (six parallel test jobs) the same three harminv calls on
+#: 6,928 / 23,929 / 48,296 samples were measured at 1.4 / 69.9 / 219.5 s,
+#: so the ladder's cost is what a loaded runner feels first.
 #: Bound, stated precisely: the loop RUNS at most 1 + budget records, the
 #: longest of which is at most 4**budget x the bootstrap free decay (16x here);
 #: the plan printed on the last rung may ask for up to 4**(1+budget) x, but it
@@ -362,9 +365,10 @@ else:
     # Reuse the last ladder rung's harminv rather than recomputing it. That
     # rung ran harminv on THIS array over THIS band: `ts_r[skip_r:]` is
     # `ts[skip:]` (same run object, same source-off skip, same fmin/fmax), so
-    # the mode list is identical by construction. The recomputation cost
-    # ~220 s of the CPU runner's 900 s per-script budget (harminv on 48,296
-    # samples). `modes_r` is already amplitude-floored; the filter below
+    # the mode list is identical by construction. The recomputation is a
+    # fourth harminv on 48,296 samples: seconds on a quiet host, ~220 s of
+    # the CPU runner's 900 s per-script budget under contention (where it was
+    # first measured). `modes_r` is already amplitude-floored; the filter below
     # applies the same floor again, so the outcome is unchanged.
     rfx_modes_raw = modes_r
 
