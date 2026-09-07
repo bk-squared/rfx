@@ -303,7 +303,7 @@ def main(argv=None) -> int:
         # (#928). The analytic falsifier checks, which have no run behind them,
         # keep the default.
         e2 = G.evaluate_e2(run["freqs_hz"], run["R_rfx"], run["T_rfx"], model, params, run["dt_s"],
-                           tail=run["tail"], require_complete=True)
+                           tail=run["tail"], require_complete=True, windows=G.WINDOWS)
         e2["params_run"] = {k: float(v) for k, v in params_run.items()}
         e2["band_inc_ok"] = run["band_inc_ok"]
         e2["inc_amp_rel"] = np.asarray(run["inc_amp_rel"]).tolist()
@@ -342,7 +342,7 @@ def main(argv=None) -> int:
             with open(meep_path) as fh:
                 mdoc = json.load(fh)
             mdoc["_source"] = os.path.relpath(meep_path, SCRIPT_DIR)
-            e4 = G.evaluate_e4(e2, mdoc)
+            e4 = G.evaluate_e4(e2, mdoc, windows=G.WINDOWS)
             print(f"  E4 ({meep_name}): Meep-vs-TMM max|dR|={e4['max_dR_meep_tmm_gated']:.4f} "
                   f"max|dT|={e4['max_dT_meep_tmm_gated']:.4f} mean {e4['mean_dR_meep_tmm_gated']:.4f}/"
                   f"{e4['mean_dT_meep_tmm_gated']:.4f}; rfx-vs-Meep max|dR|={e4['max_dR_rfx_meep_gated']:.4f} "

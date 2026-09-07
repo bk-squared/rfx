@@ -251,9 +251,16 @@ def _f(x):
 # is INCOMPLETE, not passing (#928).
 DECLARED_GATES = ("G1_R", "G1_T", "G2_R", "G2_T", "G3_passivity", "G3_tail")
 
+# This case's windows, as a record the evaluator is HANDED. Nothing below reads
+# W_BIN / W_MEAN_R / W_MEAN_T from the module namespace: cv23 calls the same
+# evaluator and must be judged by cv23's adoption, not by this one (#928
+# round-2 review).
+WINDOWS = slab_family.Windows(W_BIN, W_MEAN_R, W_MEAN_T)
+
 
 def evaluate_e2(freqs_hz, R_rfx, T_rfx, model: str, params: dict, dt: float,
-                *, tail: dict | None = None, require_complete: bool = False) -> dict:
+                *, windows, tail: dict | None = None,
+                require_complete: bool = False) -> dict:
     """E2 gates G1 (per-bin), G2 (band-mean), G3 (witnesses) for one arm.
 
     ``freqs_hz`` are the masked rfx bins (cv04's mask); the gated subset is
@@ -276,12 +283,12 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, model: str, params: dict, dt: float,
     w_ade_R, w_ade_T, R_ade, T_ade = ade_window(f, model, params, dt)
     dR = np.abs(R_rfx - R_an)
     dT = np.abs(T_rfx - T_an)
-    win_R = W_BIN + w_ade_R
-    win_T = W_BIN + w_ade_T
+    win_R = windows.w_bin + w_ade_R
+    win_T = windows.w_bin + w_ade_T
     g1_R = bool(np.all(dR[g] <= win_R[g]))
     g1_T = bool(np.all(dT[g] <= win_T[g]))
-    mean_win_R = W_MEAN_R + _f(np.mean(w_ade_R[g]))
-    mean_win_T = W_MEAN_T + _f(np.mean(w_ade_T[g]))
+    mean_win_R = windows.w_mean_R + _f(np.mean(w_ade_R[g]))
+    mean_win_T = windows.w_mean_T + _f(np.mean(w_ade_T[g]))
     g2_R = bool(np.mean(dR[g]) <= mean_win_R)
     g2_T = bool(np.mean(dT[g]) <= mean_win_T)
     closure = R_rfx + T_rfx - 1.0
@@ -314,7 +321,7 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, model: str, params: dict, dt: float,
     return out
 
 
-def evaluate_e4(e2: dict, meep_doc: dict) -> dict:
+def evaluate_e4(e2: dict, meep_doc: dict, *, windows) -> dict:
     """E4 gates G4 (Meep vs TMM) and G5 (rfx vs Meep) on the rfx bin grid.
 
     ``meep_doc`` is the Meep leg JSON (``freqs_hz``, ``R``, ``T``,
@@ -349,15 +356,15 @@ def evaluate_e4(e2: dict, meep_doc: dict) -> dict:
     wm_ade_R, wm_ade_T, w_map_R, w_map_T = meep_windows(
         f, model, params, declared_mp, float(meep_doc["dt_meep_s"]))
     dR_mt = np.abs(R_m - R_an); dT_mt = np.abs(T_m - T_an)
-    win4_R = W_BIN + wm_ade_R + w_map_R
-    win4_T = W_BIN + wm_ade_T + w_map_T
-    mean4_R = W_MEAN_R + _f(np.mean(wm_ade_R[g] + w_map_R[g]))
-    mean4_T = W_MEAN_T + _f(np.mean(wm_ade_T[g] + w_map_T[g]))
+    win4_R = windows.w_bin + wm_ade_R + w_map_R
+    win4_T = windows.w_bin + wm_ade_T + w_map_T
+    mean4_R = windows.w_mean_R + _f(np.mean(wm_ade_R[g] + w_map_R[g]))
+    mean4_T = windows.w_mean_T + _f(np.mean(wm_ade_T[g] + w_map_T[g]))
     dR_xm = np.abs(R_x - R_m); dT_xm = np.abs(T_x - T_m)
-    win5_R = 2 * W_BIN + w_ade_R + wm_ade_R + w_map_R
-    win5_T = 2 * W_BIN + w_ade_T + wm_ade_T + w_map_T
-    mean5_R = 2 * W_MEAN_R + _f(np.mean(w_ade_R[g] + wm_ade_R[g] + w_map_R[g]))
-    mean5_T = 2 * W_MEAN_T + _f(np.mean(w_ade_T[g] + wm_ade_T[g] + w_map_T[g]))
+    win5_R = 2 * windows.w_bin + w_ade_R + wm_ade_R + w_map_R
+    win5_T = 2 * windows.w_bin + w_ade_T + wm_ade_T + w_map_T
+    mean5_R = 2 * windows.w_mean_R + _f(np.mean(w_ade_R[g] + wm_ade_R[g] + w_map_R[g]))
+    mean5_T = 2 * windows.w_mean_T + _f(np.mean(w_ade_T[g] + wm_ade_T[g] + w_map_T[g]))
     # The leg's own 1e-9 pre-run mapping check is a gate, not a record
     # (review finding 2). True on every committed primary; the two Meep
     # falsifier legs carry passed=false by design and fail here as well.
@@ -485,7 +492,7 @@ def meep_ladder_summary(results_dir: str, rfx_doc: dict, resolutions=MEEP_LADDER
     out = {"schema": "cv22-meep-ladder/v1", "resolutions": list(resolutions), "arms": {}}
     for arm, ad in rfx_doc["arms"].items():
         e2 = evaluate_e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], ad["model"], ad["params"], ad["dt_s"],
-                         tail=ad["tail"])
+                         tail=ad["tail"], windows=WINDOWS)
         rungs = {}
         for res in resolutions:
             p = os.path.join(results_dir, f"meep_{arm}__res{res}.json")
@@ -496,7 +503,7 @@ def meep_ladder_summary(results_dir: str, rfx_doc: dict, resolutions=MEEP_LADDER
             if not md["run"]["finite"]:
                 rungs[str(res)] = {"finite": False}
                 continue
-            e4 = evaluate_e4(e2, md)
+            e4 = evaluate_e4(e2, md, windows=WINDOWS)
             rungs[str(res)] = {"finite": True, "dt_meep_s": md["dt_meep_s"],
                                "mean_dR_meep_tmm_gated": e4["mean_dR_meep_tmm_gated"],
                                "mean_dT_meep_tmm_gated": e4["mean_dT_meep_tmm_gated"],

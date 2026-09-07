@@ -117,6 +117,11 @@ W_BIN_A = 2.0 * W_BIN
 W_MEAN_A = W_MEAN_R + W_MEAN_T
 W_BIN_A_TIGHT = gate_from_envelope(_VALUES["per_bin_max_RT_closure"], quantum=_QUANTUM)
 W_MEAN_A_TIGHT = gate_from_envelope(CV04_MEAN_CLOSURE, quantum=_QUANTUM)
+# THIS case's R/T windows, handed to the shared evaluator. Before #928
+# round 2 the evaluator read cv22's module-level constants, so cv23's
+# G1_R/G1_T/G2_R/G2_T were judged by cv22's adoption and the derivations
+# above were dead code for everything except the A gates.
+WINDOWS = slab_family.Windows(W_BIN, W_MEAN_R, W_MEAN_T)
 
 # ---------------------------------------------------------------------------
 # Falsifiers (note section 6)
@@ -206,7 +211,7 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, params: dict, dt: float, *, tail: dict |
     a REPORTED witness (``lattice``: W_lat per bin and |rfx - lattice|; note
     section 13) -- it enters no gate."""
     out = G.evaluate_e2(freqs_hz, R_rfx, T_rfx, MODEL, params, dt, tail=tail,
-                        require_complete=require_complete)
+                        require_complete=require_complete, windows=WINDOWS)
     f = np.asarray(freqs_hz, dtype=float)
     g = np.asarray(out["gated"], dtype=bool)
     R_x = np.asarray(out["R_rfx"]); T_x = np.asarray(out["T_rfx"])
@@ -258,7 +263,7 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, params: dict, dt: float, *, tail: dict |
 
 def evaluate_e4(e2: dict, meep_doc: dict) -> dict:
     """E4 gates G4 (Meep vs TMM) and G5 (rfx vs Meep) on R, T and A."""
-    out = G.evaluate_e4(e2, meep_doc)
+    out = G.evaluate_e4(e2, meep_doc, windows=WINDOWS)
     f = np.asarray(e2["freqs_hz"], dtype=float)
     g = np.asarray(e2["gated"], dtype=bool)
     params = e2["params"]

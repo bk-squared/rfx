@@ -57,6 +57,21 @@ _ENVELOPE = _REPO / "validation/crossval/_04_fresnel_results/envelope.json"
 _COMPARATORS = _REPO / "validation/crossval/comparators"
 
 
+def _e2(*args, **kw):
+    """cv22's evaluator, handed cv22's own windows.
+
+    The evaluator takes them as a required argument now (#928 round 2): it used
+    to read cv22's module-level constants, which meant cv23 -- a different
+    adopter calling the same function -- was judged by cv22's adoption. Every
+    call in this file is cv22 judging cv22, so the record is named once here.
+    """
+    return G.evaluate_e2(*args, windows=G.WINDOWS, **kw)
+
+
+def _e4(e2, meep_doc):
+    return G.evaluate_e4(e2, meep_doc, windows=G.WINDOWS)
+
+
 def _round_up(value: float, multiplier: float, quantum: float) -> float:
     """The repo's envelope->gate arithmetic, written out again on purpose.
 
@@ -245,7 +260,7 @@ def test_the_evaluator_applies_exactly_the_rederived_windows():
     eps_ade = de.eps_numerical_ade(f, model, params, dt)
     R_ade, T_ade = de.tmm_slab_rt(f, eps_ade, _SF.D_SLAB_M)
     w_ade_R, w_ade_T = np.abs(R_ade - R_an), np.abs(T_ade - T_an)
-    e2 = G.evaluate_e2(f, R_an, T_an, model, params, dt)
+    e2 = _e2(f, R_an, T_an, model, params, dt)
 
     # the gated mask, recomputed from the declared band
     g_expected = (f >= G.BAND_GATED_HZ[0]) & (f <= G.BAND_GATED_HZ[1])
@@ -264,17 +279,17 @@ def test_the_evaluator_applies_exactly_the_rederived_windows():
     just_inside[i] = R_an[i] + win_i * (1 - 1e-9)
     just_outside = np.array(R_an, dtype=float)
     just_outside[i] = R_an[i] + win_i * (1 + 1e-6)
-    assert G.evaluate_e2(f, just_inside, T_an, model, params, dt)["gates"]["G1_R"]
-    assert not G.evaluate_e2(f, just_outside, T_an, model, params, dt)["gates"]["G1_R"]
+    assert _e2(f, just_inside, T_an, model, params, dt)["gates"]["G1_R"]
+    assert not _e2(f, just_outside, T_an, model, params, dt)["gates"]["G1_R"]
     # and the band-mean gate's boundary, on the same principle
     mean_win = w_mean_R + float(np.mean(w_ade_R[g_expected]))
     n_g = int(g_expected.sum())
     over = np.array(R_an, dtype=float)
     over[g_expected] = R_an[g_expected] + mean_win * (1 + 1e-6)
-    assert not G.evaluate_e2(f, over, T_an, model, params, dt)["gates"]["G2_R"]
+    assert not _e2(f, over, T_an, model, params, dt)["gates"]["G2_R"]
     under = np.array(R_an, dtype=float)
     under[g_expected] = R_an[g_expected] + mean_win * (1 - 1e-6)
-    assert G.evaluate_e2(f, under, T_an, model, params, dt)["gates"]["G2_R"]
+    assert _e2(f, under, T_an, model, params, dt)["gates"]["G2_R"]
     assert n_g >= 100
 
 
@@ -325,58 +340,126 @@ def test_editing_adopted_evidence_fails_integrity():
             _load_cv22_from(tree)
 
 
+def _expected_windows(values: dict, mult: float, quantum: float) -> dict:
+    """Every window either consumer derives, re-derived HERE from the adopted
+    values. Named individually because a review appended `W_BIN_A = 148 / 1000`
+    to cv23 -- a GATED window, hard-coded in expression form -- and the suite
+    stayed green: nothing compared cv23's A windows against its own adoption.
+    """
+    w_bin = _round_up(values["per_bin_max_RT_closure"], mult, quantum)
+    w_mean_R = _round_up(values["mean_dR"], mult, quantum)
+    w_mean_T = _round_up(values["mean_dT"], mult, quantum)
+    return {
+        "W_BIN": w_bin, "W_MEAN_R": w_mean_R, "W_MEAN_T": w_mean_T,
+        "W_BIN_A": 2.0 * w_bin, "W_MEAN_A": w_mean_R + w_mean_T,
+        "W_BIN_A_TIGHT": w_bin,
+        "W_MEAN_A_TIGHT": _round_up(values["mean_closure"], mult, quantum),
+    }
+
+
+_CV22_WINDOW_NAMES = ("W_BIN", "W_MEAN_R", "W_MEAN_T")
+_CV23_WINDOW_NAMES = _CV22_WINDOW_NAMES + ("W_BIN_A", "W_MEAN_A",
+                                           "W_BIN_A_TIGHT", "W_MEAN_A_TIGHT")
+
+
+def _realized(mod, case: str, f, dt) -> dict:
+    """What the EVALUATOR actually applies, not what the module declares.
+
+    A constant can be right while the evaluator reads someone else's: that was
+    round-2 item 1, where cv23's R/T verdicts came out of cv22's windows.
+    """
+    if case == "cv22":
+        arm = mod.ARMS["lorentz"]
+        R, T = mod.analytic_rt(f, arm["model"], arm["params"])
+        out = mod.evaluate_e2(f, R, T, arm["model"], arm["params"], dt,
+                              windows=mod.WINDOWS)
+    else:
+        params = mod.ARMS["tand1"]["params"]
+        R, T, _A = mod.analytic_rta(f, params)
+        out = mod.evaluate_e2(f, R, T, params, dt)
+    got = {"window_R_first": out["window_R"][0],
+           "mean_window_R": out["mean_window_R"],
+           "mean_window_T": out["mean_window_T"]}
+    if case == "cv23":
+        got["window_A_first"] = out["window_A"][0]
+        got["mean_window_A"] = out["mean_window_A"]
+    return got
+
+
+def _assert_consumer(mod, case: str, values: dict, mult, quantum, f, dt):
+    """Every declared window of *mod*, and every window its evaluator applies,
+    against a local re-derivation from the values *mod* adopted."""
+    want = _expected_windows(values, mult, quantum)
+    names = _CV22_WINDOW_NAMES if case == "cv22" else _CV23_WINDOW_NAMES
+    for name in names:
+        assert getattr(mod, name) == want[name], (case, name)
+    realized = _realized(mod, case, f, dt)
+    # the per-bin window is w_bin + the model-error term, so compare the part
+    # that comes from the adoption by subtracting the term the evaluator adds
+    assert realized["mean_window_R"] >= want["W_MEAN_R"]
+    assert realized["mean_window_R"] - want["W_MEAN_R"] < 2e-3
+    assert realized["mean_window_T"] >= want["W_MEAN_T"]
+    assert realized["window_R_first"] >= want["W_BIN"]
+    assert realized["window_R_first"] - want["W_BIN"] < 2e-3
+    if case == "cv23":
+        assert realized["window_A_first"] >= want["W_BIN_A"]
+        assert realized["mean_window_A"] >= want["W_MEAN_A"]
+    return realized
+
+
 def test_adopting_a_new_revision_moves_the_adopting_consumer_and_nothing_else():
-    """(c) An explicit re-adoption. The windows follow the artifact -- which is
-    also the check that no consumer hard-codes them: a module carrying the
-    literal 0.074 would sail through (a) and (b) and fail here."""
+    """(c) An explicit re-adoption, judged on the evaluator's output.
+
+    Both consumers are loaded from the scratch tree; the one that re-adopts
+    must move -- every declared window AND every window its evaluator applies
+    -- and the one that did not must sit exactly where its own record says. It
+    is also the check that no consumer hard-codes a window: a module carrying
+    0.074, or `148 / 1000`, sails through (a) and (b) and fails here.
+    """
     live_before = (G.W_BIN, G.W_MEAN_R, G.W_MEAN_T)
-    with _tmp_tree() as tree:
-        doc = json.loads(_ENVELOPE.read_text())
-        r2 = json.loads(json.dumps(doc["revisions"]["r1"]))
+    f, dt = _rfx_bins()
+    mult = G.CV04_ADOPTION["gate_policy"]["multiplier"]
+    quantum = G.CV04_ADOPTION["gate_policy"]["quantum"]
+    doc = json.loads(_ENVELOPE.read_text())
+    r1_values = doc["revisions"]["r1"]["values"]
+
+    def _tree_with_r2(tree, factor):
+        d = json.loads(_ENVELOPE.read_text())
+        r2 = json.loads(json.dumps(d["revisions"]["r1"]))
         r2["bootstrap"] = False
-        r2["values"] = {k: v * 2.0 for k, v in r2["values"].items()}
+        r2["values"] = {k: v * factor for k, v in r2["values"].items()}
         r2["revision_hash"] = _SF.revision_hash({k: v for k, v in r2.items()
                                                  if k != "revision_hash"})
-        doc["revisions"]["r2"] = r2
-        doc["latest_revision"] = "r2"
-        _write_envelope(tree, doc)
-        # cv22 re-adopts r2; cv23's own record still says r1.
-        mod, mod23 = _load_consumers_from(tree, adopt_cv22=("r2", r2["revision_hash"]))
-        mult = G.CV04_ADOPTION["gate_policy"]["multiplier"]
-        quantum = G.CV04_ADOPTION["gate_policy"]["quantum"]
-        assert mod.W_BIN == _round_up(r2["values"]["per_bin_max_RT_closure"], mult, quantum)
-        assert mod.W_MEAN_R == _round_up(r2["values"]["mean_dR"], mult, quantum)
-        assert mod.W_MEAN_T == _round_up(r2["values"]["mean_dT"], mult, quantum)
-        assert mod.W_BIN != G.W_BIN and mod.W_MEAN_R != G.W_MEAN_R
-        # THE OTHER ADOPTER DOES NOT MOVE. cv23 used to re-export cv22's three
-        # windows, so this exact scenario doubled cv23's gates with cv23's own
-        # adoption record untouched -- the coupling this test exists to refuse.
+        d["revisions"]["r2"] = r2
+        d["latest_revision"] = "r2"
+        _write_envelope(tree, d)
+        return r2
+
+    # --- cv22 re-adopts r2; cv23's own record still says r1 -----------------
+    with _tmp_tree() as tree:
+        r2 = _tree_with_r2(tree, 2.0)
+        mod22, mod23 = _load_consumers_from(tree, adopt_cv22=("r2", r2["revision_hash"]))
+        assert mod22.CV04_ADOPTION["adopted_revision"] == "r2"
         assert mod23.CV04_ADOPTION["adopted_revision"] == "r1"
-        assert (mod23.W_BIN, mod23.W_MEAN_R, mod23.W_MEAN_T) == (G.W_BIN, G.W_MEAN_R, G.W_MEAN_T)
-        assert mod23.W_BIN_A == 2.0 * G.W_BIN
-        assert mod23.W_MEAN_A_TIGHT == _round_up(
-            doc["revisions"]["r1"]["values"]["mean_closure"], mult, quantum)
-    # ... and the mirror image, in a FRESH tree (the first one's cv22 has been
-    # re-pointed in place): when cv23 re-adopts and cv22 does not, cv23 moves
-    # and cv22 stays.
+        moved = _assert_consumer(mod22, "cv22", r2["values"], mult, quantum, f, dt)
+        stayed = _assert_consumer(mod23, "cv23", r1_values, mult, quantum, f, dt)
+        # and the two are genuinely different now, in the evaluator's output
+        assert moved["mean_window_R"] != stayed["mean_window_R"]
+        assert mod22.W_BIN != mod23.W_BIN
+
+    # --- the mirror image, in a FRESH tree (the first tree's cv22 source has
+    #     been re-pointed in place): cv23 re-adopts, cv22 does not ------------
     with _tmp_tree() as tree2:
-        doc2 = json.loads(_ENVELOPE.read_text())
-        r2b = json.loads(json.dumps(doc2["revisions"]["r1"]))
-        r2b["bootstrap"] = False
-        r2b["values"] = {k: v * 2.0 for k, v in r2b["values"].items()}
-        r2b["revision_hash"] = _SF.revision_hash({k: v for k, v in r2b.items()
-                                                  if k != "revision_hash"})
-        doc2["revisions"]["r2"] = r2b
-        doc2["latest_revision"] = "r2"
-        _write_envelope(tree2, doc2)
+        r2b = _tree_with_r2(tree2, 3.0)
         mod22b, mod23b = _load_consumers_from(tree2, adopt_cv23=("r2", r2b["revision_hash"]))
-        mult = G.CV04_ADOPTION["gate_policy"]["multiplier"]
-        quantum = G.CV04_ADOPTION["gate_policy"]["quantum"]
-        assert mod22b.W_BIN == G.W_BIN, "cv22 was not re-adopted here"
-        assert mod23b.W_BIN == _round_up(r2b["values"]["per_bin_max_RT_closure"], mult, quantum)
+        assert mod22b.CV04_ADOPTION["adopted_revision"] == "r1"
+        assert mod23b.CV04_ADOPTION["adopted_revision"] == "r2"
+        stayed22 = _assert_consumer(mod22b, "cv22", r1_values, mult, quantum, f, dt)
+        moved23 = _assert_consumer(mod23b, "cv23", r2b["values"], mult, quantum, f, dt)
+        assert moved23["mean_window_A"] != stayed22["mean_window_R"]
         assert mod23b.W_BIN != mod22b.W_BIN
-        assert mod23b.W_MEAN_A == mod23b.W_MEAN_R + mod23b.W_MEAN_T
-    # the live modules did not move with the scratch tree
+
+    # the live modules did not move with either scratch tree
     assert (G.W_BIN, G.W_MEAN_R, G.W_MEAN_T) == live_before
 
 
@@ -396,13 +479,13 @@ def test_a_missing_required_witness_cannot_be_a_pass():
     R_an, T_an = G.analytic_rt(f, model, params)
 
     # no witness handed in: passing on the other gates, INCOMPLETE
-    lenient = G.evaluate_e2(f, R_an, T_an, model, params, dt)
+    lenient = _e2(f, R_an, T_an, model, params, dt)
     assert lenient["gates"]["G3_tail"] is None
     assert lenient["incomplete_gates"] == ["G3_tail"]
     assert lenient["gates_complete"] is False
     assert lenient["e2_ok"] is True, "the diagnostic aggregate is unchanged"
 
-    strict = G.evaluate_e2(f, R_an, T_an, model, params, dt, require_complete=True)
+    strict = _e2(f, R_an, T_an, model, params, dt, require_complete=True)
     assert strict["e2_ok"] is False, (
         "a required witness that never arrived must not leave a PASS standing")
     assert strict["incomplete_gates"] == ["G3_tail"]
@@ -410,13 +493,13 @@ def test_a_missing_required_witness_cannot_be_a_pass():
     # and with the witness present the two agree again, so the rule costs
     # nothing on a complete run
     tail = {"ok": True}
-    complete = G.evaluate_e2(f, R_an, T_an, model, params, dt, tail=tail,
+    complete = _e2(f, R_an, T_an, model, params, dt, tail=tail,
                              require_complete=True)
     assert complete["gates_complete"] and complete["e2_ok"]
-    assert complete["e2_ok"] == G.evaluate_e2(f, R_an, T_an, model, params, dt,
+    assert complete["e2_ok"] == _e2(f, R_an, T_an, model, params, dt,
                                               tail=tail)["e2_ok"]
     # a failing witness still fails, in both modes
-    bad = G.evaluate_e2(f, R_an, T_an, model, params, dt, tail={"ok": False},
+    bad = _e2(f, R_an, T_an, model, params, dt, tail={"ok": False},
                         require_complete=True)
     assert bad["e2_ok"] is False and bad["gates_complete"]
 
@@ -582,7 +665,7 @@ def test_rfx_falsifiers_exceed_the_windows_analytically(name):
     good = G.ARMS[arm]["params"]
     R, T = G.analytic_rt(f, model, good)
     Rb, Tb = G.analytic_rt(f, model, bad)
-    e2 = G.evaluate_e2(f, Rb, Tb, model, good, dt)   # defective "measurement" vs the true oracle
+    e2 = _e2(f, Rb, Tb, model, good, dt)   # defective "measurement" vs the true oracle
     assert not (e2["gates"]["G2_R"] and e2["gates"]["G2_T"]), name
     # margin >= 2x on at least one band-mean window (coin-toss guard)
     ratio = max(e2["mean_dR_gated"] / e2["mean_window_R"], e2["mean_dT_gated"] / e2["mean_window_T"])
@@ -598,7 +681,7 @@ def test_debye_tau_x1p3_would_be_a_coin_toss_and_is_not_a_falsifier():
     p = G.ARMS["debye"]["params"]
     bad = {**p, "tau": 1.3 * p["tau"]}
     Rb, Tb = G.analytic_rt(f, "debye", bad)
-    e2 = G.evaluate_e2(f, Rb, Tb, "debye", p, dt)
+    e2 = _e2(f, Rb, Tb, "debye", p, dt)
     assert e2["mean_dR_gated"] / e2["mean_window_R"] < 1.5
     assert "debye_tau_x1p3" not in G.FALSIFIERS
 
@@ -614,17 +697,17 @@ def test_meep_falsifiers_exceed_the_e4_windows_analytically(name):
     eps_bad = np.conj(de.eps_meep_convention(f, bad))
     Rm, Tm = de.tmm_slab_rt(f, eps_bad, G.D_SLAB_M)
     R, T = G.analytic_rt(f, "lorentz", lp)
-    e2 = G.evaluate_e2(f, R, T, "lorentz", lp, dt)
+    e2 = _e2(f, R, T, "lorentz", lp, dt)
     meep_doc = {"freqs_hz": f.tolist(), "R": Rm.tolist(), "T": Tm.tolist(),
                 "dt_meep_s": dt_meep, "meep_params": bad, "precheck": {"passed": False}}
-    e4 = G.evaluate_e4(e2, meep_doc)
+    e4 = _e4(e2, meep_doc)
     assert not e4["e4_ok"], name
     assert not (e4["gates"]["G4_mean_R"] and e4["gates"]["G4_mean_T"]), name
     assert not (e4["gates"]["G5_mean_R"] and e4["gates"]["G5_mean_T"]), name
     # and the control: the RIGHT mapping passes the same E4 gates.
     eps_ok = np.conj(de.eps_meep_convention(f, good))
     Ro, To = de.tmm_slab_rt(f, eps_ok, G.D_SLAB_M)
-    e4_ok = G.evaluate_e4(e2, {**meep_doc, "R": Ro.tolist(), "T": To.tolist(), "meep_params": good,
+    e4_ok = _e4(e2, {**meep_doc, "R": Ro.tolist(), "T": To.tolist(), "meep_params": good,
                                "precheck": {"passed": True}})
     assert e4_ok["e4_ok"]
 
@@ -638,7 +721,7 @@ def _read(path: Path) -> dict:
 
 
 def _replay_e2(arm_doc: dict) -> dict:
-    return G.evaluate_e2(arm_doc["freqs_hz"], arm_doc["R_rfx"], arm_doc["T_rfx"],
+    return _e2(arm_doc["freqs_hz"], arm_doc["R_rfx"], arm_doc["T_rfx"],
                          arm_doc["model"], arm_doc["params"], arm_doc["dt_s"], tail=arm_doc["tail"])
 
 
@@ -703,7 +786,7 @@ def test_baseline_artifact_e4_against_the_committed_meep_jsons():
         assert md["run"]["finite"]
         assert md["precheck"]["passed"], (arm, md["precheck"]["max_rel_err"])
         assert md["precheck"]["max_rel_err"] < 1e-9
-        e4 = G.evaluate_e4(_replay_e2(ad), md)
+        e4 = _e4(_replay_e2(ad), md)
         assert e4["e4_ok"], (arm, e4["gates"], e4["max_dR_rfx_meep_gated"], e4["max_dT_rfx_meep_gated"])
         assert e4["gates"]["precheck_passed"]
         # the committed r4 artifact predates the precheck_passed gate key
@@ -727,7 +810,7 @@ def test_rfx_falsifier_artifacts_fail_for_the_declared_reason(name):
     _, model, bad = G.apply_falsifier(name)
     assert ad["params_run"] == pytest.approx(bad)
     assert ad["params"] == pytest.approx(G.ARMS[arm]["params"])
-    re = G.evaluate_e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], model, G.ARMS[arm]["params"],
+    re = _e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], model, G.ARMS[arm]["params"],
                        ad["dt_s"], tail=ad["tail"])
     assert re["gates"] == {k: v for k, v in ad["gates"].items() if k in re["gates"]}
     assert not re["e2_ok"]
@@ -744,7 +827,7 @@ def test_meep_falsifier_artifacts_fail_e4_against_the_baseline(name):
     md = _read(mp_path)
     assert md["falsifier"] == name
     assert md["precheck"]["passed"] is False, "the 1e-9 pre-check must have caught the wrong convention"
-    e4 = G.evaluate_e4(_replay_e2(doc["arms"][G.MEEP_FALSIFIER_ARM]), md)
+    e4 = _e4(_replay_e2(doc["arms"][G.MEEP_FALSIFIER_ARM]), md)
     assert not e4["e4_ok"], e4["gates"]
     assert not (e4["gates"]["G4_mean_R"] and e4["gates"]["G4_mean_T"])
 
@@ -801,7 +884,7 @@ def test_r2_meep_diagnostics_against_predeclared_predictions(arm):
         pytest.skip("baseline Meep leg absent")
     doc = _baseline()["arms"][arm]
     e2 = _replay_e2(doc)
-    e4b = G.evaluate_e4(e2, _read(base_path))
+    e4b = _e4(e2, _read(base_path))
     lines = [f"r2-summary meep {arm}: baseline (10 px/cm) Meep-vs-TMM mean|dR| {e4b['mean_dR_meep_tmm_gated']:.4f} "
              f"mean|dT| {e4b['mean_dT_meep_tmm_gated']:.4f}"]
     for tag in _R2_MEEP_TAGS:
@@ -811,7 +894,7 @@ def test_r2_meep_diagnostics_against_predeclared_predictions(arm):
             continue
         md = _read(p)
         assert md["run"]["finite"] and md["precheck"]["passed"], tag
-        e4 = G.evaluate_e4(e2, md)
+        e4 = _e4(e2, md)
         rT = e4["mean_dT_meep_tmm_gated"] / max(e4b["mean_dT_meep_tmm_gated"], 1e-12)
         lines.append(f"r2-summary meep {arm}__{tag}: res={md['resolution']} decay={md['decay']} "
                      f"fcen={md['fcen_meep']:.3f} Meep-vs-TMM mean|dR| {e4['mean_dR_meep_tmm_gated']:.4f} "
@@ -841,7 +924,7 @@ def test_r2_meep_debye_res40_primary_is_the_predeclared_fix():
     if q.is_file():
         m40 = _read(q)
         assert m40["run"]["finite"]
-        e4 = G.evaluate_e4(_replay_e2(_baseline()["arms"]["debye"]), m40)
+        e4 = _e4(_replay_e2(_baseline()["arms"]["debye"]), m40)
         print(f"r2-summary meep debye fn40 cross-check: mean|dT| vs TMM {e4['mean_dT_meep_tmm_gated']:.4f} "
               f"(W_map mean T carried {np.mean(np.asarray(e4['w_map_T'])[np.asarray(_baseline()['arms']['debye']['gated'])]):.2e})")
 

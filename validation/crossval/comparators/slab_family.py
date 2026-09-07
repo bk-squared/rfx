@@ -41,6 +41,7 @@ import subprocess
 import sys
 
 import numpy as np
+from typing import NamedTuple
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
@@ -164,6 +165,22 @@ def slab_ringdown_rates(model: str, params: dict):
             "ring_band_hz": [f_lo, f_hi], "ring_w_min": RING_W_MIN,
             "t_ring_s": float(t_need[i]), "f_ring_hz": float(f[i]), "w_ring": float(w[i]),
             "rate_ring_1_s": float(rate[i]), "rho_etalon": float(rho[i]), "t_rt_s": float(t_rt[i])}
+
+
+class Windows(NamedTuple):
+    """The three R/T windows a case ENFORCES, carried explicitly.
+
+    They used to be module-level constants of cv22, which the shared evaluator
+    read directly -- so cv23, which calls that evaluator, was judged by cv22's
+    windows no matter what cv23's own adoption record said. A round-2 review
+    moved cv22's `W_BIN` alone and watched cv23's realized per-bin window move
+    4.8x with it. Passing them makes each case's derivation the one that
+    reaches its own verdict.
+    """
+
+    w_bin: float
+    w_mean_R: float
+    w_mean_T: float
 
 
 def aggregate_gates(gates: dict, *, declared=None,

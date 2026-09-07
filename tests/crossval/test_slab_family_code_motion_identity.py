@@ -141,7 +141,8 @@ def test_committed_artifacts_replay_to_the_same_verdicts(baseline, case):
         ad = doc["arms"][arm]
         if case == "cv22":
             e2 = G.evaluate_e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], ad["model"],
-                               ad["params"], ad["dt_s"], tail=ad["tail"])
+                               ad["params"], ad["dt_s"], tail=ad["tail"],
+                               windows=G.WINDOWS)
         else:
             e2 = L.evaluate_e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], ad["params"],
                                ad["dt_s"], tail=ad["tail"])
