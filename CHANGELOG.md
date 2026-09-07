@@ -205,6 +205,22 @@ to patch conductively. The two solvers were not modelling the same feed.
   frame reads 52.1 + 7.9j and -21.92 dB. The extractor was reporting the
   fixture correctly both times.
 
+### Changed — cv05's wire-port record regenerated on the corrected extractor (#912)
+
+`validation/crossval/_05_patch_results/cv05_run_openems_369367258715.json` replaces the
+2026-09-02 record as CURRENT (VESSL 369367258715, remilab-c0, SHA-guarded clone at
+`f5ee3b59`, openEMS image `ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8`). PR #897 advanced
+the H-derived port current DFT by `exp(+j*omega*dt/2)`, so every wire-port record taken
+before it is stale. Measured delta against the superseded leg: `max|dS11| = 0.006850`
+against a mechanism prediction of `0.006841`, **0 Hz dip shift**, dip depth
+−1.614843 → −1.583059 dB. The control leg at #897's parent reproduces the old record's
+`rfx_s11` bit-identically and its openEMS leg to 0.0, so the change is PR #897 alone.
+No committed gate asserts on these values; the 369367257743 file is kept as the artifact
+`manifest.json` and the #812 mode-identification note cite by name.
+
+cv06b is NOT regenerated here — issue #912 assigns it to the #812 regate lane. cv15's leg
+was regenerated separately and then superseded by the #920 galvanic-feed fix (PR #932).
+
 
 ## [1.8.0] - 2026-09-06
 
