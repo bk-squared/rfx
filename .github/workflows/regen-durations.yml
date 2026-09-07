@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev,cad]"
       - name: Fast selection, shard ${{ matrix.group }} of 6, store durations
         env:
           RFX_WEEKLY_RSS: "1"
@@ -54,7 +54,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev,cad]"
       - name: Slow selection, shard ${{ matrix.group }} of 4, store durations
         env:
           RFX_WEEKLY_RSS: "1"

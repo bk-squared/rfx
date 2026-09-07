@@ -150,7 +150,7 @@ jobs:
   # token lives in the `vessl` environment (schedule + manual dispatch only).
   weekly-a6000-lane:
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    timeout-minutes: 360
     environment: vessl
     steps:
       - name: Check out repository
@@ -167,21 +167,32 @@ jobs:
           VESSL_ORGANIZATION: ${{ vars.VESSL_ORGANIZATION }}
           VESSL_PROJECT: ${{ vars.VESSL_PROJECT }}
         run: |
-          set -euo pipefail
-          vessl configure -t "$VESSL_ACCESS_TOKEN" -o "$VESSL_ORGANIZATION" -p "$VESSL_PROJECT" >/dev/null
+          set -uo pipefail
+          vessl configure -t "$VESSL_ACCESS_TOKEN" -o "$VESSL_ORGANIZATION" -p "$VESSL_PROJECT" >/dev/null || { echo "vessl configure failed"; exit 1; }
           sed "s|RFX_SHA: \"origin/main\"|RFX_SHA: \"${GITHUB_SHA}\"|" scripts/vessl_validation_lane_a6000.yaml > /tmp/lane.yaml
-          grep -q "RFX_SHA: \"${GITHUB_SHA}\"" /tmp/lane.yaml
-          OUT=$(vessl run create -f /tmp/lane.yaml 2>&1 | tee /dev/stderr)
-          RID=$(echo "$OUT" | grep -oE 'runs/[^/]+/[0-9]+' | grep -oE '[0-9]+$' | head -1)
-          [ -n "$RID" ] || { echo "could not parse the run id"; exit 1; }
+          grep -q "RFX_SHA: \"${GITHUB_SHA}\"" /tmp/lane.yaml || { echo "could not pin the SHA into the lane file"; exit 1; }
+          OUT=$(vessl run create -f /tmp/lane.yaml 2>&1 || true)
+          printf '%s\n' "$OUT" | grep -vi token || true
+          RID=$(printf '%s\n' "$OUT" | grep -oE 'runs/[^/]+/[0-9]+' | grep -oE '[0-9]+$' | head -1 || true)
+          [ -n "$RID" ] || { echo "could not parse a run id from the create output (a YAML verification failure prints nothing at exit 0)"; exit 1; }
           echo "VESSL run $RID"
-          for i in $(seq 1 280); do
-            ST=$(vessl run read "$RID" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -E '^\s*Status\s' | head -1 | awk '{print $2}')
-            echo "$(date -u +%H:%M) status=$ST"
-            case "$ST" in completed|failed|terminated|stopped) break;; esac
+          # Whatever ends this step -- give-up, cancellation, the job timeout --
+          # must not leave the a6000 seat held (two-seat lab policy).
+          trap 'if [ "${DONE:-0}" != 1 ]; then echo "terminating VESSL run $RID"; vessl run terminate "$RID" </dev/null >/dev/null 2>&1 || true; fi' EXIT
+          ST=""; MISSES=0
+          for i in $(seq 1 330); do
+            ST=$(vessl run read "$RID" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -E '^\s*Status\s' | head -1 | awk '{print $2}' || true)
+            if [ -z "$ST" ]; then
+              MISSES=$((MISSES+1)); echo "$(date -u +%H:%M) status unreadable ($MISSES in a row)"
+              [ "$MISSES" -ge 15 ] && { echo "status unreadable 15 times in a row; giving up"; exit 1; }
+            else
+              MISSES=0; echo "$(date -u +%H:%M) status=$ST"
+              case "$ST" in completed|failed|terminated|stopped) break;; esac
+            fi
             sleep 60
           done
-          vessl run logs "$RID" --tail 400 2>/dev/null | tail -60 || true
+          vessl run logs "$RID" --tail 400 2>/dev/null | grep -vi token | tail -60 || true
+          case "$ST" in completed|failed|terminated|stopped) DONE=1;; *) echo "a6000 lane still $ST after the poll budget; terminating"; exit 1;; esac
           [ "$ST" = completed ] || { echo "a6000 lane ended with status $ST"; exit 1; }
 
   # ---------------------------------------------------------------------------

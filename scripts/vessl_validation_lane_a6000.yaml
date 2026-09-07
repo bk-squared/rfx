@@ -21,6 +21,7 @@ run: |-
   SRC=/root/workspace/byungkwan-workspace/research/rfx
   git config --global --add safe.directory '*'
   git -C "$SRC" fetch -q origin main
+  git -C "$SRC" cat-file -e "$RFX_SHA^{commit}" 2>/dev/null || git -C "$SRC" fetch -q origin "$RFX_SHA"
   SHA=$(git -C "$SRC" rev-parse --short "$RFX_SHA")
   OUT=/root/workspace/byungkwan-workspace/opt/rfx-vessl-tests/weekly_a6000_${SHA}_$(date -u +%Y%m%dT%H%M%SZ)
   mkdir -p "$OUT"
@@ -36,11 +37,11 @@ run: |-
   IGN="--ignore=tests/crossval/test_meep_crossval.py --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py --ignore=tests/crossval/test_openems_crossval.py --ignore=tests/crossval/test_crossval_comprehensive.py"
   echo "=== highmem selection (serial) ==="
   set +e
-  timeout 7200 python -m pytest -v -ra -p no:cacheprovider -m "highmem and not gpu" $IGN > "$OUT/highmem.log" 2>&1
+  timeout 7200 python -m pytest -v -ra -s -p no:cacheprovider -m "highmem and not gpu" $IGN > "$OUT/highmem.log" 2>&1
   RC1=$?
   echo "highmem rc=$RC1"; tail -3 "$OUT/highmem.log"
   echo "=== gpu-marked suite ==="
-  timeout 13800 python -m pytest -q -ra -p no:cacheprovider -m gpu $IGN > "$OUT/gpu_suite.log" 2>&1
+  timeout 13800 python -m pytest -q -ra -s -p no:cacheprovider -m gpu $IGN > "$OUT/gpu_suite.log" 2>&1
   RC2=$?
   set -e
   echo "gpu suite rc=$RC2"; tail -3 "$OUT/gpu_suite.log"
