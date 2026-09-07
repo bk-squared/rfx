@@ -4,12 +4,7 @@
  "producer_script": "validation/crossval/04_multilayer_fresnel.py",
  "calibration_revision": "r1",
  "latest_revision": "r1",
- "adopted_by": [
-  "22_dispersive_slab_fresnel",
-  "23_lossy_slab_fresnel"
- ],
- "adopted_in": "docs/design_notes/20260902_cv22_dispersive_slab_predeclaration.md",
- "what_this_is": "The cv04 measurement envelope the slab-family consumers derive their windows from. EVIDENCE, not a gate: the gate is round-up(value * multiplier) at the consumer's quantum (tests/_gate_policy.py), computed from these values and written down nowhere else. Revisions are append-only; a consumer moves only when its own adoption record is edited and reviewed.",
+ "what_this_is": "The cv04 measurement envelope the slab-family consumers derive their windows from. EVIDENCE, not a gate: the gate is round-up(value * multiplier) at the consumer's quantum (tests/_gate_policy.py), computed from these values and written down nowhere else. Revisions are append-only and, once written, immutable; a consumer moves only when its own adoption record is edited and reviewed.",
  "revisions": {
   "r1": {
    "status": "active",
@@ -157,36 +152,7 @@
     "tfsf_polarization": "cv04-source"
    },
    "rig_hash": "sha256:24164f616573af51b91f5c596e7b79e521005c4a872218fede25d009ed9dd211",
-   "adopted_by": [
-    {
-     "case": "22_dispersive_slab_fresnel",
-     "consumer": "validation/crossval/comparators/cv22_dispersive_gates.py",
-     "declaration": "CV04_ADOPTION",
-     "derives": {
-      "W_BIN": "per_bin_max_RT_closure",
-      "W_MEAN_R": "mean_dR",
-      "W_MEAN_T": "mean_dT"
-     },
-     "adopted_in": "docs/design_notes/20260902_cv22_dispersive_slab_predeclaration.md"
-    },
-    {
-     "case": "23_lossy_slab_fresnel",
-     "consumer": "validation/crossval/comparators/cv23_lossy_gates.py",
-     "declaration": "CV04_ADOPTION",
-     "derives": {
-      "W_BIN_A_TIGHT": "per_bin_max_RT_closure",
-      "W_MEAN_A_TIGHT": "mean_closure",
-      "W_BIN/W_MEAN_R/W_MEAN_T": "re-exported from cv22's derivation, same revision"
-     },
-     "adopted_in": "docs/design_notes/20260902_cv23_lossy_slab_predeclaration.md"
-    }
-   ],
-   "revision_hash": "sha256:456a657a06be3b8d483701b126befd1e06ada99c3f9b5575185ed94810150ef2",
-   "rig_provenance_keys": {
-    "gallery-manifest": "read out of docs/public/gallery/assets/multilayer_fresnel/manifest.json::provenance.params",
-    "cv04-artifact": "read out of validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4 (and identical in fringe_gate_geometry.json::config)",
-    "cv04-source": "declared by the committed producer script; no run artifact attests it"
-   }
+   "revision_hash": "sha256:59dafc9ab63239d74d6fec16fa4e89f7c055636fb6e14bf4123d724c05635686"
   }
  },
  "notes": [
@@ -194,6 +160,13 @@
   "code_sha is null: the C4 rung's job id is recorded in the cv04 source comment and in the cv22 pre-declaration, but no committed file carries the commit it was built from. gallery_snapshot_git_sha belongs to a DIFFERENT run (the 1.6.5 gallery precompute) that reports the same three band-mean values; it is a second home for the values, not this run's commit.",
   "rig_provenance says, per key, whether the value is attested by a committed run snapshot (gallery-manifest) or only declared by the committed producer script (cv04-source). Nothing here is read from today's library defaults.",
   "The rig is the PRODUCER's. cv22 and cv23 run their own record-length recipe on the same grid and TFSF; that is a consumer property and is not described here.",
-  "Adopting different evidence -- for example cv04 re-run with the corrected injection plane, where the per-bin closure is reported as 0.0043 -- is a NEW revision plus an edit to each consumer's adoption record, in a PR that says so. It is never a consequence of re-running the producer."
- ]
+  "Adopting different evidence -- for example cv04 re-run with the corrected injection plane, where the per-bin closure is reported as 0.0043 -- is a NEW revision plus an edit to each consumer's adoption record, in a PR that says so. It is never a consequence of re-running the producer.",
+  "The revision block holds the measurement and the configuration that produced it, and nothing about who cites it: `adopted_by` used to live inside it, so a third adopter would have changed revision_hash on a merged revision and broken both existing consumers' pins. The rig_provenance legend moved out for the same reason -- it is a key to the artifact's vocabulary, not part of the measurement. This is the LAST bootstrap-time re-stamp of r1: from here the immutability rule is what applies."
+ ],
+ "rig_provenance_keys": {
+  "gallery-manifest": "read out of docs/public/gallery/assets/multilayer_fresnel/manifest.json::provenance.params",
+  "cv04-artifact": "read out of validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4 (and identical in fringe_gate_geometry.json::config)",
+  "cv04-source": "declared by the committed producer script; no run artifact attests it"
+ },
+ "adoption": "Adoption is declared in the CONSUMER, never here. A consumer names this artifact, the revision it adopted, that revision's hash, the realized rig's hash and the gate policy it was adopted under; tests/contracts/test_calibration_envelope_ownership.py discovers the adopters by enumerating those declarations. Recording them here would put a third adopter's arrival inside the hashed block, changing revision_hash for a merged revision and invalidating every existing consumer's pin (PR review, round 2)."
 }

@@ -171,20 +171,63 @@ def test_the_consumer_literal_guard_catches_a_planted_value():
     assert _matches(0.5, targets) is None                   # an unrelated number
 
 
-def test_the_artifact_declares_the_consumers_that_adopt_it():
-    """Fan-out closure: the revision lists who derives what from it."""
+def test_the_artifact_does_not_record_its_citers():
+    """Evidence does not know who cites it.
+
+    `adopted_by` used to live INSIDE the hashed revision block, so a third
+    consumer adopting an already-merged revision would have changed that
+    revision's hash — tripping the immutability rule and invalidating the pin
+    every existing consumer holds. Adoption is declared in the consumer; this
+    file's own enumeration is what discovers the adopters.
+    """
     doc = _envelope_doc()
-    records = _adoption_records()
     for name, block in doc["revisions"].items():
-        listed = {entry["consumer"] for entry in block["adopted_by"]}
-        for entry in block["adopted_by"]:
-            assert (_REPO / entry["consumer"]).is_file(), entry["consumer"]
-            assert entry["derives"], f"{name}/{entry['case']} derives nothing"
-            assert (_REPO / entry["adopted_in"]).is_file(), entry["adopted_in"]
-        adopters = {c for c, r in records.items() if r["adopted_revision"] == name}
-        assert adopters == listed, (
-            f"revision {name} says it is adopted by {sorted(listed)}, the "
-            f"modules say {sorted(adopters)}")
+        assert "adopted_by" not in block, (
+            f"revision {name} lists its citers inside the hashed block")
+        assert "adopted_in" not in block, name
+        assert "rig_provenance_keys" not in block, (
+            f"revision {name} carries the provenance legend inside the hashed "
+            f"block; it is a key to the vocabulary, not part of the measurement")
+    assert "adopted_by" not in doc and "adopted_in" not in doc
+    assert doc["adoption"].strip()
+    # the adopters are discoverable, and they exist
+    records = _adoption_records()
+    assert records, "no comparator declares an adoption record any more"
+    for consumer, record in records.items():
+        assert record["adopted_revision"] in doc["revisions"], consumer
+        assert (_REPO / record["adopted_in"]).is_file(), consumer
+
+
+def test_a_third_adopter_needs_no_change_to_the_artifact():
+    """The property the round-2 review asked for, exercised.
+
+    A scratch third consumer adopts r1 with the pins the artifact already
+    publishes. The artifact is byte-identical to the committed one, both
+    existing consumers keep their pins, and the same-commit guard is silent —
+    because adding an adopter is a change to the ADOPTER, not to the evidence.
+    """
+    doc = _envelope_doc()
+    r1 = doc["revisions"]["r1"]
+    third = {
+        "envelope": _ENVELOPE_REL,
+        "adopted_revision": "r1",
+        "revision_sha256": r1["revision_hash"],
+        "rig_hash": r1["rig_hash"],
+        "gate_policy": {"multiplier": 1.5, "quantum": 1000},
+        "adopted_in": "docs/design_notes/20260906_issue928_ownership_decision.md",
+        "adopted_by_reviewer": "scratch third adopter (test)",
+    }
+    loaded = _load_comparator("slab_family").load_adopted_envelope(
+        third, path=str(_ENVELOPE))
+    assert loaded["revision"] == "r1"
+    assert loaded["values"] == r1["values"]
+    # nothing about the artifact changed to accommodate it
+    assert json.loads(_ENVELOPE.read_text(encoding="utf-8")) == doc
+    # and the guard says nothing about a change that touches only the adopter
+    records = dict(_adoption_records())
+    records["validation/crossval/comparators/_scratch_third_consumer.py"] = third
+    assert same_commit_violation({"validation/crossval/comparators/_scratch_third_consumer.py"},
+                                 records, doc, doc) is None
 
 
 # ---------------------------------------------------------------------------
@@ -212,6 +255,16 @@ def test_bootstrap_is_used_at_most_once_per_artifact():
     if bootstraps:
         assert bootstraps == sorted(doc["revisions"])[:1], (
             "the bootstrap flag belongs to the FIRST revision, not a later one")
+
+
+def _envelope_paths() -> set[str]:
+    """Every producer envelope artifact under the crossval tree.
+
+    The guard used to watch one hard-coded path, so a second case emitting its
+    own `envelope.json` would have been unguarded from the day it landed.
+    """
+    return {str(p.relative_to(_REPO))
+            for p in (_REPO / "validation/crossval").glob("*/envelope.json")}
 
 
 def _git(*args) -> tuple[int, str]:
@@ -252,16 +305,25 @@ def same_commit_violation(touched, records: dict, doc: dict,
         bootstrap" is NOT the exemption; r1 stays marked bootstrap forever, and
         the first version of this guard therefore waived every later change too.
     """
-    if _ENVELOPE_REL not in touched:
+    if not (set(touched) & _envelope_paths()):
         return None
     problems: list[str] = []
 
     if base_doc is not None:
         base_revisions = base_doc.get("revisions", {})
-        for name, block in doc.get("revisions", {}).items():
-            was = base_revisions.get(name)
-            if was is None:
-                continue                     # appended: exactly what should happen
+        now_revisions = doc.get("revisions", {})
+        # Deleting a revision is not "no change": the first version of this rule
+        # iterated the NEW document, so base {r0, r1} -> new {r1} said nothing
+        # (round-2 review). Iterate the BASE and require each one to still be
+        # there, byte-identical.
+        for name, was in base_revisions.items():
+            block = now_revisions.get(name)
+            if block is None:
+                problems.append(
+                    f"revision {name} existed at the base and is GONE. A "
+                    f"revision is append-only evidence; withdraw it by setting "
+                    f"its status, never by deleting it.")
+                continue
             if json.dumps(was, sort_keys=True) != json.dumps(block, sort_keys=True):
                 changed = sorted(k for k in set(was) | set(block)
                                  if was.get(k) != block.get(k))
@@ -369,6 +431,14 @@ def test_the_guard_fires_on_the_reviewers_rewrite_probe():
     assert same_commit_violation({consumer}, records, appended, base_doc) is None
     # the bootstrap case: the artifact is new at the base
     assert same_commit_violation(both, records, doc, None) is None
+
+    # A DELETED revision is not "no change" (round-2 item 6): the first version
+    # of rule (a) iterated the new document, so base {r0, r1} -> new {r1}
+    # returned None and a withdrawn-by-deletion revision passed.
+    base_with_r0 = json.loads(json.dumps(doc))
+    base_with_r0["revisions"]["r0"] = json.loads(json.dumps(doc["revisions"]["r1"]))
+    deleted = same_commit_violation({_ENVELOPE_REL}, records, doc, base_with_r0)
+    assert deleted is not None and "r0" in deleted and "GONE" in deleted
 
 
 # ---------------------------------------------------------------------------
@@ -620,9 +690,9 @@ def test_each_fanout_classification_holds(rel: str):
                 text.split("CV04_ADOPTION")[1].split("FALSIFIERS")[0]), (
                 f"{rel} restates an envelope value next to its adoption record")
         else:
-            declared = {entry["adopted_in"]
-                        for block in _envelope_doc()["revisions"].values()
-                        for entry in block["adopted_by"]}
+            # the adoption SITES, read from the consumers (the artifact does
+            # not record its citers any more -- round-2 item 2)
+            declared = {r["adopted_in"] for r in _adoption_records().values()}
             assert rel in declared, (
                 f"{rel} is classified {ADOPTION_DECLARATION!r} but no revision "
                 f"names it as the place an adoption was declared")
@@ -639,9 +709,7 @@ def test_each_fanout_classification_holds(rel: str):
         # a dated record of a past decision. Admissible only where nothing
         # derives from it: no revision names it as an adoption site.
         assert rel.startswith("docs/design_notes/"), rel
-        declared = {entry["adopted_in"]
-                    for block in _envelope_doc()["revisions"].values()
-                    for entry in block["adopted_by"]}
+        declared = {r["adopted_in"] for r in _adoption_records().values()}
         assert rel not in declared, (
             f"{rel} IS an adoption site; classify it {ADOPTION_DECLARATION!r}")
     elif kind == BASELINE_IDENTITY:

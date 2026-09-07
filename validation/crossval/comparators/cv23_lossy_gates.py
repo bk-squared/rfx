@@ -96,7 +96,7 @@ API_MATERIAL_NAME = "lossy_slab"
 CV04_ADOPTION = {
     "envelope": slab_family.CV04_ENVELOPE_REL,
     "adopted_revision": "r1",
-    "revision_sha256": "sha256:456a657a06be3b8d483701b126befd1e06ada99c3f9b5575185ed94810150ef2",
+    "revision_sha256": "sha256:59dafc9ab63239d74d6fec16fa4e89f7c055636fb6e14bf4123d724c05635686",
     "rig_hash": "sha256:24164f616573af51b91f5c596e7b79e521005c4a872218fede25d009ed9dd211",
     "gate_policy": {"multiplier": 1.5, "quantum": 1000},
     "adopted_in": "docs/design_notes/20260902_cv23_lossy_slab_predeclaration.md",
