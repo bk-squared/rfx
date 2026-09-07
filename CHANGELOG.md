@@ -6,6 +6,34 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — `rfx.fdfd`: differentiable frequency-domain solve (sparse direct + AD in both modes)
+
+- **`rfx.fdfd.sparse_solve(data, rows, cols, b)`** — a host-factorised
+  (`scipy` SuperLU via `jax.pure_callback`) sparse direct solve wrapped in
+  `jax.lax.custom_linear_solve`, so `jax.grad` / `jax.vjp` and `jax.jvp` /
+  `jax.jacfwd` both work through it. Reverse mode costs one extra transposed
+  solve per gradient regardless of the number of parameters and stores no
+  time history — the property FDTD reverse-mode AD does not have. Requires
+  x64 (raises otherwise).
+- **`rfx.fdfd.hplane`** — 2-D H-plane TE_n0 Helmholtz FDFD with the exact
+  discrete DtN ports of the independent referee
+  (`validation/crossval/comparators/fdfd_hplane.py`); on the same grid the two
+  agree to LU roundoff (gated at 1e-8), the empty guide is transparent to
+  ~2e-14. The system is a JAX function of frequency, of a per-node complex
+  `eps_r` map, and of the iris aperture widths as CONTINUOUS parameters
+  — body-fitted: the iris edges always sit on nodes and the transverse
+  nodes stretch with the width, so nothing switches topology and the shape
+  derivative is smooth and mesh-convergent (a cut-cell / Shortley–Weller
+  edge was tried first and its derivative jumped ~50 % at every node
+  crossing — the M12 "sub-cell phase" finding in miniature). The DtN port
+  kernel is differentiated as a matrix function of the transverse operator
+  (Daleckii–Krein), not through `eigh`, so exactly degenerate eigenvalue
+  pairs of the stretched grid do not produce nan. All three gradients are
+  checked against 4th-order finite differences, and the width derivative
+  for smoothness across nodes and convergence under refinement, in
+  `tests/test_fdfd_hplane.py`. Same scope fence as the referee: H-plane
+  only; magnitudes validated; Richardson over ≥ 2 levels.
+
 ### Added — near-cutoff layout note, and the S21 phase residual on waveguide S-matrix results
 
 Two report-only additions from the same measurement campaign, one before the
