@@ -8,8 +8,6 @@ name: regen-durations
 # shard 1 at ~1 min and shards 3-6 at 23-35 min (45-min cap).
 on:
   workflow_dispatch:
-  push:
-    branches: [ci/regen-durations]  # temporary: a workflow that is not on main cannot be dispatched by name
 
 jobs:
   fast:
