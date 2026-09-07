@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # slow-tests (4-shard) + slow-tests-highmem (serial) split (issue #545 step 3).
+  # slow-tests (4-shard) + weekly-a6000-lane (formerly slow-tests-highmem) (serial) split (issue #545 step 3).
   #
   # Weekly run 31103127491 (2026-08-06, first run with both the #566 rebalance
   # AND the RSS reporter live) proved the recurring shard-1/2/3 kills (exit 143,
@@ -38,7 +38,7 @@ jobs:
   #
   # PREDICTION (not yet proven -- this split has not run in CI): the 4-shard
   # slow-tests job should stop OOMing now that the highmem tests are gone.
-  # slow-tests-highmem will likely still see
+  # weekly-a6000-lane (formerly slow-tests-highmem) will likely still see
   # test_forward_tfsf_oblique_differentiable exit 143 -- serialization removes
   # the ~4 GB of accumulated baseline from co-located tests, which is not
   # enough to fit a ~24 GB single-test footprint under a ~16 GB ceiling. If
@@ -47,7 +47,7 @@ jobs:
   # randomly balanced shard died somewhere"), not evidence the split failed.
   # Next steps per issue #545 item 3, in order of preference: (a) an explicit
   # checkpoint_segments count for that test's forward, to see whether its ~24
-  # GB tape is compressible; (b) a larger-runner label for slow-tests-highmem
+  # GB tape is compressible; (b) a larger-runner label for weekly-a6000-lane (formerly slow-tests-highmem)
   # if (a) does not land it under ~16 GB; (c) exclude it from CI entirely and
   # track it as a manual/local-only regression check.
   #
@@ -116,7 +116,7 @@ jobs:
       # proof of this property.
       #
       # "not highmem" (issue #545 step 3): the 7 confirmed memory-heavy tests
-      # move to the slow-tests-highmem job below, see the block comment above
+      # move to the weekly-a6000-lane (formerly slow-tests-highmem) job below, see the block comment above
       # this job for why.
       - name: Run slow suite — shard ${{ matrix.group }} of 4
         env:

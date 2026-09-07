@@ -5,7 +5,7 @@ name: regen-durations
 # Why: after the 2026-09-03 test consolidation renamed files and #936 added
 # ~740 tests, the committed durations matched almost nothing, pytest-split
 # fell back to a count split in collection order, and the fast lane ran with
-# shard 1 at ~1 min and shards 3-6 at 23-35 min (45-min cap).
+# shard 1 at ~1 min and shards 3-6 at 23-35 min (60-min cap).
 on:
   workflow_dispatch:
 
