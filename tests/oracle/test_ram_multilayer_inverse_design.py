@@ -358,6 +358,7 @@ def test_ram_gradient_ad_vs_fd(ram_run, var, x0):
 
 
 @pytest.mark.slow
+@pytest.mark.highmem
 @pytest.mark.parametrize("var,x0", [("sigma", 1.0), ("eps", 4.0)])
 def test_ram_gradient_vs_analytic_tmm(ram_run, var, x0):
     """PHYSICAL gradient check: the FDTD jax.grad vs the INDEPENDENT analytic TMM

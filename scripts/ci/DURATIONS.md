@@ -7,23 +7,21 @@ threshold; on the runners the real cost of a sub-millisecond test is 0.2–0.4 s
 Sources, by nodeid count (7594 entries, exactly the union of the fast, slow and highmem
 selections at main 0b7e4294):
 
-- 7484 measured on the GitHub runners by `regen-durations` run 34090225242 (fast shards 1–6,
-  slow shards 1, 3, 4; slow shard 2 was killed by the runner at a 14.9 GB peak). The 8
-  highmem tests are among these counts' complement below.
-- 8 highmem tests measured on the a6000 VESSL lane (run 369367259054).
-- 7 measured on lab CPU pods (same commands; the pods crashed natively on four shards).
-- 79 carried from the previous file where the nodeid still collects (9 of them
-  `tests/unit/geometry/test_mesh_import.py`, which the measurement lane skipped for lack of
-  the `cad` extra — fixed in the workflow).
-- 24 estimated (no measurement reached them: slow shard 2's tail): the file's previous mean
-  where the file had entries, else 60 s. Listed below so a reader can tell them apart; a
-  dispatch of `regen-durations` from main replaces them.
+- 7495 measured on the GitHub runners by `regen-durations` runs 34090225242 and 34110728423
+  (the second pass wins where both measured a test; in both passes slow shard 2 was killed by the
+  runner before it finished, see issue 940).
+- 8 highmem tests measured on the a6000 VESSL lane (run 369367259054) are among the entries above
+  where the runner also measured them; 7 entries come only from lab pods.
+- 70 carried from the previous file where the nodeid still collects.
+- 22 estimated (no measurement reached them): the file's previous mean where the file had
+  entries, else 60 s. Listed below; a dispatch of `regen-durations` after the runner-killing
+  tests are marked `highmem` replaces them.
 
 Regenerate: dispatch `.github/workflows/regen-durations.yml`, download the artifacts, then
 `python scripts/ci/merge_test_durations.py .test_durations <shard json files...>` and re-add the
 0.3 s floor (or fold it into the script when the next regeneration lands).
 
-Estimated entries (24), before the +0.3 s floor:
+Estimated entries (22), before the +0.3 s floor:
 
 - `tests/crossval/test_patch_canonical_farfield_e4.py::test_mode_pair_present_with_aspect_ratio` — 0.003 s (mean of the file's previous entries)
 - `tests/locks/test_patch_edgefed_resonance_harminv.py::test_leg_a_isolated_patch_discretization_bias` — 60 s (no previous entry for the file)
@@ -47,5 +45,3 @@ Estimated entries (24), before the +0.3 s floor:
 - `tests/oracle/test_waveguide_chain_battery_v18_close.py::test_live_cells_reproduce_the_fixture_cpu[mid]` — 60 s (no previous entry for the file)
 - `tests/oracle/test_waveguide_chain_battery_v18_close.py::test_live_plane_shift_rotation_coarse_rung[false]` — 60 s (no previous entry for the file)
 - `tests/oracle/test_waveguide_chain_battery_v18_close.py::test_live_plane_shift_rotation_coarse_rung[flux]` — 60 s (no previous entry for the file)
-- `tests/unit/geometry/test_mesh_import.py::test_mid_plane_registered_sheet_deterministic_and_correct_both_sides` — 0.378 s (mean of the file's previous entries)
-- `tests/unit/geometry/test_mesh_import.py::test_surface_on_nodes_matches_box_convention_both_sides` — 0.378 s (mean of the file's previous entries)
