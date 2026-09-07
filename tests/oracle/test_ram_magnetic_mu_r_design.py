@@ -233,6 +233,7 @@ def test_mu_r_gradient_ad_vs_fd(mag_run):
 
 
 @pytest.mark.slow
+@pytest.mark.highmem
 def test_mu_r_gradient_vs_analytic_tmm(mag_run):
     """PHYSICAL gradient check: FDTD jax.grad vs the INDEPENDENT analytic magnetic-
     TMM gradient (closed-form derivative, not the FDTD's own FD). Sign + order;
