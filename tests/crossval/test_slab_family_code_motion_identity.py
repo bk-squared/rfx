@@ -28,6 +28,7 @@ the live derivation the live derivation is what changed.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import sys
@@ -149,10 +150,21 @@ def test_committed_artifacts_replay_to_the_same_verdicts(baseline, case):
         assert e2["gates"] == want["gates"], (case, arm)
         assert e2["e2_ok"] == want["e2_ok"], (case, arm)
         for key, value in want.items():
-            if key in ("gates", "e2_ok"):
+            if key in ("gates", "e2_ok") or key.startswith("window_A_"):
                 continue
             got = e2[key]
             if isinstance(value, str):
                 assert float(got).hex() == value, (case, arm, key)
             else:
                 assert got == value, (case, arm, key)
+        if case == "cv23":
+            # cv23's realized PER-BIN absorption window, added to the baseline
+            # in round 3: the mean was compared, the array was not, so an
+            # evaluator that widened `win_A` passed everything (the reviewer
+            # doubled W_BIN_A inside it and nothing moved).
+            win_a = [float(v) for v in e2["window_A"]]
+            assert len(win_a) == want["window_A_len"], (arm, "window_A length")
+            assert win_a[0].hex() == want["window_A_first_hex"], (arm, "window_A[0]")
+            digest = hashlib.sha256(
+                json.dumps(win_a, separators=(",", ":")).encode("utf-8")).hexdigest()
+            assert digest == want["window_A_sha256"], (arm, "window_A digest")

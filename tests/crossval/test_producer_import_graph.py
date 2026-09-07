@@ -47,17 +47,51 @@ _CONSUMERS = ("cv22_dispersive_gates", "cv23_lossy_gates")
 _PRODUCER_COMPARATOR_IMPORTS = {"fringe_gate", "lattice_witness", "slab_family"}
 
 
+# Calls that import by NAME at run time. An import statement is not the only
+# way to reach a module, and a round-3 review reached cv22 through both of
+# these -- `importlib.import_module("cv22_dispersive_gates")` in the producer
+# and `__import__("cv22_dispersive_gates")` in an uncalled helper -- past a
+# walk that only looked at Import/ImportFrom nodes.
+_DYNAMIC_IMPORT_CALLS = ("import_module", "__import__", "load_module",
+                         "spec_from_file_location", "find_spec")
+
+
+def _call_name(node: ast.Call) -> str | None:
+    """`importlib.import_module` -> "import_module"; `__import__` -> itself."""
+    func = node.func
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return None
+
+
+def _string_constants(node) -> set[str]:
+    return {n.value for n in ast.walk(node)
+            if isinstance(n, ast.Constant) and isinstance(n.value, str)}
+
+
 def _imported_names(path: Path) -> set[str]:
-    """Every module name imported anywhere in *path*, at any nesting depth."""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    """Every module name *path* can reach: imported, or named in an import call.
+
+    Import statements at any depth, plus the string arguments of the dynamic
+    import calls above -- a bare module name, a dotted path, or a `<name>.py`
+    file name, since the comparator package is also loaded by path.
+    """
+    text = path.read_text(encoding="utf-8")
+    tree = ast.parse(text)
     names: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             names.update(alias.name.split(".")[0] for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
             names.add(node.module.split(".")[0])
-    # importlib-by-path loads are named in the call, not in an import node
-    text = path.read_text(encoding="utf-8")
+        elif isinstance(node, ast.Call) and _call_name(node) in _DYNAMIC_IMPORT_CALLS:
+            for value in _string_constants(node):
+                stem = value.split("/")[-1].split(".py")[0].split(".")[0]
+                if stem:
+                    names.add(stem)
+    # a path handed to a loader through a variable still names the file
     for candidate in _CONSUMERS:
         if f'"{candidate}.py"' in text or f"'{candidate}.py'" in text:
             names.add(candidate)
@@ -140,6 +174,55 @@ def test_the_transitive_check_catches_a_planted_import_in_a_helper():
         assert message is not None, "the plant walked past the static check"
         assert "lattice_witness.py" in message and "cv22_dispersive_gates" in message
         assert "reached from" in message
+
+
+def test_the_walk_catches_dynamic_imports_by_name():
+    """(B) arm for round 3: a module reached by NAME at run time.
+
+    Two plants, both of which passed the previous walk -- it read Import and
+    ImportFrom nodes only, so a string handed to an import CALL was invisible:
+
+      * `importlib.import_module("cv22_dispersive_gates")` in the producer;
+      * `__import__("cv22_dispersive_gates")` in an uncalled helper inside
+        `lattice_witness.py`, which nothing executes either.
+    """
+    with tempfile.TemporaryDirectory(prefix="cv04_dynamic_") as tmp:
+        root = Path(tmp) / "comparators"
+        shutil.copytree(_COMPARATORS, root)
+        producer = Path(tmp) / _PRODUCER.name
+        shutil.copy(_PRODUCER, producer)
+        assert closure_violation(root, producer) is None, "the copy starts clean"
+
+        # plant 1: in the producer itself
+        text = producer.read_text(encoding="utf-8")
+        marker = "fringe_gate = _load_fringe_gate()"
+        assert marker in text
+        producer.write_text(
+            text.replace(marker,
+                         "import importlib\n"
+                         "_sneak = importlib.import_module('cv22_dispersive_gates')\n"
+                         + marker, 1),
+            encoding="utf-8")
+        message = closure_violation(root, producer)
+        assert message is not None, "importlib.import_module walked past the walk"
+        assert "cv22_dispersive_gates" in message and _PRODUCER.name in message
+        shutil.copy(_PRODUCER, producer)      # restore
+        assert closure_violation(root, producer) is None
+
+        # plant 2: __import__ in an uncalled helper of an allowed dependency
+        helper = root / "lattice_witness.py"
+        text = helper.read_text(encoding="utf-8")
+        marker = "def witness_document("
+        assert marker in text
+        helper.write_text(
+            text.replace(marker,
+                         "def _sneak_helper():\n"
+                         "    return __import__('cv22_dispersive_gates')\n\n\n"
+                         + marker, 1),
+            encoding="utf-8")
+        message = closure_violation(root, producer)
+        assert message is not None, "__import__ in a helper walked past the walk"
+        assert "lattice_witness.py" in message and "reached from" in message
 
 
 def test_the_producer_names_no_consumer_module():

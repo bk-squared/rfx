@@ -1,6 +1,6 @@
 {
  "schema": "rfx.slab_family_windows_baseline/v1",
- "purpose": "Bit-identity baseline for the slab-family code motion of issue #928 (development_methodology.md section 2.2: capture before the edit, compare bit-identically after). It is a FROZEN COPY of derived values, not a source for any of them: tests/crossval/test_slab_family_code_motion_identity.py compares the live derivation against it, so a pure code motion that moves a window, a realized-rig number, a mask or a replayed verdict is caught.",
+ "purpose": "Bit-identity baseline for the slab-family code motion of issue #928 (development_methodology.md section 2.2: capture before the edit, compare bit-identically after). It is a FROZEN COPY of derived values, not a source for any of them: tests/crossval/test_slab_family_code_motion_identity.py compares the live derivation against it, so a pure code motion that moves a window, a realized-rig number, a mask, a replayed verdict or cv23's realized per-bin absorption window is caught.",
  "captured_from_commit": "d12656ca3c957b81910ceef7c5162882ee6c09f7",
  "captured_before": "the move of the rig block out of cv22_dispersive_gates.py into slab_family.py",
  "verified_identical_to_main_commit": "d990e18ce0870ac7a893a86627e7232d1cf92c7b",
@@ -343,7 +343,10 @@
     "mean_window_R": "0x1.4856ecf2a31a1p-7",
     "mean_window_T": "0x1.197f83f76386dp-6",
     "mean_window_A": "0x1.bd9471bd17eeep-6",
-    "n_bins_gated": 229
+    "n_bins_gated": 229,
+    "window_A_first_hex": "0x1.2f28fdce1574fp-3",
+    "window_A_len": 340,
+    "window_A_sha256": "5380f74cf86a35ca7f0e2547e2e2699007d0701177337a82d1d4ebc5040d1fd1"
    },
    "tand1": {
     "gates": {
@@ -363,7 +366,10 @@
     "mean_window_R": "0x1.4bb39c99f1ddep-7",
     "mean_window_T": "0x1.186ea9f55fbb9p-6",
     "mean_window_A": "0x1.bac617302df15p-6",
-    "n_bins_gated": 229
+    "n_bins_gated": 229,
+    "window_A_first_hex": "0x1.2f1c97f3c0af7p-3",
+    "window_A_len": 340,
+    "window_A_sha256": "7923a5297df499893388d022286bfde66acc70d34d25f817928e4df6cab479fe"
    },
    "tand3": {
     "gates": {
@@ -383,7 +389,10 @@
     "mean_window_R": "0x1.493cb5dc68a3fp-7",
     "mean_window_T": "0x1.168c1a8f26ed2p-6",
     "mean_window_A": "0x1.bb20966325f86p-6",
-    "n_bins_gated": 229
+    "n_bins_gated": 229,
+    "window_A_first_hex": "0x1.2f1da39a8a0bdp-3",
+    "window_A_len": 335,
+    "window_A_sha256": "92f56247f7428d4e1f34c6755d8e3462697a616bd3219d4fe5c382f2faffde5a"
    }
   }
  },

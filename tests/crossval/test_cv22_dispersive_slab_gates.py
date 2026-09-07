@@ -402,8 +402,14 @@ def _assert_consumer(mod, case: str, values: dict, mult, quantum, f, dt):
     assert realized["window_R_first"] >= want["W_BIN"]
     assert realized["window_R_first"] - want["W_BIN"] < 2e-3
     if case == "cv23":
+        # TWO-SIDED, like the R checks above (round-3 review): a lower bound
+        # alone accepts a widened window, and `win_A = 2 * W_BIN_A + w_A`
+        # passed both this test and the identity file, which compared cv23's
+        # mean A window but not its per-bin one.
         assert realized["window_A_first"] >= want["W_BIN_A"]
+        assert realized["window_A_first"] - want["W_BIN_A"] < 2e-3
         assert realized["mean_window_A"] >= want["W_MEAN_A"]
+        assert realized["mean_window_A"] - want["W_MEAN_A"] < 2e-3
     return realized
 
 
