@@ -58,8 +58,11 @@ The rules that follow from that split, in the form they were argued into:
 * **No self-certification.** Re-running a producer must not widen the gates
   that judge it. Mechanically: a new revision appended to the artifact moves
   nothing until a consumer's adoption record names it. The artifact and an
-  adoption record that cites it may not change in the same diff, with one
-  `bootstrap: true` exemption per artifact for the revision that creates it.
+  adoption record that cites it may not change in the same diff, and a revision
+  that already exists at the diff base may not change at all — new evidence is
+  a new revision. The one exemption is the change that CREATES the artifact,
+  recognised by the artifact being absent at the base; a flag on a revision is
+  not an exemption, because the flag stays true forever (round-2 review).
 * **A guarantee is a re-derivation from outside.** A test that reads the
   producer's artifact, recomputes the window with the policy arithmetic written
   out on its own side, and compares it against what the evaluator actually

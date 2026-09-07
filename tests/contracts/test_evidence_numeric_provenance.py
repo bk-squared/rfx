@@ -388,7 +388,8 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     (AUX_ECHO_NOTE, "3. The per-case ratios, read from the committed artifacts"): 18,
     # 2026-09-06 (#928): the public benchmarks table. This is the page a reader
     # takes "validated" from, so its measured numbers are the ones that must
-    # keep resolving; 91 of them do today.
+    # keep resolving. 93 references parse there; 91 of them carry a value,
+    # which is what this floor counts (the other two are existence-only).
     (BENCHMARKS, "Reference cases"): 85,
 }
 
@@ -789,7 +790,13 @@ def test_the_gate_fires_on_a_present_but_untracked_artifact() -> None:
         pytest.skip("git unavailable; tracking is not a question git can answer")
     probe_rel = "docs/design_notes/.untracked_probe_928.json"
     probe = _REPO / probe_rel
-    assert not probe.exists(), "probe path is not clean; a previous run leaked"
+    # A killed run used to leave this file behind and the next run failed its
+    # own precondition (round-2 item 8). A leftover is removed and reported,
+    # not treated as a failure: the file is this test's, and it is untracked by
+    # construction.
+    if probe.exists():
+        print(f"removing a leftover probe from an interrupted run: {probe_rel}")
+        probe.unlink()
     ref = Reference("doc", "site", f"{probe_rel}::value = 1", probe_rel, "value", "1", "")
     try:
         probe.write_text(json.dumps({"value": 1.0}), encoding="utf-8")

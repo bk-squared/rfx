@@ -21,8 +21,9 @@ The rules below are mechanical consequences of that split:
    the crossval manifest under the case whose id equals its ``producer``;
 2. no self-certification in one step -- the artifact and an adoption record
    that names it may not change in the same branch diff (a re-run touches the
-   artifact; an adoption touches the record), with a single bootstrap
-   exemption per artifact for the revision that creates it;
+   artifact; an adoption touches the record), and a revision that exists at the
+   diff base may not change or disappear at all. The one exemption is the
+   change that CREATES the artifact, recognised by its absence at the base;
 3. fan-out -- every appearance of an adopted value inside the slab family is
    classified, and the classes are checked, not asserted in prose;
 4. display copies -- a fixture that shows an adopted value must carry a

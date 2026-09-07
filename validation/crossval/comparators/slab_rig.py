@@ -20,8 +20,6 @@ importable in a Meep-only environment.
 
 from __future__ import annotations
 
-import os
-import subprocess
 import time
 
 import numpy as np
