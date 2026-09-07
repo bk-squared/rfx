@@ -1,0 +1,51 @@
+name: rfx-weekly-a6000
+description: "Weekly validation lane on a6000: the highmem selection (one multi-GB peak at a time, incl. the ~24 GB oblique-TFSF AD test that no GitHub runner fits) and the gpu-marked suite, at a pinned SHA cloned from the NFS checkout"
+tags: [rfx, weekly, validation, a6000]
+resources:
+  cluster: remilab-c0
+  preset: gpu-a6000-1
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: "Agg"
+  RFX_WEEKLY_RSS: "1"
+  RFX_SHA: "origin/main"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  SRC=/root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory '*'
+  git -C "$SRC" fetch -q origin main
+  SHA=$(git -C "$SRC" rev-parse --short "$RFX_SHA")
+  OUT=/root/workspace/byungkwan-workspace/opt/rfx-vessl-tests/weekly_a6000_${SHA}_$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  WORK=/tmp/rfx-weekly-$SHA
+  rm -rf "$WORK"
+  git clone -q --no-checkout --shared "$SRC" "$WORK"
+  cd "$WORK"
+  git checkout -q --detach "$SHA"
+  echo "checked out $(git rev-parse HEAD): $(git ls-files | wc -l) tracked files"
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest pytest-split 2>&1 | tail -1
+  export PYTHONPATH="$WORK"
+  python -c "import jax, rfx; print('jax', jax.__version__, jax.devices(), 'rfx', rfx.__version__)"
+  IGN="--ignore=tests/crossval/test_meep_crossval.py --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py --ignore=tests/crossval/test_openems_crossval.py --ignore=tests/crossval/test_crossval_comprehensive.py"
+  echo "=== highmem selection (serial) ==="
+  set +e
+  timeout 7200 python -m pytest -v -ra -p no:cacheprovider -m "highmem and not gpu" $IGN > "$OUT/highmem.log" 2>&1
+  RC1=$?
+  echo "highmem rc=$RC1"; tail -3 "$OUT/highmem.log"
+  echo "=== gpu-marked suite ==="
+  timeout 13800 python -m pytest -q -ra -p no:cacheprovider -m gpu $IGN > "$OUT/gpu_suite.log" 2>&1
+  RC2=$?
+  set -e
+  echo "gpu suite rc=$RC2"; tail -3 "$OUT/gpu_suite.log"
+  grep -E '^(FAILED|ERROR)' "$OUT/highmem.log" "$OUT/gpu_suite.log" | head -40 || true
+  printf 'sha=%s highmem_rc=%s gpu_rc=%s\nhighmem_last=%s\ngpu_last=%s\n' "$SHA" "$RC1" "$RC2" "$(tail -1 "$OUT/highmem.log")" "$(tail -1 "$OUT/gpu_suite.log")" > "$OUT/summary.txt"
+  cat "$OUT/summary.txt"
+  echo "=== done: $OUT ==="
+  [ "$RC1" -eq 0 ] && [ "$RC2" -eq 0 ]
