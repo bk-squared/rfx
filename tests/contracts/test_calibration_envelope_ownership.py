@@ -118,21 +118,29 @@ def test_every_cited_envelope_artifact_is_registered_under_its_producer():
 # Value matching cannot tell an adopted number from an unrelated constant that
 # happens to equal it, so the coincidences are declared here -- with the reason
 # and checked below, rather than silently tolerated by a narrower regex.
-COINCIDENTAL_VALUES: dict[tuple[str, float], str] = {
-    ("validation/crossval/comparators/cv22_dispersive_gates.py", 0.01):
-        "MEEP_A_M = 0.01: Meep's length unit a = 1 cm, in metres. Equal to "
-        "W_MEAN_R (0.010) by arithmetic coincidence; it is the reference leg's "
-        "geometry scale and enters no window.",
+# Keyed by (file, SYMBOL), not (file, value): the value form exempted every
+# occurrence of that number in the file, so a planted `W_MEAN_R = 0.010` in
+# cv22 was covered by the exemption written for Meep's `a = 0.01` (round-2
+# review). One symbol, one reason.
+COINCIDENTAL_VALUES: dict[tuple[str, str], str] = {
+    ("validation/crossval/comparators/cv22_dispersive_gates.py", "MEEP_A_M"):
+        "Meep's length unit a = 1 cm, in metres. Equal to W_MEAN_R (0.010) by "
+        "arithmetic coincidence; it is the reference leg's geometry scale and "
+        "enters no window.",
 }
 
 
 def test_every_declared_coincidence_still_exists():
     """A declared coincidence that has gone away is a stale exemption."""
-    for (module, value), reason in COINCIDENTAL_VALUES.items():
-        assert reason.strip(), (module, value)
-        literals = _python_number_literals(_REPO / module)
-        assert any(abs(v - value) <= _REL_TOL * abs(value) for v in literals), (
-            f"{module} no longer carries {value}; drop the exemption.")
+    targets = {**_adopted_values(), **_derived_windows()}
+    for (module, symbol), reason in COINCIDENTAL_VALUES.items():
+        assert reason.strip(), (module, symbol)
+        named = _python_named_numbers(_REPO / module)
+        hits = [v for name, v in named if name == symbol]
+        assert hits, f"{module} no longer defines {symbol}; drop the exemption."
+        assert any(_matches(v, targets) for v in hits), (
+            f"{module}::{symbol} no longer collides with an adopted value or a "
+            f"derived window; the exemption is stale.")
 
 
 def test_consumer_modules_carry_no_envelope_literal():
@@ -145,13 +153,13 @@ def test_consumer_modules_carry_no_envelope_literal():
     targets = {**_adopted_values(), **_derived_windows()}
     for consumer in _adoption_records():
         offenders = []
-        for value in _python_number_literals(_REPO / consumer):
+        for name, value in _python_named_numbers(_REPO / consumer):
             hit = _matches(value, targets)
             if hit is None:
                 continue
-            if COINCIDENTAL_VALUES.get((consumer, value)):
+            if COINCIDENTAL_VALUES.get((consumer, name)):
                 continue
-            offenders.append(f"{value!r} == {hit}")
+            offenders.append(f"{name} = {value!r} == {hit}")
         assert not offenders, (
             f"{consumer} restates {offenders}. A consumer derives from the "
             f"artifact; it keeps neither the adopted values nor the windows "
@@ -169,6 +177,24 @@ def test_the_consumer_literal_guard_catches_a_planted_value():
     assert _matches(0.148, targets) == "W_BIN_A"            # cv23's doubled one
     assert _matches(0.027000000000000003, targets) == "W_MEAN_A"
     assert _matches(0.5, targets) is None                   # an unrelated number
+
+    # ... and the expression forms a review walked past the first version with.
+    import ast as _ast
+    for source, expected in (("148 / 1000", "W_BIN_A"),
+                             ("74 / 1000", "W_BIN"),
+                             ("14 / 1000", "W_MEAN_A_TIGHT"),
+                             ("2 * 0.037", "W_BIN"),
+                             ("-0.011", None),
+                             ("74e-3", "W_BIN")):
+        folded = _fold(_ast.parse(source, mode="eval").body)
+        assert folded is not None, source
+        if expected is None:
+            assert _matches(abs(folded), targets) == "mean_dT"
+        else:
+            assert _matches(folded, targets) == expected, source
+    # a name-keyed exemption covers ONE symbol, not every occurrence of a value
+    assert ("validation/crossval/comparators/cv22_dispersive_gates.py",
+            0.01) not in COINCIDENTAL_VALUES
 
 
 def test_the_artifact_does_not_record_its_citers():
@@ -564,13 +590,89 @@ def _matches(value: float, targets: dict[str, float]) -> str | None:
     return None
 
 
+_BINOPS = {ast.Add: lambda a, b: a + b, ast.Sub: lambda a, b: a - b,
+           ast.Mult: lambda a, b: a * b, ast.Div: lambda a, b: a / b,
+           ast.Pow: lambda a, b: a ** b}
+
+
+def _fold(node) -> float | None:
+    """The value of a constant expression, or None if it is not one.
+
+    A review appended `W_BIN_A = 148 / 1000` -- a GATED window, in expression
+    form -- to a consumer and the whole suite stayed green, because the scan
+    looked at `ast.Constant` nodes and never at the tree above them. Anything
+    built only from numeric literals folds here: `148 / 1000`, `2 * 0.037`,
+    `-0.011`, `74e-3`.
+    """
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
+            return None
+        return float(node.value)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+        value = _fold(node.operand)
+        if value is None:
+            return None
+        return value if isinstance(node.op, ast.UAdd) else -value
+    if isinstance(node, ast.BinOp):
+        handler = _BINOPS.get(type(node.op))
+        if handler is None:
+            return None
+        left, right = _fold(node.left), _fold(node.right)
+        if left is None or right is None:
+            return None
+        try:
+            return float(handler(left, right))
+        except (ZeroDivisionError, OverflowError, ValueError):
+            return None
+    return None
+
+
 def _python_number_literals(path: Path) -> list[float]:
+    """Every numeric value a Python file states, folded."""
     out: list[float] = []
     for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) \
-                and not isinstance(node.value, bool):
-            out.append(float(node.value))
+        value = _fold(node)
+        if value is not None:
+            out.append(value)
     return out
+
+
+def _python_named_numbers(path: Path) -> list[tuple[str, float]]:
+    """(key, value) for every numeric a Python file states.
+
+    The key is the assignment target when there is one -- so an exemption can
+    name `MEEP_A_M` rather than "every 0.01 in this file", which is what the
+    (file, value) form meant and which let `W_MEAN_R = 0.010` through.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    named: list[tuple[str, float]] = []
+    assigned: set[int] = set()
+    for node in ast.walk(tree):
+        targets = []
+        if isinstance(node, ast.Assign):
+            targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
+            value_node = node.value
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            targets, value_node = [node.target.id], node.value
+        else:
+            continue
+        if value_node is None:
+            continue
+        value = _fold(value_node)
+        if value is None:
+            continue
+        assigned.add(id(value_node))
+        for name in targets or ["<unnamed>"]:
+            named.append((name, value))
+    for node in ast.walk(tree):
+        if id(node) in assigned:
+            continue
+        value = _fold(node)
+        if value is None:
+            continue
+        lineno = getattr(node, "lineno", 0)
+        named.append((f"line:{lineno}", value))
+    return named
 
 
 def _number_tokens_in(text: str) -> list[float]:
