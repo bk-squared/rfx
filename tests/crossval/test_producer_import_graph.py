@@ -28,8 +28,10 @@ No FDTD, no physics, no gate value.
 from __future__ import annotations
 
 import ast
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -60,6 +62,84 @@ def _imported_names(path: Path) -> set[str]:
         if f'"{candidate}.py"' in text or f"'{candidate}.py'" in text:
             names.add(candidate)
     return names
+
+
+def _comparator_deps(names: set[str], root: Path) -> set[str]:
+    """The subset of *names* that are comparator modules under *root*."""
+    stems = {path.stem for path in root.glob("*.py")}
+    return names & stems
+
+
+def closure_violation(root: Path, producer: Path) -> str | None:
+    """Walk the producer's comparator imports TRANSITIVELY; report a consumer.
+
+    The first version of this file parsed the producer's own AST and ran one
+    fresh interpreter per direct import. A review planted `import
+    cv22_dispersive_gates` inside a FUNCTION BODY of `lattice_witness.py` -- an
+    allowed producer dependency -- and neither half saw it: the AST scan never
+    looked at that file, and the dynamic check never executes an uncalled body.
+    Every module the producer can reach through the comparator package is
+    parsed here, at any depth, with function bodies included.
+    """
+    seen: set[str] = set()
+    queue = [(producer, "the producer")]
+    while queue:
+        path, why = queue.pop()
+        if not path.is_file():
+            continue
+        names = _imported_names(path)
+        offenders = sorted(names & set(_CONSUMERS))
+        if offenders:
+            return (f"{path.name} imports {offenders} ({why}). A case that "
+                    f"MEASURES the envelope must not depend on a module named "
+                    f"after a case that derives its gates from it -- not "
+                    f"directly and not through a helper.")
+        for dep in sorted(_comparator_deps(names, root)):
+            if dep in seen:
+                continue
+            seen.add(dep)
+            queue.append((root / f"{dep}.py", f"reached from {path.name}"))
+    return None
+
+
+def test_the_producer_reaches_no_consumer_module_transitively():
+    """(1) static, over the whole reachable set."""
+    violation = closure_violation(_COMPARATORS, _PRODUCER)
+    assert violation is None, violation
+    # and the walk really did reach past the producer's own file
+    reached = _comparator_deps(_imported_names(_PRODUCER), _COMPARATORS)
+    assert "lattice_witness" in reached and "slab_family" in reached
+
+
+def test_the_transitive_check_catches_a_planted_import_in_a_helper():
+    """(B) arm: the reviewer's plant, in a scratch copy of the package.
+
+    `import cv22_dispersive_gates` inside a function body of a module the
+    producer legitimately imports. Nothing executes it, so only a static walk
+    of the reachable set can see it.
+    """
+    with tempfile.TemporaryDirectory(prefix="cv04_graph_") as tmp:
+        root = Path(tmp) / "comparators"
+        shutil.copytree(_COMPARATORS, root)
+        producer = Path(tmp) / _PRODUCER.name
+        shutil.copy(_PRODUCER, producer)
+        assert closure_violation(root, producer) is None, "the copy starts clean"
+
+        helper = root / "lattice_witness.py"
+        text = helper.read_text(encoding="utf-8")
+        marker = "def witness_document("
+        assert marker in text, "the plant needs a function to hide in"
+        planted = text.replace(
+            marker,
+            "def _planted_helper():\n"
+            "    import cv22_dispersive_gates  # never called\n"
+            "    return cv22_dispersive_gates\n\n\n" + marker, 1)
+        helper.write_text(planted, encoding="utf-8")
+
+        message = closure_violation(root, producer)
+        assert message is not None, "the plant walked past the static check"
+        assert "lattice_witness.py" in message and "cv22_dispersive_gates" in message
+        assert "reached from" in message
 
 
 def test_the_producer_names_no_consumer_module():

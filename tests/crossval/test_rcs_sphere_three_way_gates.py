@@ -94,6 +94,59 @@ def test_bempp_h_refinement_converges_to_mie(fx):
 
 
 _KEYSTEP = re.compile(r"\[(\d+)\]|([A-Za-z0-9_][A-Za-z0-9_-]*)")
+# The WHOLE keypath must be dotted keys and [i] indices and nothing else: the
+# first version used findall, so `monostatic/rfx_sigma_over_pi_a2` and
+# `monostatic..` tokenized to the same steps as the correct spelling and
+# resolved happily (round-2 item 9b).
+_KEYPATH = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_][A-Za-z0-9_-]*|\[\d+\])*$")
+
+# Where a referenced measurement is allowed to live: its CANONICAL home, not
+# "any tracked file with those bytes" (round-2 item 4 -- the reviewer resolved
+# a byte-identical duplicate of the sibling fixture and the gate accepted it).
+#
+# The crossval manifest is the registry for a case's own artifacts, and it is
+# consulted first. This fixture is not one: it was produced by its own
+# committed generator for issue #276, and no crossval case's script writes it,
+# so registering it under cv16 would assert an ownership that does not exist --
+# the mistake this whole change exists to stop. It is registered HERE instead,
+# with the two things that make the claim checkable: the generator that wrote
+# it and the gate that reads it, both committed.
+CANONICAL_ARTIFACTS: dict[str, dict[str, str]] = {
+    "tests/fixtures/rcs_sphere_mie/fixture.json": {
+        "measurement": "PEC-sphere monostatic backscatter RCS at the fine rung (ka~1, dx=lambda/40)",
+        "generator": "tests/fixtures/rcs_sphere_mie/generate_fixture.py",
+        "gate": "tests/crossval/test_rcs_mie_reference_gates.py",
+        "why_not_in_the_manifest": (
+            "no crossval case script produces it; it is issue #276's own "
+            "fixture, and claiming it under cv16 would be a false ownership"),
+    },
+}
+
+
+def _manifest_artifacts() -> set[str]:
+    manifest = json.loads((_REPO_ROOT / "validation/crossval/manifest.json")
+                          .read_text(encoding="utf-8"))
+    return {path for case in manifest["cases"] for path in case["artifact_paths"]}
+
+
+def _assert_canonical(rel: str, reference: str) -> None:
+    """The path must be the registered home of the measurement it names."""
+    if rel in _manifest_artifacts():
+        return
+    entry = CANONICAL_ARTIFACTS.get(rel)
+    assert entry is not None, (
+        f"{reference}: {rel} is not a registered artifact. A reference must "
+        f"name the canonical home of a measurement -- an artifact declared in "
+        f"validation/crossval/manifest.json, or one registered in "
+        f"CANONICAL_ARTIFACTS with its generator and its gate -- so that a "
+        f"byte-identical copy somewhere else cannot stand in for it.")
+    for key in ("measurement", "generator", "gate"):
+        assert entry.get(key, "").strip(), (rel, key)
+    for key in ("generator", "gate"):
+        target = entry[key]
+        assert (_REPO_ROOT / target).is_file(), (rel, key, target)
+        if git_available(_REPO_ROOT):
+            assert is_tracked(target, _REPO_ROOT), (rel, key, target)
 
 
 def _resolve(reference: str):
@@ -108,6 +161,9 @@ def _resolve(reference: str):
     """
     rel, sep, keypath = reference.partition("::")
     assert sep and keypath, f"{reference!r} is not a path::keypath reference"
+    assert _KEYPATH.match(keypath), (
+        f"{reference}: {keypath!r} is not a keypath -- dotted keys and [i] "
+        f"indices only")
     assert not Path(rel).is_absolute() and ".." not in Path(rel).parts, (
         f"{reference}: the path must be repo-relative")
     target = _REPO_ROOT / rel
@@ -116,6 +172,7 @@ def _resolve(reference: str):
         assert is_tracked(rel, _REPO_ROOT), (
             f"{reference}: {rel} exists here but is NOT git-tracked, so the "
             f"reference resolves on this machine and nowhere else.")
+    _assert_canonical(rel, reference)
     node = json.loads(target.read_text())
     walked = ""
     for step in _KEYSTEP.finditer(keypath):
@@ -151,6 +208,50 @@ def test_rfx_fine_column_is_a_resolvable_reference_not_a_copy(fx):
     assert _rfx_fine(fx) == expected
     assert three_way["rfx_fine_witness_status"] == "carried-unwitnessed"
     assert "CPML" in three_way["rfx_fine_witness_note"]
+
+
+def test_the_resolver_refuses_a_duplicate_and_a_malformed_keypath(fx, tmp_path):
+    """(B) arm for round-2 items 4 and 9b.
+
+    A byte-identical COPY of the sibling fixture, git-tracked or not, is not
+    the measurement's home; and a keypath that is not dotted keys must not
+    tokenize into one that is.
+    """
+    reference = fx["three_way_ka1"]["rfx_fine_ref"]
+    rel, _, keypath = reference.partition("::")
+
+    # the real one resolves
+    assert _resolve(reference) == json.loads(
+        (_REPO_ROOT / rel).read_text())["monostatic"]["rfx_sigma_over_pi_a2"]
+
+    # A byte-identical duplicate is refused because the PATH is not the
+    # registered home -- the reviewer's plant was git-tracked, so the tracking
+    # check alone would have accepted it. Both halves are exercised: the
+    # registry rule on a tracked file that is not the home, and the whole
+    # resolver on an untracked copy.
+    tracked_but_not_the_home = "tests/fixtures/rcs_sphere_three_way/fixture.json"
+    assert is_tracked(tracked_but_not_the_home, _REPO_ROOT)
+    with pytest.raises(AssertionError, match="not a registered artifact"):
+        _assert_canonical(tracked_but_not_the_home,
+                          f"{tracked_but_not_the_home}::{keypath}")
+
+    duplicate_rel = "tests/fixtures/rcs_sphere_mie/fixture_copy_probe.json"
+    duplicate = _REPO_ROOT / duplicate_rel
+    assert not duplicate.exists(), "probe path is not clean; a previous run leaked"
+    try:
+        duplicate.write_bytes((_REPO_ROOT / rel).read_bytes())
+        with pytest.raises(AssertionError, match="not a registered artifact"):
+            _assert_canonical(duplicate_rel, f"{duplicate_rel}::{keypath}")
+        with pytest.raises(AssertionError, match="NOT git-tracked"):
+            _resolve(f"{duplicate_rel}::{keypath}")
+    finally:
+        duplicate.unlink(missing_ok=True)
+
+    # malformed keypaths
+    for bad in ("monostatic/rfx_sigma_over_pi_a2", "monostatic..",
+                "monostatic rfx", "monostatic.[0]"):
+        with pytest.raises(AssertionError, match="is not a keypath"):
+            _resolve(f"{rel}::{bad}")
 
 
 def test_three_way_spread_self_consistent_and_close(fx):
