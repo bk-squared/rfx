@@ -1,0 +1,76 @@
+name: regen-durations
+# One-off, manual: measure per-test durations for pytest-split on the SAME runner
+# class the fast and slow lanes use, and upload them as artifacts. The merged
+# result becomes .test_durations (see scripts/ci/merge_test_durations.py).
+# Why: after the 2026-09-03 test consolidation renamed files and #936 added
+# ~740 tests, the committed durations matched almost nothing, pytest-split
+# fell back to a count split in collection order, and the fast lane ran with
+# shard 1 at ~1 min and shards 3-6 at 23-35 min (45-min cap).
+on:
+  workflow_dispatch:
+
+jobs:
+  fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [1, 2, 3, 4, 5, 6]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: pip install -e ".[dev]"
+      - name: Fast selection, shard ${{ matrix.group }} of 6, store durations
+        env:
+          RFX_WEEKLY_RSS: "1"
+        run: >
+          mkdir -p durations &&
+          pytest -q -ra -p no:cacheprovider
+          --splits 6 --group ${{ matrix.group }}
+          --ignore=tests/crossval/test_meep_crossval.py
+          --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py
+          --ignore=tests/crossval/test_openems_crossval.py
+          --ignore=tests/crossval/test_crossval_comprehensive.py
+          --store-durations --durations-path durations/fast_${{ matrix.group }}.json
+          || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: durations-fast-${{ matrix.group }}
+          path: durations/fast_${{ matrix.group }}.json
+          if-no-files-found: error
+
+  slow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: pip install -e ".[dev]"
+      - name: Slow selection, shard ${{ matrix.group }} of 4, store durations
+        env:
+          RFX_WEEKLY_RSS: "1"
+        run: >
+          mkdir -p durations &&
+          pytest -q -ra -p no:cacheprovider
+          -m "not gpu and not highmem"
+          --splits 4 --group ${{ matrix.group }}
+          --ignore=tests/crossval/test_meep_crossval.py
+          --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py
+          --ignore=tests/crossval/test_openems_crossval.py
+          --ignore=tests/crossval/test_crossval_comprehensive.py
+          --store-durations --durations-path durations/slow_${{ matrix.group }}.json
+          || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: durations-slow-${{ matrix.group }}
+          path: durations/slow_${{ matrix.group }}.json
+          if-no-files-found: error
