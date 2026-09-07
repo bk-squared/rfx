@@ -6,6 +6,47 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — `rfx.fdfd` pipeline: 3-D vector FDFD, ports, conductors, de-embedding, GDS front end
+
+Built on the differentiable sparse solve below; every module keeps the same
+contract (static pattern, traced values, AD in both modes, gates asserted
+against an independent reference, gradients against 4th-order FD).
+
+- **`sparse_solve`** now takes an `(n, m)` right-hand side: one factorisation
+  serves all `m` excitations (the FDFD N-port advantage); block solve equals
+  the column solves to 1e-17, gradients to 3e-11 of FD.
+- **`rfx.fdfd.yee3d`** — 3-D Yee curl-curl FDFD: complex `eps_r` per cell,
+  PEC edge masks, PML by polynomial complex stretching, nonuniform traced
+  `dx/dy/dz`. Assembled operator equals `scipy` `Ch@Ce - k0² eps` to 3e-16.
+  WR90 TE10 port with a calibration solve: 10-cell PML reflection 1.9e-5;
+  a full-height inductive iris reproduces the 2-D `hplane` |S11|/|S21| on
+  the same transverse grid to 3e-5 / 1.4e-5; gradients w.r.t. one cell's
+  `eps_r` and one `dz` step match FD to 1e-10.
+- **`rfx.fdfd.ports3d`** — lumped ports (internal impedance as a diagonal
+  admittance derived from the Yee cell, V from E, I from the discrete Ampère
+  loop), N-port S and Z from one factorisation, renormalisation. One-port
+  load gate |S11 − (R−Z0)/(R+Z0)| ≤ 3e-3 at 10 MHz (residual is the gap's
+  shunt C, scales with f); wire-over-ground two-port |S21| 0.9997,
+  reciprocity 3e-15, passivity 1 + 2e-15; dS11/dR vs FD 3e-7.
+- **`rfx.fdfd.conductor`** — Leontovich surface impedance on cell-mask
+  conductors and on the outer walls (cut-cell Ampère loops on the air side
+  of the surface). Copper WR90 TE10 attenuation vs Pozar: +1.5e-3 at 24
+  cells across a, +7.3e-4 at 32 (second order); d|S21|²/dσ vs FD 1.2e-5.
+- **`rfx.fdfd.deembed`** — jnp `s_to_z`/`z_to_s`/`s_to_y`/`y_to_s`/ABCD,
+  the five `rfx.deembed` functions (identical to 1e-12), open-short
+  de-embedding (recovers a synthetic DUT to 6e-9 Ω), and `l_diff`/`q_diff`/
+  single-ended L, Q as used by the SG13G2 LC-VCO paper (arXiv 2607.08852).
+- **`rfx.fdfd.gds`** — `gdstk` GDS reading, `LayerStack` (+ approximate
+  `sg13g2_stack`), `rect_spiral`/`octagonal_spiral` generators with a
+  feasibility rule (every side ≥ width; the first version could emit a
+  self-intersecting octagon, caught in review), `mesh_lines` snapping grid
+  lines to every axis-aligned edge with grading ratio ≤ 1.5, and area-exact
+  `rasterise` (fill-fraction area conservation to 1e-15).
+
+Not yet: symmetric centre-tapped spiral, PDK via arrays, conductors inside
+PML, port-discontinuity de-embedding of lumped ports, GPU/iterative solver
+for RFIC-scale grids.
+
 ### Added — `rfx.fdfd`: differentiable frequency-domain solve (sparse direct + AD in both modes)
 
 - **`rfx.fdfd.sparse_solve(data, rows, cols, b)`** — a host-factorised

@@ -6,6 +6,11 @@ The sparsity pattern is static (NumPy); the entries and the right-hand side
 are JAX arrays and BOTH are differentiable, in forward mode (``jax.jvp``,
 ``jax.jacfwd``) and reverse mode (``jax.grad``, ``jax.vjp``).
 
+``b`` may be a single vector ``(n,)`` or a block of ``m`` right-hand sides
+``(n, m)``; the result has the same shape. One LU factorisation serves all
+``m`` columns, which is the N-port FDFD case: factor the Helmholtz operator
+once, then solve for every port excitation.
+
 Mechanism
 ---------
 The factorisation itself runs on the host through ``scipy.sparse.linalg.splu``
@@ -69,8 +74,13 @@ def _factor(data: np.ndarray, rows: np.ndarray, cols: np.ndarray, n: int) -> spl
 
 
 def sparse_matvec(data: jax.Array, rows: np.ndarray, cols: np.ndarray, x: jax.Array) -> jax.Array:
-    """``A @ x`` for the COO matrix ``(rows, cols, data)``; pure JAX, differentiable."""
-    return jnp.zeros(x.shape[0], dtype=jnp.result_type(data, x)).at[rows].add(data * x[cols])
+    """``A @ x`` for the COO matrix ``(rows, cols, data)``; pure JAX, differentiable.
+
+    ``x`` is ``(n,)`` or ``(n, m)``; in the block case every column is
+    multiplied by the same matrix and the result is ``(n, m)``.
+    """
+    d = data if x.ndim == 1 else data[:, None]
+    return jnp.zeros(x.shape, dtype=jnp.result_type(data, x)).at[rows].add(d * x[cols])
 
 
 def sparse_solve(data: jax.Array, rows: np.ndarray, cols: np.ndarray, b: jax.Array) -> jax.Array:
@@ -78,8 +88,10 @@ def sparse_solve(data: jax.Array, rows: np.ndarray, cols: np.ndarray, b: jax.Arr
 
     ``rows``/``cols`` are static integer NumPy arrays (the pattern);
     ``data`` and ``b`` are JAX arrays and may be traced, jitted and
-    differentiated in either mode. Duplicate ``(row, col)`` pairs are summed,
-    as in ``scipy.sparse``.
+    differentiated in either mode. ``b`` is ``(n,)`` for one right-hand side
+    or ``(n, m)`` for ``m`` of them; ``x`` has the same shape and the host
+    factorises ``A`` once for all columns. Duplicate ``(row, col)`` pairs are
+    summed, as in ``scipy.sparse``.
     """
     if not jax.config.read("jax_enable_x64"):
         raise RuntimeError(
@@ -87,6 +99,8 @@ def sparse_solve(data: jax.Array, rows: np.ndarray, cols: np.ndarray, b: jax.Arr
             "targets have cond ~1e12. Enable jax_enable_x64 for this scope.")
     rows = np.asarray(rows, dtype=np.int64)
     cols = np.asarray(cols, dtype=np.int64)
+    if b.ndim not in (1, 2):
+        raise ValueError(f"b must have shape (n,) or (n, m), got {b.shape}")
     n = int(b.shape[0])
     if rows.shape != cols.shape:
         raise ValueError("rows and cols must have the same shape")
@@ -94,7 +108,7 @@ def sparse_solve(data: jax.Array, rows: np.ndarray, cols: np.ndarray, b: jax.Arr
         raise ValueError(f"data has shape {data.shape}, pattern has {rows.shape}")
     data = jnp.asarray(data, dtype=jnp.complex128)
     b = jnp.asarray(b, dtype=jnp.complex128)
-    out_spec = jax.ShapeDtypeStruct((n,), jnp.complex128)
+    out_spec = jax.ShapeDtypeStruct(tuple(b.shape), jnp.complex128)
 
     def _host(trans: bool):
         def f(d, rhs):
