@@ -28,7 +28,7 @@ jobs:
           RFX_WEEKLY_RSS: "1"
         run: >
           mkdir -p durations &&
-          pytest -q -ra -p no:cacheprovider
+          pytest -v -ra -p no:cacheprovider
           --splits 6 --group ${{ matrix.group }}
           --ignore=tests/crossval/test_meep_crossval.py
           --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py
@@ -60,7 +60,7 @@ jobs:
           RFX_WEEKLY_RSS: "1"
         run: >
           mkdir -p durations &&
-          pytest -q -ra -p no:cacheprovider
+          pytest -v -ra -p no:cacheprovider
           -m "not gpu and not highmem"
           --splits 4 --group ${{ matrix.group }}
           --ignore=tests/crossval/test_meep_crossval.py
