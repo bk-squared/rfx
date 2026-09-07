@@ -44,6 +44,22 @@ JUDGE_PATH = REPO_ROOT / "validation/crossval/comparators/ring_mode_judge.py"
 F_MIN, F_MAX = 0.10, 0.20
 RECORD_T = 291.0
 
+# The REFERENCE solver's own harminv record, required by the judge since #907
+# (the Q window and the Q-gating cut are read on min(T_rfx, T_ref), because
+# both Q's are harminv readings off finite records). 300.0 is the published
+# record of the Meep "Modes of a Ring Resonator" tutorial, whose harminv output
+# is cv02's frozen reference: the tutorial wraps Harminv in mp.after_sources
+# and runs until_after_sources=300, and its own text says "we have only
+# analyzed it for about 300 time units".
+#
+# This stream is unaffected by the value for a reason worth stating exactly:
+# it is NOT that q_log_ratio is identically zero (an unmatched-but-gated row
+# leaves q_pass = None, which fails the q gate, and the stream does draw
+# "missing" modes, so WHICH rows are gated does affect the verdict). It is that
+# RECORD_T = 291 is below every candidate T_ref, so T_cmp = min(291, T_ref) =
+# 291 either way and every gated row is the row it was before.
+REFERENCE_RECORD_T = 300.0
+
 # Trial-stream shape. Pre-declared alongside the judge; none of it is fitted to
 # an outcome. "inside" reproduces the audit's stream (an rfx mode inside the
 # matcher window); "displaced" and "missing" are the two defect classes the
@@ -124,7 +140,7 @@ def main() -> int:
     legacy_mean_ge_5 = 0
     new_fail = new_mean_ge_5 = 0
     new_max_mean = 0.0
-    new_fail_unmatched = new_fail_mean = new_fail_max = 0
+    new_fail_unmatched = new_fail_mean = new_fail_max = new_fail_q = 0
     clean_trials = clean_new_fail = clean_legacy_fail = 0
     legacy_max_mean = 0.0
 
@@ -144,6 +160,7 @@ def main() -> int:
         solver = [rmj.SolverMode(float(f), float(q))
                   for f, q in zip(rfx_f, rfx_Q)]
         verdict = rmj.judge(reference, solver, RECORD_T,
+                            reference_record_length=REFERENCE_RECORD_T,
                             f_min=F_MIN, f_max=F_MAX)
         if verdict.mean_err_pct is not None:
             new_max_mean = max(new_max_mean, verdict.mean_err_pct)
@@ -154,6 +171,7 @@ def main() -> int:
             new_fail_unmatched += int(not verdict.gates["unmatched"])
             new_fail_mean += int(not verdict.gates["mean_err"])
             new_fail_max += int(not verdict.gates["max_err"])
+            new_fail_q += int(not verdict.gates["q"])
 
         if np.all(kinds == "inside"):
             clean_trials += 1
@@ -164,6 +182,7 @@ def main() -> int:
         "trials": args.trials,
         "seed": args.seed,
         "record_T_meep_units": RECORD_T,
+        "reference_record_T_meep_units": REFERENCE_RECORD_T,
         "legacy": {
             "failures": legacy_fail,
             "max_mean_err_pct": legacy_max_mean,
@@ -177,6 +196,7 @@ def main() -> int:
                 "unmatched": new_fail_unmatched,
                 "mean_err": new_fail_mean,
                 "max_err": new_fail_max,
+                "q": new_fail_q,
             },
         },
         "defect_free_trials": {

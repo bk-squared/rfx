@@ -18,11 +18,16 @@ Exit codes (rfx crossval convention):
   0 = all PASS including the Meep cross-check. Five gates (see
       validation/crossval/comparators/ring_mode_judge.py): every Meep mode
       assigned a distinct rfx mode (unmatched = FAIL), >=2 modes, mean AND max
-      |df|/f < 5%, and Q within tau_ref/T of the reference for every mode whose
-      decay the record actually observed.
+      |df|/f < 5%, and Q within tau_ref/min(T_rfx, T_ref) of the reference for
+      every mode whose decay the COMPARISON record actually observed. Both Q's
+      are harminv readings off finite records, so the comparison is limited by
+      the shorter of the two (#907).
   1 = rfx self-check failed (rfx Harminv found no ring modes — broken physics)
-  2 = rfx self-check OK but Meep reference is unavailable — inconclusive
-      crossval, NOT a pass. CI must not treat this as green.
+  2 = rfx self-check OK but the cross-check is inconclusive, NOT a pass. CI
+      must not treat this as green. Two ways in: the Meep reference is
+      unavailable, or the Q gate is VACUOUS — no reference mode's decay was
+      observed by the comparison record, so `all()` over the gated rows is
+      True having tested nothing (#907, pre-declaration Correction 4).
 
 Run:
   JAX_ENABLE_X64=1 python validation/crossval/02_ring_resonator.py
@@ -127,6 +132,31 @@ if HAVE_MEEP:
     # Run: source active, then after_sources with harminv for 300 time units
     sim_meep.run(until_after_sources=300, *[h])
 
+    # The REFERENCE harminv record length, in Meep units (a/c). Since #907 the
+    # judge needs it: both Q's are harminv readings off finite records, so the
+    # Q window and the Q-gating cut are read on min(T_rfx, T_ref), and treating
+    # Q_ref as exact is what made a longer rfx record red a stable Q.
+    #
+    # This is a reference-side datum, derived from the reference run itself --
+    # the same class of input as the reference f and Q, so the judge's
+    # anti-tautology property (no measured rfx quantity in the window) is
+    # untouched.
+    #
+    # Why the WHOLE run and not 300: this script passes `h` to run() WITHOUT
+    # mp.after_sources (the Meep tutorial wraps it; this script never has), so
+    # this harminv accumulates from t=0 and its record is the full simulated
+    # time -- about 450 Meep units here, not the 300 that follows source-off.
+    # Where the record length is ambiguous the rule is to take the LONGEST
+    # defensible one, because a longer T_ref gives a TIGHTER window; the full
+    # run is both the honest reading (it is literally what harminv was fed) and
+    # the conservative one. Feeding harminv the driven portion also distorts
+    # the fit ("the presence of a source will distort the analysis", Meep
+    # docs), which is an argument for wrapping it in mp.after_sources -- a
+    # change to the reference, tracked separately, NOT made here.
+    meep_harminv_record_T = sim_meep.meep_time()
+    print(f"\n  Meep harminv record T_ref = {meep_harminv_record_T:.1f} "
+          f"(Meep units; whole run — harminv is not wrapped in after_sources)")
+
     print("\n  Meep Harminv results:")
     print(f"  {'freq':>10} {'Q':>10} {'amp':>12}")
     # NOTE: the [] init must live on THIS branch too — it used to exist only
@@ -200,35 +230,37 @@ source_off_time = 2.0 * wf_main.t0
 #     summary of this script, PR body or docstring:
 #     **the cv02 verdict lane does not use the tau-scaled record.**
 #
-#     Why not, honestly: not because a fixed record is better physics, but
-#     because this judge's per-mode Q window ``tau_ref/T`` is a record-length
-#     RESOLUTION bound, so it shrinks as 1/T while the rfx-vs-Meep Q gap (a
-#     discretization offset) stays put. Measured on the committed
-#     reference/rfx mode pair (tests/crossval/test_cv02_ring_mode_judge.py's
-#     MEEP_REFERENCE / RFX_TODAY, re-driven at four lengths):
-#         T = 291  (committed): gate q PASS  (mode-1 |lnQ| 0.070 vs window 0.747)
-#         T = 3385 (1 e-fold of the slowest mode): gate q FAIL (window 0.064)
-#         T = 15600 (-40 dB record): modes 1 AND 2 FAIL (windows 0.014 / 0.044)
-#     while rfx's own Q is stable on every RESOLVED span that was actually
-#     recorded (they cover 291 -> 3281 of the range above):
-#         mode 2 (f=0.1472): Q 357.61 -> 356.83 (0.22%) for T = 291 -> 1101
-#             (docs/research_notes/audit-2026-09-02/verify/G2_cv02.md)
-#         slowest in-band mode (f=0.1753): Q 1787.6 @ T=1575 -> 1757.3 @ T=3281
-#             (1.7%), rungs 1-2 of the recorded Meep-absent run
-#             docs/research_notes/audit-2026-09-02/fix2/
-#             i4_PR896_cv02_meep_absent.log
-#     (That run's bootstrap Q=1686.9 @ T=385 is NOT quoted as invariance
-#     evidence: at T/tau=0.126 the judge's own floor calls it UNRESOLVED, i.e.
-#     not a measurement.)
-#     So a LONGER, better-settled record would red a physically sound case.
-#     That is a comparator defect, not an rfx defect, and fixing it means
-#     giving the Q window a floor that encodes the expected discretization Q
-#     gap -- a change to a claims-bearing gate, with its own root cause and
-#     evidence. It is NOT done in this change; it is tracked as issue #907 --
-#     the tau_ref/T window shrinks with T faster than the physics does, so a
-#     longer record fails a stable Q (see ring_mode_judge.q_window "Known
-#     limitation"). Until it is fixed the verdict lane's PASS is contingent on
-#     the record staying short, and this comment is the record of that.
+#     Why not: COMPARABILITY. Both solvers see the same record, so a
+#     difference between them is a difference in physics rather than a
+#     difference in how long each one was watched. That is the whole reason,
+#     and since #907 it is the only one.
+#
+#     The reason that used to be written here -- that a longer record would red
+#     the Q gate -- is GONE, because the defect behind it is fixed. The Q
+#     window was ``tau_ref/T_rfx``, a resolution bound that treated the
+#     reference Q as exact, so it shrank as 1/T_rfx without limit while the
+#     rfx-vs-Meep Q gap did not. Measured on the committed reference/rfx pair
+#     (tests/crossval/test_cv02_ring_mode_judge.py's MEEP_REFERENCE /
+#     RFX_TODAY) the old rule gave:
+#         T_rfx = 291  (committed): gate q PASS  (mode-1 |lnQ| 0.070 vs 0.747)
+#         T_rfx = 3385 (1 e-fold of the slowest mode): gate q FAIL (0.064)
+#         T_rfx = 15600 (-40 dB record): modes 1 AND 2 FAIL (0.014 / 0.044)
+#     The amended rule reads the window and the gating cut on
+#     T_cmp = min(T_rfx, T_ref) -- Q_ref is a harminv reading off the
+#     reference's own finite record, and a difference cannot be sharper than
+#     its blunter term -- so at every one of those lengths the gate PASSES,
+#     with the window pinned at the reference's own resolution instead of
+#     running away with T_rfx.
+#
+#     CONSEQUENCE, stated so it is not rediscovered as a surprise: extending
+#     THIS lane's record now changes no gate outcome at all (above T_ref the
+#     comparison is bound by the reference, and mode 3 stays ungated at any
+#     T_rfx because the reference observed only ~15% of one e-folding of it).
+#     Unifying the two record rules is therefore a free follow-up rather than a
+#     blocked one. The only remaining lever on this gate's POWER is a longer
+#     REFERENCE record: raising the Meep run would tighten every window and is
+#     the one thing that could bring mode 3 into gating range. It re-measures
+#     the reference Q's, so the frozen board moves with it.
 #
 #   * Meep ABSENT (exit 2, inconclusive -- there is NO verdict to preserve):
 #     the record is scaled at runtime to the slowest RESOLVED in-band mode's
@@ -460,9 +492,11 @@ rfx_freqs_meep = [f * a / C0 for f, Q, amp in rfx_modes]
 # (The module was loaded once as `ring_mode_judge` in PART 2 for the settling
 # witness; it is reused here for the judge.)
 
-# Record length harminv actually saw, in Meep units (a/c). Every Q window below
-# is tau_ref / T computed from THIS and from the reference Q -- no chosen
-# number. See docs/design_notes/20260831_cv02_ring_judge_predeclaration.md.
+# Record length rfx's harminv actually saw, in Meep units (a/c). Every Q window
+# below is tau_ref / min(T_rfx, T_ref), computed from THIS, from the reference
+# record and from the reference Q -- no chosen number. See
+# docs/design_notes/20260831_cv02_ring_judge_predeclaration.md (G5 +
+# Correction 4).
 record_T_meep = len(signal) * dt * C0 / a
 fmin_meep = fcen - df / 2
 fmax_meep = fcen + df / 2
@@ -472,8 +506,20 @@ reference_modes = [ring_mode_judge.ReferenceMode(freq=mf, Q=mQ)
 solver_modes = [ring_mode_judge.SolverMode(freq=f * a / C0, Q=Q, amplitude=amp)
                 for f, Q, amp in rfx_modes]
 
-verdict = ring_mode_judge.judge(reference_modes, solver_modes, record_T_meep,
-                                f_min=fmin_meep, f_max=fmax_meep)
+# The reference record is REQUIRED by the judge (#907) -- an omitted T_ref must
+# be a TypeError, never a silent fall-back to the rule that treated Q_ref as
+# exact. On the Meep-absent lane there IS no reference run, so the sentinel
+# NO_REFERENCE_RECORD (= 0.0) says so explicitly rather than reaching
+# min(T_rfx, 0.0) by accident. It cannot flip a verdict on that lane: with no
+# reference there are no reference modes, hence no rows and no gated rows, and
+# the lane exits 2 below regardless.
+reference_record_T_meep = (meep_harminv_record_T if HAVE_MEEP
+                           else ring_mode_judge.NO_REFERENCE_RECORD)
+
+verdict = ring_mode_judge.judge(
+    reference_modes, solver_modes, record_T_meep,
+    reference_record_length=reference_record_T_meep,
+    f_min=fmin_meep, f_max=fmax_meep)
 
 print()
 if HAVE_MEEP:
@@ -722,8 +768,28 @@ if verdict.mean_err_pct is not None:
     print(f"  Mean freq error:  {verdict.mean_err_pct:.3f}%")
 for gate_name, gate_ok in verdict.gates.items():
     print(f"  {'PASS' if gate_ok else 'FAIL'}: gate {gate_name}")
+print(f"  Q-gated reference modes: {verdict.n_q_gated} of "
+      f"{len(verdict.rows)} (comparison record T_cmp = "
+      f"{verdict.comparison_record_length:.1f} Meep units, bound by the "
+      f"{verdict.record_binding} record)")
 if not verdict.passed:
     PASS = False
+
+# An empty gated set is INCONCLUSIVE, not a pass (#907, pre-declaration
+# Correction 4). `gates["q"] = all(...)` over no rows is True having tested
+# nothing, so a board whose comparison record observed no mode's decay would
+# otherwise exit 0 while admitting any Q error whatever. This is the script's
+# existing "inconclusive, NOT a pass" semantics (exit 2), reused rather than
+# re-invented; it is deliberately not a sixth judge gate, because a hard
+# ">= 1 gated mode" gate would fail defect-free trials of the pre-declared
+# 200k stream, and criterion (C) published that those never fail.
+if PASS and verdict.q_vacuous:
+    print("\n  gate q is VACUOUS: no reference mode's decay was observed by "
+          "the comparison record")
+    print(f"  (T_cmp = {verdict.comparison_record_length:.1f} Meep units), so "
+          f"the gate is an empty conjunction.")
+    print("[SKIP] Q cross-check inconclusive — exit 2, NOT a crossval PASS.")
+    sys.exit(2)
 
 if PASS:
     print("\nALL CHECKS PASSED")

@@ -2,6 +2,7 @@
   "trials": 200000,
   "seed": 812,
   "record_T_meep_units": 291.0,
+  "reference_record_T_meep_units": 300.0,
   "legacy": {
     "failures": 0,
     "max_mean_err_pct": 4.985121432556967,
@@ -14,7 +15,8 @@
     "failures_by_gate": {
       "unmatched": 62260,
       "mean_err": 23043,
-      "max_err": 31534
+      "max_err": 31534,
+      "q": 50593
     }
   },
   "defect_free_trials": {

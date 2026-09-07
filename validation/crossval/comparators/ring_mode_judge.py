@@ -34,14 +34,23 @@ Gates (all evaluated only when the external reference is present):
 ``count``     at least ``min_matched`` (2) reference modes assigned
 ``mean_err``  mean relative frequency error over ALL assigned pairs < 5%
 ``max_err``   max relative frequency error over ALL assigned pairs < 5%
-``q``         for every mode whose decay the record actually observed,
-              ``|ln(Q_rfx / Q_ref)| <= ln(1 + tau_ref / T)``
+``q``         for every mode whose decay the COMPARISON record actually
+              observed, ``|ln(Q_rfx / Q_ref)| <=
+              ln(1 + tau_ref / min(T_rfx, T_ref))``
 ============  ==========================================================
 
-The Q window is derived, not chosen — see :func:`q_window`.
+The Q window is derived, not chosen — see :func:`q_window`. Since #907 it is
+limited by the shorter of the two solvers' harminv records, because both Q's
+are readings off finite records and a difference cannot be sharper than its
+blunter term.
 
-Frequencies and the record length must be in reciprocal units (the script
-passes both in Meep normalised units: ``f`` in ``c/a``, ``T`` in ``a/c``).
+**The ``q`` gate is an ``all()`` over the gated rows, so it is vacuously True
+when no mode is gated.** That state is INCONCLUSIVE, not a pass: see
+:attr:`Verdict.q_vacuous`, which :func:`format_report` prints and which the
+crossval script turns into exit 2 (#907, pre-declaration Correction 4).
+
+Frequencies and both record lengths must be in reciprocal units (the script
+passes them in Meep normalised units: ``f`` in ``c/a``, ``T`` in ``a/c``).
 Pre-declaration: ``docs/design_notes/20260831_cv02_ring_judge_predeclaration.md``.
 """
 
@@ -74,6 +83,16 @@ Q_RECORD_MIN_EFOLDS = 0.25
 #: Mode-admission floor, applied symmetrically to both solvers' harminv output.
 MIN_Q = 1.0
 
+#: The reference record length to pass when there IS no reference run (the
+#: Meep-absent lane). Not a length: a sentinel that makes the comparison record
+#: ``min(T_rfx, 0) = 0``, so :func:`q_window` returns an infinite window and no
+#: mode is Q-gated. That is the correct outcome and cannot flip a verdict --
+#: with no reference there are no reference modes, hence no rows, hence no
+#: gated rows, and that lane exits 2 (inconclusive) regardless. It exists so
+#: the call site says "no reference run happened" explicitly instead of
+#: reaching ``min(T_rfx, 0.0)`` by accident (#907).
+NO_REFERENCE_RECORD = 0.0
+
 
 @dataclass(frozen=True)
 class ReferenceMode:
@@ -101,6 +120,10 @@ class PairRow:
     rfx_freq: float | None = None
     rfx_Q: float | None = None
     freq_err_pct: float | None = None
+    #: The comparison record this row's window and gating cut were read on,
+    #: ``min(T_rfx, T_ref)`` (#907). Stored per row so a row is inspectable on
+    #: its own; it is the same for every row of one verdict.
+    t_cmp: float = 0.0
     t_over_tau: float = 0.0
     q_window: float = float("inf")
     q_log_ratio: float | None = None
@@ -119,6 +142,8 @@ class Verdict:
     rows: list[PairRow] = field(default_factory=list)
     surplus: list[SolverMode] = field(default_factory=list)
     record_length: float = 0.0
+    #: The REFERENCE solver's own harminv record length, same units (#907).
+    reference_record_length: float = 0.0
     n_matched: int = 0
     n_unmatched: int = 0
     mean_err_pct: float | None = None
@@ -132,6 +157,45 @@ class Verdict:
     @property
     def q_gated_rows(self) -> list[PairRow]:
         return [row for row in self.rows if row.q_gated]
+
+    @property
+    def comparison_record_length(self) -> float:
+        """``min(T_rfx, T_ref)`` — the record the Q gate is actually read on."""
+        return min(self.record_length, self.reference_record_length)
+
+    @property
+    def record_binding(self) -> str:
+        """Which side's record limits the comparison: ``"rfx"`` or
+        ``"reference"`` (``"tie"`` when they are equal)."""
+        if self.record_length < self.reference_record_length:
+            return "rfx"
+        if self.record_length > self.reference_record_length:
+            return "reference"
+        return "tie"
+
+    @property
+    def n_q_gated(self) -> int:
+        return len(self.q_gated_rows)
+
+    @property
+    def q_vacuous(self) -> bool:
+        """True when the ``q`` gate tested nothing.
+
+        ``gates["q"] = all(...)`` over an empty set is ``True``, so a board on
+        which the comparison record observed no mode's decay reports a passing
+        Q gate while admitting any Q error whatever. Measured on cv02's
+        committed board: below ``T_cmp = 54.4`` no mode is gated and an rfx Q
+        wrong by 100x on every mode yields ``passed = True``. Since #907 the
+        reference record is a second path into that state (shortening the Meep
+        run to save CPU would silently disable the Q gate), so the state is
+        named here, printed by :func:`format_report`, and pre-declared as
+        INCONCLUSIVE rather than a pass — the crossval script turns it into
+        exit 2. It is deliberately NOT a sixth gate: a hard ``>= 1 gated mode``
+        gate would fail ~14% of the pre-declared 200k trial stream, including
+        defect-free trials, and criterion (C) published that defect-free trials
+        never fail.
+        """
+        return not any(row.q_gated for row in self.rows)
 
 
 # --- pieces, each independently testable ------------------------------------
@@ -179,8 +243,8 @@ def assign(ref_freqs, rfx_freqs) -> list[int | None]:
     return out
 
 
-def q_window(ref_freq: float, ref_Q: float, record_length: float
-             ) -> tuple[float, float]:
+def q_window(ref_freq: float, ref_Q: float, record_length: float,
+             reference_record_length: float) -> tuple[float, float]:
     """Record-length-derived Q tolerance for one REFERENCE mode.
 
     A record of length ``T`` cannot resolve exponential decay rates finer than
@@ -192,48 +256,90 @@ def q_window(ref_freq: float, ref_Q: float, record_length: float
 
         delta_Q / Q = delta_alpha / alpha = (1/T) / (pi f / Q) = tau / T
 
-    Both inputs are the reference's; no measured rfx quantity appears, so this
-    window is not fitted to the agreement it judges.
+    **Which T (#907).** The premise above is applied here to BOTH readings, not
+    one. ``|ln(Q_rfx/Q_ref)|`` differences two harminv outputs, each read off
+    its own finite record: ``Q_rfx`` carries ``tau/T_rfx`` and ``Q_ref``
+    carries ``tau/T_ref`` by the identical argument. A difference cannot be
+    sharper than its blunter term, so the comparison's resolution is set by the
+    SHORTER of the two records::
 
-    **Known limitation -- this window is a RESOLUTION bound, not an accuracy
-    bound, and it therefore shrinks with run length while the physics does
-    not.** ``tau/T`` says how finely a record of length ``T`` can separate two
-    decay rates; it says nothing about how far apart two *solvers* should be.
-    The rfx-vs-Meep Q gap on cv02 is a discretization offset (staircased ring
-    boundary, subpixel treatment, hence a slightly different radiation Q), so
-    it is roughly constant in ``T``, while rfx's own Q for modes 2 and 3 is
-    stable over every RESOLVED span that was measured (mode 1's recorded
-    readings spread ~7% across T=291/561/1101 and are NOT cited as invariance evidence). Measured ``|ln(Q_rfx/Q_ref)| = 0.070`` (mode 1)
-    and ``0.123`` (mode 2); rfx mode 2 reads ``Q = 357.61 -> 356.83`` (0.22%)
-    between ``T = 291`` and ``T = 1101``
-    (``docs/research_notes/audit-2026-09-02/verify/G2_cv02.md``), and the
-    slowest in-band mode (``f = 0.1753``) reads ``Q = 1787.6 @ T = 1575 ->
-    1757.3 @ T = 3281`` (1.7%) -- both RESOLVED readings, rungs 1-2 of the
-    recorded Meep-absent run
-    ``docs/research_notes/audit-2026-09-02/fix2/i4_PR896_cv02_meep_absent.log``.
-    (That run's bootstrap reading ``Q = 1686.9 @ T = 385`` is deliberately not
-    quoted as invariance evidence: at ``T/tau = 0.126`` this module's own floor
-    calls it UNRESOLVED, i.e. not a measurement.) Consequently, on cv02's
-    committed reference/rfx pair this gate PASSES at ``T=291`` (mode-1 window
-    0.747) and FAILS at ``T=3385`` (window 0.064) purely because the record got
-    longer and better settled. A longer record reds a physically stable case.
-    Fixing it needs a floor on the window encoding the expected
-    discretization Q gap (or a pre-declared |ln Q| envelope); that is a change
-    to a claims-bearing gate and is NOT done here -- it is tracked as issue
-    #907 (the ``tau_ref/T`` window shrinks with ``T`` faster than the physics
-    does, so a longer record fails a stable Q), and it is the reason cv02's
-    Meep (verdict) lane keeps its calibrated record length instead of the
-    tau-scaled one.
+        T_cmp = min(T_rfx, T_ref)
+        delta_Q/Q |comparison = tau_ref / T_cmp
 
-    Returns ``(T/tau, window)``. ``T/tau`` is the number of amplitude
-    e-foldings the record observed; a mode is Q-gated only when it reaches
-    :data:`Q_RECORD_MIN_EFOLDS`.
+    Until #907 this function took ``T_rfx`` alone, i.e. it treated ``Q_ref`` as
+    exact. It is not exact: on cv02's committed board the reference's own
+    resolution uncertainty at ``T_ref = 300`` is ``tau_ref/T_ref`` = 0.72 /
+    2.28 / 10.2 for the three modes. Extending the rfx record cannot buy
+    resolution the reference never had, so the pre-#907 window shrank as
+    ``1/T_rfx`` without limit and reddened a physically stable Q at
+    ``T_rfx = 3385`` and 15600 while passing it at 291.
+
+    *Composition.* ``min`` of the two records (equivalently: the LARGER of the
+    two uncertainties) is the tighter of the two defensible compositions. The
+    alternative — adding the independent uncertainties,
+    ``tau/T_rfx + tau/T_ref`` — is looser everywhere and would raise this
+    rule's ceiling from ``ln 5`` to ``ln 9``, breaking the pre-declared
+    factor-5 instrument property. See Correction 4 of
+    ``docs/design_notes/20260831_cv02_ring_judge_predeclaration.md``.
+
+    *Anti-tautology, preserved verbatim.* The inputs are ``f_ref``, ``Q_ref``
+    (reference modes), ``T_rfx`` (a run length, not a measurement of the ring)
+    and ``T_ref`` (a reference-run parameter). **Neither the measured rfx Q nor
+    the measured rfx frequency appears anywhere in the window**, which is the
+    pre-declaration's G5 property. Deriving a floor from rfx's own measured Q
+    stability was considered and REJECTED for exactly this reason (and because
+    run-to-run stability is precision, not accuracy).
+
+    *Monotonicity.* ``min(T_rfx, T_ref) <= T_rfx`` for every input, so this
+    rule weakly loosens both the window and the admission cut and tightens
+    nothing, anywhere. At cv02's committed operating point (``T_rfx = 291 <
+    T_ref = 300``) it changes nothing at all: ``T_cmp = 291``, today's value.
+
+    *What the window is NOT.* It is a worst-case resolution envelope, not an
+    accuracy bound. Measured against an exact-annulus oracle
+    (``scripts/diagnostics/cv02_annulus_exact_oracle.py``) the reference's real
+    Q accuracy on this board is 4.3% / 8.4% / 2.6% — roughly 17x better than
+    the envelope, because filter diagonalisation routinely beats ``1/T`` on an
+    isolated high-SNR mode. The floor's looseness is the price of having no
+    accuracy bound, and it is a known weakness of this gate that #907 did not
+    remove. No reference-side-only accuracy bound can replace it here: rfx's
+    own error against the exact annulus (11.3% / 3.9% / 13.2%) exceeds the
+    reference's on two of three modes, so the strongest such construction
+    (resolution term + the reference's measured error) still fails mode 1 at
+    the -40 dB record. **A pass here means the envelope is loose, not that
+    rfx's radiation Q is demonstrated accurate.**
+
+    *On the cv02 Q gap's cause.* The pre-#907 text attributed it to a
+    discretization offset (staircased ring boundary / subpixel treatment). What
+    the exact-annulus derivative actually supports is narrower: the gap cannot
+    be produced by an effective radius or index shift of the ideal annulus of a
+    magnitude the two solvers' 0.028% frequency agreement permits
+    (``|dlnQ| <= 1.5e-4`` geometric, ``<= 2.6e-3`` index, against gaps of
+    0.070 / 0.123 / 0.105). That model under-predicts even Meep's OWN Q error
+    against the exact annulus by 11x / 7x / 1x, so it cannot rule discretization
+    out as a class. What the oracle does show is a clean decomposition: the
+    signed errors against the exact annulus are Meep ``+0.0434 / -0.0837 /
+    +0.0261`` and rfx ``+0.1130 / +0.0390 / +0.1316``, whose differences are
+    ``+0.0696 / +0.1227 / +0.1055`` — the measured rfx-vs-Meep gaps to four
+    decimals. The gap is the difference of the two codes' own discretization Q
+    errors at resolution 10.
+
+    Returns ``(T_cmp/tau, window)``. ``T_cmp/tau`` is the number of amplitude
+    e-foldings the COMPARISON record observed; a mode is Q-gated only when it
+    reaches :data:`Q_RECORD_MIN_EFOLDS`, and the cut and the window read the
+    same ``T_cmp`` — that identity is what keeps the factor-5 proof intact.
+    ``reference_record_length`` is REQUIRED: an omitted ``T_ref`` must be a
+    ``TypeError``, never a silent fall-back to the pre-#907 rule. Pass
+    :data:`NO_REFERENCE_RECORD` when there is no reference run at all (the
+    window is then infinite and no mode is gated, which is correct — with no
+    reference there are no rows to gate).
     """
     tau = ref_Q / (math.pi * ref_freq)
-    if tau <= 0 or record_length <= 0:
+    t_cmp = min(record_length, reference_record_length)
+    if tau <= 0 or t_cmp <= 0:
         return 0.0, float("inf")
-    t_over_tau = record_length / tau
-    return t_over_tau, tau / record_length
+    t_over_tau = t_cmp / tau
+    return t_over_tau, tau / t_cmp
 
 
 def judge(
@@ -241,28 +347,42 @@ def judge(
     rfx_modes: list[SolverMode],
     record_length: float,
     *,
+    reference_record_length: float,
     f_min: float,
     f_max: float,
     freq_tol_pct: float = FREQ_TOL_PCT,
     min_matched: int = MIN_MATCHED,
     q_record_min_efolds: float = Q_RECORD_MIN_EFOLDS,
 ) -> Verdict:
-    """Judge an rfx mode list against an external-solver mode list."""
+    """Judge an rfx mode list against an external-solver mode list.
+
+    ``record_length`` is the rfx harminv record; ``reference_record_length`` is
+    the reference solver's own harminv record, and it is a REQUIRED keyword
+    (#907) so that an omitted ``T_ref`` raises ``TypeError`` instead of falling
+    back to the pre-#907 rule that treated ``Q_ref`` as exact. Both the Q
+    window and the Q-gating cut are read on ``min`` of the two — see
+    :func:`q_window`. Pass :data:`NO_REFERENCE_RECORD` when no reference run
+    happened.
+    """
     ref = admit(reference, f_min, f_max)
     rfx = admit(rfx_modes, f_min, f_max)
 
     pairing = assign([m.freq for m in ref], [m.freq for m in rfx])
     used = {i for i in pairing if i is not None}
 
-    verdict = Verdict(record_length=record_length)
+    verdict = Verdict(record_length=record_length,
+                      reference_record_length=reference_record_length)
     verdict.surplus = [m for i, m in enumerate(rfx) if i not in used]
+    t_cmp = verdict.comparison_record_length
 
     errs: list[float] = []
     for ref_mode, idx in zip(ref, pairing):
-        t_over_tau, window = q_window(ref_mode.freq, ref_mode.Q, record_length)
+        t_over_tau, window = q_window(ref_mode.freq, ref_mode.Q,
+                                      record_length, reference_record_length)
         row = PairRow(
             ref_freq=ref_mode.freq,
             ref_Q=ref_mode.Q,
+            t_cmp=t_cmp,
             t_over_tau=t_over_tau,
             q_window=window,
             q_gated=t_over_tau >= q_record_min_efolds,
@@ -309,9 +429,27 @@ def judge(
 def format_report(verdict: Verdict, freq_tol_pct: float = FREQ_TOL_PCT) -> str:
     """Human-readable table + gate lines, for the crossval script's stdout."""
     lines: list[str] = []
+    t_cmp = verdict.comparison_record_length
     lines.append(
-        f"  harminv record length T = {verdict.record_length:.1f} "
-        f"(Meep units); Q windows below are tau_ref/T, not chosen values"
+        f"  harminv records: T_rfx = {verdict.record_length:.1f}, "
+        f"T_ref = {verdict.reference_record_length:.1f} (Meep units) -> "
+        f"comparison record T_cmp = min = {t_cmp:.1f}, bound by the "
+        f"{verdict.record_binding.upper()} record"
+    )
+    lines.append(
+        "  Q windows below are tau_ref/T_cmp, not chosen values: both Q's are "
+        "harminv readings off finite"
+    )
+    lines.append(
+        "  records, so the comparison is limited by the shorter of them (#907)"
+    )
+    lines.append(
+        f"  Q-gated: {verdict.n_q_gated} of {len(verdict.rows)} reference "
+        f"mode(s) (a mode is gated only when T_cmp/tau_ref >= "
+        f"{Q_RECORD_MIN_EFOLDS:g}); the resolvable-tau bound on the comparison "
+        f"record is T_cmp/{Q_RECORD_MIN_EFOLDS:g} = "
+        f"{t_cmp / Q_RECORD_MIN_EFOLDS:.1f} (Meep units) -- on the verdict lane "
+        f"that bound follows T_cmp, not the rfx record"
     )
     lines.append("")
     lines.append(
@@ -362,10 +500,17 @@ def format_report(verdict: Verdict, freq_tol_pct: float = FREQ_TOL_PCT) -> str:
     if ungated:
         lines.append(
             "  Q not gated for "
-            + ", ".join(f"f={row.ref_freq:.6f} (T/tau={row.t_over_tau:.3f})"
+            + ", ".join(f"f={row.ref_freq:.6f} (T_cmp/tau={row.t_over_tau:.3f})"
                         for row in ungated)
-            + f" — record spans < {Q_RECORD_MIN_EFOLDS} e-folding; gating "
-              "these would measure run length, not physics (#812)"
+            + f" — comparison record spans < {Q_RECORD_MIN_EFOLDS} e-folding; "
+              "gating these would measure run length, not physics (#812)"
+        )
+    if verdict.q_vacuous:
+        lines.append(
+            f"  Q gate VACUOUS: no reference mode's decay was observed by the "
+            f"comparison record (T_cmp = {t_cmp:.1f}), so gate q is an empty "
+            f"conjunction and reads True without testing anything. That is "
+            f"INCONCLUSIVE, not a pass (#907) — the crossval script exits 2."
         )
     return "\n".join(lines)
 
@@ -513,6 +658,17 @@ def plan_record(modes, *, f_min: float, f_max: float,
       record observed its decay to the published floor, ``tau <=
       resolvable_tau_bound(T)`` (:data:`Q_RECORD_MIN_EFOLDS`). Everything
       above that lands in ``unresolved``.
+
+    **#907 changes nothing here.** This planner serves the SETTLING WITNESS on
+    the no-verdict (Meep-absent) lane, where there is no reference at all, so
+    "a longer record observes more of the decay" remains true without
+    qualification and the recommended length is unchanged. What #907 changed is
+    only how far a longer *rfx* record can sharpen a comparison AGAINST a
+    reference: above ``T_ref`` it cannot, because the reference's own record is
+    then the binding one. On the verdict lane the resolvable-tau bound that is
+    *reported* must therefore be computed on ``T_cmp`` (:func:`format_report`
+    does this), or the report calls a mode resolvable that the gate does not
+    gate.
 
     The length itself::
 
