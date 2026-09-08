@@ -18,8 +18,10 @@ Exit codes (rfx crossval convention):
   0 = all PASS including the Meep cross-check. Five gates (see
       validation/crossval/comparators/ring_mode_judge.py): every Meep mode
       assigned a distinct rfx mode (unmatched = FAIL), >=2 modes, mean AND max
-      |df|/f < 5%, and Q within tau_ref/T of the reference for every mode whose
-      decay the record actually observed.
+      |df|/f < 5%, and |ln(Q_rfx/Q_ref)| <= ln(1 + tau_ref/T) for every mode
+      whose decay the record actually observed. That Q envelope is a POLICY
+      with board provenance, not a derived estimator bound -- read
+      ring_mode_judge.q_window (issues #907, #945) before quoting it.
   1 = rfx self-check failed (rfx Harminv found no ring modes — broken physics)
   2 = rfx self-check OK but Meep reference is unavailable — inconclusive
       crossval, NOT a pass. CI must not treat this as green.
@@ -201,34 +203,43 @@ source_off_time = 2.0 * wf_main.t0
 #     **the cv02 verdict lane does not use the tau-scaled record.**
 #
 #     Why not, honestly: not because a fixed record is better physics, but
-#     because this judge's per-mode Q window ``tau_ref/T`` is a record-length
-#     RESOLUTION bound, so it shrinks as 1/T while the rfx-vs-Meep Q gap (a
-#     discretization offset) stays put. Measured on the committed
-#     reference/rfx mode pair (tests/crossval/test_cv02_ring_mode_judge.py's
-#     MEEP_REFERENCE / RFX_TODAY, re-driven at four lengths):
-#         T = 291  (committed): gate q PASS  (mode-1 |lnQ| 0.070 vs window 0.747)
-#         T = 3385 (1 e-fold of the slowest mode): gate q FAIL (window 0.064)
-#         T = 15600 (-40 dB record): modes 1 AND 2 FAIL (windows 0.014 / 0.044)
-#     while rfx's own Q is stable on every RESOLVED span that was actually
-#     recorded (they cover 291 -> 3281 of the range above):
-#         mode 2 (f=0.1472): Q 357.61 -> 356.83 (0.22%) for T = 291 -> 1101
-#             (docs/research_notes/audit-2026-09-02/verify/G2_cv02.md)
-#         slowest in-band mode (f=0.1753): Q 1787.6 @ T=1575 -> 1757.3 @ T=3281
-#             (1.7%), rungs 1-2 of the recorded Meep-absent run
-#             docs/research_notes/audit-2026-09-02/fix2/
-#             i4_PR896_cv02_meep_absent.log
-#     (That run's bootstrap Q=1686.9 @ T=385 is NOT quoted as invariance
-#     evidence: at T/tau=0.126 the judge's own floor calls it UNRESOLVED, i.e.
-#     not a measurement.)
-#     So a LONGER, better-settled record would red a physically sound case.
-#     That is a comparator defect, not an rfx defect, and fixing it means
-#     giving the Q window a floor that encodes the expected discretization Q
-#     gap -- a change to a claims-bearing gate, with its own root cause and
-#     evidence. It is NOT done in this change; it is tracked as issue #907 --
-#     the tau_ref/T window shrinks with T faster than the physics does, so a
-#     longer record fails a stable Q (see ring_mode_judge.q_window "Known
-#     limitation"). Until it is fixed the verdict lane's PASS is contingent on
-#     the record staying short, and this comment is the record of that.
+#     because this judge's per-mode Q acceptance threshold,
+#     ``ln(1 + tau_ref/T)``, shrinks as 1/T BY CONSTRUCTION. So the verdict a
+#     FROZEN pair of Q values receives is a function of the record length.
+#     Arithmetic on the live #937 board (Meep 1.34.0, T = 260.98,
+#     _02_ring_resonator_results/crossval.json), holding its measured Q pair
+#     fixed and moving only T:
+#         mode 1 (f=0.11801, |lnQ| = 0.0582): gate q holds to T = 3476.4,
+#             reds above it
+#         mode 2 (f=0.14717, |lnQ| = 0.0479): gate q holds to T = 15038.6
+#         mode 3 (f=0.17525): not Q-gated at this record (T/tau = 0.0822,
+#             below Q_RECORD_MIN_EFOLDS = 0.25)
+#     i.e. only TWO of the three modes carry a Q verdict here at all, and a
+#     LONGER, better-settled record would red this case without anything in
+#     the physics having moved.
+#
+#     What is NOT established, and used to be asserted right here: that the
+#     rfx-vs-Meep Q gap itself is constant in T because it is a staircasing /
+#     subpixel discretization offset. That attribution is WITHDRAWN as
+#     UNRESOLVED -- see ring_mode_judge.q_window, "WITHDRAWN (2)": a joint
+#     radius+index perturbation of the analytic annulus moves ln Q by more
+#     than the measured gap while leaving every frequency inside the two
+#     solvers' own observed disagreement, so the frequency-only argument
+#     cannot exclude an effective-geometry cause. The same docstring withdraws
+#     the "a record of length T cannot resolve rates finer than 1/T" reading
+#     of the window (rfx's matrix pencil recovers Q to 2.1e-10 relative at
+#     T/tau = 0.0302).
+#
+#     So the load-bearing statement is narrower than the old one, and still
+#     load-bearing: this lane's PASS is contingent on the record staying
+#     short. Lengthening it changes the verdict, and nobody has shown the
+#     physics changed. The old prescription here ("give the Q window a floor
+#     encoding the expected discretization Q gap") rested on the withdrawn
+#     attribution and is deleted with it. What the fix actually needs is an
+#     uncertainty model for the Q comparison -- the re-scoped issue #907
+#     ("q_window presents a policy as a derivation") -- plus issue #945, the
+#     rate-to-Q interval asymmetry it would have to resolve on the way.
+#     Neither is done here, and this comment is the record of that.
 #
 #   * Meep ABSENT (exit 2, inconclusive -- there is NO verdict to preserve):
 #     the record is scaled at runtime to the slowest RESOLVED in-band mode's
@@ -461,8 +472,11 @@ rfx_freqs_meep = [f * a / C0 for f, Q, amp in rfx_modes]
 # witness; it is reused here for the judge.)
 
 # Record length harminv actually saw, in Meep units (a/c). Every Q window below
-# is tau_ref / T computed from THIS and from the reference Q -- no chosen
-# number. See docs/design_notes/20260831_cv02_ring_judge_predeclaration.md.
+# is tau_ref / T computed from THIS and from the reference Q -- no hand-picked
+# number, and no measured rfx quantity. The SIZE of that envelope is still a
+# policy choice rather than a derived estimator bound; ring_mode_judge.q_window
+# says so and names the open issues (#907, #945).
+# See docs/design_notes/20260831_cv02_ring_judge_predeclaration.md.
 record_T_meep = len(signal) * dt * C0 / a
 fmin_meep = fcen - df / 2
 fmax_meep = fcen + df / 2
@@ -583,8 +597,11 @@ _doc = {
         "freq_tol_pct": float(ring_mode_judge.FREQ_TOL_PCT),
         "min_matched_modes": int(ring_mode_judge.MIN_MATCHED),
         "q_record_min_efolds": float(ring_mode_judge.Q_RECORD_MIN_EFOLDS),
-        "note": ("the Q window is tau_ref/T per mode, derived from the "
-                 "reference Q and THIS record length -- not a chosen number"),
+        "note": ("Q acceptance is |ln(Q_rfx/Q_ref)| <= ln(1 + tau_ref/T), "
+                 "computed per mode from the reference Q and THIS record "
+                 "length -- no hand-picked number and no measured rfx "
+                 "quantity, but a POLICY envelope, not a derived estimator "
+                 "bound: see ring_mode_judge.q_window, issues #907 and #945"),
     },
     "verdict": {
         "rfx_self_ok": bool(_rfx_self_ok),

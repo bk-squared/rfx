@@ -346,20 +346,107 @@ def test_the_assignment_contains_no_tolerance() -> None:
     assert rmj.assign([0.12, 0.18], [0.1805]) == [None, 0]
 
 
-def test_q_window_is_the_record_length_resolution_limit() -> None:
-    """delta_Q/Q = tau/T, with tau = Q_ref/(pi f_ref). No fitted constant."""
+def test_q_window_returns_raw_tau_over_t_not_the_acceptance_threshold() -> None:
+    """``q_window`` returns ``(T/tau, tau/T)``; the threshold ``judge`` applies
+    is ``ln(1 + tau/T)``, which is a strictly SMALLER number.
+
+    The old name said "resolution limit". That framing is withdrawn -- rfx's
+    harminv is a matrix pencil, which has no 1/T floor on a single clean
+    exponent -- so what is pinned here is the arithmetic and the naming, not a
+    claim about estimator resolution. The second element is a raw ratio, and
+    reading it as the acceptance threshold is a real, previously-invited
+    mistake; the last block below is the falsifier for that reading.
+    """
     for freq, q in [(0.118101575043663, 80.683059081382),
                     (0.147162555528154, 316.29272471914),
                     (0.175246750722663, 1677.48461212767)]:
         tau = q / (math.pi * freq)
-        t_over_tau, window = rmj.q_window(freq, q, RECORD_T)
+        t_over_tau, s = rmj.q_window(freq, q, RECORD_T)
         assert t_over_tau == pytest.approx(RECORD_T / tau, rel=1e-12)
-        assert window == pytest.approx(tau / RECORD_T, rel=1e-12)
-    # A longer record buys a tighter window, linearly. This is the property
-    # that makes the gate track the instrument instead of a chosen number.
-    _, w1 = rmj.q_window(0.147162555528154, 316.29272471914, RECORD_T)
-    _, w2 = rmj.q_window(0.147162555528154, 316.29272471914, 4 * RECORD_T)
-    assert w2 == pytest.approx(w1 / 4.0, rel=1e-12)
+        assert s == pytest.approx(tau / RECORD_T, rel=1e-12)
+    # A longer record buys a tighter envelope, linearly in the RAW ratio.
+    _, s1 = rmj.q_window(0.147162555528154, 316.29272471914, RECORD_T)
+    _, s4 = rmj.q_window(0.147162555528154, 316.29272471914, 4 * RECORD_T)
+    assert s4 == pytest.approx(s1 / 4.0, rel=1e-12)
+
+    # The returned value is NOT the threshold: a |ln Q| strictly between
+    # ln(1+s) and s must FAIL. Constructed independently of the judge -- the
+    # rfx Q below is built from the target |ln Q|, not read back from it.
+    f_ref, q_ref = 0.147162555528154, 316.29272471914
+    _, s = rmj.q_window(f_ref, q_ref, RECORD_T)
+    between = 0.5 * (math.log1p(s) + s)
+    assert math.log1p(s) < between < s          # the two readings differ
+    verdict = rmj.judge([rmj.ReferenceMode(f_ref, q_ref)],
+                        [rmj.SolverMode(f_ref, q_ref * math.exp(between))],
+                        RECORD_T, f_min=F_MIN, f_max=F_MAX, min_matched=1)
+    row = verdict.rows[0]
+    assert row.q_gated is True
+    assert row.q_log_ratio == pytest.approx(between, rel=1e-12)
+    assert row.q_pass is False and verdict.gates["q"] is False
+
+
+def test_i945_rate_to_q_interval_is_asymmetric() -> None:
+    """CHARACTERIZATION (issue #945). The Q envelope's stated motivation
+    bounds the decay RATE; the shipped comparison bounds the Q RATIO. Those
+    are different intervals, and the difference is not a rounding detail.
+
+    At fixed ``f``, ``Q = pi f / alpha``. So ``alpha_rfx`` inside
+    ``[alpha_ref (1-s), alpha_ref (1+s)]`` -- the motivation's interval, with
+    ``s = tau_ref/T`` -- corresponds to Q ratios ``[1/(1+s), 1/(1-s)]``, while
+    ``|ln(Q_rfx/Q_ref)| <= ln(1+s)`` admits ``[1/(1+s), 1+s]``. The upper ends
+    disagree for every ``s > 0``, and for ``s >= 1`` the rate side has no
+    finite upper end at all.
+
+    Everything below is computed from ``alpha`` arithmetic and fed to the
+    shipped code; no expected value is read back out of the judge.
+
+    This test PINS THE CURRENT BEHAVIOUR. When #945 is fixed it must be
+    inverted or deleted -- do not "repair" the judge to keep it green.
+    """
+    f_ref, q_ref, record_T = 1.0 / math.pi, 10.0, 20.0
+    t_over_tau, s = rmj.q_window(f_ref, q_ref, record_T)
+    assert (t_over_tau, s) == (2.0, 0.5)
+    # sanity: this mode IS Q-gated (gating is on t_over_tau, not on s)
+    assert t_over_tau >= rmj.Q_RECORD_MIN_EFOLDS
+
+    # A decay rate exactly one admitted step (1/T) slower than the reference.
+    alpha_ref = math.pi * f_ref / q_ref
+    assert alpha_ref == pytest.approx(0.1, rel=1e-12)
+    alpha_slow = alpha_ref - 1.0 / record_T
+    q_slow = math.pi * f_ref / alpha_slow
+    assert q_slow == pytest.approx(20.0, rel=1e-12)
+
+    verdict = rmj.judge([rmj.ReferenceMode(f_ref, q_ref)],
+                        [rmj.SolverMode(f_ref, q_slow)], record_T,
+                        f_min=0.1 * f_ref, f_max=10.0 * f_ref, min_matched=1)
+    row = verdict.rows[0]
+    assert row.q_gated is True
+    assert row.q_log_ratio == pytest.approx(math.log(2.0), rel=1e-12)
+    assert math.log1p(s) == pytest.approx(math.log(1.5), rel=1e-12)
+    # the defect: a rate difference the motivation ADMITS is scored a FAIL
+    assert row.q_pass is False and verdict.gates["q"] is False
+
+    # ...and "asymmetric" means literally that: the SAME rate deviation, taken
+    # in the two directions, gets two different verdicts. 0.9/T rather than
+    # 1/T only to keep the fast side off the exact boundary.
+    def _verdict_at(delta_alpha):
+        q = math.pi * f_ref / (alpha_ref + delta_alpha)
+        v = rmj.judge([rmj.ReferenceMode(f_ref, q_ref)],
+                      [rmj.SolverMode(f_ref, q)], record_T,
+                      f_min=0.1 * f_ref, f_max=10.0 * f_ref, min_matched=1)
+        return v.rows[0].q_pass
+
+    step = 0.9 / record_T
+    assert _verdict_at(+step) is True     # rate 0.9/T too fast -> accepted
+    assert _verdict_at(-step) is False    # rate 0.9/T too slow -> rejected
+
+    # The live #937 board's mode 2 sits in the s >= 1 regime, where the rate
+    # interval has no finite upper bound at all. Numbers from the committed
+    # artifact, quoted not measured here.
+    _, s_live_m2 = rmj.q_window(0.1471678979858206, 341.4140208557494,
+                                260.9798793571893)
+    assert s_live_m2 == pytest.approx(2.8295108704304397, rel=1e-12)
+    assert s_live_m2 >= 1.0
 
 
 def test_no_admitted_q_gate_tolerates_more_than_a_factor_five() -> None:
@@ -745,15 +832,20 @@ def test_verdict_lane_q_gate_is_run_length_contingent() -> None:
     """Why the Meep (verdict) lane keeps its calibrated record instead of the
     tau-scaled one -- executable, so the qualification cannot rot.
 
-    The judge's Q window ``tau_ref/T`` is a record-length RESOLUTION bound: it
-    shrinks as 1/T. The rfx-vs-Meep Q gap is a discretization offset and does
-    not. So on the very same (frozen) mode pair the q gate passes at the
-    committed record and fails at a longer, better-settled one, with the
-    frequency gates and the |ln Q| values unchanged. That is a comparator
-    defect tracked as issue #907 -- the tau_ref/T window shrinks with T faster
-    than the physics does, so a longer record fails a stable Q -- NOT a licence
-    to lengthen this lane's record, and NOT something this witness change
-    fixed.
+    The judge's Q acceptance threshold ``ln(1 + tau_ref/T)`` shrinks as 1/T by
+    construction. So on the very same FROZEN mode pair the q gate passes at
+    the committed record and fails at a longer one, with the frequency gates
+    and the |ln Q| values unchanged: the verdict moved, and nothing measured
+    moved with it. Tracked as re-scoped issue #907 ("q_window presents a
+    policy as a derivation"). This is NOT a licence to lengthen this lane's
+    record, and NOT something this witness change fixed.
+
+    What this test does NOT claim: that the rfx-vs-Meep Q gap is constant in
+    T. The earlier version of this docstring said so and attributed the gap to
+    a staircasing/subpixel discretization offset; that attribution is
+    withdrawn as UNRESOLVED (see ``q_window``, "WITHDRAWN (2)"). The assertion
+    below is arithmetic about the gate on frozen numbers, which is all it ever
+    executed.
 
     CHARACTERIZATION TEST. It pins the CURRENT, DEFECTIVE behaviour: the
     assertion ``longer.gates["q"] is False`` is the bug, not the requirement.
@@ -782,5 +874,25 @@ def test_verdict_lane_q_gate_is_run_length_contingent() -> None:
     assert fast_l.q_window < fast_c.q_window
     assert fast_l.q_log_ratio > fast_l.q_window >= 0.0
     assert fast_c.q_log_ratio < fast_c.q_window
-    # and the limitation is written where the window is derived
-    assert "Known limitation" in rmj.q_window.__doc__
+    # ...and the qualification is written where the envelope is produced.
+    # Re-aimed from the old ``"Known limitation" in doc``: that section
+    # asserted a cause ("a discretization offset") that is not established.
+    doc = rmj.q_window.__doc__
+    assert "UNRESOLVED" in doc                     # the honest status
+    assert "#907" in doc and "#945" in doc         # where the open work lives
+    assert "POLICY" in doc                         # what the rule actually is
+    # both withdrawals are named, so neither can be quietly dropped
+    assert "WITHDRAWN (1)" in doc and "WITHDRAWN (2)" in doc
+    # revert-proofing: the withdrawn sentences may still appear -- but only as
+    # quotations of what was retracted, never in the docstring's own voice.
+    # Compared on whitespace-collapsed text so re-wrapping cannot break it.
+    flat = " ".join(doc.split())
+    for retracted, only_as in (
+        ("is a discretization offset",
+         'WITHDRAWN (2) -- "the rfx-vs-Meep Q gap is a discretization offset'),
+        ("needs a floor on the window encoding",
+         'The earlier text said the fix "needs a floor on the window '
+         'encoding'),
+    ):
+        assert flat.count(retracted) == 1, retracted
+        assert only_as in flat, only_as

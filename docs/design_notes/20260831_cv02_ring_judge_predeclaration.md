@@ -249,3 +249,128 @@ displaced **-12%** from the 0.175 reference — a defect the shipped judge score
 as a clean 0.03% run — produces `mean = 4.02%`, which **passes** G3's published
 5%. Without G4 the decoupling alone would not have caught it. Recorded in
 `test_b2_displaced_mode_passes_the_shipped_judge_and_fails_the_new_one`.
+
+## Correction 4 (2026-09-08) — G5's derivation is withdrawn; the gate is not
+
+Section 2, G5 presented its window as a derivation *from first principles*:
+
+> A record of length `T` cannot resolve exponential decay rates finer than
+> `1/T` — the same record-length limit that sets the `1/T` Fourier frequency
+> resolution [...] Take that as the floor on the estimable decay rate.
+
+and Section 4 concluded:
+
+> The Q **window** carries no chosen value at all — it is `tau_ref / T`,
+> computed per mode per run.
+
+**The second sentence stands. The first does not.** Both are corrected here;
+**no threshold, formula or gate value changes**, and the judge's verdicts are
+bit-identical to those it produced before this correction.
+
+### 4.1 The `1/T` rate-resolution premise is false for this estimator class
+
+`1/T` is a *Fourier separation* statement about telling two nearby components
+apart. It is not a floor on the exponent of a single clean damped exponential,
+and rfx's `rfx/harminv.py` is the **Matrix Pencil Method**, which fixes that
+exponent from adjacent-sample ratios. Measured through rfx's own harminv on a
+synthetic single damped sinusoid (`f = 1 THz`, `Q = 1500`, 14 400 samples at
+`dt = 1 fs`, so `T/tau = 0.0302` — an eighth of G5's own `1/4` admission cut,
+2.97 % total amplitude decay over the record):
+
+| additive noise sigma | recovered Q | relative Q error | rate error in units of `1/T` |
+|---|---|---|---|
+| 0 (noiseless) | 1500.000000 | 2.1e-10 | 6e-12 |
+| 1e-4 | 1499.755499 | 1.6e-4 | 5e-6 |
+| 1e-3 | 1498.698910 | 8.7e-4 | 3e-5 |
+
+On that record `1/T` is itself 33x the decay rate being measured, i.e. under
+the withdrawn reading the rate would not be determined at all; the estimator
+determines it four to eleven orders of magnitude more finely. Upstream Meep's
+Harminv is filter diagonalisation — a different estimator again — so the two
+sides of this comparison do not share one uncertainty law either.
+
+**Consequence for the wording, not for the gate:** `tau_ref/T` and the `1/4`
+e-folding cut are **policy choices with board provenance** (the `1/4`'s
+provenance, `(0.086, 0.376)` from #812, is unaffected and still stands), not
+derived bounds. Section 4's claim that the window carries no *chosen value* —
+no hand-picked number, no measured rfx quantity, computed per mode per run —
+remains true and is still the property that keeps the envelope from being
+fitted to the agreement it judges.
+
+### 4.2 The "discretization offset" attribution is UNRESOLVED
+
+Text added to this lane's code after the original note (in
+`ring_mode_judge.q_window` and in `02_ring_resonator.py`) explained the
+rfx-vs-Meep Q gap as *a discretization offset (staircased ring boundary,
+subpixel treatment), hence roughly constant in `T`*. **That attribution is
+withdrawn**, and nothing is asserted in its place.
+
+The argument behind it — the solvers' close frequency agreement bounds how far
+their effective geometries can differ, hence bounds the Q gap — varies one
+parameter at a time. Radius and index trade off against each other in
+frequency while adding in `Q`. Against the nominal ring
+(`R_in = 1, R_out = 2, n = 3.4`), the single perturbed annulus
+
+    R_in = 0.975,  R_out = 1.975,  n = 3.443263353299652
+
+evaluated in the analytic 2D TM annulus (Bessel/Hankel matching, outgoing
+exterior) moves the three modes' frequencies by `-0.00886 %` / `0 %` (`n` was
+chosen to null this one) / `+0.00392 %` — all inside the two solvers' own
+observed disagreement on the live board, `0.0515 %` / `0.0306 %` / `0.0359 %`
+— while moving `ln Q` by `+0.0660` / `+0.0895` / `+0.1132`, i.e. 1.1x–1.9x the
+measured gaps `0.0582` / `0.0479` / `0.0761`. **This is a counterexample to a
+bound, not a claim that either solver's effective geometry is that annulus.**
+
+The decomposition `ln(Q_rfx/Q_ex) - ln(Q_meep/Q_ex) = ln(Q_rfx/Q_meep)` cannot
+settle it: `Q_ex` cancels identically, so the identity holds for every
+positive value and corroborates nothing about the cause.
+
+What would settle it: a per-solver convergence study (Q versus
+cells-per-wavelength at fixed geometry, with and without subpixel averaging)
+plus each solver's own Q swept against run length at fixed resolution.
+
+### 4.3 The rate-to-Q transform is asymmetric (issue #945)
+
+G5's gate form, `|ln(Q_rfx/Q_ref)| <= ln(1 + s)` with `s = tau_ref/T`, admits Q
+ratios `[1/(1+s), 1+s]`. Its *motivation* bounds the decay rate, and at fixed
+`f`, `Q = pi f / alpha`, so `alpha_rfx` inside `[alpha_ref(1-s),
+alpha_ref(1+s)]` corresponds to Q ratios `[1/(1+s), 1/(1-s)]` — a different
+interval, with no finite upper bound once `s >= 1`. Worked through the shipped
+`q_window`: at `f_ref = 1/pi`, `Q_ref = 10`, `T = 20` (so `s = 0.5`), a mode
+whose decay rate differs by exactly the admitted `1/T` (`alpha 0.100 -> 0.050`,
+hence `Q 10 -> 20`) scores `|ln ratio| = 0.693147` against threshold
+`ln(1.5) = 0.405465` and **FAILS**. The live board's mode 2 sits at
+`s = 2.8295`, inside the unbounded regime. Tracked as issue #945; the
+comparison is unchanged.
+
+### 4.4 Numbers in this note are the tutorial board
+
+Sections 1–4 and Corrections 1–3 quote the Meep **tutorial** board
+(`f = 0.118101575, 0.147162556, 0.175246751`; `Q = 80.683, 316.293,
+1677.485`), which was the only reference available when this lane opened. PR
+#937 committed a **live** Meep 1.34.0 run at
+`validation/crossval/_02_ring_resonator_results/crossval.json`
+(`T = 260.9798793571893`, settling witness `-8.714255697 dB`):
+
+| mode | `f_ref` | `Q_ref` | `Q_rfx` | freq err % | `T/tau` | raw `tau/T` | `abs lnQ` | Q-gated |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 0.11800975 | 77.2293 | 81.8569 | 0.0515 | 1.2528 | 0.7982 | 0.0582 | yes |
+| 2 | 0.14716790 | 341.4140 | 358.1786 | 0.0306 | 0.3534 | 2.8295 | 0.0479 | yes |
+| 3 | 0.17524601 | 1747.8797 | 1619.8639 | 0.0359 | 0.0822 | 12.1648 | (0.0761) | no |
+
+Only **two of three** modes carry a Q verdict on the live board (mode 3's
+`abs lnQ` is parenthesised: the record stores `null`, because below the `1/4`
+cut the judge never forms the ratio). Correction 1's "the mode this run
+actually gates most loosely (0.147) rejects anything beyond a factor 3.35" is
+a **tutorial-board** statement; on the live board that mode's band is
+`1 + 2.8295 = 3.83`. Correction 1's general bound — every Q-gated mode rejects
+a Q error strictly larger than a factor 5 — is unaffected.
+
+### 4.5 What is open
+
+Issue **#907** is re-scoped to "`q_window` presents a policy as a derivation":
+either derive an uncertainty model for the Q comparison, or keep the envelope
+as policy and justify its size on stated grounds. Issue **#945** is the
+asymmetry in 4.3. The earlier prescription in the code — "give the Q window a
+floor encoding the expected discretization Q gap" — rested on 4.2 and is
+deleted with it. No gate value changed in this correction.

@@ -6,6 +6,60 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Changed — cv02's Q envelope is documented as a policy, not as a derivation (no gate moved)
+
+Prose only. `q_window` in `validation/crossval/comparators/ring_mode_judge.py`
+returns bit-identical values and `judge` produces identical verdicts; the
+comparison, the constants and the five gates are untouched (evidence: the two
+modules' full output over 1 000 `q_window` calls, 400 randomized `judge`
+boards and an 11-point record-length sweep of the live board compares
+byte-for-byte).
+
+What changed is what the code claims about itself. Three assertions are
+withdrawn:
+
+- **"a record of length `T` cannot resolve exponential decay rates finer than
+  `1/T`"** — a Fourier *separation* statement, not a bound on a single clean
+  exponent. `rfx/harminv.py` is the Matrix Pencil Method: on a synthetic
+  damped sinusoid at `T/tau = 0.0302` (an eighth of the module's own
+  `Q_RECORD_MIN_EFOLDS` cut) it recovers `Q` to `2.1e-10` relative noiseless,
+  `1.6e-4` at noise sigma `1e-4` and `8.7e-4` at `1e-3`, placing the decay
+  rate four to eleven orders of magnitude finer than `1/T`. Upstream Meep's
+  Harminv is filter diagonalisation, so the two sides of the comparison do not
+  share one uncertainty law either. `tau_ref/T` and the `0.25` e-folding cut
+  are therefore documented as **policy choices with board provenance**.
+- **"the rfx-vs-Meep Q gap is a discretization offset (staircased ring
+  boundary, subpixel treatment), so it is constant in `T`"** — now recorded as
+  **UNRESOLVED**. The frequency-only argument varies one parameter at a time
+  and cannot exclude an effective-annulus cause: against the nominal ring the
+  perturbed annulus `R_in = 0.975, R_out = 1.975, n = 3.443263353299652` moves
+  the three modes' frequencies by `-0.00886 %` / `0 %` / `+0.00392 %`, inside
+  the solvers' own observed disagreement, while moving `ln Q` by `+0.0660` /
+  `+0.0895` / `+0.1132`. The docstring names what would settle it (per-solver
+  resolution/subpixel convergence plus a run-length sweep) and asserts no
+  cause in the meantime.
+- **the prescription "give the Q window a floor encoding the expected
+  discretization Q gap"**, which rested on the withdrawn attribution, is
+  deleted. Issue #907 is re-scoped to deriving an uncertainty model (or
+  justifying the envelope as policy).
+
+Also recorded, and unchanged in behaviour: **issue #945**, the rate-to-Q
+interval asymmetry. At fixed `f`, `Q = pi f / alpha`, so a decay-rate interval
+symmetric in `+/- s` maps to Q ratios `[1/(1+s), 1/(1-s)]`, not the
+`[1/(1+s), 1+s]` the shipped `ln(1 + s)` comparison implements; for `s >= 1`
+the rate side has no finite upper bound, and the live board's mode 2 sits at
+`s = 2.8295`. Naming is fixed at the same time: `q_window`'s second return
+value is the **raw `tau/T`**, and the acceptance threshold is `ln(1 + that)`.
+
+Every number quoted in these docstrings, in `02_ring_resonator.py`'s
+record-length policy comment and in the pre-declaration's new Correction 4 is
+rebased on the live Meep 1.34.0 run committed in #937
+(`validation/crossval/_02_ring_resonator_results/crossval.json`,
+`T = 260.9798793571893`, settling witness `-8.714255697 dB`); the previous
+text quoted the Meep tutorial board throughout. Only **two of the three
+modes** are Q-gated on that board.
+
+
 ### Added — near-cutoff layout note, and the S21 phase residual on waveguide S-matrix results
 
 Two report-only additions from the same measurement campaign, one before the

@@ -38,7 +38,13 @@ Gates (all evaluated only when the external reference is present):
               ``|ln(Q_rfx / Q_ref)| <= ln(1 + tau_ref / T)``
 ============  ==========================================================
 
-The Q window is derived, not chosen — see :func:`q_window`.
+The Q window carries no hand-picked number and no measured rfx quantity: it
+is ``ln(1 + tau_ref/T)``, computed per mode per run from the REFERENCE mode
+and the record length. That is what keeps it from being fitted to the
+agreement it judges. It is nevertheless a **policy envelope**, not a derived
+estimator bound — the two arguments previously offered as its derivation are
+withdrawn in :func:`q_window`, which states the open questions (issues #907
+and #945) instead. Read that docstring before quoting this gate.
 
 Frequencies and the record length must be in reciprocal units (the script
 passes both in Meep normalised units: ``f`` in ``c/a``, ``T`` in ``a/c``).
@@ -63,12 +69,22 @@ FREQ_TOL_PCT = 5.0
 MIN_MATCHED = 2
 
 #: A mode's Q is gated only if the record spans at least this many amplitude
-#: e-foldings of the REFERENCE mode. Prior-provenance: #812 published
-#: ``T/tau = 0.376`` (resolved) and ``0.086`` (not resolved, "must be
-#: excluded"); any cut inside that interval implements the published finding,
-#: and 1/4 is the round geometric fraction in it (a quarter e-folding = 22%
-#: of observed amplitude decay). Consequence: the loosest admissible Q window
-#: is tau/T <= 4, so every gated mode still rejects a factor-3.35 Q error.
+#: e-foldings of the REFERENCE mode. A POLICY CHOICE with prior provenance,
+#: not a derived bound: #812 published ``T/tau = 0.376`` (resolved) and
+#: ``0.086`` (not resolved, "must be excluded"); any cut inside that interval
+#: implements the published finding, and 1/4 is the round geometric fraction
+#: in it (a quarter e-folding = 22% of observed amplitude decay). It is NOT a
+#: threshold below which this estimator stops working -- see
+#: :func:`q_window`, WITHDRAWN (1), which measures rfx's matrix pencil
+#: recovering Q to 2.1e-10 relative at ``T/tau = 0.0302``.
+#: Consequence of the cut: the admission bound ``tau/T <= 1/0.25 = 4`` caps
+#: the widest band the rule can ever issue at ``1 + 4 = 5``, so every Q-gated
+#: mode rejects a Q error strictly larger than 5x (pre-declaration Correction
+#: 1; ``test_no_admitted_q_gate_tolerates_more_than_a_factor_five``). On the
+#: live #937 board the most loosely gated mode is mode 2 at ``tau/T =
+#: 2.8295``, i.e. a factor-3.83 band. (The earlier "every gated mode still
+#: rejects a factor-3.35 Q error" was wrong twice over: 3.35 is inside the
+#: widest band, and it was the TUTORIAL board's mode-2 number.)
 Q_RECORD_MIN_EFOLDS = 0.25
 
 #: Mode-admission floor, applied symmetrically to both solvers' harminv output.
@@ -181,53 +197,165 @@ def assign(ref_freqs, rfx_freqs) -> list[int | None]:
 
 def q_window(ref_freq: float, ref_Q: float, record_length: float
              ) -> tuple[float, float]:
-    """Record-length-derived Q tolerance for one REFERENCE mode.
+    """Per-mode Q tolerance POLICY for one REFERENCE mode.
 
-    A record of length ``T`` cannot resolve exponential decay rates finer than
-    ``1/T`` — the same record-length limit that sets ``1/T`` Fourier frequency
-    resolution; two envelopes whose rates differ by less than ``1/T`` differ by
-    less than one factor of ``e`` over the whole record and are not separable.
-    With amplitude decay rate ``alpha = pi f / Q`` (e-folding time
-    ``tau = Q / (pi f)``)::
+    Returns ``(t_over_tau, s)``:
 
-        delta_Q / Q = delta_alpha / alpha = (1/T) / (pi f / Q) = tau / T
+    * ``t_over_tau = T / tau_ref`` -- the number of amplitude e-foldings the
+      record spans. A mode is Q-gated at all only when this reaches
+      :data:`Q_RECORD_MIN_EFOLDS`.
+    * ``s = tau_ref / T`` -- **the raw ratio, NOT the acceptance threshold.**
+      :func:`judge` accepts a mode when ``|ln(Q_rfx / Q_ref)| <= ln(1 + s)``,
+      so the threshold is ``ln(1 + s)`` and ``s`` is only the scale it is
+      built from. The previous wording ("Returns ``(T/tau, window)``")
+      invited reading the second element as the threshold; it never was.
 
-    Both inputs are the reference's; no measured rfx quantity appears, so this
-    window is not fitted to the agreement it judges.
+    Both inputs are the reference's -- no measured rfx quantity enters -- so
+    the envelope cannot be fitted to the agreement it judges. That property is
+    real, and it is why the rule is kept exactly as it stands.
 
-    **Known limitation -- this window is a RESOLUTION bound, not an accuracy
-    bound, and it therefore shrinks with run length while the physics does
-    not.** ``tau/T`` says how finely a record of length ``T`` can separate two
-    decay rates; it says nothing about how far apart two *solvers* should be.
-    The rfx-vs-Meep Q gap on cv02 is a discretization offset (staircased ring
-    boundary, subpixel treatment, hence a slightly different radiation Q), so
-    it is roughly constant in ``T``, while rfx's own Q for modes 2 and 3 is
-    stable over every RESOLVED span that was measured (mode 1's recorded
-    readings spread ~7% across T=291/561/1101 and are NOT cited as invariance evidence). Measured ``|ln(Q_rfx/Q_ref)| = 0.070`` (mode 1)
-    and ``0.123`` (mode 2); rfx mode 2 reads ``Q = 357.61 -> 356.83`` (0.22%)
-    between ``T = 291`` and ``T = 1101``
-    (``docs/research_notes/audit-2026-09-02/verify/G2_cv02.md``), and the
-    slowest in-band mode (``f = 0.1753``) reads ``Q = 1787.6 @ T = 1575 ->
-    1757.3 @ T = 3281`` (1.7%) -- both RESOLVED readings, rungs 1-2 of the
-    recorded Meep-absent run
-    ``docs/research_notes/audit-2026-09-02/fix2/i4_PR896_cv02_meep_absent.log``.
-    (That run's bootstrap reading ``Q = 1686.9 @ T = 385`` is deliberately not
-    quoted as invariance evidence: at ``T/tau = 0.126`` this module's own floor
-    calls it UNRESOLVED, i.e. not a measurement.) Consequently, on cv02's
-    committed reference/rfx pair this gate PASSES at ``T=291`` (mode-1 window
-    0.747) and FAILS at ``T=3385`` (window 0.064) purely because the record got
-    longer and better settled. A longer record reds a physically stable case.
-    Fixing it needs a floor on the window encoding the expected
-    discretization Q gap (or a pre-declared |ln Q| envelope); that is a change
-    to a claims-bearing gate and is NOT done here -- it is tracked as issue
-    #907 (the ``tau_ref/T`` window shrinks with ``T`` faster than the physics
-    does, so a longer record fails a stable Q), and it is the reason cv02's
-    Meep (verdict) lane keeps its calibrated record length instead of the
-    tau-scaled one.
+    What this rule IS
+    -----------------
+    A **pre-declared policy envelope with board provenance** (G5 of
+    ``docs/design_notes/20260831_cv02_ring_judge_predeclaration.md``) whose
+    size comes from a heuristic scale. It is NOT a derived bound on either
+    solver's Q estimator, and it is not a bound on how far two solvers should
+    agree. Two claims previously offered as its derivation are withdrawn
+    below. Neither is replaced by another claim here: producing an
+    uncertainty model that would justify a size -- any size -- is the
+    re-scoped ask of issue #907 ("q_window presents a policy as a
+    derivation"). No number in this module moves until that lands.
 
-    Returns ``(T/tau, window)``. ``T/tau`` is the number of amplitude
-    e-foldings the record observed; a mode is Q-gated only when it reaches
-    :data:`Q_RECORD_MIN_EFOLDS`.
+    Motivation for the size -- a heuristic scale, not a theorem
+    -----------------------------------------------------------
+    With amplitude decay rate ``alpha = pi f / Q`` and e-folding time
+    ``tau = Q / (pi f)``, one record-length's worth of rate, ``1/T``, is this
+    fraction of the mode's own rate::
+
+        delta_alpha / alpha  =  (1/T) / (pi f / Q)  =  tau / T  =  s
+
+    Read it as "one record length, expressed in units of this mode's own
+    decay rate". That is a scale, and a defensible one to build a policy on.
+    It is not evidence that either estimator is that uncertain.
+
+    WITHDRAWN (1) -- "a record of length T cannot resolve exponential decay
+    rates finer than 1/T"
+    ------------------------------------------------------------------------
+    False for this estimator class, so it cannot serve as the derivation.
+    ``rfx/harminv.py`` is the Matrix Pencil Method: a clean complex
+    exponential's exponent is fixed by adjacent-sample ratios, and there is no
+    Fourier separation limit to import into it. Measured through rfx's own
+    harminv on a synthetic single damped sinusoid (f = 1 THz, Q = 1500,
+    14 400 samples at dt = 1 fs, hence ``T/tau = 0.0302`` -- an eighth of the
+    :data:`Q_RECORD_MIN_EFOLDS` cut, 2.97% total amplitude decay over the
+    whole record): relative Q error ``2.1e-10`` noiseless, ``1.6e-4`` at
+    additive noise sigma = 1e-4, ``8.7e-4`` at sigma = 1e-3, on a
+    unit-amplitude signal. In rate terms the recovered ``alpha`` lands
+    ``6e-12`` / ``5e-6`` / ``3e-5`` of ``1/T`` from truth -- four to eleven
+    orders of magnitude finer than the asserted floor, on a record where
+    ``1/T`` is itself 33x the rate being measured.
+
+    Upstream Meep's Harminv is filter diagonalisation, a different estimator
+    again, so the two sides of this comparison do not even share one
+    uncertainty law to inherit. ``tau/T`` and
+    :data:`Q_RECORD_MIN_EFOLDS`'s ``0.25`` are therefore POLICY CHOICES with
+    board provenance, not derived bounds.
+
+    WITHDRAWN (2) -- "the rfx-vs-Meep Q gap is a discretization offset
+    (staircased ring boundary, subpixel treatment), so it is constant in T"
+    ------------------------------------------------------------------------
+    **UNRESOLVED.** The supporting argument -- that the solvers' close
+    frequency agreement bounds how far their effective geometries can differ,
+    and so bounds the Q gap -- varied one parameter at a time. Radius and
+    index trade off against each other in frequency while adding in Q, and
+    that joint direction is invisible to a one-at-a-time bound. Counterexample
+    from the analytic 2D TM annulus (Bessel/Hankel matching, outgoing
+    exterior), against the nominal ring ``R_in = 1, R_out = 2, n = 3.4``: the
+    single perturbed annulus
+
+        ``R_in = 0.975``, ``R_out = 1.975``, ``n = 3.443263353299652``
+
+    moves the three modes' frequencies by ``-0.00886%`` / ``0%`` (n was
+    chosen to null this one) / ``+0.00392%`` -- all inside the two solvers'
+    own observed disagreement on the live board, ``0.0515%`` / ``0.0306%`` /
+    ``0.0359%`` -- while moving ``ln Q`` by ``+0.0660`` / ``+0.0895`` /
+    ``+0.1132``, i.e. 1.1x to 1.9x the measured gaps ``0.0582`` / ``0.0479``
+    / ``0.0761``. So an effective-annulus difference of the size that would
+    explain the Q gap is NOT excluded by the frequency agreement.
+    (Single-parameter sensitivities are all ``|dlnQ/dR| < |dlnf/dR|`` --
+    ``0.60`` / ``0.51`` / ``0.39`` for a rigid radial shift of that model --
+    which is why the one-at-a-time bound looked conclusive.)
+
+    **That is a counterexample to a bound, nothing more. It is not a claim
+    that the perturbed annulus is either solver's effective geometry.** No
+    cause is asserted here.
+
+    The decomposition ``ln(Q_rfx/Q_ex) - ln(Q_meep/Q_ex) = ln(Q_rfx/Q_meep)``
+    cannot settle it either: ``Q_ex`` cancels identically, so the identity
+    holds for every positive value and corroborates nothing about the cause.
+
+    What WOULD settle it: a per-solver convergence study -- Q versus
+    cells-per-wavelength at fixed geometry, with and without subpixel
+    averaging (a discretization offset must shrink with resolution and be
+    independent of T; an effective-geometry offset must persist at fixed
+    effective radius) -- together with each solver's own Q swept against run
+    length at fixed resolution, so "constant in T" becomes a measurement
+    rather than an assumption.
+
+    #945 -- the rate-to-Q transform is asymmetric
+    ----------------------------------------------
+    The interval this ``s`` feeds is formed in :func:`judge` as
+    ``|ln(Q_rfx/Q_ref)| <= ln(1 + s)``, i.e. admissible Q ratios
+    ``[1/(1+s), 1+s]``. But the motivation above bounds the RATE, and at fixed
+    ``f``, ``Q = pi f / alpha``: ``alpha_rfx`` inside
+    ``[alpha_ref (1-s), alpha_ref (1+s)]`` maps to Q ratios
+    ``[1/(1+s), 1/(1-s)]`` -- a different interval. Worked through the shipped
+    code: ``q_window(1/pi, 10.0, 20.0)`` returns ``s = 0.5``; the mode whose
+    decay rate differs by exactly the admitted ``1/T``
+    (``alpha 0.100 -> 0.050``, hence ``Q 10 -> 20``) gives
+    ``|ln(Q_rfx/Q_ref)| = 0.693147`` against threshold
+    ``ln(1.5) = 0.405465`` -- FAIL, on a difference the motivation admits.
+    For ``s >= 1`` the rate interval has no finite upper bound at all, and the
+    live board's mode 2 runs at ``s = 2.8295``. Tracked as issue #945; the
+    comparison is unchanged here.
+
+    What does follow: the envelope shrinks as 1/T
+    ----------------------------------------------
+    ``ln(1 + tau_ref/T)`` falls as ``T`` grows, by construction. Whether the
+    rfx-vs-Meep Q gap it is compared against does the same is exactly what
+    WITHDRAWN (2) failed to establish -- so this is stated as arithmetic about
+    the gate, not as physics: holding the live measured Q pair FROZEN, mode
+    1's ``q`` gate holds up to ``T = 3476.4`` and reds above it, and mode 2's
+    up to ``T = 15038.6``, against a live record of ``T = 260.98``. That is
+    why cv02's Meep (verdict) lane keeps its calibrated record length instead
+    of a tau-scaled one, and why that lane's PASS is contingent on the record
+    staying short.
+
+    Live board, for orientation -- ``#937``'s committed Meep 1.34.0 run,
+    ``validation/crossval/_02_ring_resonator_results/crossval.json``,
+    ``T = 260.9798793571893``, settling witness ``-8.714255697 dB``. Only TWO
+    of the three modes are Q-gated:
+
+    ====  ==========  =========  =========  =========  ========  =======
+    mode  f_ref       Q_ref      Q_rfx      raw tau/T  abs lnQ   Q-gated
+    ====  ==========  =========  =========  =========  ========  =======
+    1     0.11800975    77.2293    81.8569     0.7982    0.0582  yes
+    2     0.14716790   341.4140   358.1786     2.8295    0.0479  yes
+    3     0.17524601  1747.8797  1619.8639    12.1648  (0.0761)  no
+    ====  ==========  =========  =========  =========  ========  =======
+
+    Mode 3's ``|lnQ|`` is parenthesised because the record stores ``null``
+    for it: below the e-folding cut the judge never forms the ratio, and the
+    value is shown only for orientation. Earlier revisions of this docstring
+    quoted the Meep TUTORIAL board throughout; every number above is the live
+    run instead.
+
+    No prescription is offered here. The earlier text said the fix "needs a
+    floor on the window encoding the expected discretization Q gap (or a
+    pre-declared |ln Q| envelope)"; that rested on WITHDRAWN (2) and is
+    deleted with it. The open work is issue #907 (re-scoped: derive an
+    uncertainty model, or keep the envelope as policy and justify its size)
+    and issue #945 (the asymmetry above).
     """
     tau = ref_Q / (math.pi * ref_freq)
     if tau <= 0 or record_length <= 0:
@@ -277,6 +405,15 @@ def judge(
             errs.append(row.freq_err_pct)
             if row.q_gated and partner.Q > 0 and ref_mode.Q > 0:
                 row.q_log_ratio = abs(math.log(partner.Q / ref_mode.Q))
+                # This is where the acceptance interval is formed: ``window``
+                # is the RAW ``tau_ref/T`` that q_window returned, and the
+                # threshold is ``ln(1 + window)`` -- admissible Q ratios
+                # ``[1/(1+s), 1+s]``. Issue #945: q_window's motivation bounds
+                # the decay RATE, and at fixed f a rate interval symmetric in
+                # +/- s maps to Q ratios ``[1/(1+s), 1/(1-s)]``, not to this
+                # one; for s >= 1 the rate side has no finite upper bound at
+                # all (the live board's mode 2 sits at s = 2.8295). Left
+                # exactly as it is -- see q_window's "#945" section.
                 row.q_pass = row.q_log_ratio <= math.log(1.0 + window)
             elif row.q_gated:
                 row.q_pass = False
