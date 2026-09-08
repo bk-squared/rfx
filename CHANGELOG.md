@@ -6,6 +6,25 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — cv02's persisted `exit_code` is now pinned to the process's real exit status (#946)
+
+`validation/crossval/02_ring_resonator.py` writes its `crossval.json` well
+before either of its two `sys.exit` statements, so any exit path added between
+them would leave a retained artifact claiming a verdict the process never
+returned — and that artifact is what outlives a scheduled runner's log.
+`tests/crossval/test_cv02_persisted_exit_code_contract.py` runs the real
+script as a subprocess (from a scratch copy, so the committed live-Meep record
+is untouched) and asserts that `verdict.exit_code` equals the subprocess's
+returncode, that `verdict.summary` claims a pass if and only if the status is
+0, and that the status is one of the script's three documented codes. It does
+not import `_exit_code` and compare it with itself.
+
+Verified in both directions on the Meep-absent lane: green as shipped
+(1 passed, 20.95 s), and red with a `sys.exit(0)` injected ahead of the
+existing `sys.exit(_rc)` — `records exit_code=2 but the process returned 0 --
+an exit path bypassed the persisted value`. Marked `slow` (~21-26 s wall), so
+it runs in the validation lane rather than the bounded PR gate.
+
 ### Changed — cv02's Q envelope is documented as a policy, not as a derivation (no gate moved)
 
 Prose only. `q_window` in `validation/crossval/comparators/ring_mode_judge.py`
