@@ -1,0 +1,23 @@
+{
+  "objects": 1961,
+  "fma_instructions": 162,
+  "fma_outside_exponential": 0,
+  "locations": {
+    "validation/research/nu_cost/g5/dump_candidate/module_0004.jit__lambda.obj-file.__compute_module_wrapped_exponential.o:": 9,
+    "validation/research/nu_cost/g5/dump_candidate/module_0006.jit__lambda.obj-file.__compute_module_wrapped_exponential.o:": 9,
+    "validation/research/nu_cost/g5/dump_candidate/module_0008.jit__lambda.obj-file.__compute_module_wrapped_exponential.2.o:": 9,
+    "validation/research/nu_cost/g5/dump_candidate/module_0008.jit__lambda.obj-file.__compute_module_wrapped_exponential.o:": 18,
+    "validation/research/nu_cost/g5/dump_candidate/module_0010.jit__lambda.obj-file.__compute_module_wrapped_exponential.2.o:": 9,
+    "validation/research/nu_cost/g5/dump_candidate/module_0010.jit__lambda.obj-file.__compute_module_wrapped_exponential.o:": 18,
+    "validation/research/nu_cost/g5/dump_candidate/module_0012.jit__lambda.obj-file.__compute_module_wrapped_exponential.o:": 9,
+    "validation/research/nu_cost/g5/dump_candidate/module_0014.jit__lambda.obj-file.__compute_module_wrapped_exponential.o:": 9,
+    "validation/research/nu_cost/g5/dump_candidate/module_0016.jit__lambda.obj-file.__compute_module_wrapped_exponential.o:": 9,
+    "validation/research/nu_cost/g5/dump_candidate/module_0018.jit__lambda.obj-file.__compute_module_wrapped_exponential.o:": 9,
+    "validation/research/nu_cost/g5/dump_candidate/module_0020.jit__lambda.obj-file.__compute_module_wrapped_exponential.o:": 9,
+    "validation/research/nu_cost/g5/dump_candidate/module_0022.jit__lambda.obj-file.__compute_module_wrapped_exponential.o:": 9,
+    "validation/research/nu_cost/g5/dump_candidate/module_0024.jit__lambda.obj-file.__compute_module_wrapped_exponential.o:": 9,
+    "validation/research/nu_cost/g5/dump_candidate/module_0026.jit__lambda.obj-file.__compute_module_wrapped_exponential.o:": 9,
+    "validation/research/nu_cost/g5/dump_candidate/module_0028.jit__lambda.obj-file.__compute_module_wrapped_exponential.o:": 9,
+    "validation/research/nu_cost/g5/dump_candidate/module_0030.jit__lambda.obj-file.__compute_module_wrapped_exponential.o:": 9
+  }
+}

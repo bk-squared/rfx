@@ -1,0 +1,25 @@
+G5-4a {'candidate_db': -68.26476397028848, 'baseline_median_db': -68.26476397028848, 'window_db': 0.0, 'difference_db': 0.0, 'pass': True}
+Traceback (most recent call last):
+  File "/Users/byungkwankim/Documents/rfx-nu-cost/scripts/diagnostics/cpml_g5_gates.py", line 161, in <module>
+    globals()[args.gate]()
+  File "/Users/byungkwankim/Documents/rfx-nu-cost/scripts/diagnostics/cpml_g5_gates.py", line 136, in physics
+    a = tuple(np.asarray(x) for x in jax.jit(lambda: trajectory('uniform8', M['old'], null=True))())
+                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/byungkwankim/Documents/rfx-nu-cost/scripts/diagnostics/cpml_g5_gates.py", line 136, in <lambda>
+    a = tuple(np.asarray(x) for x in jax.jit(lambda: trajectory('uniform8', M['old'], null=True))())
+                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/byungkwankim/Documents/rfx-nu-cost/scripts/diagnostics/cpml_g5_gates.py", line 26, in trajectory
+    params, psi = M['old'].init_cpml(grid)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/byungkwankim/Documents/rfx-nu-cost/validation/research/nu_cost/g4/cpml_baseline.py", line 488, in init_cpml
+    prof_x_lo = _lo_face_profile("x_lo" in noop_faces, dx, "x_lo")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/byungkwankim/Documents/rfx-nu-cost/validation/research/nu_cost/g4/cpml_baseline.py", line 478, in _lo_face_profile
+    p = _cpml_profile(n_active, grid.dt, cell_size, kappa_max=kappa_max)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/byungkwankim/Documents/rfx-nu-cost/validation/research/nu_cost/g4/cpml_baseline.py", line 147, in _cpml_profile
+    sigma_max = -float(np.log(R_asymptotic)) * (order + 1) / (2.0 * eta * d)
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~
+ZeroDivisionError: float division by zero
+--------------------
+For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.

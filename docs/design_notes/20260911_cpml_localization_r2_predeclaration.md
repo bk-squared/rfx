@@ -162,3 +162,216 @@ precision but no dot appears in these elementwise Yee/CPML updates.
 Full counts, FMA locations and logs live under `validation/research/nu_cost/g5/`.
 Candidate must now pass G5-2 with this selected mechanism; G5-3 remains a
 required additional report, not a fallback excuse for an effective G5-2 failure.
+
+## Results — STOP, G5-5 fired
+
+No production localization is accepted. Candidate `b7f14a57` exactly reuses
+`887f8ff7`; restoration `e1a32478` returns all of `rfx/` to starting HEAD
+`29a92108`. No production changes remain. No candidate tuning followed the
+failure. G4 note is byte-unchanged. No push or new PR.
+
+### G5-1 EXPRESSION IDENTITY — PASS
+
+The quoted restriction/neighbor/read-add-write equivalences above apply to
+every face. AST audit additionally verifies all **48 psi assignments**
+(24 recurrences plus 24 unchanged-carry branches) and all **48 correction
+operands and their order** match. Candidate SHA256
+`01e55ec9c9ce28a7e11da39e349ceca73583775f0ae2e20c6858c1a7a2da4959`;
+baseline SHA256
+`4979e28793d9530dd362f42d5aac913dd07360ffd757fdb7c0d3a9d3c7c3c3fd`.
+Algebraic zero outside every absorbing slab is established in the declaration;
+no measured epsilon is substituted for it. Audit: `g5/g5_1.json`.
+
+### G5-2 CONTRACTION-NEUTRAL BIT-IDENTITY — PASS, decisive numerical gate
+
+Selected mechanism and effectiveness control are recorded above. BOTH
+baseline and candidate were freshly recompiled with
+`XLA_FLAGS="--xla_disable_hlo_passes=fusion --xla_cpu_enable_fast_math=false"`.
+Every one of **7 fixtures x 30 arrays = 210 comparisons** passes
+`np.array_equal` at **200 steps**: **0 differing elements, max_abs=0**.
+This includes all six fields and all 24 psi per fixture, not just a norm.
+Candidate-comparison object audit (both versions in that fresh process):
+**1961 objects, 0 FMA outside exponential kernels, 162 inside exp**.
+The residual exp implementation uses FMA internally, but no field/psi
+multiply-add operators contract. Control baseline differs from unflagged
+baseline in **2129643 elements across 194 arrays**, so this is not vacuous.
+`g5_2.json`, `g5_2.log`, `candidate_codegen.json` archive the evidence.
+
+### G5-3 FLOAT64 REFERENCE DISTANCE — FAIL as additional report
+
+This is NOT the selected acceptance fallback: effective G5-2 passed.
+All seven fixtures and all 30 arrays were evaluated at 200 steps against
+independent NumPy float64 updates (`scripts/diagnostics/cpml_g5_reference.py`).
+The reference shares initialized profile/metric data and grid geometry only;
+it does not call production stepping or boundary operators. Profiles are
+captured from initialization inside the G4 compiled runner so traced graded
+initialization uses the same float32 coefficient data; spacing/physical scalar
+values retain their source values. The scalar Gaussian is evaluated in float64.
+
+A separate audit compared this NumPy reference with baseline stepping in
+float64, promoting the SAME prepared coefficients/metrics/materials, without
+using that audit to alter any G5-3 decision. Across seven fixtures, electric
+field discrepancies are <=2.6645352591003757e-15 and magnetic discrepancies
+<=5.871152625611529e-18. Relative discrepancies for near-zero hz can be order
+one because both values are around 1e-18; absolute audit records for all 30
+arrays are in `reference_audit.json`. Float64 is not exact real arithmetic.
+
+No floor was added to the 1.05 elementwise or max-norm predicate. Counts
+below include fields AND psi; full per-array counts/errors are in `g5_3.json`.
+
+| fixture | violating elements | arrays failing max-norm (of 30) |
+|---|---:|---:|
+| uniform8 | 115889 | 15 |
+| graded8 | 0 | 0 |
+| mixed8 | 0 | 0 |
+| uniform4 | 0 | 0 |
+| uniform16 | 0 | 0 |
+| periodic8 | 47242 | 4 |
+| kappa8 | 133051 | 17 |
+
+Per-field max errors and elementwise violations (C/B is the ratio of max
+errors, with limit 1.05; E and H carry their native field units):
+
+| fixture | field | baseline max error | candidate max error | C/B | violating elements |
+|---|---|---:|---:|---:|---:|
+| uniform8 | ex | 6.73359823233e-07 | 4.11913499754e-07 | 0.611728656 | 9836 |
+| uniform8 | ey | 6.73359823233e-07 | 4.11913499532e-07 | 0.611728656 | 10022 |
+| uniform8 | ez | 7.94661410009e-07 | 2.21553029145e-07 | 0.278801797 | 9682 |
+| uniform8 | hx | 7.47406719225e-09 | 7.94575565832e-09 | 1.063110011 | 9586 |
+| uniform8 | hy | 6.48911741699e-09 | 6.42525616737e-09 | 0.990158716 | 9103 |
+| uniform8 | hz | 5.56533441312e-09 | 4.9764374819e-09 | 0.894184808 | 10277 |
+| graded8 | ex | 3.89552225588e-07 | 3.89552225588e-07 | 1.000000000 | 0 |
+| graded8 | ey | 6.43727135152e-07 | 6.43727135152e-07 | 1.000000000 | 0 |
+| graded8 | ez | 1.31019233063e-06 | 1.31019233063e-06 | 1.000000000 | 0 |
+| graded8 | hx | 2.19934494154e-09 | 2.19934494154e-09 | 1.000000000 | 0 |
+| graded8 | hy | 1.78396118906e-09 | 1.78396118906e-09 | 1.000000000 | 0 |
+| graded8 | hz | 2.56775090153e-09 | 2.56775090153e-09 | 1.000000000 | 0 |
+| mixed8 | ex | 7.16402565049e-07 | 7.16402565049e-07 | 1.000000000 | 0 |
+| mixed8 | ey | 5.27167947739e-07 | 5.27167947739e-07 | 1.000000000 | 0 |
+| mixed8 | ez | 4.28823101473e-07 | 4.28823101473e-07 | 1.000000000 | 0 |
+| mixed8 | hx | 2.681841832e-09 | 2.681841832e-09 | 1.000000000 | 0 |
+| mixed8 | hy | 5.40199966628e-09 | 5.40199966628e-09 | 1.000000000 | 0 |
+| mixed8 | hz | 2.67796451737e-09 | 2.67796451737e-09 | 1.000000000 | 0 |
+| uniform4 | ex | 2.94607510831e-07 | 2.94607510831e-07 | 1.000000000 | 0 |
+| uniform4 | ey | 5.33026089489e-07 | 5.33026089489e-07 | 1.000000000 | 0 |
+| uniform4 | ez | 5.5118638187e-07 | 5.5118638187e-07 | 1.000000000 | 0 |
+| uniform4 | hx | 2.98697427074e-09 | 2.98697427074e-09 | 1.000000000 | 0 |
+| uniform4 | hy | 5.17297060302e-09 | 5.17297060302e-09 | 1.000000000 | 0 |
+| uniform4 | hz | 2.31589880675e-09 | 2.31589880675e-09 | 1.000000000 | 0 |
+| uniform16 | ex | 5.05769397696e-07 | 5.05769397696e-07 | 1.000000000 | 0 |
+| uniform16 | ey | 5.5425762846e-07 | 5.5425762846e-07 | 1.000000000 | 0 |
+| uniform16 | ez | 4.38779192757e-07 | 4.38779192757e-07 | 1.000000000 | 0 |
+| uniform16 | hx | 6.18868368319e-09 | 6.18868368319e-09 | 1.000000000 | 0 |
+| uniform16 | hy | 6.29359497508e-09 | 6.29359497508e-09 | 1.000000000 | 0 |
+| uniform16 | hz | 4.15217593512e-09 | 4.15217593512e-09 | 1.000000000 | 0 |
+| periodic8 | ex | 4.14582905117e-07 | 3.68837621778e-07 | 0.889659504 | 4107 |
+| periodic8 | ey | 2.21450575433e-07 | 4.07039398187e-07 | 1.838059790 | 5024 |
+| periodic8 | ez | 5.3596994154e-07 | 3.18589794324e-07 | 0.594417279 | 4791 |
+| periodic8 | hx | 3.64638347075e-09 | 1.73039787834e-09 | 0.474551811 | 5463 |
+| periodic8 | hy | 2.12923124733e-09 | 1.6663694984e-09 | 0.782615557 | 4471 |
+| periodic8 | hz | 1.86411819262e-09 | 1.47489587292e-09 | 0.791202982 | 4841 |
+| kappa8 | ex | 4.48091965755e-07 | 4.37584468216e-07 | 0.976550578 | 11455 |
+| kappa8 | ey | 4.48091965755e-07 | 3.18375178221e-07 | 0.710513025 | 10177 |
+| kappa8 | ez | 9.22738131237e-07 | 4.45900973034e-07 | 0.483236747 | 11396 |
+| kappa8 | hx | 3.4240256684e-09 | 3.39520519461e-09 | 0.991582869 | 10768 |
+| kappa8 | hy | 5.44535542021e-09 | 3.87425394907e-09 | 0.711478618 | 11725 |
+| kappa8 | hz | 3.55557849795e-09 | 4.14881240439e-09 | 1.166845960 | 11182 |
+
+### G5-4 PHYSICS INVARIANTS — PASS
+
+(a) Exact committed reflection oracle: baseline repetitions all
+**-68.26476397028848 dB**, spread **0 dB**; candidate
+**-68.26476397028848 dB**, absolute difference **0 dB**, frozen window
+**0 dB**. Same 2 GHz / 8-layer / 250-step fixture; no window widening.
+
+(b) PEC-closed, cpml_layers=0: all six field histories at steps 1..200 are
+bit-identical, **0 differing elements**. All 200 energy samples are identical;
+step-200 energy sum is **1.674324749477396e-10** in both. This is the
+cellwise energy-density sum (no cell-volume factor), not a Joule integral.
+The production no-absorber branch bypasses CPML initialization and updates.
+Initial harness erroneously called init_cpml at L=0, which raised
+ZeroDivisionError before any field comparison; corrected to that bypass.
+`g5_4_initial_harness_error.log` preserves the error. No physics predicate
+or fixture was changed; `g5_4.log` records the completed rerun.
+
+(c) mixed8: all **8 non-absorbing-face psi arrays** for PEC x_lo and PMC
+y_hi have **0 nonzero elements in each version**. All 16 absorbing-face
+psi arrays pass G5-2 with **0 differing elements** (as do all 24 mixed8 psi).
+`g5_4.json` lists the individual non-absorbing arrays.
+
+### G5-5 DIVERGENCE-GROWTH WITNESS — FAIL, STOP
+
+Frozen seed is ez[center]=1; perturbed baseline seed is 1+2^-23, delta
+**1.1920928955078125e-7**, single cell. Same unflagged Gaussian-driven scan
+thereafter. The entire 200-step uniform8 curve was captured in each run;
+first violation in chronological order is **hy at step 35**.
+The comparisons use float64 subtraction of stored float32 field values to
+measure their distance without additional subtraction rounding.
+
+| field | first violating step | candidate distance | baseline sensitivity | violating steps (of 200) | maximum excess |
+|---|---:|---:|---:|---:|---:|
+| ex | 39 | 2.384185791015625e-07 | 1.3411045074462891e-07 | 129 | 4.76837158203125e-07 |
+| ey | 41 | 1.4901161193847656e-07 | 1.3411045074462891e-07 | 64 | 3.5762786865234375e-07 |
+| ez | 39 | 4.76837158203125e-07 | 2.384185791015625e-07 | 87 | 4.76837158203125e-07 |
+| hx | 38 | 5.5581494962098077e-10 | 4.9760728870751336e-10 | 28 | 1.2942109606228769e-09 |
+| hy | 35 | 3.7016434362158179e-10 | 3.3651303965598345e-10 | 50 | 1.216903910972178e-09 |
+| hz | 44 | 9.4339094869333451e-10 | 5.8808229119744482e-10 | 48 | 5.8916886647164546e-10 |
+
+All six fields exceed their declared sensitivity bounds. The remaining six
+witness fixtures were **not run after STOP**; no seed or window was retuned.
+All 200-point curves and violating step indices are archived in `g5_5.json`;
+`g5_5_witness.svg` plots them. Passing contraction-neutral identity does not
+waive this independently required gate. The candidate is rejected.
+
+### Before/after ladder — not run after correctness STOP
+
+Mcells/s; spread=max-min across three windows. Before rows are taken exactly
+from `results/w8b_nu_kernel_ablation_4090.json`. Missing 400^3 rows stay missing.
+
+| n | lane | L | before median | before spread | after median | after spread | speedup |
+|---:|---|---:|---:|---:|---|---|---|
+| 300 | bare-slow | 0 | 10015.873987 | 82.342573 | not run | — | — |
+| 300 | bare-slow | 4 | 2030.470869 | 124.760412 | not run | — | — |
+| 300 | bare-slow | 8 | 2120.835565 | 0.032547 | not run | — | — |
+| 300 | bare-slow | 16 | 2037.088057 | 81.397819 | not run | — | — |
+| 300 | nu-uniform | 0 | 10037.886593 | 57.932029 | not run | — | — |
+| 300 | nu-uniform | 4 | 1795.295944 | 76.819075 | not run | — | — |
+| 300 | nu-uniform | 8 | 1780.745256 | 3.281352 | not run | — | — |
+| 300 | nu-uniform | 16 | 1549.203037 | 52.644073 | not run | — | — |
+| 400 | bare-slow | 8 | unavailable | — | not run | — | — |
+| 400 | nu-uniform | 8 | unavailable | — | not run | — | — |
+
+No after speedups, spreads or 0-layer throughput controls were measured.
+The timing falsifier is **not evaluated**: this rejection does not establish
+whether whole-array structure was the performance cost. No GPU YAML,
+rsync staging, .staged-commit, VESSL submission or w9 JSON was produced.
+VESSL submissions **0**, run ID **none**, harvest/deletion **not applicable**.
+No run exists to harvest/delete; no resubmission.
+
+### Reproduction and regression status
+
+All commands run in this worktree, with PYTHONDONTWRITEBYTECODE=1,
+PYTHONPATH=/Users/byungkwankim/Documents/rfx-nu-cost and the user-authorized
+/Users/byungkwankim/Documents/rfx/.venv/bin/python executable. No other
+worktree was edited. Original G4 artifacts are read-only.
+
+Fresh-process baseline controls: `scripts/diagnostics/cpml_g5_controls.py`.
+For rejected-candidate gates from the restored tree, set
+`RFX_G4_REJECTED_CANDIDATE=1` and run
+`scripts/diagnostics/cpml_g5_gates.py identity` with the selected XLA_FLAGS.
+Run `reference`, `physics`, or `witness` with no XLA_FLAGS for the other gates.
+The archived candidate is byte-identical to G5's applied candidate.
+For physics reproduction the oracle's own globals must select that archived
+candidate too (the harness supplies this binding). To audit generated objects,
+use `scripts/diagnostics/cpml_g5_controls.py audit <dump-label>`.
+G5-3 reads `g5/unflagged.npz`, regenerated by baseline controls; generated NPZ,
+XLA dumps and Matplotlib cache are ignored, while numerical reports are tracked.
+
+The full BEFORE command began with baseline CPML imported by test collection
+before candidate application. It continues against that already-loaded module;
+Python source replacement does not replace imported function objects. The
+full AFTER command began after production restoration. Both use the exact
+requested unit/contracts marker selection, addopts override and no cacheprovider.
+Results will be appended after completion; no running suite is claimed passed.
+Ruff for the requested rfx/ and tests/ selection: **0 findings before,
+0 on candidate, 0 after restoration**. Research harness ruff also passes.

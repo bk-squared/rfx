@@ -61,8 +61,33 @@ def controls():
         print(label, {k:v for k,v in record.items() if k != 'differing_elements'}, flush=True)
 
 
+def audit_codegen(label):
+    """Inspect emitted machine code; LLVM markers alone missed contraction."""
+    import re
+    paths = sorted((OUT / ('dump_' + label)).glob('*.o'))
+    if not paths:
+        raise FileNotFoundError('No generated objects for ' + label)
+    locations = {}
+    for start in range(0, len(paths), 50):
+        assembly = subprocess.check_output(
+            ['otool', '-tvV', *map(str, paths[start:start + 50])], text=True)
+        key = ''
+        for line in assembly.splitlines():
+            if line.endswith(':') and '.o:' in line:
+                key = Path(line[:-1]).name
+            if re.search(r'\b(?:fmadd|fmsub|fnmadd|fnmsub|fmla|fmls)(?:\.|\s)', line):
+                locations[key] = locations.get(key, 0) + 1
+    record = {'objects': len(paths), 'fma_instructions': sum(locations.values()),
+              'fma_outside_exponential': sum(n for key, n in locations.items() if 'exponential' not in key),
+              'locations': locations}
+    print(json.dumps(record, indent=2))
+    (OUT / (label + '_audit.json')).write_text(json.dumps(record, indent=2) + '\n')
+
+
 if __name__ == '__main__':
-    if len(sys.argv) > 1:
+    if len(sys.argv) > 2 and sys.argv[1] == 'audit':
+        audit_codegen(sys.argv[2])
+    elif len(sys.argv) > 1:
         worker(sys.argv[1])
     else:
         controls()

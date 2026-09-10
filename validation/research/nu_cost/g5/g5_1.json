@@ -1,0 +1,8 @@
+{
+  "psi_assignment_count": 48,
+  "psi_assignments_and_order_identical": true,
+  "correction_add_count": 48,
+  "correction_operands_and_order_identical": true,
+  "baseline_sha256": "4979e28793d9530dd362f42d5aac913dd07360ffd757fdb7c0d3a9d3c7c3c3fd",
+  "candidate_sha256": "01e55ec9c9ce28a7e11da39e349ceca73583775f0ae2e20c6858c1a7a2da4959"
+}
