@@ -375,3 +375,42 @@ requested unit/contracts marker selection, addopts override and no cacheprovider
 Results will be appended after completion; no running suite is claimed passed.
 Ruff for the requested rfx/ and tests/ selection: **0 findings before,
 0 on candidate, 0 after restoration**. Research harness ruff also passes.
+
+### Completed before/after regression
+
+Both requested full unit/contracts runs completed with **exit 0**. AFTER
+means the delivered, restored production tree; it is not an unflagged
+full-suite acceptance claim for the rejected candidate.
+
+| run | passed | skipped | deselected | xfailed | warnings | seconds | exit |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| before (baseline imported before application) | 4563 | 34 | 269 | 6 | 2153 | 3263.05 | 0 |
+| after production restoration | 4563 | 34 | 269 | 6 | 2153 | 3376.59 | 0 |
+
+Exact command for each, with output redirected to `g5/before_regression.log`
+and `g5/after_regression.log` respectively:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 \
+PYTHONPATH=/Users/byungkwankim/Documents/rfx-nu-cost \
+/Users/byungkwankim/Documents/rfx/.venv/bin/python -m pytest \
+  tests/unit tests/contracts -q -o addopts= \
+  -m "not gpu and not slow and not slow_physics" -p no:cacheprovider
+```
+
+No failures were chased or hidden, and no regression rerun was needed.
+The named pre-existing slow_physics oracles were excluded and not modified.
+Requested ruff selection: **0 findings** before, on candidate, and after
+restoration (`before_ruff.log`, `candidate_ruff.log`, `after_ruff.log`).
+The independent harness files also pass the same ruff rule selection.
+
+Final integrity: `git diff 29a92108 -- rfx/` is empty; the G4 note is
+byte-identical to `29a92108`; the original G5 declaration from `18693717`
+is an unchanged byte prefix of this file. The witness SVG was visually
+checked against its underlying 200-point JSON curves. No GPU run, push,
+new PR, external-worktree edit, or frozen-window change occurred.
+
+Commit sequence before this final regression record: declaration `18693717`,
+reflection-window calibration `96c33db3`, baseline controls/reference
+`b069fc49`, candidate `b7f14a57`, restoration `e1a32478`, gate evidence
+`28e7cbae`. **G5 remains STOPPED by G5-5.**
