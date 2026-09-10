@@ -1,0 +1,12 @@
+no_fusion uniform8 completed
+no_fusion graded8 completed
+no_fusion mixed8 completed
+no_fusion uniform4 completed
+no_fusion uniform16 completed
+no_fusion periodic8 completed
+no_fusion kappa8 completed
+VERSION 0.10.2
+mul (x: 'ArrayLike', y: 'ArrayLike', *, out_dtype: 'DTypeLike | None' = None) -> 'Array'
+add (x: 'ArrayLike', y: 'ArrayLike') -> 'Array'
+multiply (*args: 'ArrayLike', out: 'None' = None, where: 'None' = None) -> 'Any'
+dot_general (lhs: 'ArrayLike', rhs: 'ArrayLike', dimension_numbers: 'DotDimensionNumbers', precision: 'PrecisionLike' = None, preferred_element_type: 'DTypeLike | None' = None, *, out_sharding=None) -> 'Array'

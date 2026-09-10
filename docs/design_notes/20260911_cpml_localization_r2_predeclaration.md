@@ -129,3 +129,36 @@ Median **-68.26476397028848 dB**, max-minus-min spread **0 dB**.
 Frozen W=2*S = **0 dB**; candidate must reproduce that numerical dB value
 exactly. This deterministic CPU calibration does not estimate GPU variability.
 Log: `validation/research/nu_cost/g5/baseline_reflection.log`.
+
+## Baseline-only contraction control
+
+Installed JAX/jaxlib 0.10.2, CPU arm64. Seven fixtures x 30 arrays at step
+200 (210 arrays), fresh process for each control. `controls.json` records
+per-array differing counts against unflagged baseline.
+
+| mechanism | changed elements | changed arrays | effective suppression? |
+|---|---:|---:|---|
+| --xla_allow_excess_precision=false | 0 | 0 | vacuous |
+| jax_default_matmul_precision=highest | 0 | 0 | vacuous |
+| --xla_cpu_enable_fast_math=false | 0 | 0 | vacuous |
+| --xla_cpu_use_fusion_emitters=false --xla_cpu_enable_fast_math=false | 2129538 | 194 | no: 9583 FMA instructions remain |
+| --xla_disable_hlo_passes=fusion --xla_cpu_enable_fast_math=false | 2129643 | 194 | YES for field/psi arithmetic |
+
+Selected exact mechanism: `XLA_FLAGS="--xla_disable_hlo_passes=fusion
+--xla_cpu_enable_fast_math=false"`. Disabling fusion places multiplication
+and addition in separate compiled kernels, suppressing their contraction.
+`otool -tvV` audit of all 961 generated objects for seven baseline fixtures:
+**0 FMA instructions outside exponential kernels**; 81 instructions remain
+inside the implementation of the atomic `exp` operation (source Gaussian
+and traced graded profile initialization). These are not contractions across
+field/psi arithmetic operators. Unflagged control has **8655 FMA instructions**
+in 668 objects. LLVM text has zero explicit `contract`/`llvm.fma` markers even
+in unflagged output: checking LLVM markers alone would have been insufficient.
+The effectiveness condition is met by **2129643 changed elements**; this is
+not a claim that disabling fast-math alone disables contraction.
+Per-op inspection: lax.mul exposes out_dtype but no precision argument;
+lax.add and jnp.multiply/add expose no precision argument. dot_general has
+precision but no dot appears in these elementwise Yee/CPML updates.
+Full counts, FMA locations and logs live under `validation/research/nu_cost/g5/`.
+Candidate must now pass G5-2 with this selected mechanism; G5-3 remains a
+required additional report, not a fallback excuse for an effective G5-2 failure.

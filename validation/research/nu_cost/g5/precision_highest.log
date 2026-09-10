@@ -1,0 +1,12 @@
+precision_highest uniform8 completed
+precision_highest graded8 completed
+precision_highest mixed8 completed
+precision_highest uniform4 completed
+precision_highest uniform16 completed
+precision_highest periodic8 completed
+precision_highest kappa8 completed
+VERSION 0.10.2
+mul (x: 'ArrayLike', y: 'ArrayLike', *, out_dtype: 'DTypeLike | None' = None) -> 'Array'
+add (x: 'ArrayLike', y: 'ArrayLike') -> 'Array'
+multiply (*args: 'ArrayLike', out: 'None' = None, where: 'None' = None) -> 'Any'
+dot_general (lhs: 'ArrayLike', rhs: 'ArrayLike', dimension_numbers: 'DotDimensionNumbers', precision: 'PrecisionLike' = None, preferred_element_type: 'DTypeLike | None' = None, *, out_sharding=None) -> 'Array'

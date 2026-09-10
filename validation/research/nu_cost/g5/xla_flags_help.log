@@ -1,0 +1,94 @@
+F0911 01:00:15.494782 38142373 parse_flags_from_env.cc:220] Check failed: tsl::Flags::Parse(&env_argv->argc, env_argv->argv.data(), flag_list) Flag parsing failed.
+usage: --help
+Flags:
+	--xla_hlo_evaluator_use_fast_path=false	bool	Enable fast evaluation of dots in the HloEvaluator
+	--xla_cpu_enable_fast_math=false 	bool	Enable unsafe fast-math optimizations in the CPU compiler; this may produce faster code at the expense of some accuracy.
+	--xla_cpu_enable_platform_dependent_math=true	bool	Enable platform dependent math in the CPU compiler; this may produce faster code at the expense of consistent results across CPUs.
+	--xla_cpu_experimental_enable_tiling_propagation=false	bool	If true, enable experimental tiling propagation for CPU.
+	--xla_cpu_fast_math_honor_nans=true	bool	When xla_cpu_enable_fast_math is true then this controls whether we allow operations to produce NaNs. Ignored when xla_cpu_enable_fast_math is false.
+	--xla_cpu_fast_math_honor_infs=true	bool	When xla_cpu_enable_fast_math is true then this controls whether we allow operations to produce infinites. Ignored when xla_cpu_enable_fast_math is false.
+	--xla_cpu_fast_math_honor_division=true	bool	When xla_cpu_enable_fast_math is true then this controls whether we forbid to use multiplication by the reciprocal instead of division. Ignored when xla_cpu_enable_fast_math is false.
+	--xla_cpu_fast_math_honor_functions=true	bool	When xla_cpu_enable_fast_math is true then this controls whether we forbid to approximate calculations for functions. Ignored when xla_cpu_enable_fast_math is false.
+	--xla_cpu_ftz=true               	bool	If true, flush-to-zero semantics are enabled in the code generated for CPUs. Default is true.
+	--xla_cpu_enable_fast_min_max=true	bool	Enable fast floating point min/max lowering that might not propagate NaNs.
+	--xla_gpu_enable_fast_min_max=false	bool	Enable fast floating point min/max lowering that does not propagate NaNs.
+	--xla_llvm_enable_alias_scope_metadata=true	bool	In LLVM-based backends, enable the emission of !alias.scope metadata in the generated IR.
+	--xla_llvm_enable_noalias_metadata=true	bool	In LLVM-based backends, enable the emission of !noalias metadata in the generated IR.
+	--xla_llvm_enable_invariant_load_metadata=true	bool	In LLVM-based backends, enable the emission of !invariant.load metadata in the generated IR.
+	--xla_llvm_disable_expensive_passes=false	bool	In LLVM-based backends, disable a custom set of expensive optimization passes.
+	--xla_backend_optimization_level=3	int32	Numerical optimization level for the XLA compiler backend.
+	--xla_disable_hlo_passes=""      	string	Comma-separated list of hlo passes to be disabled. These names must exactly match the passes' names; no whitespace around commas.
+	--xla_enable_hlo_passes_only=""  	string	Comma-separated list of hlo passes to be enabled. These names must exactly match the passes' names; no whitespace around commas. The unspecified passes are all disabled.
+	--xla_disable_all_hlo_passes=false	bool	Disables all HLO passes. Notes that some passes are necessary for correctness and the invariants that must be satisfied by 'fully optimized' HLO are different for different devices and may change over time. The only 'guarantee', such as it is, is that if you compile XLA and dump the optimized HLO for some graph, you should be able to run it again on the same device with the same build of XLA.
+	--xla_embed_ir_in_executable=false	bool	Embed the compiler IR as a string in the executable.
+	--xla_eliminate_hlo_implicit_broadcast=true	bool	Eliminate implicit broadcasts when lowering user computations to HLO instructions; use explicit broadcast instead.
+	--xla_cpu_multi_thread_eigen=true	bool	When generating calls to Eigen in the CPU backend, use multi-threaded Eigen mode.
+	--xla_gpu_cuda_data_dir="./cuda_sdk_lib"	string	If non-empty, specifies a local directory containing ptxas and nvvm libdevice files; otherwise we use those from runfile directories.
+	--xla_gpu_ftz=false              	bool	If true, flush-to-zero semantics are enabled in the code generated for GPUs.
+	--xla_gpu_ptx_file=""            	string	If non-empty, specifies a file containing ptx to use. The filename prefix must have the same pattern as PTX dumped by XLA. This allows to match one specific module. General workflow. Get the generated module ptx from XLA, modify it, then pass it back via this option.
+	--xla_gpu_llvm_ir_file=""        	string	If non-empty, specifies a file containing textual LLVM IR to use. The filename prefix must have the same pattern as LLVM dumped by XLA (i.e. module_0001.ir-no-opt.ll -> module_0001.MY_NEW_FILE.ll). This allows to match one specific module. General workflow. Get the not optimized LLVM IR from XLA, modify it, then pass it back via this option.
+	--xla_test_all_output_layouts=false	bool	Let ClientLibraryTestBase::ComputeAndCompare* test all permutations of output layouts. For example, with a 3D shape, all permutations of the set {0, 1, 2} are tried.
+	--xla_test_all_input_layouts=false	bool	Let ClientLibraryTestBase::ComputeAndCompare* test all permutations of *input* layouts. For example, for 2 input arguments with 2D shape and 4D shape, the computation will run 2! * 4! times for every possible layouts
+	--xla_test_add_command_buffer_mode=false	bool	If true, the test launched with ClientLibraryTestBase will use command buffer to execute the computation.
+	--xla_hlo_profile=false          	bool	Instrument the computation to collect per-HLO cycle counts
+	--xla_backend_extra_options=""   	string	Extra options to pass to a backend; comma-separated list of 'key=val' strings (=val may be omitted); no whitespace around commas.
+	--xla_cpu_use_onednn=false       	bool	Call oneDNN thunks for matmul and convolution fusions in the CPU backend.
+	--xla_cpu_experimental_onednn_custom_call=false	bool	Call oneDNN custom call thunks in the CPU backend.
+	--xla_cpu_experimental_onednn_fusion_type=""	string	Comma-separated list of oneDNN fusion types to be enabled; no whitespace around commas. Two ways to pass values:
+  1. Exact type names. This overwrites the default setting.
+  2. '+' or '-' prefix: This adds or removes a fusion type from the default list. Cannot be mixed with the overwrite mode. Every item must have the sign prefix.
+Available fusion types: dot, eltwise, and reduce.
+The default list is currently empty.
+	--xla_cpu_use_acl=false          	bool	Generate calls to ACL (Arm Compute Library) in the CPU backend.
+	--xla_cpu_opt_preset="CPU_OPT_PRESET_DEFAULT"	string	Set CPU optimization preset (FAST_RUNTIME, FAST_COMPILE)
+	--xla_cpu_use_fusion_emitters=true	bool	Use fusion emitters for code generation in the CPU backend.
+	--xla_cpu_use_thunk_runtime=true 	bool	Deprecated.
+	--xla_cpu_use_xnnpack=true       	bool	Use XNNPACK for supported operations.
+	--xla_cpu_experimental_xnn_fusion_type=""	string	Comma-separated list of XNN fusion types to be enabled; no whitespace around commas. Two ways to pass values:
+  1. Exact type names. This overwrites the default setting.
+  2. '+' or '-' prefix: This adds or removes a fusion type from the default list. Cannot be mixed with the overwrite mode. Every item must have the sign prefix.
+Available fusion types: dot, eltwise, and reduce.
+The default list is currently empty.
+	--xla_cpu_experimental_ynn_fusion_type=""	string	Comma-separated list of YNN fusion types to be enabled; no whitespace around commas. Two ways to pass values:
+  1. Exact type names. This overwrites the default setting.
+  2. '+' or '-' prefix: This adds or removes a fusion type from the default list. Cannot be mixed with the overwrite mode. Every item must have the sign prefix.
+The default list is currently empty.
+	--xla_cpu_experimental_xnn_graph_fusion_mode="XNN_GRAPH_FUSION_MODE_DISABLED"	string	Controls XnnGraphFusion pass.   `XNN_GRAPH_FUSION_MODE_DISABLED` - default value,
+  `XNN_GRAPH_FUSION_MODE_GREEDY` - greedy extraction of XNNPACK-compatible subgraphs starting from root instructions,
+  `XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY` - same as GREEDY plus operations that are only supported with slinky,  `XNN_GRAPH_FUSION_MODE_BYPASS_COST_MODEL` - test-only value for disabling XNNPACK cost models.
+	--xla_cpu_parallel_codegen_split_count=32	int32	Split LLVM module into at most this many parts before codegen to enable parallel compilation for the CPU backend.
+	--xla_cpu_copy_insertion_use_region_analysis=false	bool	Use region based analysis in copy insertion pass.
+	--xla_cpu_enable_concurrency_optimized_scheduler=false	bool	[Deprecated, do not use].
+	--xla_cpu_scheduler_type="CPU_SCHEDULER_TYPE_DEFAULT"	string	XLA:CPU's scheduler type.
+	--xla_cpu_prefer_vector_width=256	int32	Preferred vector width for the XLA:CPU LLVM backend.
+	--xla_cpu_max_isa=""             	string	Maximum ISA that XLA:CPU LLVM backend will codegen, i.e., it will not use newer instructions. Available values: SSE4_2, AVX, AVX2, AVX512, AVX512_VNNI, AVX512_BF16, AMX, and AMX_FP16. (`AMX` will enable both `AMX_BF16` and `AMX_INT8` instructions.)
+	--xla_cpu_emitter_verification_level=0	int32	Sets how often we verify the emitted modules. Higher levels mean more frequent verification. Currently supported: 0, 1.
+	--xla_gpu_crash_on_verification_failures=false	bool	Crashes the program on extra verification failures, e.g. cuDNN cross checking failures
+	--xla_gpu_strict_conv_algorithm_picker=false	bool	[Deprecated, do not use].
+	--xla_gpu_autotune_level=4       	int32	[Stable] Set GEMM and Convolution auto-tuning level. 0 = off; 1 = on; 2 = on+init; 3 = on+init+reinit; 4 = on+init+reinit+check; 5 = on+init+reinit+check and skip WRONG_RESULT solutions. See also the related flag xla_gpu_autotune_gemm_rtol. Remark that, setting the level to 5 only makes sense if you are sure that the reference (first in the list) solution is numerically CORRECT. Otherwise, the autotuner might discard many other correct solutions based on the failed BufferComparator test.
+	--xla_gpu_autotune_max_solutions=0	int64	Maximal number of GEMM solutions to consider for autotuning: 0 means consider all solutions returned by the GEMM library.
+	--xla_gpu_fusion_autotune_top_k_configs=1	int32	Maximum number of candidate configs considered during autotuning non-gemm fusions.
+	--xla_gpu_autotune_gemm_rtol=0.100000	float	Relative precision for comparing GEMM solutions vs the reference one
+	--xla_force_host_platform_device_count=1	int32	Force the host platform to pretend that there are these many host "devices". All of these host devices are backed by the same threadpool. Setting this to anything other than 1 can increase overhead from context switching but we let the user override this behavior to help run tests on the host that run models in parallel across multiple devices.
+	--xla_gpu_disable_gpuasm_optimizations=false	bool	In XLA:GPU run ptxas in -O0 (default is -O3).
+	--xla_gpu_generate_debug_info=false	bool	Generate debug info for codegened CUDA kernels.
+	--xla_gpu_generate_line_info=false	bool	Generate line info for codegened CUDA kernels.
+	--xla_fuel=""                    	string	Sets compiler fuel, useful for bisecting bugs in passes. Format --xla_fuel=PASS1=NUM1,PASS2=NUM2,...
+	--xla_dump_to=""                 	string	Directory into which debugging data is written. If not specified but another dumping flag is passed, data will be written to stdout. To explicitly write to stdout, set this to "-". The values "sponge" and "test_undeclared_outputs_dir" have a special meaning: They cause us to dump into the directory specified by the environment variable TEST_UNDECLARED_OUTPUTS_DIR. One or more --xla_dump_hlo_as_* flags can be set to specify the formats of the dumps. For example, if both --xla_dump_hlo_as_text and --xla_dump_hlo_as_proto are set, then the HLO modules will be dumped as text and as protos.
+	--xla_flags_reset=false          	bool	Whether to reset XLA_FLAGS next time to parse.
+	--xla_dump_hlo_as_text=false     	bool	Dumps HLO modules as text before and after optimizations. debug_options are written to the --xla_dump_to dir, or, if no dir is specified, to stdout.
+	--xla_dump_hlo_as_long_text=true 	bool	Dumps HLO modules as long text before and after optimizations. debug_options are written to the --xla_dump_to dir, or, if no dir is specified, to stdout. Ignored unless xla_dump_hlo_as_text is true.
+	--xla_hlo_print_inline_stack_frames=false	bool	If true, when printing HLO text, resolve each instruction's stack_frame_id into inline source_file/source_line/source_column fields on its metadata, and append the StackFrameIndex resolution tables (FileNames, FunctionNames, FileLocations, StackFrames) at the end of the module text.
+	--xla_dump_large_constants=false 	bool	Dumps HLO modules including large constants before and after optimizations. debug_options are written to the --xla_dump_to dir, or, if no dir is specified, to stdout. Ignored unless xla_dump_hlo_as_text is true.
+	--xla_dump_hlo_as_proto=false    	bool	Dumps HLO modules as HloProtos to the directory specified by --xla_dump_to.
+	--xla_gpu_experimental_dump_fdo_profiles=false	bool	Dumps FDO profiles as text to the directory specified by --xla_dump_to.
+	--xla_gpu_experimental_dump_gpu_executable=false	bool	Dump the serialized GPU executables to 'gpu_executable_proto' suffixed files, in the directory specified by `xla_dump_to`. No-op if `xla_dump_to` isn't set, or during autotuning compilations.
+	--xla_dump_hlo_as_dot=false      	bool	Dumps HLO modules rendered as dot files to the directory specified by --xla_dump_to.
+	--xla_dump_hlo_as_html=false     	bool	Dumps HLO modules rendered as HTML files to the directory specified by --xla_dump_to.
+	--xla_dump_hlo_as_url=false      	bool	Tries to dump HLO modules rendered as URLs to stdout (and also to the directory specified by --xla_dump_to). This is not implemented by default; you need to add a plugin which calls RegisterGraphToURLRenderer().
+	--xla_dump_fusion_visualization=false	bool	Tries to generate HLO fusion visualization as an HTML page to the directory specified by --xla_dump_to). This is not implemented by default; you need to add a plugin which calls RegisterGraphToURLRenderer(). Generates a file per computation. Currently only implemented for the GPU backend.
+	--xla_dump_hlo_snapshots=false   	bool	Every time an HLO module is run, dumps an HloSnapshot to the directory specified by --xla_dump_to.
+	--xla_dump_hlo_module_re=""      	string	Limits dumping only to modules which match this regular expression. Default is to dump all modules.
+	--xla_dump_hlo_pass_re=""        	string	If specified, dumps HLO before and after optimization passes which match this regular expression, in addition to dumping at the very beginning and end of compilation.
+	--xla_dump_emitter_re=""         	string	If specified, dumps debug logs (e.g. IR like LLVM or MLIR) before and after emitters which match this regular expression, in addition to dumping at the very beginning and end of compilation.
+	--xla_dump_include_timestam
