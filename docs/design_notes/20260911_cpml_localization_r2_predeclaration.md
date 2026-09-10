@@ -120,3 +120,12 @@ slow_physics), no cacheprovider, pinned PYTHONPATH/Python; ruff E,F,W with
 E501,F401,E741,E731,E701,E702,E402 ignored. PYTHONDONTWRITEBYTECODE=1 and
 ruff --no-cache avoid writes in the externally located tool environment.
 Do not chase the three named pre-existing slow_physics oracle failures.
+
+## Baseline-only reflection calibration (before candidate application)
+
+Three fresh Python processes, exact committed helper/config declared above:
+`-68.26476397028848`, `-68.26476397028848`, `-68.26476397028848` dB.
+Median **-68.26476397028848 dB**, max-minus-min spread **0 dB**.
+Frozen W=2*S = **0 dB**; candidate must reproduce that numerical dB value
+exactly. This deterministic CPU calibration does not estimate GPU variability.
+Log: `validation/research/nu_cost/g5/baseline_reflection.log`.
