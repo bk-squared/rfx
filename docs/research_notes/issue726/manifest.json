@@ -38,9 +38,11 @@
       "bytes": 1537
     },
     {
-      "path": "docs/research_notes/issue726/original-short-build.log",
-      "sha256": "a04276e5331e846c1495e81f8956efe29d99b742e3b76275dd4e9fd6bada905d",
-      "bytes": 5055
+      "path": "docs/research_notes/issue726/original-short-build.log.gz",
+      "sha256": "af6d6d2267f535ab095274417240f2d45cd2ce1b304630aa6ff2ace4d874c02b",
+      "bytes": 1216,
+      "raw_sha256": "a04276e5331e846c1495e81f8956efe29d99b742e3b76275dd4e9fd6bada905d",
+      "raw_bytes": 5055
     },
     {
       "path": "docs/research_notes/issue726/test-log.txt",
