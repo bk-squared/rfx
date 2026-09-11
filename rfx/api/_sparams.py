@@ -830,29 +830,40 @@ def _project_passive(S):
     the honesty metric: 0 where the extraction was already passive, and
     exactly how non-physical the raw value was elsewhere.
 
-    jnp-native and batched. NOTE: the AD (eps_override) path never calls
-    this — see the wiring comment at the call site.
+    Concrete measurement postprocessing only: the AD (eps_override) path
+    never calls this. The small S matrices use host LAPACK in double
+    precision, then return to the input dtype and device placement. This
+    avoids GPU SVD factor errors larger than the reconstruction margin;
+    the FDTD fields and differentiable extraction keep their own dtype.
     """
-    s_t = jnp.transpose(S, (2, 0, 1))            # (n_freqs, n_ports, n_ports)
-    u, sig, vh = jnp.linalg.svd(s_t, full_matrices=False)
-    correction = jnp.maximum(sig[:, 0] - 1.0, 0.0)
+    # A complex128 array may outlive the caller's scoped x64 context.
+    # Preserve its dtype during both canonicalization and device_put.
+    with jax.experimental.enable_x64():
+        S = jnp.asarray(S, dtype=jnp.result_type(S, 1.0))
+    s_t = np.asarray(S).transpose(2, 0, 1)  # (n_freqs, n_ports, n_ports)
+    real_dtype = s_t.real.dtype
+    work_dtype = np.complex128 if np.iscomplexobj(s_t) else np.float64
+    finite = np.all(np.isfinite(s_t), axis=(1, 2))
+    # Nonfinite bins must still reach the caller's finiteness audit. One
+    # invalid frequency must not make batched LAPACK abort all other bins.
+    s_pass = np.full(s_t.shape, np.nan, dtype=s_t.dtype)
+    correction = np.full(s_t.shape[0], np.nan, dtype=real_dtype)
     # Clip a few ULPs below 1 so the bound still holds after the f32/f64
     # reconstruction round-trip (a bare min(sig, 1) reconstructs to
     # sigma_max = 1 + O(eps), which violates the strict bound this exists
     # to guarantee).
-    eps = jnp.finfo(sig.dtype).eps
+    eps = np.finfo(real_dtype).eps
     # 64*eps, not 8*eps: the reconstruction error grows with n_ports and a
     # measured f32 sweep showed 8*eps failing the strict bound from n=8
     # (1.0000000255) through n=32 (1.0000006584); 64*eps holds through n=32.
-    sig_c = jnp.minimum(sig, 1.0 - 64.0 * eps)
-    # Reconstruction must honor the dtype's roundoff budget. Ambient GPU
-    # matmul precision can introduce ~4e-4 error even when U/Sigma/Vh
-    # reconstruct to ~6e-7 with full float32 multiplication. That exceeds
-    # the 64*eps margin above and makes a supposedly passive result active
-    # again (#729 consumer audit). Keep this precision local to projection.
-    s_pass = jnp.einsum("fij,fj,fjk->fik", u, sig_c.astype(u.dtype), vh,
-                        precision=jax.lax.Precision.HIGHEST)
-    return jnp.transpose(s_pass, (1, 2, 0)), correction
+    if np.any(finite):
+        u, sig, vh = np.linalg.svd(s_t[finite].astype(work_dtype), full_matrices=False)
+        correction[finite] = np.maximum(sig[:, 0] - 1.0, 0.0)
+        sig_c = np.minimum(sig, 1.0 - 64.0 * eps)
+        s_pass[finite] = (u * sig_c[:, None, :]) @ vh
+    with jax.experimental.enable_x64():
+        return (jax.device_put(s_pass.transpose(1, 2, 0), S.sharding),
+                jax.device_put(correction, S[0, 0, :].sharding))
 
 
 def _warn_if_passivity_projected(

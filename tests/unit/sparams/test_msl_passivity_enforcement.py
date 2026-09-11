@@ -71,18 +71,20 @@ def test_projection_bound_is_strict_at_float32(n_ports):
     "cpu", pytest.param("gpu", marks=pytest.mark.gpu),
 ])
 @pytest.mark.parametrize("n_ports", [2, 8, 32])
-def test_near_passive_complex_projection_preserves_the_measured_matrix(backend, n_ports):
+@pytest.mark.parametrize("dtype", [np.complex64, np.complex128])
+def test_near_passive_complex_projection_preserves_the_measured_matrix(backend, n_ports, dtype):
     """Small clipping must not introduce a larger reconstruction error.
 
-    Nearly unitary matrices model a settled low-loss multiport. An f64
-    host reference resolves the float32 input, including its rounding.
+    Nearly unitary matrices model a settled low-loss multiport. Known
+    orthonormal factors define the analytic answer without another SVD.
     Exercise the GPU's lower-precision ambient matmul setting explicitly:
-    the physical projection must honor its own float32 error budget.
+    the physical projection must honor its output dtype's error budget.
     """
     if backend == "gpu" and jax.default_backend() != "gpu":
         pytest.skip("requires an actual GPU")
     rng = np.random.default_rng(729)
-    matrices = []
+    eps = np.finfo(np.empty((), dtype=dtype).real.dtype).eps
+    matrices, references = [], []
     for _ in range(12):
         u, _ = np.linalg.qr(rng.normal(size=(n_ports, n_ports))
                             + 1j*rng.normal(size=(n_ports, n_ports)))
@@ -90,20 +92,54 @@ def test_near_passive_complex_projection_preserves_the_measured_matrix(backend, 
                             + 1j*rng.normal(size=(n_ports, n_ports)))
         singular = 1. + np.linspace(-1e-3, 1e-3, n_ports)
         matrices.append((u*singular) @ v.conj().T)
-    raw = np.stack(matrices, axis=-1).astype(np.complex64)
-    eps = np.finfo(np.float32).eps
-    host = raw.transpose(2, 0, 1).astype(np.complex128)
-    u, singular, vh = np.linalg.svd(host, full_matrices=False)
-    expected = ((u*np.minimum(singular, 1.-64.*eps)[:, None, :]) @ vh)
-    with jax.default_device(jax.devices(backend)[0]), jax.default_matmul_precision("tensorfloat32"):
-        projected, correction = _project_passive(jnp.asarray(raw))
+        references.append((u*np.minimum(singular, 1.-64.*eps)) @ v.conj().T)
+    raw = np.stack(matrices, axis=-1).astype(dtype)
+    expected = np.stack(references)
+    with (jax.experimental.enable_x64(), jax.default_device(jax.devices(backend)[0]),
+          jax.default_matmul_precision("tensorfloat32")):
+        device_raw = jnp.asarray(raw)
+        projected, correction = _project_passive(device_raw)
+        assert projected.dtype == device_raw.dtype
+        assert correction.dtype == device_raw.real.dtype
+        assert projected.devices() == correction.devices() == device_raw.devices()
         projected = np.asarray(projected).transpose(2, 0, 1).astype(np.complex128)
         correction = np.asarray(correction)
-    # The existing clipping radius leaves 64 f32 ULPs for reconstruction.
+    # The existing clipping radius leaves 64 output ULPs for reconstruction.
     # Spending more than that on multiplication defeats its strict bound.
     assert np.max(np.abs(projected-expected)) <= 64.*eps
-    assert np.max(np.linalg.svd(projected, compute_uv=False)) <= 1.
-    assert np.max(np.abs(correction-np.maximum(singular[:, 0]-1., 0.))) <= 32.*eps
+    # Independent power-operator eigensolve, not the production SVD again.
+    power = projected.conj().transpose(0, 2, 1) @ projected
+    assert np.linalg.eigvalsh(power).max() <= 1.
+    # The constructed sigma_max is 1.001; input rounding is within this
+    # dtype-scaled bound. Do not derive the expected clip from production.
+    assert np.max(np.abs(correction-1e-3)) <= 32.*eps
+
+
+@pytest.mark.parametrize("bad_value", [np.nan, np.inf])
+def test_projection_preserves_nonfinite_bins_for_the_finiteness_audit(bad_value):
+    raw = np.zeros((2, 2, 3), dtype=np.complex64)
+    raw[:, :, 0] = [[.3, .5], [.5, .3]]
+    raw[:, :, 1] = [[0., bad_value], [1., 0.]]
+    raw[:, :, 2] = [[0., 2.], [2., 0.]]
+    result, correction = map(np.asarray, _project_passive(jnp.asarray(raw)))
+    assert np.all(np.isnan(result[:, :, 1]))
+    assert np.isnan(correction[1])
+    np.testing.assert_allclose(result[:, :, 0], raw[:, :, 0], rtol=1e-6)
+    assert _sigma_max(result[:, :, [0, 2]]).max() <= 1.
+    assert correction[0] == 0.
+    assert correction[2] == pytest.approx(1.)
+
+
+def test_projection_preserves_f64_arrays_after_their_creation_context_exits():
+    with jax.experimental.enable_x64():
+        raw = jnp.asarray([[[.2], [1.]], [[1.], [.2]]], dtype=jnp.complex128)
+    with jax.experimental.disable_x64():
+        projected, correction = _project_passive(raw)
+        assert not jax.config.x64_enabled
+        assert projected.dtype == np.dtype(np.complex128)
+        assert correction.dtype == np.dtype(np.float64)
+        assert projected.devices() == raw.devices()
+        assert _sigma_max(np.asarray(projected)).max() <= 1.
 
 
 # ---------------------------------------------------------------------------

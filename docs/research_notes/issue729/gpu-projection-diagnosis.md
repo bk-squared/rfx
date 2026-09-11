@@ -37,9 +37,9 @@ contraction precision through [`einsum(precision=...)`](https://docs.jax.dev/en/
 The existing radius `1 - 64*eps(float32)` leaves approximately 7.63e-6 for
 reconstruction. A 4e-4 multiply error cannot respect that budget; increasing
 the clipping margin would hide the arithmetic defect by perturbing the
-measured S further. The correction specifies full multiplication precision
-only in `_project_passive`, preserving its dtype, clipping rule, raw-data
-retention, and exclusion from the `eps_override`/AD channel.
+measured S further. The initial correction specified full multiplication
+precision only in `_project_passive`. The broader test below showed why
+this alone was not sufficient for the existing multiport contract.
 
 The new small near-unitary matrix tests compare 2-, 8-, and 32-port
 projections against an independent host-f64 reference and the strict
@@ -49,11 +49,55 @@ lower ambient matmul precision, which the local physical operation must
 override. Full candidate consumer acceptance is still pending after these
 diagnostic runs; their replay result does not claim the AD or NU case ran.
 
+## Follow-up: factor accuracy at 32 ports
+
+Run 369367260422 used the committed highest-precision correction `089ada4f`.
+Both CPU/GPU cases passed at 2 and 8 ports, but a near-unitary 32-port GPU
+case returned sigma_max=1.000003074. It failed the existing strict bound;
+the test and clipping radius were not relaxed. The driver stopped there.
+
+Run 369367260427 isolated the two operations on near-unitary and strongly
+nonpassive matrices of sizes 2, 8 and 32, in complex64 and complex128:
+
+- At 32 ports the f32 GPU SVD factors had orthogonality error up to 1.7e-5
+  and singular-value error about 1e-5 on the near-unitary input. Full
+  multiplication precision cannot recover accuracy absent from the factors.
+- Applying only the clipped correction to the original matrix improved
+  near-unitary inputs, but a strongly nonpassive 32-port case then returned
+  sigma_max=1.000089. This algebraically equivalent spelling was rejected.
+- Local f64 factorization/reconstruction and conversion to f32 fixed the
+  f32 cases. Native f64 output on a near-unitary 32-port case still exceeded
+  the strict bound by 7e-15. This image's JAX SVD has no algorithm-selection
+  argument, so it cannot explicitly request a different GPU factorization.
+
+The final implementation uses host LAPACK in double precision for this
+small concrete S matrix. Both production call sites already exclude traced
+S; MSL also excludes a concrete eps_override so FD and AD remain the same
+unprojected function. This introduces no host conversion into the
+differentiable chain and changes no FDTD field dtype. An independent
+read-only caller audit confirmed these two call sites and found no
+JIT/grad/vmap caller of the private projection helper.
+
+The radius still uses the input/output dtype's 64*eps. Output arrays return
+to their original dtype and device placement. Host-to-device restoration
+uses a scoped x64 context so a complex128 array created in an earlier scope
+does not silently become complex64. Only finite bins enter LAPACK; invalid
+bins retain NaN values and NaN corrections for the caller's finiteness audit.
+The final tests construct their analytic answer from known singular values
+and orthonormal factors, without sharing the production SVD as their oracle.
+A separate Hermitian power-operator eigensolve checks the passive bound.
+They cover both dtypes, near-unitary 2/8/32-port matrices, and existing
+strongly nonpassive 2/8/32-port inputs. Context and invalid-bin tests pin
+the compatibility requirements. GPU acceptance of the final implementation
+is pending at this checkpoint.
+
 Evidence:
 
 - `gpu-consumers-369367260415/`: original candidate failure and raw records.
 - `gpu-axis-baseline-369367260416/`: same failure on unmodified main, plus
   the first pure-matrix attribution.
 - `gpu-projection-precision-369367260417/`: controlled precision replay.
+- `gpu-corrected-consumers-369367260422/`: the broader strict-bound failure.
+- `gpu-projection-size-369367260427/`: factor and reconstruction attribution.
 - Corresponding complete provider logs and hashes are under
   `docs/research_notes/vessl_logs/` and each run's `files.json`.

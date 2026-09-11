@@ -11,11 +11,12 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
 
 ### Fixed — GPU passivity projection honors its reconstruction precision (#729)
 
-- The S-matrix projection now requests full multiplication precision when
-  reconstructing its clipped SVD. Lower ambient GPU matmul precision could
-  exceed the clipping margin, return an active matrix, and amplify small
-  differences between rotated MSL fixtures. The clipping rule, output dtype,
-  raw measurement retention, and AD-path exclusion are unchanged.
+- The concrete S-matrix projection now factors and reconstructs its small
+  matrices with host double-precision LAPACK. GPU multiplication and SVD
+  factor errors could exceed the clipping margin, return an active matrix,
+  and amplify small differences between rotated MSL fixtures. The clipping
+  rule, returned dtype and device placement, raw measurement retention, and
+  AD-path exclusion are preserved; nonfinite bins still reach their audit.
 
 ### Fixed — resonance extraction preserves finite-record modal content (#872)
 

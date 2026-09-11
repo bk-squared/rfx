@@ -1,0 +1,14 @@
+{
+  "run_id": "369367260427",
+  "status": "completed",
+  "full_provider_log": "docs/research_notes/vessl_logs/369367260427-issue729-gpu-projection-size-completed.log.gz",
+  "provider_log_raw_sha256": "ca999995a74aa283521486f571a7952d09d9512be02dfda0a44f6dea74b46d41",
+  "provider_log_gzip_sha256": "7454631f8ebdbbb822099bbc66e00e3c682833736648b0809c39c56abb19ce17",
+  "provider_log_raw_bytes": 9682,
+  "files": {
+    "size-probe.json": "1c4e26a3cfe8c57db9f5da79a6ce5f9d2e8e50b185db87482c21c29a7b8f90b2",
+    "size_probe.py": "a9ad9324b7d95dc3d051159b1d14b07728c09eabc5a8313d4f33d753ac208e79",
+    "run.yaml": "245835101da5b05e67bbfb6960fc19f22190b14ef4426ffc703c6c2829339478",
+    "provider-status.txt": "a6f6868ebcb5a50ce295a0c1d56a47bed03e3f3508bf7d607a2b3984c43f2224"
+  }
+}

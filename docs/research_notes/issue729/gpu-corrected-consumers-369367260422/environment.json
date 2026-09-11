@@ -1,0 +1,16 @@
+{
+  "source_sha": "089ada4f3df3b1f503b80376f7ab1f7003164758",
+  "source_dirty": false,
+  "jax": "0.4.33.dev20241023+e3c6d6430",
+  "numpy": "1.26.4",
+  "scipy": "1.14.1",
+  "devices": "[CudaDevice(id=0)]",
+  "cases": {
+    "projection": "tests/unit/sparams/test_msl_passivity_enforcement.py::test_near_passive_complex_projection_preserves_the_measured_matrix",
+    "projection_bound": "tests/unit/sparams/test_msl_passivity_enforcement.py::test_projection_bound_is_strict_at_float32",
+    "axis": "tests/unit/ports/test_msl_port_axis_generality.py::test_y_directed_thru_reproduces_the_x_directed_thru",
+    "ad": "tests/unit/autodiff/test_msl_ad_fd_converged.py::test_msl_ad_fd_converged_tight",
+    "nu": "tests/locks/test_msl_nu_sparam_gate.py::test_nu_msl_patch_s11_passive_and_edge_fed_match"
+  },
+  "driver_sha256": "9284da9fb980633668835caef2ac215ed67ffba09c39db420c3fa91eda0c5be8"
+}

@@ -1,0 +1,18 @@
+{
+  "run_id": "369367260422",
+  "status": "failed",
+  "full_provider_log": "docs/research_notes/vessl_logs/369367260422-issue729-gpu-corrected-consumers-failed.log.gz",
+  "provider_log_raw_sha256": "546f1cdebb70c9d3e4e195633a66762dffdc87fcd15cf0814c61172d76c53fae",
+  "provider_log_gzip_sha256": "d343be4f66081500db778c8b1dcade8dd3eb78379b586912a114241796d318ce",
+  "provider_log_raw_bytes": 56519,
+  "files": {
+    "projection.log.gz": "a3df6f1b3fa77e19a9db0f81cc7b602e3080def1504f17a935be457fd2fcb2ec",
+    "environment.json": "392e90f6596f83c398b1f8cb6d8b5d61460519d995186c426837f92bc18a2e78",
+    "outcomes.json": "0e4dd9d7dab7c54cad8ad1ff02817b09459745945a7dd86eaab92a395b017d87",
+    "run.yaml": "0f214cb46de387c0c602a669c1ea6e73e6f71078e4885642c5842dfa0846eaf5",
+    "provider-status.txt": "d3385155b81eae7f31bdbee5e399aadbe3934dfa23cb625d46535754408631e7",
+    "driver.py": "9284da9fb980633668835caef2ac215ed67ffba09c39db420c3fa91eda0c5be8",
+    "projection/junit.xml": "2d1d3a9ee41ea54262a324d64610a009067c916f4bb55c238a29cf9a780f6273",
+    "projection/outcome.json": "f0c75deaca86b9950cf5a297e272bed5aab3371e9b5b2945f00261e99c245431"
+  }
+}
