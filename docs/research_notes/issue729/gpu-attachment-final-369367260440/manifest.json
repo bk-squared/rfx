@@ -1,0 +1,198 @@
+{
+  "run_id": 369367260440,
+  "status": "completed",
+  "source_sha": "c2dd484e39780a8ac376ae39491f0573650097cd",
+  "files": [
+    {
+      "file": "ad/call-0-raw-vi.npz",
+      "raw_sha256": "b662583b0f72b1245d9f31373594fe633d673a9cfc168a0657ec7d903d434c20",
+      "raw_bytes": 13336
+    },
+    {
+      "file": "ad/call-0-result.npz",
+      "raw_sha256": "5789cb14b13d5cd7c9bc34ed7055a69c933b357f111a5d662466daca9f6754a3",
+      "raw_bytes": 1863
+    },
+    {
+      "file": "ad/call-0-waves.npz",
+      "raw_sha256": "95d7d6224fb8a86e0a1ab22b419c9034225dbf8146d19e0f62e5309708dc59ba",
+      "raw_bytes": 1604
+    },
+    {
+      "file": "ad/call-2-raw-vi.npz",
+      "raw_sha256": "42074d1d3e82aa7a81fcd856507001c06a1723611b0ead9c7f24d9992af09c02",
+      "raw_bytes": 15832
+    },
+    {
+      "file": "ad/call-2-result.npz",
+      "raw_sha256": "147840ee46523d860111b3292f19ceeb59e411abaee9d167f57e3737cf3d979a",
+      "raw_bytes": 2196
+    },
+    {
+      "file": "ad/call-2-waves.npz",
+      "raw_sha256": "267d3dbc042cd403fb202200e7a9198a0db4bdb38745fd709d571970ea60dc17",
+      "raw_bytes": 2403
+    },
+    {
+      "file": "ad/call-3-raw-vi.npz",
+      "raw_sha256": "faf4af14c47237d56efdd11ee8ffd670fd4225d8becbdf7eeae34e2a1a8ed354",
+      "raw_bytes": 15832
+    },
+    {
+      "file": "ad/call-3-result.npz",
+      "raw_sha256": "ccc87a3f919ce72ee829067ae7d0f498b77dd6e1b1c76e1321f240d6b67acc86",
+      "raw_bytes": 2192
+    },
+    {
+      "file": "ad/call-3-waves.npz",
+      "raw_sha256": "bfd84547bcecb1f8a18c5f40b302961d6edffacbe65e23812255977e11797235",
+      "raw_bytes": 2403
+    },
+    {
+      "file": "ad/calls.json",
+      "raw_sha256": "a59204e06520126403a0bba2630cdf3043b4ac245a324f7eeef3b3d0f024ad7f",
+      "raw_bytes": 2355
+    },
+    {
+      "file": "ad/field-initializations.json",
+      "raw_sha256": "bee44a907cba249582c9b28dde2318e8d6ef681ebd30e1a5c61163b34e2315fc",
+      "raw_bytes": 5155
+    },
+    {
+      "file": "ad/junit.xml.gz",
+      "raw_sha256": "87bed790dfb12b915c149c8ea469e44c2d6f71fa664356a2244d7ef7397c5454",
+      "raw_bytes": 388
+    },
+    {
+      "file": "ad/outcome.json",
+      "raw_sha256": "3d2a115a39a8a62add25ab88648432f3e9d5f7e8d048460982031514cab3145f",
+      "raw_bytes": 53
+    },
+    {
+      "file": "ad.log.gz",
+      "raw_sha256": "9ef348e9951e5d574a502d13e0388822a6dfc56283c5a3df30535d6c276ad928",
+      "raw_bytes": 29761
+    },
+    {
+      "file": "axis/call-0-raw-vi.npz",
+      "raw_sha256": "682dc59fa846c8c9fd3c0eff02a666485f7c901be12ecf2b5bdbe7624bfd3a10",
+      "raw_bytes": 14616
+    },
+    {
+      "file": "axis/call-0-result.npz",
+      "raw_sha256": "854aeae731f2dd34abb24c2df8b28cead5a61e08f6cf5881ba0a9eb0df39c840",
+      "raw_bytes": 2990
+    },
+    {
+      "file": "axis/call-0-waves.npz",
+      "raw_sha256": "f94e1340fcd57f41ddfd4c55fb25e8a43560f7f264e67ecaccceb44bda0ce83b",
+      "raw_bytes": 2052
+    },
+    {
+      "file": "axis/call-1-raw-vi.npz",
+      "raw_sha256": "a444f9f4f8f421d76f7964cadb54c6e392d53a309ac973c4b9ca9f7b75cfe347",
+      "raw_bytes": 14616
+    },
+    {
+      "file": "axis/call-1-result.npz",
+      "raw_sha256": "1fb7500509806ba96b0e436bad592978b8e824d43696b003019142d3645fcc18",
+      "raw_bytes": 2991
+    },
+    {
+      "file": "axis/call-1-waves.npz",
+      "raw_sha256": "328166482d93ea26208f0bdba063a8ab799e9949eb41ca3d8b79a15b29c9e49d",
+      "raw_bytes": 2054
+    },
+    {
+      "file": "axis/calls.json",
+      "raw_sha256": "a715a590591c23ac2513ac09e20b01c06ab7b526333dd32df072e7ceaeccacbe",
+      "raw_bytes": 1825
+    },
+    {
+      "file": "axis/field-initializations.json",
+      "raw_sha256": "5eeaf5e88a79d9a0bb042cce60b00de1b23b7dc4e331b880b3c500f9b3b3a4ec",
+      "raw_bytes": 2579
+    },
+    {
+      "file": "axis/junit.xml.gz",
+      "raw_sha256": "2aa8791b086219e42ab40ea39c7d63baccc1dddfaebf8c63209a82e46d3079ce",
+      "raw_bytes": 409
+    },
+    {
+      "file": "axis/outcome.json",
+      "raw_sha256": "99408c9232322923f333ddbe3ed63c6346ec81ca4765336cf6a3dad725e15b57",
+      "raw_bytes": 53
+    },
+    {
+      "file": "axis.log.gz",
+      "raw_sha256": "68ce6e590ff0abcadf7236f66a449b6cccb7359602b6494cae6dc480ae272470",
+      "raw_bytes": 17343
+    },
+    {
+      "file": "driver.py",
+      "raw_sha256": "8cac1cc172b6a72326f355c748a979bcb61439561100e0458c94dc848b7b2f05",
+      "raw_bytes": 6000
+    },
+    {
+      "file": "environment.json",
+      "raw_sha256": "18523043111fec9f3f8c4a0fe3caf4900bdb4a447564075666eb813ab3b075d5",
+      "raw_bytes": 623
+    },
+    {
+      "file": "nu/call-0-raw-vi.npz",
+      "raw_sha256": "4737e5cb5bd77b73c71fe0a5d83ae57630613ad8dcc03d4215e1626d594bb407",
+      "raw_bytes": 17519
+    },
+    {
+      "file": "nu/call-0-result.npz",
+      "raw_sha256": "9b6c32db8be8b0ca42e164ae707e13f86215c57aeb45e7ad4a781ac04f53b951",
+      "raw_bytes": 3352
+    },
+    {
+      "file": "nu/call-0-waves.npz",
+      "raw_sha256": "333b98cd2cdc274592e17fba79b77dfccd7d02ef87aa6b9c6e2b24124947cbda",
+      "raw_bytes": 2718
+    },
+    {
+      "file": "nu/calls.json",
+      "raw_sha256": "6ab5737c13d73eba8904009ca7254641965ac25bfc0fb40a8b7edbe2f69e2d26",
+      "raw_bytes": 739
+    },
+    {
+      "file": "nu/junit.xml.gz",
+      "raw_sha256": "065a4d0065425737978a56982321da11b9f5fbf64dbd8afed87db029f7f95108",
+      "raw_bytes": 395
+    },
+    {
+      "file": "nu/outcome.json",
+      "raw_sha256": "14ba127c8294f97ca21fb38b32aae363e5c1ba97285d313f0ffc150949761ef2",
+      "raw_bytes": 52
+    },
+    {
+      "file": "nu.log.gz",
+      "raw_sha256": "584e2b5f3d9c4ddb1c359beecf52a0e4dc6fb4a1228e91fa1d2fc5e25d858688",
+      "raw_bytes": 16314
+    },
+    {
+      "file": "outcomes.json",
+      "raw_sha256": "0b2630c5cc287b9c8e87ffb58a28c28dee1fe1d9a04b2bd51def1706b5540890",
+      "raw_bytes": 242
+    },
+    {
+      "file": "run.yaml",
+      "raw_sha256": "8c3f6367aeb59261b1400e0ba2621de2dce29bfcc096833f3315325f8bf6b1f3",
+      "raw_bytes": 1398
+    }
+  ],
+  "provider_log": {
+    "file": "docs/research_notes/vessl_logs/369367260440-issue729-attachment-final-completed.log.gz",
+    "raw_sha256": "9aeae2345f4fe9db6b07fb0b9d025f486936e20a90569f5dbc2c37a973d63dc9",
+    "raw_bytes": 50757,
+    "status": "completed",
+    "verified": true
+  },
+  "cleanup": {
+    "provider_delete": "succeeded after complete-log verification",
+    "run_id": 369367260440
+  }
+}

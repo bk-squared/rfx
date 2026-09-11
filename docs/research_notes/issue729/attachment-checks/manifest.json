@@ -36,6 +36,11 @@
       "file": "rfx729-attachment-final-contracts.log.gz",
       "raw_bytes": 11658,
       "raw_sha256": "e63f2e48dac1c0ce9f9928cb9c54d252705f651cf2444cbc2ef089c17a31022b"
+    },
+    {
+      "file": "rfx729-other-two-surfaces.log.gz",
+      "raw_bytes": 895,
+      "raw_sha256": "81083d3bfe31b02dd51f3cb68101ed94c7f295c49ab162f867b2c2ff297817f9"
     }
   ]
 }

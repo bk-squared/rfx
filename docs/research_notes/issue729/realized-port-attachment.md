@@ -79,10 +79,40 @@ are reported and they do not establish transmission, passivity or accuracy.
 
 Logs for this checkpoint are retained in `attachment-checks/`, with hashes
 in its manifest. The existing settled GPU AD, rotation and NU receipts
-predate this final attachment work. Final GPU consumer checks, CI and PR
-review are still required before closing #729.
+predate this final attachment work. At that checkpoint final GPU consumer checks, CI and PR review were still
+required. The subsequent pinned GPU result follows below.
 
 Final local contract packet: 53 passed, including all attachment cases and
 the f0 refusal inventory. Ruff and diff whitespace checks passed. Focused
 read-only review of the three post-assembly fixes found no additional
 confirmed defect; it did not run FDTD or qualify RF convergence.
+
+## Final pinned GPU consumer verification
+
+VESSL 369367260440 ran commit `c2dd484e39780a8ac376ae39491f0573650097cd`
+on an RTX 4090, from a clean self-contained checkout. Rotation, AD–FD and
+NU gates all passed sequentially with unchanged acceptance thresholds.
+
+- x/y rotation: max complex S difference `3.488e-6`; all four drive records
+  settled below -100 dB. Both orientations flagged the same top two of
+  twelve bins as unreliable, so this is a symmetry check, not qualification
+  of those high-frequency bins.
+- Fixed-band AD–FD: `g_ad=1.121405e-3`, `g_fd=1.120691e-3`, about 0.064%
+  relative difference at the original `h=1e-3`, below the original 3% gate.
+  All eight objective frequencies passed the reliability screen on the
+  forward and both FD legs; worst settling was -124.82 dB. Actual field
+  initialization receipts distinguish f32 AD from f64 FD fields.
+- Existing NU patch gate: max `|S11|=0.9839`, in-band reactance crossing
+  `7.7575 GHz`, in-band maximum `Re(Zin)=4420 ohm`. The fixture uses
+  uniform-valued profiles and this does not certify graded propagation.
+
+Raw V/I, S, wave amplitudes, conditioning, reliability, field dtypes and
+full logs are in `gpu-attachment-final-369367260440/`. The full provider log
+was saved and SHA-256 verified before terminal-run cleanup. An additional
+38 local domain-fidelity/waveguide-aperture tests passed, covering the
+other two existing #729 surfaces. PR #981 remains subject to CI and review.
+
+The original other-surface reproductions also agree with their physical
+spans: a commensurate 20 mm domain reports 20 cells and no quantization
+finding; the WR-90 default aperture at dx=1 mm uses 23 cells (23 mm) and
+`f_cutoff=6.512162173 GHz`, matching the discrete 23-cell formula.

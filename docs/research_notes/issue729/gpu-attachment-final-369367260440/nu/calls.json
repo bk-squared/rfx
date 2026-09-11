@@ -1,0 +1,47 @@
+[
+  {
+    "call": 0,
+    "field_precision": "float32",
+    "num_periods": 280.0,
+    "n_freqs": null,
+    "has_eps_override": false,
+    "checkpoint_segments": null,
+    "traced": false,
+    "array_shapes": {
+      "S": [
+        1,
+        1,
+        81
+      ],
+      "freqs": [
+        81
+      ],
+      "Z0": [
+        1,
+        81
+      ],
+      "beta": [
+        81
+      ],
+      "settling_db": [
+        1
+      ],
+      "reliable": [
+        1,
+        81
+      ],
+      "cond_a": [
+        81
+      ]
+    },
+    "array_dtypes": {
+      "S": "complex64",
+      "freqs": "float32",
+      "Z0": "complex64",
+      "beta": "complex64",
+      "settling_db": "float64",
+      "reliable": "bool",
+      "cond_a": "float64"
+    }
+  }
+]

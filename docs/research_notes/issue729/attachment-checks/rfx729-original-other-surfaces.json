@@ -1,0 +1,71 @@
+{
+  "domain_row": {
+    "entity": "domain (the solved box)",
+    "findings": [],
+    "axes": [
+      {
+        "axis": "x",
+        "n_cells": 20,
+        "declared_um": [
+          0.0,
+          20000.0
+        ],
+        "mesh_extent_um": 20000.0,
+        "realized_um": [
+          0.0,
+          20000.0
+        ],
+        "face_residual_um": [
+          0.0,
+          0.0
+        ],
+        "declared_extent_um": 20000.0,
+        "realized_extent_um": 20000.0
+      },
+      {
+        "axis": "y",
+        "n_cells": 10,
+        "declared_um": [
+          0.0,
+          10000.0
+        ],
+        "mesh_extent_um": 10000.0,
+        "realized_um": [
+          0.0,
+          10000.0
+        ],
+        "face_residual_um": [
+          0.0,
+          0.0
+        ],
+        "declared_extent_um": 10000.0,
+        "realized_extent_um": 10000.0
+      },
+      {
+        "axis": "z",
+        "n_cells": 10,
+        "declared_um": [
+          0.0,
+          10000.0
+        ],
+        "mesh_extent_um": 10000.0,
+        "realized_um": [
+          0.0,
+          10000.0
+        ],
+        "face_residual_um": [
+          0.0,
+          0.0
+        ],
+        "declared_extent_um": 10000.0,
+        "realized_extent_um": 10000.0
+      }
+    ]
+  },
+  "waveguide": {
+    "cells": 23,
+    "realized_a_m": 0.023,
+    "cutoff_hz": 6512162173.243578,
+    "discrete_expected_hz": 6512162173.243385
+  }
+}
