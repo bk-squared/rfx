@@ -1,0 +1,23 @@
+{
+  "run_id": "369367260432",
+  "status": "failed",
+  "full_provider_log": "docs/research_notes/vessl_logs/369367260432-issue729-gpu-f64-ad-control-failed.log.gz",
+  "provider_log_raw_sha256": "0f3db0cd5424204b590a8cea79bb0a37dc9ade4cffb1947238cf959ac67a0b7d",
+  "provider_log_gzip_sha256": "66e217e6d48d550e6ffd603b909e6c49bde811bed4f6cb49df97fbca280d5789",
+  "provider_log_raw_bytes": 37898,
+  "compressed_artifacts": {
+    "provider-status.txt.gz": {
+      "original_path": "provider-status.txt",
+      "raw_sha256": "3437a3ca675d65ba562367d1168148d4fe058821f94484f02d2bd0cbbde4bab9",
+      "raw_bytes": 2263
+    }
+  },
+  "files": {
+    "field-initializations.json": "09016ece223e05b953f6246192ef482eb7308f01c5a244115c2d3a91579d7c1e",
+    "environment.json": "9771ba34a15fa3812958466ce4f6d4e7c7007d6a2d5f73ffe8d696f074da1424",
+    "run.yaml": "a0282af99b1e74ae2e5adff5992681446706cfe847ce4bee3684d6b2060b08e7",
+    "outcome.json": "f4e918246a2f979de8f7c9aef800f74c7bfe524ab72382ac38b54f7a8de0aa02",
+    "provider-status.txt.gz": "59887d01438cf7d2ec78b8ca2fd8da27ea2105e9bc29c756386beed9c421e2cc",
+    "driver.py": "3c79503f465498a372f7d093c3c9d3a292f477568f2cb37cb7800d7d0ba36205"
+  }
+}

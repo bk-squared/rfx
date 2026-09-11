@@ -1,0 +1,27 @@
+{
+  "source_sha": "f8402512dc5aa524c543168fa67f338400fbb370",
+  "field_precision": "float64",
+  "n_steps": 26226,
+  "checkpoint_segments": 141,
+  "loss": 0.9973265281922443,
+  "g_ad": 9.101203512968051e-05,
+  "g_fd_retained": 0.0010955739594975533,
+  "fd_losses": [
+    0.9973284109918524,
+    0.9973262198439334
+  ],
+  "fd_files": [
+    {
+      "name": "call-2-result.npz",
+      "sha256": "e006ac2331eac2ca597346ecd6087c14cf06164bc477d1204ed23a4209cb1657"
+    },
+    {
+      "name": "call-3-result.npz",
+      "sha256": "4b8f35e21ba0d5f25380e2ef5a72cf61e8d9647120aee02e426c06d922ee7541"
+    }
+  ],
+  "relative_error": 0.9169275297749684,
+  "unchanged_gate": 0.03,
+  "passes_existing_gate": false,
+  "wall_s": 85.01812454080209
+}

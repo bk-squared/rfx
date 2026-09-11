@@ -52,8 +52,39 @@ x64 and provide eps64: the default builder produces float32 E/H, whereas
 the reference builder produces float64 E/H. This verifies the computational
 carrier, rather than assuming the dtype of the final scalar proves it.
 
-The full corrected reference still needs to run. This configuration finding
-alone does not establish that every part of the 91.9% discrepancy is fixed.
+Run 369367260431 verified actual float64 E/H state on every FD drive. The
+comparison still failed: g_fd=1.095574e-3, versus the same f32 AD value.
+Thus the configuration defect was real, but did not explain this discrepancy.
+
+Run 369367260432 performed only a full-f64 AD solve and reused the matching
+retained FD matrices. It measured g_ad64=9.101203512968051e-5, still far
+from the h=1e-3 finite difference. Changing arithmetic precision alone is
+not the fix for the finite-step comparison.
+
+## Finite-step error and the port observation
+
+Run 369367260434 retained the same legacy fixture and f64 fields, reusing
+the f64 AD value above, and predeclared three smaller FD steps:
+
+| h | FD derivative | Relative difference from f64 AD |
+|---|---:|---:|
+| 1e-4 | 5.446927175967176e-4 | 83.29% |
+| 1e-5 | 9.630481412337132e-5 | 5.50% |
+| 1e-6 | 9.107337106684099e-5 | 0.06735% |
+
+The two fine steps approach the AD derivative. The old h=1e-3 evaluates
+outside the local linear regime of this weak objective; its failure is
+not evidence of an incorrect FDTD derivative. The f32 AD value differs
+from the finest FD by about 2.6%, also inside the unchanged 3% gate.
+
+This does not justify merely reducing h to make the old fixture pass.
+Its returned `reliable` mask is false at the highest frequency for both
+ports, while its objective averages that bin anyway. The old implicit
+GaussianPulse(f0=F_MAX/2) falls below the existing 10%-of-median excitation
+screen there. A setup-only JVP/FD diagnostic also found the material and
+source-waveform derivatives consistent (epsilon 1.1e-13 relative, source
+waveforms 3.8e-9 relative, sigma derivatives both exactly zero). No
+source-parameter derivative omission was identified by that check.
 
 ## Separate geometry debt
 
@@ -65,3 +96,13 @@ before identifying the reference defect could hide the failing comparison.
 The reference correction is therefore measured on the existing geometry
 first. No production policy for mismatched declared/actual port heights
 is inferred from this test; that PI question remains pending.
+
+The repaired acceptance fixture now places the zero-thickness trace at
+254 um on dx=254/3 um, and explicitly uses GaussianPulse(f0=F_MAX) to
+excite the entire existing frequency band. Always-on wall and sampled
+excitation checks passed before any solve. The live AD test now requires
+all of its fixed objective bins to be reliable and both drives settled
+below -40 dB before computing a gradient; it does not adaptively discard
+bins. The original 3% gradient gate and h=1e-3 remain unchanged at this
+checkpoint. A new live measurement is required to qualify the repaired
+fixture; the legacy measurements above cannot qualify it.

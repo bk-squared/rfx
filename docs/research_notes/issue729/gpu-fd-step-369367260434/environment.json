@@ -1,0 +1,15 @@
+{
+  "source_sha": "f8402512dc5aa524c543168fa67f338400fbb370",
+  "jax": "0.4.33.dev20241023+e3c6d6430",
+  "numpy": "1.26.4",
+  "devices": "[CudaDevice(id=0)]",
+  "steps": [
+    0.0001,
+    1e-05,
+    1e-06
+  ],
+  "retained_ad_sha256": "f4e918246a2f979de8f7c9aef800f74c7bfe524ab72382ac38b54f7a8de0aa02",
+  "retained_g_ad": 9.101203512968051e-05,
+  "retained_h1e3_g_fd": 0.0010955739594975533,
+  "driver_sha256": "fc411fecae37f9fa4a58b615f7875324c65156f2d1a03fb2ff4eaf773b328249"
+}

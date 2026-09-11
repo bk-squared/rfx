@@ -1,0 +1,29 @@
+{
+  "run_id": "369367260434",
+  "status": "completed",
+  "full_provider_log": "docs/research_notes/vessl_logs/369367260434-issue729-gpu-fd-step-completed.log.gz",
+  "provider_log_raw_sha256": "b48f637a35c2ef1be25b68f616349ee4436a45709a70c6900df78be49a5f965f",
+  "provider_log_gzip_sha256": "d152dfcc275c2ed03d3f896bb58f0cd786b39d07e4937d21f8805bdf88768517",
+  "provider_log_raw_bytes": 203662,
+  "compressed_artifacts": {
+    "provider-status.txt.gz": {
+      "original_path": "provider-status.txt",
+      "raw_sha256": "028779adc2081742b246f6856b0b8c4813a77e41edba60eee417b06f65b7dd9e",
+      "raw_bytes": 2341
+    }
+  },
+  "files": {
+    "h-0.0001-sign-1-result.npz": "6fd3c86ea22df713d0f03797f6ca69ebdd5984dfc65eeec91ed020024db1e540",
+    "rows.json": "70b6c65bfaef2eee227a59361dc80facd483a874e8d2fc12a385eaab02fe4faf",
+    "h-1e-06-sign--1-result.npz": "0b4423547eb47c33c983f612c0d262bffffa1ce052f8af1c4f94a1eb44d334ba",
+    "h-1e-05-sign-1-result.npz": "20ff1709af2e7e37f0995291186b793a4e78d0fcaa7fc4432326a488ad7c5aa5",
+    "field-initializations.json": "92fcc5020e91898b0363aae60d86cc690da8c7b97d20a31b3be639b7e42118d2",
+    "environment.json": "a422c6a06d690cd6da851fbd3654b6644dcebfbacf88d666ba7206c3d902e2bf",
+    "h-0.0001-sign--1-result.npz": "52f394964f5dfb36b6c5dddaa6e0227b26cc5349a09f95fce91d8331cc16a04b",
+    "h-1e-05-sign--1-result.npz": "c35c07958981c7da318255dc2ddd2436259039a2b070959440fbe3d409de2ef0",
+    "h-1e-06-sign-1-result.npz": "233a1b293d1f32e6c86857ceb39a81823e3c9a0707c4e290883ea4c900955137",
+    "run.yaml": "db5b124b2e3e8b89c959834ddf034e70833b4d41f0132b5415e9d463ce918e53",
+    "provider-status.txt.gz": "55355ce8339bb119ff0c13cc7521a5613e457d826d72de4ae691c943f496f3f1",
+    "driver.py": "fc411fecae37f9fa4a58b615f7875324c65156f2d1a03fb2ff4eaf773b328249"
+  }
+}

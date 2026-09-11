@@ -1,0 +1,54 @@
+{
+  "run_id": "369367260431",
+  "status": "failed",
+  "full_provider_log": "docs/research_notes/vessl_logs/369367260431-issue729-gpu-true-f64-reference-failed.log.gz",
+  "provider_log_raw_sha256": "975a3b05f2210f7707d93bb329db19241d25cedb04046500529b0b4326f09071",
+  "provider_log_gzip_sha256": "5f59ef3fee79e9ba5b667af92450eb1dec284009b6649f7b073ef5ad4c84de1d",
+  "provider_log_raw_bytes": 127675,
+  "compressed_artifacts": {
+    "field_dtype.log.gz": {
+      "original_path": "field_dtype.log",
+      "raw_sha256": "0c5108a7c66d7995e9900243e86da07d7e0d66eb3e21e7f75e6fb88770be2a48",
+      "raw_bytes": 23993
+    },
+    "ad.log.gz": {
+      "original_path": "ad.log",
+      "raw_sha256": "25a8aee9a8e46974079fc419d96c52fe2785e6b82eebe1655d7414673bcd385d",
+      "raw_bytes": 89226
+    },
+    "provider-status.txt.gz": {
+      "original_path": "provider-status.txt",
+      "raw_sha256": "2f52a7549e6c35b8a7d92b03b2ad10587488b7f5a3b70448a756869bb685e19e",
+      "raw_bytes": 2232
+    },
+    "ad/junit.xml.gz": {
+      "original_path": "ad/junit.xml",
+      "raw_sha256": "5fd776747b23c4f94425bac643137746135587c8ea80b35fdf2dd5292cadd6d8",
+      "raw_bytes": 28067
+    },
+    "field_dtype/junit.xml.gz": {
+      "original_path": "field_dtype/junit.xml",
+      "raw_sha256": "423111f15068c91ae6421f62b7a2d6e0b96bf54cb87fab4ce1b52f23951747a6",
+      "raw_bytes": 579
+    }
+  },
+  "files": {
+    "environment.json": "ef28d4e3050f138dee7f5f5ad3c1bd245295ffb0041daa7516e14921f4412647",
+    "ad.log.gz": "bc29c8ef7d45d2ca2f08ef33500274fc9ee7ba5f36a9537bde1fa143569c6b4d",
+    "outcomes.json": "4c78096f7534b1f499d3ee8d1deb0c8831928dba0fee281b2a4e36a92d83c511",
+    "run.yaml": "2cd72bbac356b99305cd5ef56784cfc6730436397e002d6ba0a2faf64161eaaa",
+    "field_dtype.log.gz": "59c38eeafef50d3b2ea426b7dc3e64383b2396bced651a7480226326b6c1dea5",
+    "provider-status.txt.gz": "c32c73d957e8f3e0f17004c8d8d73c542823d0a99ff0cea1c1f6a2ef0234f66a",
+    "driver.py": "129d16f1688215ffa2842126cbdc00658caccc5e19fef5f0a66a2c8b44bede1d",
+    "ad/call-0-result.npz": "dcf27fcedb742f292f98e7f64d51e55804cccfc4dedea7675c1261505991ecec",
+    "ad/field-initializations.json": "cb15437697fdbd90455465a778e4a20835c628a78f8133bf891517b04ae0933d",
+    "ad/call-3-result.npz": "4b8f35e21ba0d5f25380e2ef5a72cf61e8d9647120aee02e426c06d922ee7541",
+    "ad/junit.xml.gz": "a49e1b5996ca695101c58215475e52c034d583f415504431c5d5a8f7db6e587b",
+    "ad/outcome.json": "b15721944d880f5b7a70433533ed8908700a18368dc8a82a4fda88cb04a200cb",
+    "ad/calls.json": "ad1040a49e87830d50c17e09f41ef33bfac7970d03961d58ff38ecb7c68042fb",
+    "ad/call-2-result.npz": "e006ac2331eac2ca597346ecd6087c14cf06164bc477d1204ed23a4209cb1657",
+    "field_dtype/field-initializations.json": "f53836352cfdf004f9e695a3bf53f0ca104a6820fe0b9f1cc3897fd4db677467",
+    "field_dtype/junit.xml.gz": "d6cec0f7c3e69ff82ed26367882737fd2e8c959f96166427d6d02032b9f501a0",
+    "field_dtype/outcome.json": "12f1f53b7bd2502589a693ef9e5168346f47f771e733f079685475f8d1c7304b"
+  }
+}

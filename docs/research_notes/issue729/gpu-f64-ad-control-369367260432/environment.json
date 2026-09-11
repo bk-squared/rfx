@@ -1,0 +1,7 @@
+{
+  "source_sha": "f8402512dc5aa524c543168fa67f338400fbb370",
+  "jax": "0.4.33.dev20241023+e3c6d6430",
+  "numpy": "1.26.4",
+  "devices": "[CudaDevice(id=0)]",
+  "driver_sha256": "3c79503f465498a372f7d093c3c9d3a292f477568f2cb37cb7800d7d0ba36205"
+}

@@ -1,0 +1,18 @@
+[
+  {
+    "ex": "float64",
+    "ey": "float64",
+    "ez": "float64",
+    "hx": "float64",
+    "hy": "float64",
+    "hz": "float64"
+  },
+  {
+    "ex": "float64",
+    "ey": "float64",
+    "ez": "float64",
+    "hx": "float64",
+    "hy": "float64",
+    "hz": "float64"
+  }
+]

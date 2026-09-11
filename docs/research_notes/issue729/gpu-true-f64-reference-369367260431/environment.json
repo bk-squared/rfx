@@ -1,0 +1,14 @@
+{
+  "source_sha": "f8402512dc5aa524c543168fa67f338400fbb370",
+  "source_dirty": false,
+  "jax": "0.4.33.dev20241023+e3c6d6430",
+  "numpy": "1.26.4",
+  "scipy": "1.14.1",
+  "devices": "[CudaDevice(id=0)]",
+  "cases": {
+    "field_dtype": "tests/unit/autodiff/test_msl_ad_fd_converged.py::test_referee_precision_reaches_the_actual_field_state",
+    "ad": "tests/unit/autodiff/test_msl_ad_fd_converged.py::test_msl_ad_fd_converged_tight",
+    "nu": "tests/locks/test_msl_nu_sparam_gate.py::test_nu_msl_patch_s11_passive_and_edge_fed_match"
+  },
+  "driver_sha256": "129d16f1688215ffa2842126cbdc00658caccc5e19fef5f0a66a2c8b44bede1d"
+}
