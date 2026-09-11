@@ -9,6 +9,12 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
+### Removed — unused stage-6 voltage de-embedding prototype (#794)
+
+- Retired the standalone prototype and its duplicate inclusive-edge voltage
+  integrators. Its numerical reports remain historical; the retained plane
+  diagnostics use the production modal-voltage primitive.
+
 ### Fixed — MSL sources distinguish bounding nodes from driven edges (#729)
 
 - Microstrip source and load support now excludes the normal edge above
