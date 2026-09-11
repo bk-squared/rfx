@@ -1,0 +1,15 @@
+{
+  "run_id": "369367260417",
+  "status": "completed",
+  "full_provider_log": "docs/research_notes/vessl_logs/369367260417-issue729-projection-precision-completed.log.gz",
+  "provider_log_raw_sha256": "755ccdcb56fb52528ced7593c38263de49189c2aba30ea8df835d45fa8174e78",
+  "provider_log_gzip_sha256": "f57b26217112e868ffcedd00b273a05f744ff2e377bd9c623a9bf927b02496fe",
+  "provider_log_raw_bytes": 6536,
+  "files": {
+    "projection-probe.json": "9455dd177902ee13b3b10964371041fdafde17d484c317f9c97596bc88cd273d",
+    "run.yaml": "57b4134c2ace80cce1aac121690efd648304e1110e5e4e5ea0adf7d89c049da3",
+    "projection-probe.npz": "dc5b2cda190512c2a5ce48cb71302a123b12d319ffd233bf5cdac76a22c8da38",
+    "provider-status.txt": "3aa9467fd93253a6ba7e57037089d15cada3d5011c9374b9934d583bfdbc26e8",
+    "projection_probe.py": "a064896159ca1fd807471deecaf23b8194ae9b0e591ea154fc44986912120c7f"
+  }
+}

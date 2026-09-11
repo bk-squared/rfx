@@ -1,0 +1,40 @@
+{
+  "source_sha": "e32e386da17a8a4ad11fee46900dbd68ba8d694e",
+  "jax": "0.4.33.dev20241023+e3c6d6430",
+  "numpy": "1.26.4",
+  "script_sha256": "c16a98987b6d50921f7c6276c3302286541808a930514170c2b64ebd984a44ed",
+  "records": [
+    {
+      "call": 0,
+      "source_sha256": "04162b904f1459be426c7499f215c2838114220ae07069777efbc8372cf74e0f",
+      "raw_sigma_max": 1.0008643881670996,
+      "svd_reconstruction_max_abs": 5.65459309846469e-07,
+      "u_orthogonality_max_abs": 7.152557373046875e-07,
+      "vh_orthogonality_max_abs": 3.5762786865234375e-07,
+      "gpu32_vs_saved_max_abs": 0.0,
+      "gpu32_vs_host64_same_radius_max_abs": 0.0004474653557004699,
+      "gpu32_sigma_max": 1.000353827954403,
+      "gpu64_sigma_max": 0.9999999999999865,
+      "declared_correction_max": 0.0008645057678222656
+    },
+    {
+      "call": 1,
+      "source_sha256": "ae35142a56f5f858b8aedd2b0947faf19d093108ff4d97de33cc1e93ff9fdceb",
+      "raw_sigma_max": 1.000864656914653,
+      "svd_reconstruction_max_abs": 6.02714670185944e-07,
+      "u_orthogonality_max_abs": 4.76837158203125e-07,
+      "vh_orthogonality_max_abs": 2.980232238769531e-07,
+      "gpu32_vs_saved_max_abs": 0.0,
+      "gpu32_vs_host64_same_radius_max_abs": 0.0005434200134111433,
+      "gpu32_sigma_max": 1.000278031883416,
+      "gpu64_sigma_max": 0.9999999999999866,
+      "declared_correction_max": 0.000864863395690918
+    }
+  ],
+  "comparisons": {
+    "raw_rotation_max_abs": 4.241991973685799e-06,
+    "gpu32_rotation_max_abs": 0.0009785393485799432,
+    "gpu64_rotation_max_abs": 3.93768652597818e-06,
+    "host64_radius32_rotation_max_abs": 3.9349546005047665e-06
+  }
+}

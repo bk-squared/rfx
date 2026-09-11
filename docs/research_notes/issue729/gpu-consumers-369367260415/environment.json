@@ -1,0 +1,14 @@
+{
+  "source_sha": "ea8c8f3fb0467a799c70b6d7767aabe977784d47",
+  "source_dirty": false,
+  "jax": "0.4.33.dev20241023+e3c6d6430",
+  "numpy": "1.26.4",
+  "scipy": "1.14.1",
+  "devices": "[CudaDevice(id=0)]",
+  "cases": {
+    "axis": "tests/unit/ports/test_msl_port_axis_generality.py::test_y_directed_thru_reproduces_the_x_directed_thru",
+    "ad": "tests/unit/autodiff/test_msl_ad_fd_converged.py::test_msl_ad_fd_converged_tight",
+    "nu": "tests/locks/test_msl_nu_sparam_gate.py::test_nu_msl_patch_s11_passive_and_edge_fed_match"
+  },
+  "driver_sha256": "4a8d42f6346effdb30afbd835e86dd5a435ec22244980352f0790a9cc0df96f5"
+}

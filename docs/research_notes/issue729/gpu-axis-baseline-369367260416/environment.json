@@ -1,0 +1,12 @@
+{
+  "source_sha": "e32e386da17a8a4ad11fee46900dbd68ba8d694e",
+  "source_dirty": false,
+  "jax": "0.4.33.dev20241023+e3c6d6430",
+  "numpy": "1.26.4",
+  "scipy": "1.14.1",
+  "devices": "[CudaDevice(id=0)]",
+  "cases": {
+    "axis": "tests/unit/ports/test_msl_port_axis_generality.py::test_y_directed_thru_reproduces_the_x_directed_thru"
+  },
+  "driver_sha256": "7676a7481071ce0312b1af70aed321a1b02165ac19e74ae479e0ce75fb065f86"
+}

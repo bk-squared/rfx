@@ -9,6 +9,14 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
+### Fixed — GPU passivity projection honors its reconstruction precision (#729)
+
+- The S-matrix projection now requests full multiplication precision when
+  reconstructing its clipped SVD. Lower ambient GPU matmul precision could
+  exceed the clipping margin, return an active matrix, and amplify small
+  differences between rotated MSL fixtures. The clipping rule, output dtype,
+  raw measurement retention, and AD-path exclusion are unchanged.
+
 ### Fixed — resonance extraction preserves finite-record modal content (#872)
 
 - Harminv excludes FIR boundary transients during automatic decimation and

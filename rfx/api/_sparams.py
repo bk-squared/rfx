@@ -845,7 +845,13 @@ def _project_passive(S):
     # measured f32 sweep showed 8*eps failing the strict bound from n=8
     # (1.0000000255) through n=32 (1.0000006584); 64*eps holds through n=32.
     sig_c = jnp.minimum(sig, 1.0 - 64.0 * eps)
-    s_pass = jnp.einsum("fij,fj,fjk->fik", u, sig_c.astype(u.dtype), vh)
+    # Reconstruction must honor the dtype's roundoff budget. Ambient GPU
+    # matmul precision can introduce ~4e-4 error even when U/Sigma/Vh
+    # reconstruct to ~6e-7 with full float32 multiplication. That exceeds
+    # the 64*eps margin above and makes a supposedly passive result active
+    # again (#729 consumer audit). Keep this precision local to projection.
+    s_pass = jnp.einsum("fij,fj,fjk->fik", u, sig_c.astype(u.dtype), vh,
+                        precision=jax.lax.Precision.HIGHEST)
     return jnp.transpose(s_pass, (1, 2, 0)), correction
 
 

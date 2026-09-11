@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import warnings
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -64,6 +65,45 @@ def test_projection_bound_is_strict_at_float32(n_ports):
     S *= 2.0  # comfortably non-passive everywhere
     S_pass, _ = _project_passive(jnp.asarray(S))
     assert np.all(_sigma_max(np.asarray(S_pass)) <= 1.0)
+
+
+@pytest.mark.parametrize("backend", [
+    "cpu", pytest.param("gpu", marks=pytest.mark.gpu),
+])
+@pytest.mark.parametrize("n_ports", [2, 8, 32])
+def test_near_passive_complex_projection_preserves_the_measured_matrix(backend, n_ports):
+    """Small clipping must not introduce a larger reconstruction error.
+
+    Nearly unitary matrices model a settled low-loss multiport. An f64
+    host reference resolves the float32 input, including its rounding.
+    Exercise the GPU's lower-precision ambient matmul setting explicitly:
+    the physical projection must honor its own float32 error budget.
+    """
+    if backend == "gpu" and jax.default_backend() != "gpu":
+        pytest.skip("requires an actual GPU")
+    rng = np.random.default_rng(729)
+    matrices = []
+    for _ in range(12):
+        u, _ = np.linalg.qr(rng.normal(size=(n_ports, n_ports))
+                            + 1j*rng.normal(size=(n_ports, n_ports)))
+        v, _ = np.linalg.qr(rng.normal(size=(n_ports, n_ports))
+                            + 1j*rng.normal(size=(n_ports, n_ports)))
+        singular = 1. + np.linspace(-1e-3, 1e-3, n_ports)
+        matrices.append((u*singular) @ v.conj().T)
+    raw = np.stack(matrices, axis=-1).astype(np.complex64)
+    eps = np.finfo(np.float32).eps
+    host = raw.transpose(2, 0, 1).astype(np.complex128)
+    u, singular, vh = np.linalg.svd(host, full_matrices=False)
+    expected = ((u*np.minimum(singular, 1.-64.*eps)[:, None, :]) @ vh)
+    with jax.default_device(jax.devices(backend)[0]), jax.default_matmul_precision("tensorfloat32"):
+        projected, correction = _project_passive(jnp.asarray(raw))
+        projected = np.asarray(projected).transpose(2, 0, 1).astype(np.complex128)
+        correction = np.asarray(correction)
+    # The existing clipping radius leaves 64 f32 ULPs for reconstruction.
+    # Spending more than that on multiplication defeats its strict bound.
+    assert np.max(np.abs(projected-expected)) <= 64.*eps
+    assert np.max(np.linalg.svd(projected, compute_uv=False)) <= 1.
+    assert np.max(np.abs(correction-np.maximum(singular[:, 0]-1., 0.))) <= 32.*eps
 
 
 # ---------------------------------------------------------------------------

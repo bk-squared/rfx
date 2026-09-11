@@ -1,0 +1,26 @@
+{
+  "run_id": "369367260416",
+  "status": "failed",
+  "full_provider_log": "docs/research_notes/vessl_logs/369367260416-issue729-axis-baseline-failed.log.gz",
+  "provider_log_raw_sha256": "9cfeaaa362af79c53b7a670621740e383f42000aed23e1442fe2997a7e41448d",
+  "provider_log_gzip_sha256": "e6d347a65e18dfe7f61b6a9ca2db9d59c2e62fb9b81f4c5697688c66fb32b36b",
+  "provider_log_raw_bytes": 32321,
+  "files": {
+    "environment.json": "c1a7097deb8bce2fa24775fdc1d8962d29cbb8b37f97c76f29b6f765fdf93051",
+    "projection-probe.json": "38c2cec0cacb11c7c1858ce606257e930a3e1450ce0ebdeddc26464ee4743772",
+    "outcomes.json": "068d2fce83fb22c6912404ef3920ab78746b79937649387db415afe47d1213c7",
+    "run.yaml": "f13d7585b0bbe17a8a02cc9da018b399e64cc7baaf2c2663b814b9da53f492ae",
+    "projection-probe.npz": "98c211e5ab7288df1dc8e79713c4474d3310e3d5fb5c25e005d3feefe1cb5d58",
+    "provider-status.txt": "f59947507cd7917f75378883d14150f5c3f645ce4407c15b7494d586b7f0b945",
+    "axis.log.gz": "d7af383d28a0786dce38ea55703dd8cef696426711921ef95594d443816167f3",
+    "projection_probe.py": "c16a98987b6d50921f7c6276c3302286541808a930514170c2b64ebd984a44ed",
+    "driver.py": "7676a7481071ce0312b1af70aed321a1b02165ac19e74ae479e0ce75fb065f86",
+    "axis/junit.xml": "267424482135317b1534026e9b1fc817734c818240badea1ff814fb602befa00",
+    "axis/call-0-result.npz": "b6375195ebcfef19c0c8dcc4b9b82677792d0fb8f6efa093a14cdaf6ccfea81d",
+    "axis/call-0-raw-vi.npz": "141f69288b12b0c9f90cf7b8d38dada3dd5b26405f40702cb45312cb7603806e",
+    "axis/call-1-raw-vi.npz": "6a3d91d4352ff858a9183506af26ac50b3726e47f5d8f8230170aaf7b101948d",
+    "axis/call-1-result.npz": "1f37a6c5dff42d78240f410f0981fe512f7ab39366c2165358d46e0afd5ee6d4",
+    "axis/outcome.json": "071d7bcd5d2a48ce8a784e0683c4352cb419df0a2e97aa0c55c0cb805a71cbc6",
+    "axis/calls.json": "1cb2626928fda4d1a24d55241d48c71f0fcd898253ee7983945cfd2ba8fad61d"
+  }
+}
