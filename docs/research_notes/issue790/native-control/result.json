@@ -1,0 +1,13 @@
+{
+  "signal_only": {
+    "alarm_budget_s": 0.1,
+    "handled_after_s": 2.0004000226035714
+  },
+  "external_deadline": {
+    "budget_s": 0.3,
+    "reaped_after_s": 0.3025564509443939,
+    "returncode": -9,
+    "entered_native": true
+  },
+  "scope": "mechanism control, not an electromagnetic solve or a new internal JAX stack capture"
+}

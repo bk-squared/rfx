@@ -9,6 +9,18 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
+### Fixed — experiment deadlines survive blocked native execution (#790, #978)
+
+- A supervisor enforces the submitted timeout independently of the computation
+  process, then reaps it before recording failure/cancellation or releasing CPU
+  capacity. The budget includes child startup, preflight, solve and export.
+- Successful artifacts, final progress and terminal state are published in one
+  transaction; an already-recorded cancellation wins. Retried diagnostics keep
+  their originally registered bytes and hashes.
+- Reopened-service cancellation uses the same durable request. Windows avoids
+  terminating its supervisor to send that request; Linux also kills native
+  execution if its supervisor dies unexpectedly.
+
 ### Fixed — wire-port gaps follow realized terminal geometry (#929)
 
 - Uniform-grid preflight finds the nearest in-column PEC contact beyond one

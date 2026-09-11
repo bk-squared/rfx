@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import closing
 import importlib.metadata
 import json
 import os
 from pathlib import Path
 import platform
 import signal
+import sqlite3
 import subprocess
 import sys
+import tempfile
+import time
 import traceback
-from typing import Any
+from typing import Any, Callable
 
 from .artifacts import (
     ResultArtifact,
@@ -24,15 +28,11 @@ from .artifacts import (
 )
 from .compiler import compile_experiment
 from .durable import SQLiteApplicationRepository
-from .repository import (
-    InvalidRunTransitionError,
-    SQLiteRunRepository,
-    TERMINAL_STATES,
-)
+from .repository import SQLiteRunRepository, TERMINAL_STATES
 
 
 class RunCancelled(BaseException):
-    """Raised from the worker's SIGTERM/SIGINT handler (``_cancel_signal``).
+    """Cooperative cancellation in the execution child.
 
     Deliberately a ``BaseException`` subclass, not ``RuntimeError`` (its
     original base -- issue #482): no ``except Exception`` anywhere on the
@@ -42,44 +42,280 @@ class RunCancelled(BaseException):
 
 
 class RunTimedOut(BaseException):
-    """Raised from the worker's SIGALRM handler (``_timeout_signal``) when
-    a run exceeds its configured ``timeout_seconds``.
+    """Historical cooperative timeout exception; retain the #482 safeguard.
 
-    Deliberately a ``BaseException`` subclass, not ``TimeoutError`` (its
-    original base -- issue #482, an ``Exception`` subclass): the CI
-    incident on PR #555's own head showed a narrow-looking
-    ``except Exception`` deep in ``rfx.api._preflight`` -- reached from
-    INSIDE the armed alarm window, during ``compiled.preflight()`` in
-    ``execute_run`` below -- catching this exception and silently
-    converting an expired 1-second timeout into a "classification
-    unavailable" advisory instead of propagating: the worker kept
-    simulating for its full step count instead of dying, hanging the
-    parent's ``subprocess.wait`` (issue #482,
-    ``tests/studio/test_durable_worker_lifecycle.py::
-    test_worker_timeout_is_durable_failed_outcome``). ``rfx/api`` cannot
-    import ``rfx.experiments`` to name this exception directly (wrong
-    dependency direction), so PR #555 narrowed that one call site's
-    ``except`` tuple as a first layer; this ``BaseException`` base is the
-    general, mechanism-level fix -- no ``except Exception`` anywhere in
-    the codebase can swallow a signal-raised timeout or cancellation
-    again, by construction.
+    The supervisor now enforces the deadline from a separate process. The
+    old SIGALRM approach could not interrupt long native code (#790), even
+    after its exception-swallowing problem was fixed.
+
+    Keep the ``BaseException`` base: PR #555 found that an ordinary
+    ``Exception`` raised by the alarm could be swallowed by a preflight
+    advisory's catch block. Callers/tests retaining the cooperative signal
+    path must not reintroduce that failure when changing exception handling.
     """
 
 
-_signal_number: int | None = None
-
-
 def _cancel_signal(signum, _frame) -> None:
-    global _signal_number
-    _signal_number = int(signum)
     raise RunCancelled(f"worker received signal {signum}")
 
 
-def _timeout_signal(_signum, _frame) -> None:
-    raise RunTimedOut("worker exceeded the experiment timeout")
+def _child_command(*, database: Path, workspace: Path, run_id: str) -> list[str]:
+    return [
+        sys.executable,
+        str(Path(__file__).with_name("_worker_child.py")),
+        str(os.getpid()),
+        "--database",
+        str(database),
+        "--workspace",
+        str(workspace),
+        "--run-id",
+        run_id,
+    ]
+
+
+def _stop_child(process: subprocess.Popen) -> None:
+    # Popen retains ownership of an unreaped child, so this cannot signal a
+    # reused PID. Do not kill our process group: the supervisor must survive
+    # long enough to persist the outcome and release the CPU lease.
+    if process.poll() is None:
+        process.kill()
+    process.wait()
+
+
+def _cancel_requested(database: Path, run_id: str) -> bool:
+    """Poll the canonical flag without initializing schema or waiting on locks.
+
+    Windows TerminateProcess cannot notify a Python signal handler. Reading
+    the durable request also supports cancellation from a reopened service.
+    BUSY/LOCKED postpones this observation only; the wall deadline still runs.
+    """
+    try:
+        with closing(
+            sqlite3.connect(
+                database.as_uri() + "?mode=ro",
+                uri=True,
+                timeout=0,
+                isolation_level=None,
+            )
+        ) as connection:
+            row = connection.execute(
+                "SELECT cancel_requested FROM runs WHERE id = ?",
+                (run_id,),
+            ).fetchone()
+        return row is not None and bool(row[0])
+    except sqlite3.OperationalError as exc:
+        # sqlite_errorcode was added after our Python 3.10 floor.
+        if str(exc) in {
+            "database is locked",
+            "database table is locked",
+            "database schema is locked",
+        }:
+            return False
+        raise
+
+
+def _wait_for_child(
+    process: subprocess.Popen,
+    *,
+    deadline: float,
+    cancelled: Callable[[], bool],
+) -> str:
+    """Observe a wall deadline independently of the child's Python/GIL state.
+
+    The cancellation callback must not wait on database locks or mutate
+    state. Check the deadline first; final state/artifact writes happen only
+    after stopping expired computation.
+    Every return (and exception) leaves the owned child reaped.
+    """
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return "timeout"
+            if cancelled():
+                return "cancelled"
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return "timeout"
+            try:
+                process.wait(timeout=min(0.05, remaining))
+                if cancelled():
+                    return "cancelled"
+                if time.monotonic() >= deadline:
+                    return "timeout"
+                return "exited"
+            except subprocess.TimeoutExpired:
+                pass
+    finally:
+        _stop_child(process)
+
+
+def _read_outcome(path: Path, returncode: int, workspace: Path) -> dict[str, Any]:
+    try:
+        contents = path.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise ValueError(
+            f"executor exited with status {returncode} without a complete outcome"
+        ) from exc
+    outcome = json.loads(contents)
+    events = {
+        "succeeded": {"run_succeeded"},
+        "failed": {"run_failed", "run_timed_out"},
+        "cancelled": {"run_cancelled"},
+    }
+    if not isinstance(outcome, dict) or outcome.get("state") not in events:
+        raise ValueError("executor returned an invalid outcome")
+    if outcome.get("event_type") not in events[outcome["state"]]:
+        raise ValueError("executor outcome event does not match its state")
+    expected_code = 1 if outcome["state"] == "failed" else 0
+    if returncode != expected_code:
+        raise ValueError(f"executor outcome conflicts with exit status {returncode}")
+    if not isinstance(outcome.get("error", ""), str) or not isinstance(
+        outcome.get("traceback", ""), str
+    ):
+        raise ValueError("executor returned invalid diagnostics")
+    if outcome["state"] == "succeeded":
+        artifact_root = (workspace / "artifacts").resolve()
+        paths = [outcome["artifact_path"]] + [
+            item["path"] for item in outcome["artifacts"]
+        ]
+        if any(
+            not Path(path).resolve().is_relative_to(artifact_root) for path in paths
+        ):
+            raise ValueError("executor artifact is outside its workspace store")
+    return outcome
 
 
 def execute_run(*, database: Path, workspace: Path, run_id: str) -> int:
+    """Supervise one fresh child, then atomically publish its final outcome.
+
+    The persisted budget covers child startup, compile, preflight, solve and
+    export. Final durable bookkeeping follows child termination. The service
+    keeps this supervisor PID across restarts and cancellation requests.
+    """
+    repository = SQLiteRunRepository(database)
+    application = SQLiteApplicationRepository(database)
+    run_dir = (workspace / "runs" / run_id).resolve()
+    if run_dir.parent != (workspace / "runs").resolve():
+        raise ValueError("invalid run id path")
+
+    cancellation_signal: int | None = None
+
+    def request_stop(signum, _frame):
+        nonlocal cancellation_signal
+        cancellation_signal = int(signum)
+
+    previous_handlers = {
+        sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT)
+    }
+    for sig in previous_handlers:
+        signal.signal(sig, request_stop)
+    process = None
+    outcome: dict[str, Any]
+    try:
+        record = repository.get_run(run_id)
+        if record.state in TERMINAL_STATES:
+            return 1 if record.state == "failed" else 0
+        if record.cancel_requested or cancellation_signal is not None:
+            outcome = {"state": "cancelled", "event_type": "run_cancelled"}
+        else:
+            # The durable submitted document is authoritative for the budget;
+            # a tampered spec.json must not extend the supervisor's deadline.
+            document = json.loads(record.spec_json)
+            timeout_seconds = int(
+                document.get("execution", {}).get("timeout_seconds", 3600)
+            )
+            if timeout_seconds <= 0:
+                raise ValueError("experiment timeout must be positive")
+            outcome_path = run_dir / "executor-outcome.json"
+            if outcome_path.exists():
+                raise ValueError("executor outcome already exists before execution")
+            deadline = time.monotonic() + timeout_seconds
+            process = subprocess.Popen(
+                _child_command(database=database, workspace=workspace, run_id=run_id),
+                stdin=subprocess.DEVNULL,
+                # Inherit the service-created session/process group and logs.
+                # An outer killpg(supervisor_pid) must terminate both processes.
+            )
+            observation = _wait_for_child(
+                process,
+                deadline=deadline,
+                cancelled=lambda: (
+                    cancellation_signal is not None
+                    or _cancel_requested(repository.path, run_id)
+                ),
+            )
+            if observation == "timeout":
+                detail = f"worker exceeded the experiment timeout ({timeout_seconds}s); executor terminated and reaped"
+                outcome = {
+                    "state": "failed",
+                    "event_type": "run_timed_out",
+                    "error": detail,
+                    "traceback": f"RunTimedOut: {detail}\nThis diagnostic was generated by the supervisor enforcing the wall deadline.\n",
+                }
+            elif observation == "cancelled":
+                outcome = {"state": "cancelled", "event_type": "run_cancelled"}
+            else:
+                outcome = _read_outcome(outcome_path, process.returncode, workspace)
+            if cancellation_signal is not None:
+                outcome = {"state": "cancelled", "event_type": "run_cancelled"}
+            outcome["payload"] = {
+                "executor_pid": process.pid,
+                "executor_returncode": process.returncode,
+                "supervisor_observation": observation,
+                "timeout_seconds": timeout_seconds,
+            }
+        return _publish_outcome(application, run_dir, run_id, outcome)
+    except Exception as exc:
+        if process is not None:
+            _stop_child(process)
+        outcome = {
+            "state": "failed",
+            "event_type": "run_failed",
+            "error": str(exc)[:4000],
+            "traceback": traceback.format_exc(),
+        }
+        traceback.print_exc()
+        try:
+            return _publish_outcome(application, run_dir, run_id, outcome)
+        except Exception:
+            traceback.print_exc()
+            return 1
+    finally:
+        # Cleanup order is load-bearing, including unexpected parent errors.
+        if process is not None:
+            _stop_child(process)
+        try:
+            application.release_cpu_lease(run_id)
+        finally:
+            for sig, handler in previous_handlers.items():
+                signal.signal(sig, handler)
+
+
+def _publish_outcome(
+    application, run_dir: Path, run_id: str, outcome: dict[str, Any]
+) -> int:
+    diagnostic = outcome.get("traceback", "")
+    if diagnostic:
+        try:
+            _write_traceback_artifact(application, run_dir, run_id, diagnostic)
+        except Exception:
+            # A broken diagnostic path must not skip the terminal transaction.
+            traceback.print_exc()
+    final = application.finish_worker_run(
+        run_id,
+        state=outcome["state"],
+        event_type=outcome["event_type"],
+        error=outcome.get("error"),
+        artifact_sha256=outcome.get("artifact_sha256"),
+        artifact_path=outcome.get("artifact_path"),
+        artifacts=outcome.get("artifacts", ()),
+        payload=outcome.get("payload"),
+    )
+    return 1 if final.state == "failed" else 0
+
+
+def _execute_child(*, database: Path, workspace: Path, run_id: str) -> int:
     repository = SQLiteRunRepository(database)
     application = SQLiteApplicationRepository(database)
     run_dir = (workspace / "runs" / run_id).resolve()
@@ -89,12 +325,10 @@ def execute_run(*, database: Path, workspace: Path, run_id: str) -> int:
 
     signal.signal(signal.SIGTERM, _cancel_signal)
     signal.signal(signal.SIGINT, _cancel_signal)
-    if hasattr(signal, "SIGALRM"):
-        signal.signal(signal.SIGALRM, _timeout_signal)
     try:
         record = repository.get_run(run_id)
         if record.cancel_requested or record.state == "cancelled":
-            return 0
+            raise RunCancelled("cancellation requested before execution")
         repository.transition(
             run_id,
             "preflighting",
@@ -104,11 +338,6 @@ def execute_run(*, database: Path, workspace: Path, run_id: str) -> int:
         application.heartbeat(run_id, progress=0.05, phase="compiling")
 
         document = json.loads((run_dir / "spec.json").read_text(encoding="utf-8"))
-        timeout_seconds = int(
-            document.get("execution", {}).get("timeout_seconds", 3600)
-        )
-        if hasattr(signal, "setitimer"):
-            signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
         compiled = compile_experiment(document)
         spec = compiled.spec
         record = repository.get_run(run_id)
@@ -187,9 +416,7 @@ def execute_run(*, database: Path, workspace: Path, run_id: str) -> int:
                 reference_impedance_ohm=_reference_impedance(spec),
             )
             artifact_kind = "s11"
-        application.register_artifact(
-            run_id, kind=artifact_kind, path=artifact.data_json
-        )
+        artifacts = [{"kind": artifact_kind, "path": str(artifact.data_json)}]
         field_artifact = export_field_slice_artifact(
             workspace / "artifacts",
             result=result,
@@ -200,56 +427,38 @@ def execute_run(*, database: Path, workspace: Path, run_id: str) -> int:
             runtime=runtime,
         )
         if field_artifact is not None:
-            application.register_artifact(
-                run_id, kind="field-slice", path=field_artifact.data_json
+            artifacts.append(
+                {"kind": "field-slice", "path": str(field_artifact.data_json)}
             )
-        application.heartbeat(run_id, progress=1.0, phase="complete")
-        repository.transition(
-            run_id,
-            "succeeded",
-            expected="running",
-            event_type="run_succeeded",
-            artifact_sha256=artifact.sha256,
-            artifact_path=str(artifact.root),
-            payload={"artifact_path": str(artifact.root)},
-        )
-        return 0
+        _check_cancel(repository, run_id)
+        outcome = {
+            "state": "succeeded",
+            "event_type": "run_succeeded",
+            "artifact_sha256": artifact.sha256,
+            "artifact_path": str(artifact.root),
+            "artifacts": artifacts,
+        }
     except RunCancelled as exc:
-        _finish_cancelled(repository, run_id, str(exc))
-        return 0
-    except RunTimedOut as exc:
-        _write_traceback_artifact(application, run_dir, run_id)
-        current = repository.get_run(run_id)
-        if current.state not in TERMINAL_STATES:
-            repository.transition(
-                run_id,
-                "failed",
-                expected={"queued", "preflighting", "running"},
-                event_type="run_timed_out",
-                error=str(exc),
-            )
-        return 1
-    except Exception as exc:
+        outcome = {
+            "state": "cancelled",
+            "event_type": "run_cancelled",
+            "error": str(exc),
+        }
+    except (RunTimedOut, Exception) as exc:
         detail = "".join(traceback.format_exception_only(type(exc), exc)).strip()
-        _write_traceback_artifact(application, run_dir, run_id)
-        try:
-            current = repository.get_run(run_id)
-            if current.state not in TERMINAL_STATES:
-                repository.transition(
-                    run_id,
-                    "failed",
-                    expected={"queued", "preflighting", "running"},
-                    event_type="run_failed",
-                    error=detail[:4000],
-                )
-        except Exception:
-            traceback.print_exc()
+        outcome = {
+            "state": "failed",
+            "event_type": "run_timed_out"
+            if isinstance(exc, RunTimedOut)
+            else "run_failed",
+            "error": detail[:4000],
+            "traceback": traceback.format_exc()[-65_536:],
+        }
         traceback.print_exc()
-        return 1
-    finally:
-        if hasattr(signal, "setitimer"):
-            signal.setitimer(signal.ITIMER_REAL, 0)
-        application.release_cpu_lease(run_id)
+    # Files may have been produced, but no terminal state or successful
+    # artifact is public until the supervisor reaps us and accepts this proposal.
+    _atomic_write(run_dir / "executor-outcome.json", _pretty_json(outcome))
+    return 0 if outcome["state"] != "failed" else 1
 
 
 def _cpu_runtime() -> dict[str, Any]:
@@ -342,13 +551,15 @@ def _write_traceback_artifact(
     application: SQLiteApplicationRepository,
     run_dir: Path,
     run_id: str,
+    contents: str,
 ) -> None:
-    contents = traceback.format_exc()
-    if not contents.strip() or contents.strip() == "NoneType: None":
+    if not contents.strip():
         return
     # Bound persisted diagnostics while keeping the exception tail.
     encoded = contents.encode("utf-8", errors="replace")[-65_536:]
     path = run_dir / "traceback.txt"
+    # A terminal-transaction retry must not overwrite bytes already indexed
+    # by a durable artifact hash. Preserve the first diagnostic on retries.
     if not path.exists():
         _atomic_write(path, encoded.decode("utf-8", errors="replace"))
     application.register_artifact(run_id, kind="traceback", path=path)
@@ -359,30 +570,21 @@ def _check_cancel(repository: SQLiteRunRepository, run_id: str) -> None:
         raise RunCancelled("cancellation requested")
 
 
-def _finish_cancelled(
-    repository: SQLiteRunRepository, run_id: str, reason: str
-) -> None:
-    try:
-        current = repository.get_run(run_id)
-        if current.state not in TERMINAL_STATES:
-            repository.transition(
-                run_id,
-                "cancelled",
-                expected={"queued", "preflighting", "running"},
-                event_type="run_cancelled",
-                payload={"reason": reason, "signal": _signal_number},
-            )
-    except InvalidRunTransitionError:
-        pass
-
-
 def _atomic_write(path: Path, contents: str) -> None:
-    temporary = path.with_name(f".{path.name}.tmp")
-    with temporary.open("x", encoding="utf-8") as handle:
-        handle.write(contents)
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(temporary, path)
+    # A forcibly stopped child can leave a temporary file. Unique siblings
+    # prevent that residue from breaking the supervisor's diagnostic write.
+    descriptor, name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(contents)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _pretty_json(value: Any) -> str:

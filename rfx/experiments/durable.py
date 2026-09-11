@@ -7,11 +7,19 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
-from typing import Any, Mapping
+from typing import Any, Iterable, Literal, Mapping
 import uuid
 
 from .canonical import CanonicalExperimentSpec, compile_canonical_experiment
-from .repository import RunRecord, SQLiteRunRepository, utc_now
+from .repository import (
+    ALLOWED_TRANSITIONS,
+    TERMINAL_STATES,
+    InvalidRunTransitionError,
+    RunNotFoundError,
+    RunRecord,
+    SQLiteRunRepository,
+    utc_now,
+)
 
 
 class ExperimentNotFoundError(KeyError):
@@ -538,6 +546,174 @@ class SQLiteApplicationRepository:
                 "DELETE FROM worker_leases WHERE resource = 'cpu:0' AND run_id = ?",
                 (run_id,),
             )
+
+    def finish_worker_run(
+        self,
+        run_id: str,
+        *,
+        state: Literal["succeeded", "failed", "cancelled"],
+        event_type: str,
+        error: str | None = None,
+        artifact_sha256: str | None = None,
+        artifact_path: str | Path | None = None,
+        artifacts: Iterable[Mapping[str, str | Path]] = (),
+        payload: Mapping[str, Any] | None = None,
+    ) -> RunRecord:
+        """Commit an owned worker's terminal outcome after its child is reaped.
+
+        The supervisor must stop/reap its execution child before calling:
+        this transaction also releases the run's CPU lease. A cancellation
+        already recorded when the write lock is acquired wins over success
+        or failure (including timeout). An existing terminal outcome is
+        immutable and retrying publishes no additional event or artifact.
+
+        ``artifacts`` is the success-publication set. Failure/cancellation
+        ignores it; traceback and log diagnostics keep using register_artifact.
+        Read immutable artifact bytes before acquiring the write lock. Legacy
+        v1 runs have no run_links row and still return the same RunRecord.
+        """
+        if state not in TERMINAL_STATES:
+            raise InvalidRunTransitionError(
+                f"worker outcome must be terminal, got {state!r}"
+            )
+
+        initial = self.runs.get_run(run_id)
+        prepared: list[dict[str, Any]] = []
+        primary_path = None
+        if (
+            state == "succeeded"
+            and initial.state not in TERMINAL_STATES
+            and not initial.cancel_requested
+        ):
+            for item in artifacts:
+                kind = item["kind"]
+                if not isinstance(kind, str) or not kind:
+                    raise ValueError("worker artifact kind must be a nonempty string")
+                path = Path(item["path"]).expanduser().resolve()
+                data = path.read_bytes()
+                prepared.append(
+                    dict(
+                        id=str(uuid.uuid4()),
+                        kind=kind,
+                        path=str(path),
+                        sha256=hashlib.sha256(data).hexdigest(),
+                        size_bytes=len(data),
+                    )
+                )
+            if artifact_path is None or artifact_sha256 is None:
+                raise ValueError(
+                    "a successful worker outcome requires its primary artifact"
+                )
+            primary_path = str(Path(artifact_path).expanduser().resolve())
+            if not any(
+                item["sha256"] == artifact_sha256
+                and str(Path(item["path"]).parent) == primary_path
+                for item in prepared
+            ):
+                raise ValueError(
+                    "primary artifact does not match the success-publication set"
+                )
+
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM runs WHERE id = ?", (run_id,)
+            ).fetchone()
+            if row is None:
+                raise RunNotFoundError(run_id)
+            if row["state"] in TERMINAL_STATES:
+                # Covers queued cancellation as well as finalization retries.
+                # The caller's reaping precondition also holds on this path.
+                connection.execute(
+                    "DELETE FROM worker_leases WHERE resource = 'cpu:0' AND run_id = ?",
+                    (run_id,),
+                )
+                return SQLiteRunRepository._record(row)
+
+            final_state = "cancelled" if row["cancel_requested"] else state
+            if final_state not in ALLOWED_TRANSITIONS[row["state"]]:
+                raise InvalidRunTransitionError(
+                    f"run {run_id} cannot transition from {row['state']!r} to {final_state!r}"
+                )
+            final_event = "run_cancelled" if row["cancel_requested"] else event_type
+            final_error = None if row["cancel_requested"] else error
+            timestamp = utc_now()
+            event_payload = dict(payload or {})
+            for reserved in (
+                "from_state",
+                "to_state",
+                "artifact_sha256",
+                "artifact_path",
+                "error",
+            ):
+                event_payload.pop(reserved, None)
+            if final_state != state:
+                event_payload.update(
+                    proposed_state=state, proposed_event_type=event_type
+                )
+                if error is not None:
+                    event_payload["proposed_error"] = error
+
+            if final_state == "succeeded":
+                for prepared_artifact in prepared:
+                    connection.execute(
+                        """INSERT INTO experiment_artifacts(
+                            id, run_id, kind, sha256, path, size_bytes, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(run_id, kind, sha256) DO NOTHING""",
+                        (
+                            prepared_artifact["id"],
+                            run_id,
+                            prepared_artifact["kind"],
+                            prepared_artifact["sha256"],
+                            prepared_artifact["path"],
+                            prepared_artifact["size_bytes"],
+                            timestamp,
+                        ),
+                    )
+                event_payload.update(
+                    artifact_sha256=artifact_sha256, artifact_path=primary_path
+                )
+            else:
+                artifact_sha256, primary_path = None, None
+
+            connection.execute(
+                """UPDATE runs SET state = ?, updated_at = ?, artifact_sha256 = ?,
+                    artifact_path = ?, error = ? WHERE id = ?""",
+                (
+                    final_state,
+                    timestamp,
+                    artifact_sha256,
+                    primary_path,
+                    final_error,
+                    run_id,
+                ),
+            )
+            connection.execute(
+                """UPDATE run_links SET heartbeat_at = ?,
+                    progress = CASE WHEN ? = 'succeeded' THEN 1.0 ELSE progress END
+                    WHERE run_id = ?""",
+                (timestamp, final_state, run_id),
+            )
+            connection.execute(
+                "DELETE FROM worker_leases WHERE resource = 'cpu:0' AND run_id = ?",
+                (run_id,),
+            )
+            event_payload.update(from_state=row["state"], to_state=final_state)
+            if final_error is not None:
+                event_payload["error"] = final_error
+            SQLiteRunRepository._append_event(
+                connection,
+                run_id,
+                event_type=final_event,
+                state=final_state,
+                payload=event_payload,
+                timestamp=timestamp,
+            )
+            final = connection.execute(
+                "SELECT * FROM runs WHERE id = ?", (run_id,)
+            ).fetchone()
+            return SQLiteRunRepository._record(final)
 
     def register_artifact(
         self,

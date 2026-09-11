@@ -1,0 +1,101 @@
+{
+  "baseline_main": "9369e0aef78888c40e766be6ecf0f63beb7bb404",
+  "baseline_worker_sha256": "80672a0e69e72da07af022a87b548a2368e2910ab3eae75ea497639ca8e6e231",
+  "ci_reproduction": {
+    "head": "e995628d416fe2071f3a36a8b914863f8c6d4936",
+    "job": 103352640803,
+    "pr": 983,
+    "raw_log_sha256": "d31cce289a5a29d1df2657079e881ac4bdc46ac9dd915defb7e065007e844e0f",
+    "run": 34626458847,
+    "terminal_wait_seconds": 60
+  },
+  "command_prefix": "taskset -c 0-3 env JAX_PLATFORMS=cpu OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python -m pytest",
+  "environment": {
+    "jax": "0.6.2",
+    "jaxlib": "0.6.2",
+    "platform": "Linux-5.15.0-187-generic-x86_64-with-glibc2.35",
+    "python": "3.10.12"
+  },
+  "evidence_sha256": {
+    "README.md": "f03a0c5cbc7c7bbfedf2e9b2946fad8d8e352bcdc9d6358759a0d9834a895019",
+    "db-contracts.log": "96e5f8b5cff79f2612f5f43e270a6aeb5dcf7200a3b23e924bd1cea387cdded0",
+    "initial-existing-lifecycle.log": "745a783e7d9515b9760cb7bdfa76d6699d77c2ba5cc3bd6f7a50b779dd085bcb",
+    "initial-native-controls.log": "efb6b50ef07592d537c155ac5cfdadfc5bb140b48acafd29484238c7f47ff296",
+    "mypy.log": "5107f9446510710cfc458474a6bae8746bf7ed9a2bccb85b1de3b0a14e84c8ad",
+    "native-control/busy.c": "1413fd2863ba85425d8d10c2a7993476a503af5d6109bfde33ea59ce0ef2e427",
+    "native-control/child.py": "da259118214cef1c1a639df4bfa7d6c2156ba0394286c4d52bc3415cb29881f0",
+    "native-control/probe.py": "242db00b442d988239d96e558770a51dc59ae6367ac8eca6474f323e53c3e405",
+    "native-control/result.json": "6bff6d6e3e8a31b8a8400560730eb715fa05b0b07862b9aea33b58b992780ec1",
+    "pr983-original-ci-timeout.log.gz": "fa4ab85701dd9d95c5808db1b1b2c6f4d4e7b8f481396b89fa7f779137367fe7",
+    "ruff.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "studio-regression-final.log": "2698c781d66afa4c9e333fa1515ba2513d92dd6470af181e0def1f46be903289",
+    "supervisor-contracts-final.log": "3c7fd7de85b1a08fed4220a69efc19dcf8d956c8d5ecd25bae868954e824d96b",
+    "traceback-overwrite-control.log.gz": "a76d511706fa65caff776ba6aa0c05a888ff32337560015cecabd47e983e23e0",
+    "traceback-overwrite-control.py": "4168005bfd4214446cee013594bda0e77569c75b7aebef7d0b23b5c1e70cb468"
+  },
+  "final_checks": {
+    "mypy": {
+      "log": "mypy.log",
+      "source_files": 26,
+      "status": "passed"
+    },
+    "ruff": {
+      "log": "ruff.log",
+      "status": "passed"
+    },
+    "studio_regression": {
+      "args": "-q -o addopts='' -p no:cacheprovider",
+      "files": [
+        "tests/studio/test_experiment_repository.py",
+        "tests/studio/test_durable_experiments.py",
+        "tests/studio/test_experiment_cli.py",
+        "tests/studio/test_studio_api.py",
+        "tests/studio/test_durable_worker_lifecycle.py",
+        "tests/studio/test_experiment_cpu_smoke.py",
+        "tests/studio/test_operations_security_isolation.py"
+      ],
+      "log": "studio-regression-final.log",
+      "passed": 38,
+      "seconds": 110.07
+    },
+    "supervisor_contracts": {
+      "args": "-q -o addopts='' -p no:cacheprovider",
+      "files": [
+        "tests/studio/test_worker_process_supervision.py",
+        "tests/studio/test_worker_outcome_commit.py"
+      ],
+      "log": "supervisor-contracts-final.log",
+      "passed": 28,
+      "seconds": 8.16
+    },
+    "traceback_overwrite_mutation": {
+      "baseline_claim": false,
+      "expected_failures": 1,
+      "log": "traceback-overwrite-control.log.gz",
+      "observed": "two artifact rows with different hashes pointing to the overwritten file"
+    }
+  },
+  "limitations": [
+    "abrupt supervisor death is guarded by prctl on Linux only",
+    "deadline governs computation; kernel scheduling and durable finalization are not a hard real-time contract",
+    "no new RF calibration or convergence claim"
+  ],
+  "resource_warning_inspection": {
+    "action": "read-only; no kill",
+    "lease_present": false,
+    "pid": 722917,
+    "process_present_on_inspection": false,
+    "run_id": "6552af42-6d33-49a6-85e8-c1b7dcec6f75",
+    "state": "succeeded"
+  },
+  "scope": "worker execution deadline and durable completion; no FDTD or physical tolerance change",
+  "source_sha256": {
+    "CHANGELOG.md": "f6990015bb8bb9b1a9cfcf3277dd38856bf654508c689a8ac0753b634b95d5a5",
+    "rfx/experiments/_worker_child.py": "0703d369cf9b2d55dc045cce6c8d39a62d31f7eee1172f7cb0c77b32fdce44e0",
+    "rfx/experiments/durable.py": "b3dd533ee793e7754eaf117b3a64b10dd0fd2d919fbdcba41f665466a7c10902",
+    "rfx/experiments/service.py": "82a95141c1ecb931d062c21ea12292a79b0e0903449438a0e7591ecb4e241279",
+    "rfx/experiments/worker.py": "d9b1f7261e58d24f6c8413ce3076134d9e1105c76ddaf0141db02dd10d0a5c71",
+    "tests/studio/test_worker_outcome_commit.py": "3c2b33bb9232d55cb67d0cfab63366c2b9cd5424e393286f31f953746591c948",
+    "tests/studio/test_worker_process_supervision.py": "6ca514eb087188a42b07363c25bf219c409c24b60744970e2d032b07e849ce15"
+  }
+}

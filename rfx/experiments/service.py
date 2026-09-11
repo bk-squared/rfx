@@ -220,6 +220,12 @@ class ExperimentService:
 
     def cancel(self, run_id: str) -> RunRecord:
         record = self.repository.request_cancel(run_id)
+        if record.state in TERMINAL_STATES or os.name == "nt":
+            # A queued cancellation is already durable. Do not kill a worker
+            # during imports before it has installed its signal handlers.
+            # Windows terminate() kills the supervisor instead of notifying
+            # it; the supervisor polls this durable request without lock waits.
+            return record
         process = self._processes.get(run_id)
         if process is not None and process.poll() is None:
             process.terminate()
