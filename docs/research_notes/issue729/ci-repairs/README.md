@@ -28,3 +28,12 @@ The original GPU image's experimental context remains the fallback; the
 new import changes no numerical operation on that image.
 
 The initial failed CI is not acceptance. Final head CI remains required.
+
+The aligned short-record AD smoke and its independent trace-plane check
+also passed (2 tests): loss 1.944183, max|S| 1.0128, gradient -0.02061103.
+The objective, three-period record and all assertions were retained.
+The unrelated probe-only control keeps its old 80 um pitch. Comments now
+state the limits correctly: a negative finite-record gradient is an
+empirical fixture fingerprint, not a law that epsilon increases loss;
+short records do not excuse AD/FD disagreement. The separate settled MSL
+gate carries the accuracy claim. No new FD comparison is claimed here.

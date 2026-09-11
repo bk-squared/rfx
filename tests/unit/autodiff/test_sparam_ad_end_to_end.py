@@ -20,8 +20,10 @@ Waveguide fix (G-AD-WIRE, now upgraded to G-AD-WIRE-WG2):
      flows end-to-end through the PUBLIC API without internal monkeypatching.
      NU path excluded (uses run_nonuniform_path, different material channel).
 
-Both fixes are acceptance-gated by M1 (finite non-zero gradient +
-forward |S| in [0, 1.2] + FD cross-check at two eps points).
+Both paths have finite/nonzero-gradient and bounded-output smoke checks.
+The waveguide test also performs FD comparisons at two epsilon points.
+The MSL accuracy gate is test_msl_ad_fd_converged.py; the short MSL record
+here checks tape connectivity and a fixture-specific gradient sign.
 
 Positive controls (forward-only differentiable path) are preserved below.
 """
@@ -33,7 +35,6 @@ import warnings
 import jax
 import jax.numpy as jnp
 import numpy as np
-import pytest
 
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
@@ -50,7 +51,7 @@ from rfx.simulation import _suggest_checkpoint_segments
 _MSL_EPS_R = 3.66       # RO4350B
 _MSL_H_SUB = 254e-6     # substrate thickness (m)
 _MSL_W_TRACE = 600e-6   # trace width (m)
-_MSL_DX = 80e-6         # cell size (m) → ~3 substrate cells
+_MSL_DX = _MSL_H_SUB / 3  # ground and trace on bounding nodes of three cells
 _MSL_L_LINE = 6e-3      # line length (must be long enough for N-probe placement)
 _MSL_PORT_MARGIN = 2e-3 # port margin — probe coords extend ~2 mm beyond feed
 _MSL_F_MAX = 5e9
@@ -79,22 +80,13 @@ def _build_msl_sim() -> Simulation:
     y_centre = ly / 2.0
     trace_y_lo = y_centre - _MSL_W_TRACE / 2.0
     trace_y_hi = y_centre + _MSL_W_TRACE / 2.0
-    # #931 migration rule 1: a foil drawn as a one-cell PEC Box is a SHEET,
-    # declared with the SAME physical corners. Under the volume rule the same
-    # Box would gain a second wall at the node BELOW the substrate top
-    # (measured on this board: walls on z-planes 3 and 4 instead of 4 alone),
-    # which moves the realized trace height and every de-embedded number with
-    # it. add_thin_conductor puts the sheet on the node plane nearest the
-    # drawn mid-plane — 320 um here, tie to the lower plane — which is the
-    # plane this board has always realized, so the committed goldens stay
-    # valid. The board itself is off-lattice (h_sub 254 um on an 80 um mesh,
-    # 3.175 cells); §1.3 says to redraw it ON-LATTICE, and its constants live
-    # in tests/unit/sparams/test_msl_port_integration.py, so that redraw
-    # belongs with the MSL fixture family, not here.
+    # The legacy thickness-bearing sheet declaration landed at 320 um,
+    # while the MSL port declared 254 um. Draw the foil on the declared
+    # laminate face and resolve that interval with three cells (#729).
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         sim.add_thin_conductor(
-            Box((0.0, trace_y_lo, _MSL_H_SUB), (lx, trace_y_hi, _MSL_H_SUB + _MSL_DX)),
+            Box((0.0, trace_y_lo, _MSL_H_SUB), (lx, trace_y_hi, _MSL_H_SUB)),
             sigma_bulk=5.8e7, thickness=35e-6,
         )
 
@@ -174,8 +166,9 @@ def test_msl_s_matrix_ad_end_to_end():
     G-AD-WIRE), runs a real (tiny) FDTD forward, assembles the MSL S-matrix,
     and checks:
     1. Gradient is finite and non-zero.
-    2. Forward |S| is physically sane (in [0, 1.2]).
-    3. Finite-difference cross-check (sign + magnitude at two eps points).
+    2. Forward |S| remains within the retained smoke envelope [0, 1.2].
+    3. The finite-record gradient retains its measured sign. This is not
+       a monotonicity law or an FD-accuracy qualification.
     4. WI-1 replay golden is unaffected (tested separately).
     """
     sim = _build_msl_sim()
@@ -216,7 +209,7 @@ def test_msl_s_matrix_ad_end_to_end():
     S_fwd = np.asarray(fwd_result.S)
     s_max = float(np.max(np.abs(S_fwd)))
     assert s_max <= 1.2, (
-        f"Forward |S| = {s_max:.4f} exceeds 1.2 — physically implausible. "
+        f"Forward |S| = {s_max:.4f} exceeds the retained 1.2 smoke envelope. "
         "Check the MSL forward path or geometry."
     )
     assert s_max > 0.0, "Forward |S| = 0 everywhere — likely a broken forward pass."
@@ -235,15 +228,17 @@ def test_msl_s_matrix_ad_end_to_end():
     print(f"  AD grad = {g_ad:.6e}")
     # FD cross-check: verified offline (2026-05-25):
     #   AD=-4.137e-02, FD=-4.941e-02 (h=1e-3), rel_err=16.3%, sign agrees.
-    # 16% error is expected for num_periods=3 (MSL transients not drained);
-    # sign agreement and same order of magnitude confirm the tape is intact.
-    # Running 2 extra FDTD passes here (~160s) just to reproduce that number
-    # would make this test >7 min total; skip in favor of the waveguide test
-    # which runs the full FD cross-check on a faster geometry (25s total).
+    # These are historical values on the old fixture. A short record does
+    # NOT excuse AD/FD mismatch: both differentiate the same finite-record
+    # observable. Field precision and finite-step error must be resolved
+    # before claiming derivative accuracy (the separate converged test).
+    # This always-on case is a tape-connectivity smoke. The settled, fixed-
+    # band MSL AD/FD accuracy comparison lives in test_msl_ad_fd_converged.py.
     assert g_ad < 0, (
         f"MSL AD gradient sign unexpected: {g_ad:.4e}. "
-        "Expected negative (increasing eps increases loss |S|^2 for this geometry). "
-        "If geometry changed, update this assertion."
+        "This is the observed sign of a fixed finite-record fixture, not a "
+        "law that increasing epsilon increases dissipation. Check an independent "
+        "finite difference before changing the sign assertion."
     )
     print("[test_msl_s_matrix_ad_end_to_end] PASS")
 
@@ -343,7 +338,7 @@ def test_forward_eps_override_is_differentiable_msl():
     sim = Simulation(
         freq_max=_MSL_F_MAX,
         domain=(6e-3, 3e-3, 2e-3),
-        dx=_MSL_DX,
+        dx=80e-6,  # preserve this independent probe-only control's mesh
         boundary=BoundarySpec(
             x="cpml", y="cpml",
             z=Boundary(lo="pec", hi="cpml"),
@@ -398,8 +393,7 @@ def test_forward_eps_override_is_differentiable_waveguide():
 
 def _assert_trace_sheet_realized(sim_sim):
     """Build-time check (no solve): the migrated trace realizes on the node
-    plane its declaration names — 320 um on this board, the plane the
-    pre-#931 rule realized — and it owns no cell (#931 §1.3).
+    plane shared by the laminate and both ports, and owns no cell (#931).
 
     Every migrated conductor on this branch owes this assertion; the shared
     spelling is tests/_realized_geometry.py, so a fixture never re-derives
@@ -409,7 +403,9 @@ def _assert_trace_sheet_realized(sim_sim):
     rz = realized(sim_sim)
     assert rz.pec_mask is None, "a sheet owns no cell"
     assert len(rz.sheets) == 1
-    return assert_sheet_planes(sim_sim, 2, [4.0 * _MSL_DX], what="MSL trace")
+    for port in sim_sim._msl_ports:
+        assert port.position[2]+port.height == _MSL_H_SUB
+    return assert_sheet_planes(sim_sim, 2, [_MSL_H_SUB], what="MSL trace")
 
 
 def test_migrated_trace_is_a_sheet_on_the_declared_plane():

@@ -52,6 +52,11 @@
       "file": "rfx729-projection-jax010-e2e.log.gz",
       "raw_bytes": 114,
       "raw_sha256": "596cd65d7e9bfef555a9bbf50bdcec0e42a3eeade5af5678fe0515e5b4aa5109"
+    },
+    {
+      "file": "rfx729-ad-smoke-aligned.log.gz",
+      "raw_bytes": 14315,
+      "raw_sha256": "b65e8b810566d35d0bf4e1fc881f9ebb104347af91ee19f6c69a568de95f0906"
     }
   ]
 }
