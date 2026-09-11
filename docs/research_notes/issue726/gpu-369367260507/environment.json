@@ -1,0 +1,12 @@
+{
+  "source_sha": "130b9071e5e6aaa0efda0dd1d6a36fb7e8d519bd",
+  "jax": "0.4.33.dev20241023+e3c6d6430",
+  "numpy": "1.26.4",
+  "scipy": "1.14.1",
+  "rfx_path": "/tmp/rfx-i726.Sj3o8M/rfx/__init__.py",
+  "backend": "gpu",
+  "x64": false,
+  "devices": [
+    "cuda:0"
+  ]
+}

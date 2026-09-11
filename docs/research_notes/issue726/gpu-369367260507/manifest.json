@@ -1,0 +1,42 @@
+{
+  "run_id": 369367260507,
+  "status": "failed",
+  "failure": "missing spectral_features.py in source archive; no field solve started",
+  "files": [
+    {
+      "path": "environment.json",
+      "bytes": 268,
+      "sha256": "d4f5b508d7e04a9eb80030ad2fa87db72f1215e49af4bc6623b136ec44fb38ce"
+    },
+    {
+      "path": "exit-code.txt",
+      "bytes": 2,
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "launch.json",
+      "bytes": 495,
+      "sha256": "d7b02e2a637ad210f0bb3a30b77c34b91cf0e9f78385021314e1d8c74a94d623"
+    },
+    {
+      "path": "provider.log.gz",
+      "bytes": 2264,
+      "sha256": "49b3aceef8dfb9d320cd28a99a294d1604fd5f5fbfc7ca44dbcee6c9b3b1ed78",
+      "raw_bytes": 6164,
+      "raw_sha256": "96a18c0382b6bc04f7972922d4170d77ab6f8e17a58918225f85e899659b45a1"
+    },
+    {
+      "path": "run.log.gz",
+      "bytes": 455,
+      "sha256": "2da7cc4e583c3a26662c7e1107d3dcaa62b1f3732aa34a1c09bf53d7a0b348a1",
+      "raw_bytes": 1208,
+      "raw_sha256": "42cb1589ed5a08b8e442fbebae697f600464a64c8d87c8dc3490f4ab9bfaa770"
+    },
+    {
+      "path": "run.yaml",
+      "bytes": 2037,
+      "sha256": "db1e8a12f79c3e68af3ce0df88b69b4176a47d1045808340255502c6d6435690"
+    }
+  ],
+  "deleted_after_verified_backup": true
+}

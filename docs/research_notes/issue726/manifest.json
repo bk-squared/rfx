@@ -19,8 +19,8 @@
     },
     {
       "path": "docs/research_notes/issue726/README.md",
-      "sha256": "c936e34f07d56a21e3023f2fd74cf7857f8b465b8230b12a97d820be63695adc",
-      "bytes": 3461
+      "sha256": "a07706b9bcc9421aa13763c14bae77060c38c008d88053f763715992003d0bac",
+      "bytes": 4415
     },
     {
       "path": "docs/research_notes/issue726/audit_original_short.py",
@@ -49,5 +49,6 @@
       "sha256": "37e2831a5a031bfa8ab55a2ca2136f2fe44028736d5569bb8fd4e1f03568f792",
       "bytes": 99
     }
-  ]
+  ],
+  "gpu_run_pending": 369367260508
 }

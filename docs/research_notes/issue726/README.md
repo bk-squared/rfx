@@ -52,3 +52,20 @@ quality diagnostics, resolve the user decision on separate clearance status
 versus extending `reliable`, and align the core messages without turning a
 layout heuristic into an accuracy theorem. The old raw RF evidence and the
 #953 frequency-gate policy are unchanged.
+
+## Pinned GPU staging check
+
+The first launch, VESSL 369367260507, failed before a field step because its
+source archive omitted cv06b's relative `comparators/spectral_features.py`
+import. The failure's full provider log, execution log, environment, source
+hash and launch configuration are preserved in `gpu-369367260507/`; the
+terminal run was deleted only after lossless backups and hashes were checked.
+
+The replacement archive includes the complete crossval subtree. It was
+unpacked in a separate local directory, imported from that directory with
+`JAX_ENABLE_X64=0`, and built with run/forward/S-matrix execution forbidden.
+Its realized geometry equals the reviewed build. The resulting certificate
+is `complete-archive-build/inputs.json`. The source commit is
+`130b9071e5e6aaa0efda0dd1d6a36fb7e8d519bd`; source archive SHA-256 is
+`f78ad7c25ed326e56d7922f8fc6033938dfe50bf5d5a3c8586880e97f53b8323`.
+This is a staging validation, not an RF result.

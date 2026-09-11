@@ -1,0 +1,9 @@
+{
+  "source_sha": "130b9071e5e6aaa0efda0dd1d6a36fb7e8d519bd",
+  "source_archive": "/root/workspace/claude-workspace/rfx/runs/codex-i726-fixed-source-f_3otk1m/source.tar",
+  "archive_sha256": "f60cb97134f2eacb84aaabcb36b9bc15cd06167063a81eed2eb09782152e0b5f",
+  "out_dir": "/root/workspace/claude-workspace/rfx/runs/codex-i726-fixed-source-f_3otk1m",
+  "num_periods": 100,
+  "sequential": true,
+  "purpose": "fixed-DUT/source p1 observation-offset sensitivity; no exact full-wave oracle claim"
+}
