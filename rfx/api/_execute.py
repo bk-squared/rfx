@@ -1849,15 +1849,20 @@ class _ExecuteMixin:
                 for cell in _msl_cells:
                     if pec_mask_local is not None:
                         pec_mask_local = pec_mask_local.at[cell[0], cell[1], cell[2]].set(False)
-                    _port_cleared_cells.append((int(cell[0]), int(cell[1]), int(cell[2])))
-                if pec_occupancy_local is not None and _msl_cells:
+                # The Laplace source AND termination extend beyond the
+                # trace footprint. Reserve that actual modal support from
+                # density edits, including its fringe and Kottke neighbours.
+                _msl_density_cells = (mode_profile["cell_indices"]
+                                      if mode_profile is not None else _msl_cells)
+                _port_cleared_cells.extend(tuple(map(int, c)) for c in _msl_density_cells)
+                if pec_occupancy_local is not None and _msl_density_cells:
                     # Ez[i,j,k] is owned by four primal cells (#931 §1.2),
                     # including (i-1,j-1,k). The existing six-face Kottke
                     # guard below cannot reserve that diagonal owner.
                     # Reserve only this fixed port region; keep the traced
                     # design density and its derivatives elsewhere intact.
                     reserved = set()
-                    for i, j, k in _msl_cells:
+                    for i, j, k in _msl_density_cells:
                         for di, dj in ((0, 0), (-1, 0), (0, -1), (-1, -1)):
                             idx = [i + di, j + dj, k]
                             for axis in (0, 1):

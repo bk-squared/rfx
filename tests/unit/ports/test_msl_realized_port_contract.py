@@ -234,13 +234,14 @@ def test_direct_transition_cannot_silently_drop_lossy_sheets():
 
 
 @pytest.mark.parametrize("direction", ["+x", "+y"])
-def test_forward_reserves_every_cell_that_owns_the_source_edge(direction, monkeypatch):
+@pytest.mark.parametrize("width_node", [10, 8], ids=["trace", "fringe"])
+def test_forward_reserves_every_cell_that_owns_the_source_edge(direction, width_node, monkeypatch):
     import jax.numpy as jnp
     import rfx.simulation as stepping
     from rfx.sources.msl_port import msl_cell
     sim, _ = _model(direction=direction)
     grid = sim._build_grid()
-    edge = msl_cell(direction, 8, 10, 8)
+    edge = msl_cell(direction, 8, width_node, 8)
     diagonal_owner = (edge[0]-1, edge[1]-1, edge[2])
     remote = (2, 2, 2)
     occupancy = jnp.zeros(grid.shape).at[diagonal_owner].set(1.).at[remote].set(.4)
@@ -251,6 +252,8 @@ def test_forward_reserves_every_cell_that_owns_the_source_edge(direction, monkey
         pass
 
     def capture(*args, **kwargs):
+        driven = [s for s in kwargs["sources"] if (s.i, s.j, s.k) == edge]
+        assert len(driven) == 1 and np.max(np.abs(driven[0].waveform)) > 0.
         actual = kwargs["pec_occupancy"]
         assert actual[diagonal_owner] == 0.
         assert actual[remote] == pytest.approx(.4)
@@ -269,7 +272,7 @@ def test_forward_density_reservation_preserves_derivatives_outside_the_port(monk
     import rfx.simulation as stepping
     sim, _ = _model()
     grid = sim._build_grid()
-    diagonal, remote = (7, 9, 8), (2, 2, 2)
+    diagonal, remote = (7, 7, 8), (2, 2, 2)  # fringe source's diagonal owner
 
     class Captured(Exception):
         pass
@@ -291,6 +294,44 @@ def test_forward_density_reservation_preserves_derivatives_outside_the_port(monk
     value, derivative = jax.value_and_grad(observe)(jnp.array([.7, .4]))
     assert value == pytest.approx(1.2)
     np.testing.assert_array_equal(derivative, [0., 3.])
+
+
+def test_kottke_density_guard_covers_the_outer_fringe_neighbour(monkeypatch):
+    import jax.numpy as jnp
+    import rfx.geometry.smoothing as smoothing
+    import rfx.simulation as stepping
+    sim, _ = _model()
+    grid = sim._build_grid()
+    # Four cells of lateral Laplace padding: trace ends at w=14,
+    # last fringe source at w=18. Its positive w=19 neighbour is NOT
+    # among the four incident owners, but Kottke's dilation reads it.
+    edge, neighbour, remote = (8, 18, 8), (8, 19, 8), (2, 2, 2)
+    density = jnp.zeros(grid.shape).at[neighbour].set(1.).at[remote].set(.4)
+    original = smoothing.kottke_inv_eps_from_occupancy
+    seen = []
+
+    def observe(grid_arg, actual, **kwargs):
+        assert actual[neighbour] == 0.
+        assert actual[remote] == pytest.approx(.4)
+        seen.append(True)
+        return original(grid_arg, actual, **kwargs)
+
+    class Captured(Exception):
+        pass
+
+    def capture(grid_arg, materials, *args, **kwargs):
+        assert kwargs["pec_occupancy"] is None
+        assert kwargs["aniso_inv_eps"][2][edge] > .99/materials.eps_r[edge]
+        driven = [s for s in kwargs["sources"] if (s.i, s.j, s.k) == edge]
+        assert len(driven) == 1 and np.max(np.abs(driven[0].waveform)) > 0.
+        raise Captured
+
+    monkeypatch.setenv("RFX_PEC_OCC_KOTTKE", "1")
+    monkeypatch.setattr(smoothing, "kottke_inv_eps_from_occupancy", observe)
+    monkeypatch.setattr(stepping, "run", capture)
+    with pytest.raises(Captured):
+        sim.forward(n_steps=1, pec_occupancy_override=density, skip_preflight=True)
+    assert seen == [True]
 
 
 def test_a_narrow_trace_uses_the_registered_center_not_the_rounded_endpoints():

@@ -41,6 +41,16 @@
       "file": "rfx729-other-two-surfaces.log.gz",
       "raw_bytes": 895,
       "raw_sha256": "81083d3bfe31b02dd51f3cb68101ed94c7f295c49ab162f867b2c2ff297817f9"
+    },
+    {
+      "file": "rfx729-fringe-reservation-red.log.gz",
+      "raw_bytes": 7953,
+      "raw_sha256": "526234d2691617cbc4f1e20baa58e8d36a1604f00c1963a4714636ded0573057"
+    },
+    {
+      "file": "rfx729-fringe-reservation-final-positive.log.gz",
+      "raw_bytes": 114,
+      "raw_sha256": "d969ca56789561fd7b0922587041572bbb27e961522c47a6496c818883aa4d82"
     }
   ]
 }

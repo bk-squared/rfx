@@ -116,3 +116,29 @@ The original other-surface reproductions also agree with their physical
 spans: a commensurate 20 mm domain reports 20 cells and no quantization
 finding; the WR-90 default aperture at dx=1 mm uses 23 cells (23 mm) and
 `f_cutoff=6.512162173 GHz`, matching the discrete 23-cell formula.
+
+## Final review: density reservation must include the modal fringe
+
+A build-only review falsified the initial reservation beyond the trace
+footprint: at the fringe source `(8,8,8)` its diagonal owner `(7,7,8)`
+remained occupied even though a nonzero SourceSpec was injected there.
+The core-interval checks passed, but the actual modal support was wider.
+
+Reservation now uses the Laplace profile's `cell_indices`, which also
+specify its resistive load support; the uniform mode retains its uniform
+cross-section. Both the four incident owners and the existing Kottke
+six-face-neighbour guard use that support. Static PEC clearing is unchanged.
+
+Two fringe orientations and the outside-density derivative check failed
+before the fix (3 failed, 2 core controls passed). Afterward all 6 targeted
+checks passed, including an additional positive-width Kottke neighbour
+outside the four-owner stencil. The fringe contains an actual nonzero
+SourceSpec; remote density and its derivative remain observable. Focused
+review confirmed the finding is resolved. Logs are in `attachment-checks/`.
+
+This change only affects `pec_occupancy_override` reservation. The preceding
+GPU packet exercises ordinary runs and `eps_override`, not that density
+input. Its source receipt remains pinned to c2dd484e; those unchanged
+numerical paths do not require another identical GPU solve. The density
+reservation has its own traced-input and actual-source setup checks above,
+not a new claim of spatial AD or RF optimization qualification.
