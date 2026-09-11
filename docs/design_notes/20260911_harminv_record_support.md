@@ -1,9 +1,10 @@
 # Harminv: preserve poles through finite-record decimation (#872)
 
-Status: two preprocessing changes approved by the PI on 2026-09-11 and
-implemented locally. **Not ready to merge:** an existing noisy-signal test
-exposes the independent amplitude projection's cross terms. Joint amplitude
-fitting has been proposed to the PI; it has not been applied.
+Status: implemented following PI approval on 2026-09-11. The scope is reliable
+mode identification and frequency/decay assessment for the existing crossvals,
+not calibrated modal energy, radiation power or S-parameters. Joint amplitude
+fitting repairs the existing noisy dominant-mode regression exposed by the
+preprocessing change. Physics-consumer verification is recorded below.
 
 ## Mathematical contract
 
@@ -34,24 +35,38 @@ adds the discarded interval back when asking for a longer raw run. Q cutoffs,
 window formulas, and matching policy are unchanged. A shorter usable interval
 can change the numerical window produced by the existing formula.
 
-## Falsifiers and observed results
+## Joint amplitudes and checks
 
-Clean single real/complex exponentials and a pair with amplitude ratio 0.003
-are checked against their known poles, at multiple record lengths and signal
-scales. The 1e-7 relative frequency/Q test bar separates arithmetic error on
-these well-conditioned fixtures from filter bias; it is not a bound on noisy
-physical records. Small-noise pairs additionally test false-mode counts.
+Fit the original input as `y = Phi c`, with `Phi[n,k] = exp(s_k*n*dt)` and all
+finite candidate poles included before frequency/Q reporting filters. The old
+independent projections replaced the full Gram matrix by its diagonal and
+therefore included other modes' cross terms in each reported coefficient.
 
-The existing estimator/decimation tests plus these cases produced **24 passed,
-1 failed**. The failure is the existing 40 dB peak-SNR dominant-mode test:
-the new rank cut admits noise poles, and independent projection reports an
-8.367 GHz pole at amplitude 0.962, ahead of the actual 9.3 GHz pole at 0.547.
-Holding those poles fixed and fitting their amplitudes jointly gives 0.0116
-and 0.502 respectively (basis condition number 12.1). This is diagnostic
-evidence for a needed amplitude repair, not an implemented repair. The
-original test has not been weakened or removed.
+The implementation uses one `lstsq` on normalized columns. Growing exponentials
+are anchored at the last sample to bound basis magnitudes; coefficients are
+then transformed back to the original input's first sample. Real input keeps
+both conjugates in the fit, and reports the positive-frequency member with a
+deterministic phase. A real cosine's complex coefficient is half its peak
+amplitude. The existing 1% reporting merge is unchanged.
 
-cv02's consumer-duration wiring and existing judge tests: **42 passed**.
+The preliminary preprocessing-only candidate had **24 passed, 1 failed** in
+the core tests. On the existing 40 dB peak-SNR fixture, independent projection
+reported a spurious 8.367 GHz component at amplitude 0.962, ahead of the actual
+9.3 GHz component at 0.547. The initial diagnostic fitted only the returned
+candidates and conjugates (0.0116/0.502, condition number 12.1); the implemented
+fit includes *all* finite candidates and gives **0.0232/0.5012**. The original
+noise test now passes unchanged. Low-amplitude noise candidates still exist;
+this is not a universal false-mode rejection or confidence claim.
+
+The synthetic tests cover exact damped poles, a 0.003-amplitude weak component,
+complex phase at two input origins, real conjugates, signal scaling, and a
+strong unreported pole that must still participate in the fit. The 1e-7 bar
+separates arithmetic error from bias on these well-conditioned inputs; it is
+not a bound on noisy physical records. A nearly coincident-pole test explicitly
+shows that small residuals can coexist with noise-sensitive coefficients.
+A growing-pole check catches exponential/norm overflow without changing the
+reported origin. Core tests and existing noise tests pass; no old tolerance
+was relaxed. cv02 duration wiring and existing judge checks also pass.
 
 ## Actual FDTD records
 
@@ -62,7 +77,7 @@ actual estimator input once. Both revisions then read the same input bytes
 through `scripts/diagnostics/harminv_record_replay.py`.
 
 Inputs and their hashes/versions are under
-`tests/fixtures/harminv_decimation/{cv02,cv24-uniform,cv24-single_band}/`.
+`tests/fixtures/harminv_decimation/{cv02,cv24-uniform,cv24-single_band,cv24-metric_defect}/`.
 The capture JSON's empty cv24 `measured` fields are intentional: capture skips
 the estimator and energy audit; these are **not passing crossval artifacts**.
 Original committed crossval evidence was not overwritten.
@@ -74,28 +89,37 @@ in-band ring modes persist after preprocessing changes. For example the
 83.91/83.91. This is improved record stability, not an external Q-accuracy
 claim. Existing in-band admission still excludes the unstable 60 THz poles.
 
-cv24 uniform (float32 FDTD): all seven declared modes occur in each of the
-full/A/B windows. Reusing the case's existing mode identification and exact
-discrete lattice oracle gives:
+cv24 (float32 FDTD): all seven declared modes occur in each full/A/B window.
+The final joint fit and the case's existing exact discrete-lattice oracle give:
 
-| Estimator | Maximum lattice residual | Maximum A/B scatter |
+| Record / estimator | Maximum lattice residual | Maximum A/B scatter |
 |---|---:|---:|
-| Baseline automatic | 9.8987 ppm | 22.4657 ppm |
-| Candidate automatic, both preprocessing changes | 0.4430 ppm | 0.2294 ppm |
-| Baseline, undecimated control | 0.4762 ppm | 0.1154 ppm |
+| Uniform, baseline automatic | 9.8987 ppm | 22.4657 ppm |
+| Uniform, final automatic | 0.4619 ppm | 0.2294 ppm |
+| Uniform, final undecimated control | 0.4762 ppm | 0.1154 ppm |
+| Graded, baseline automatic | 10.2386 ppm | 23.6949 ppm |
+| Graded, final automatic | 0.0171 ppm | 0.2132 ppm |
+| Graded, final undecimated control | 0.0788 ppm | 0.1080 ppm |
+| Swapped-metric falsifier, final automatic | **5545.7482 ppm** | 0.0699 ppm |
 
-Detailed preprocessing-only reports and the noisy-amplitude diagnosis are
-under `docs/research_notes/issue872/`. The graded single-band arm also preserves all seven modes. Its maximum
-lattice residual changes from 10.2386 ppm to 0.0171 ppm, and A/B scatter
-from 23.6949 ppm to 0.2132 ppm (undecimated control: 0.0788/0.1080 ppm).
-The new retained-record regression passes both arms in 2.32 s. Replacing
-its estimator with the baseline makes both tests fail at the existing
-stationarity gate; the complete archived replay also exceeds the lattice gate. No lattice, mode-count or stationarity gate was relaxed.
+The falsifier is a fresh run of cv24's existing metric swap on the same
+single-band profile. It still has seven stationary modes, but **fails the
+unchanged 4 ppm lattice gate** against the intended metric. Thus improving the
+measurement does not make the wrong FDTD operator pass. The three retained-
+record regressions complete in about 3 s without any FDTD solve. The baseline
+automatic estimator fails the two healthy-record stationarity checks.
+
+The original preprocessing-only reports remain under
+`docs/research_notes/issue872/`; final reports are `*-joint.json`, with
+`*-joint-adjudication.json` produced by
+`scripts/diagnostics/harminv_cavity_adjudication.py`. Replay reuses baseline
+results only after matching source hashes and the full input metadata.
+Both automatic and explicitly undecimated paths were evaluated. No lattice,
+mode-count or stationarity gate was relaxed. These sub-ppm figures quantify
+agreement with the **discrete lattice**, not absolute continuum RF accuracy.
 
 ## Remaining work
 
-- Decide/apply the amplitude repair and rerun the unchanged noise test.
-- Verify conjugate-pair handling and numerical conditioning of that repair.
 - Recheck affected actual records and normal estimator consumers before
   claiming #872 complete. cv24's explicit `decimate=False` remains a control.
 - Existing Q-gate policy questions (#907/#945) remain separate; this change

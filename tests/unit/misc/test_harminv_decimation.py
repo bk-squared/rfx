@@ -89,8 +89,8 @@ def test_weak_pole_survives_the_same_relative_rank_threshold(scale):
 
     Raising that cut by sqrt(22) loses it. Removing only the multiplier
     instead finds a contaminated pole (Q about 56.5 instead of 100): both
-    changes are necessary. Amplitudes are not independently estimated by
-    the current projection formula, so this test makes no amplitude claim.
+    changes are necessary. Joint fitting must also recover the known
+    coefficients of this synthetic probe signal (not normalized energies).
     """
     dt = 1 / (128 * 1e9)
     t = np.arange(4096) * dt
@@ -99,9 +99,10 @@ def test_weak_pole_survives_the_same_relative_rank_threshold(scale):
                          for f, q, a in truth)
     modes = sorted(harminv(signal, dt, 0.6e9, 1.4e9), key=lambda m: m.freq)
     assert len(modes) == len(truth)
-    for mode, (f, q, _) in zip(modes, truth):
+    for mode, (f, q, amplitude) in zip(modes, truth):
         assert mode.freq == pytest.approx(f, rel=1e-7)
         assert mode.Q == pytest.approx(q, rel=1e-7)
+        assert mode.amplitude == pytest.approx(scale * amplitude, rel=1e-7, abs=0)
 
 
 @pytest.mark.parametrize("seed", [0, 1, 2])

@@ -74,6 +74,29 @@ class HarminvMode(NamedTuple):
     error: float      # relative error estimate
 
 
+def _fit_mode_amplitudes(signal: np.ndarray, poles: np.ndarray,
+                         dt: float) -> np.ndarray:
+    """Joint complex coefficients at the original input's first sample.
+
+    All finite candidate poles participate, including conjugates and modes
+    outside the reporting band. Independent projections double-count their
+    overlap on a finite record. Coefficients are probe-signal weights, not
+    power-normalized modal energies or noise-confidence estimates.
+
+    A growing pole is anchored at the last sample so every basis entry has
+    magnitude <= 1; column normalization then removes norm disparities from
+    the least-squares system. These scalings avoid overflow, but cannot make
+    nearly coincident poles physically distinguishable. lstsq's numerical
+    rank cutoff handles singular systems without forming normal equations.
+    """
+    times = np.arange(len(signal)) * dt
+    reference = np.where(poles.real > 0, times[-1], 0.0)
+    basis = np.exp((times[:, None] - reference) * poles)
+    norms = np.linalg.norm(basis, axis=0)
+    coefficients = np.linalg.lstsq(basis / norms, signal, rcond=None)[0] / norms
+    return coefficients * np.exp(-reference * poles)
+
+
 def harminv(
     signal: np.ndarray,
     dt: float,
@@ -136,8 +159,14 @@ def harminv(
     Returns
     -------
     list of HarminvMode, sorted by amplitude (strongest first).
+        Amplitude and phase describe jointly fitted complex coefficients at
+        the original input's first sample. For a real cosine of peak A the
+        positive-frequency coefficient has magnitude A/2; its conjugate is
+        fitted too, then omitted from the returned list. Relative weights
+        depend on source/probe placement and are not modal energies.
     """
     y = np.asarray(signal, dtype=np.complex128).ravel()
+    real_signal = not np.any(y.imag)
     amplitude_signal = y
     amplitude_dt = dt
     factors, _ = _decimation_plan(len(y), dt, f_max, decimate)
@@ -195,13 +224,23 @@ def harminv(
     except np.linalg.LinAlgError:
         return []
 
+    eigenvalues = eigenvalues[np.isfinite(eigenvalues) & (np.abs(eigenvalues) >= 1e-30)]
+    if not len(eigenvalues):
+        return []
+    poles = np.log(eigenvalues) / dt
+    try:
+        amplitudes = _fit_mode_amplitudes(amplitude_signal, poles, amplitude_dt)
+    except np.linalg.LinAlgError:
+        return []
+
     modes = []
-    for lam in eigenvalues:
-        if not np.isfinite(lam) or abs(lam) < 1e-30:
+    for lam, s, amp_complex in zip(eigenvalues, poles, amplitudes):
+        # Real records have conjugate poles. Fit both, then report the
+        # positive-frequency coefficient with a deterministic phase.
+        if real_signal and s.imag < 0:
             continue
 
         # z = exp(s * dt) where s = -alpha + j*omega
-        s = np.log(lam) / dt
         freq = abs(s.imag) / (2 * np.pi)
         decay = -s.real
 
@@ -218,13 +257,6 @@ def harminv(
         if Q < min_Q:
             continue
 
-        # Amplitude: project signal onto this mode
-        n_arr = np.arange(len(amplitude_signal))
-        amplitude_lam = np.exp(s * amplitude_dt)
-        basis = amplitude_lam**n_arr  # z^n at the original sample rate
-        amp_complex = np.dot(amplitude_signal, basis.conj()) / np.dot(
-            basis, basis.conj()
-        )
         amplitude = abs(amp_complex)
         phase = np.angle(amp_complex)
 

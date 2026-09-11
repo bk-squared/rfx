@@ -25,7 +25,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--repo", type=Path, required=True, help="disposable baseline checkout")
     ap.add_argument("--commit", required=True)
-    ap.add_argument("--case", choices=["cv02", "cv24-uniform", "cv24-single_band"], required=True)
+    ap.add_argument("--case", choices=["cv02", "cv24-uniform", "cv24-single_band",
+                                       "cv24-metric_defect"], required=True)
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args()
     repo, out = args.repo.resolve(), args.out.resolve()
@@ -82,9 +83,11 @@ def main():
             case = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(case)
             name = args.case.removeprefix("cv24-")
-            rig = case.G.ARMS[name]
+            metric_swap = name == "metric_defect"
+            rig = case.G.ARMS["single_band" if metric_swap else name]
             arm = case.run_arm(name, rig["lane"], rig["dx"], case.G.PROFILES[rig["profile"]],
-                               smoke=False, search_band_hz=case.G.BAND_HZ, with_energy=False)
+                               smoke=False, search_band_hz=case.G.BAND_HZ, with_energy=False,
+                               metric_swap=metric_swap)
     finally:
         module.harminv = original
         summary = dict(case=args.case, source_commit=args.commit,

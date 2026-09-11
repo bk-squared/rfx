@@ -9,6 +9,14 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
+### Fixed — resonance extraction preserves finite-record modal content (#872)
+
+- Harminv excludes FIR boundary transients during automatic decimation and
+  retains the caller's relative rank threshold. Joint complex amplitude fits
+  prevent overlapping modes from corrupting the reported dominant mode;
+  real records retain the positive-frequency conjugate's phase. cv02 uses the
+  actual retained analysis duration in its existing Q gates and record planner.
+
 ### Fixed — public validation numbers follow the regenerated #931 artifacts
 
 - cv07 Sheen LPF now reports the shipped rfx passivity-correction footprint:

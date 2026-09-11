@@ -31,6 +31,10 @@ def main():
     ap.add_argument("--baseline", type=Path, required=True)
     ap.add_argument("--candidate", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--reuse-baseline", type=Path,
+                    help="reuse baseline results after checking source and input hashes")
+    ap.add_argument("--skip-undecimated", action="store_true",
+                    help="compare only the automatic paths (e.g. a new physical falsifier)")
     args = ap.parse_args()
     if args.out.exists():
         ap.error("output already exists; choose a new report path")
@@ -41,6 +45,13 @@ def main():
                   baseline_sha256=hashlib.sha256(args.baseline.read_bytes()).hexdigest(),
                   candidate_sha256=hashlib.sha256(args.candidate.read_bytes()).hexdigest(),
                   records=[])
+    cached = {}
+    if args.reuse_baseline:
+        prior = json.loads(args.reuse_baseline.read_text())
+        assert prior["baseline_sha256"] == result["baseline_sha256"]
+        assert prior["case"] == result["case"]
+        cached = {r["input"]["file"]: r for r in prior["records"]}
+        result["baseline_reused_report_sha256"] = hashlib.sha256(args.reuse_baseline.read_bytes()).hexdigest()
     for record in capture["records"]:
         path = args.records / record["file"]
         assert hashlib.sha256(path.read_bytes()).hexdigest() == record["sha256"]
@@ -49,14 +60,20 @@ def main():
         dt, fmin, fmax = (record[k] for k in ("dt", "f_min", "f_max"))
         row = dict(input=record, variants={})
         variants = [("baseline_auto", old, "auto"), ("candidate_auto", new, "auto")]
-        if record["kwargs"].get("decimate") is False:
-            variants.append(("baseline_undecimated", old, False))
+        if record["kwargs"].get("decimate") is False and not args.skip_undecimated:
+            variants.extend([("baseline_undecimated", old, False),
+                             ("candidate_undecimated", new, False)])
         for name, module, decimate in variants:
+            if name.startswith("baseline_") and cached:
+                previous = cached[record["file"]]
+                assert previous["input"] == record, "cached input/parameters differ"
+                row["variants"][name] = dict(previous["variants"][name], reused=True)
+                continue
             kwargs = dict(record["kwargs"], decimate=decimate)
             start = time.monotonic()
             modes = module.harminv(signal, dt, fmin, fmax, **kwargs)
             duration = (new.harminv_record_duration(len(signal), dt, fmax, decimate=decimate)
-                        if name == "candidate_auto" else (len(signal) - 1) * dt)
+                        if name.startswith("candidate_") else (len(signal) - 1) * dt)
             row["variants"][name] = dict(modes=[m._asdict() for m in modes],
                                           reported_input_or_analysis_duration_s=duration,
                                           wall_s=time.monotonic() - start)
