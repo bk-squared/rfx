@@ -12,6 +12,30 @@ import signal
 import sys
 
 
+def _python_command(
+    command: list[str],
+    environment: dict[str, str] | None = None,
+) -> tuple[list[str], dict[str, str]]:
+    """Launch the actual Python process while preserving its virtual env.
+
+    Windows venv python.exe is a redirector that creates another process.
+    Follow CPython multiprocessing's bypass: the Popen handle must own the
+    interpreter we will terminate/reap, and getppid must see its supervisor.
+    """
+    command = list(command)
+    environment = dict(os.environ if environment is None else environment)
+    base = getattr(sys, "_base_executable", None)
+    if (
+        sys.platform == "win32"
+        and base
+        and os.path.normcase(command[0]) == os.path.normcase(sys.executable)
+        and os.path.normcase(base) != os.path.normcase(sys.executable)
+    ):
+        command[0] = base
+        environment["__PYVENV_LAUNCHER__"] = sys.executable
+    return command, environment
+
+
 def _bind_parent(parent_pid: int) -> None:
     if sys.platform == "linux":
         import ctypes

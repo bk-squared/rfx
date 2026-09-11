@@ -12,6 +12,7 @@ import sys
 from typing import Any, Mapping
 
 from .compiler import compile_experiment
+from ._worker_child import _python_command
 from .durable import SQLiteApplicationRepository
 from .repository import RunRecord, TERMINAL_STATES
 from .spec import ExperimentSpec
@@ -139,6 +140,7 @@ class ExperimentService:
             "--run-id",
             run_id,
         ]
+        command, env = _python_command(command, env)
         try:
             with (
                 stdout_path.open("ab", buffering=0) as stdout,

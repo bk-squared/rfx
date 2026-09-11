@@ -27,6 +27,7 @@ from .artifacts import (
     export_sparameters_artifact,
 )
 from .compiler import compile_experiment
+from ._worker_child import _python_command
 from .durable import SQLiteApplicationRepository
 from .repository import SQLiteRunRepository, TERMINAL_STATES
 
@@ -231,8 +232,12 @@ def execute_run(*, database: Path, workspace: Path, run_id: str) -> int:
             if outcome_path.exists():
                 raise ValueError("executor outcome already exists before execution")
             deadline = time.monotonic() + timeout_seconds
+            command, environment = _python_command(
+                _child_command(database=database, workspace=workspace, run_id=run_id)
+            )
             process = subprocess.Popen(
-                _child_command(database=database, workspace=workspace, run_id=run_id),
+                command,
+                env=environment,
                 stdin=subprocess.DEVNULL,
                 # Inherit the service-created session/process group and logs.
                 # An outer killpg(supervisor_pid) must terminate both processes.

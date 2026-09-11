@@ -1,0 +1,47 @@
+{
+  "evidence_sha256": {
+    "WINDOWS-LAUNCH.md": "010bccce8342f20d1c810ca938c5f3081c3f265f3ee612aa1ee876bcd70192e7",
+    "ci-fc418584-windows-failed.log.gz": "970f3cccb57e4ee9dbc28222bba041437bee4ba6fd329eb60e8879af927466c1",
+    "launcher-contracts.log": "43fdb5ec636532096be8546c98c1b25f373213f52a20ed7e922ce513f7472964",
+    "launcher-installed-control.log": "d46fdb9775829cc1b292cc303b59581a622357517446e45cbaf3d01447a5cc3c",
+    "launcher-mypy.log": "5107f9446510710cfc458474a6bae8746bf7ed9a2bccb85b1de3b0a14e84c8ad",
+    "launcher-regression.log": "aa45b23a44858bbe994b42f356440532b5c374769718b0bef02597c522f2c91b",
+    "launcher-ruff.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "launcher-wheel-build.log": "f3adfed57e370de1b512ca492c24a4b60bd86d2a9a82ef7e2ae5aeca9449d5f5"
+  },
+  "initial_implementation_head": "fc418584ae95f4fd2ced5d50a11894a67c9a5be1",
+  "local_validation": {
+    "contract_seconds": 7.96,
+    "contract_tests": 32,
+    "installed_wheel_control": {
+      "deadline_enforced": true,
+      "dependencies": "reused system site packages in separate venv",
+      "pid_owned": true,
+      "platform": "Linux",
+      "venv_preserved": true,
+      "wheel_sha256": "26e9ee0f97d6059c8cd12733d8a21691623c5011d950ffaeb8edd3f62a6a39ba"
+    },
+    "mypy_source_files": 26,
+    "regression_seconds": 110.88,
+    "regression_tests": 38,
+    "ruff": "passed"
+  },
+  "scope": "existing timeout/CI correctness only; Studio feature completion excluded by user",
+  "source_sha256": {
+    "rfx/experiments/_worker_child.py": "6c625589bf5ab86f5d0424b2bd1fd89496412a188254371100167467739e1a40",
+    "rfx/experiments/durable.py": "b3dd533ee793e7754eaf117b3a64b10dd0fd2d919fbdcba41f665466a7c10902",
+    "rfx/experiments/service.py": "05cd594514ba4e845330115dff3639f6c6252905598c624081c997f51edcf47e",
+    "rfx/experiments/worker.py": "004d9f927a7a415e8a23ce0c5340c76b6be3cc7c5269641d1a2cbe4ba6f2ccd5",
+    "scripts/studio_clean_install_smoke.py": "1a7b00527b6caa76a28c584da59b6283eebf543b85c877ec4ac2fddd382c8c4f",
+    "tests/studio/test_worker_outcome_commit.py": "3c2b33bb9232d55cb67d0cfab63366c2b9cd5424e393286f31f953746591c948",
+    "tests/studio/test_worker_process_supervision.py": "6ca514eb087188a42b07363c25bf219c409c24b60744970e2d032b07e849ce15",
+    "tests/studio/test_worker_python_launcher.py": "049aa5d43a3641132e2deb1e7e16582303f2447ed6bc283e6aaf407eec0e08c0"
+  },
+  "windows_failure": {
+    "cause_status": "source-supported redirector inference; corrected Windows CI required",
+    "job": 103380009017,
+    "log": "ci-fc418584-windows-failed.log.gz",
+    "raw_log_sha256": "5912cf81e7240d76695d8dfd20c1fe1a27e0c7be0406fa740735e32ea82e09ad",
+    "run": 34634812244
+  }
+}
