@@ -620,8 +620,9 @@ def mode_settling(freq: float, Q: float, record_after_source: float,
                   observe_efolds: float = Q_RECORD_MIN_EFOLDS) -> ModeSettling:
     """Per-mode settling witness for one extracted mode.
 
-    ``record_after_source`` is the record length AFTER the source is off, in
-    the same time units as ``1/freq``. The witness is ``T/tau`` amplitude
+    ``record_after_source`` is the record length AFTER the source is off and
+    retained for the pole fit, in the same time units as ``1/freq``. Exclude
+    time discarded by preprocessing. The witness is ``T/tau`` amplitude
     e-foldings and the energy end/peak dB they imply
     (``T/tau * ENERGY_DB_PER_EFOLD``). ``observed`` reuses the judge's own
     Q-gating floor (:data:`Q_RECORD_MIN_EFOLDS`) as the line below which the
@@ -703,7 +704,8 @@ def signal_settling_db(signal, tail_fraction: float = 0.1) -> float:
 def format_settling_report(rows, signal_db: float,
                            record_after_source: float,
                            observe_efolds: float = Q_RECORD_MIN_EFOLDS,
-                           peak_offset_after_source: float = 0.0) -> str:
+                           peak_offset_after_source: float = 0.0, *,
+                           analysis_duration: float | None = None) -> str:
     """Human-readable per-mode settling table for the crossval script's stdout.
 
     ``rows`` is a list of :class:`ModeSettling`. Prints, per mode, ``tau``, the
@@ -713,17 +715,27 @@ def format_settling_report(rows, signal_db: float,
     cannot be run down to the -40 dB rule in feasible time, so its shortfall is
     reported, not gated.
 
-    ``peak_offset_after_source`` is how long AFTER source-off the analysed span
+    ``record_after_source`` and ``peak_offset_after_source`` describe the raw
+    signal used for the measured whole-signal end/peak. ``analysis_duration``
+    is the retained pole-fit span used to construct ``rows``; it defaults to
+    the raw duration when preprocessing discards no time.
+
+    ``peak_offset_after_source`` is how long AFTER source-off the raw span
     begins, in the same units as ``record_after_source``. It is 0 when the
     caller starts the span at source-off; when it is not, the whole-signal
     peak is an already-decayed one and the caption says so (see
     :func:`signal_settling_db`).
     """
+    if analysis_duration is None:
+        analysis_duration = record_after_source
     lines: list[str] = []
     lines.append(
-        f"  analysed span T = {record_after_source:.3e} (1/freq units), "
-        f"starting {peak_offset_after_source:.3e} after source-off; per-mode "
-        f"T/tau and energy"
+        f"  pole-fit span T = {analysis_duration:.3e} (1/freq units); "
+        f"per-mode T/tau, energy and Q observability use this retained span"
+    )
+    lines.append(
+        f"  raw whole-signal span = {record_after_source:.3e} (1/freq units), "
+        f"starting {peak_offset_after_source:.3e} after source-off"
     )
     lines.append("  end/peak below are computed from each mode's own extracted "
                  "(f, Q) -- no pinned value")

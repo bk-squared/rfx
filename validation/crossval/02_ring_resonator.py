@@ -360,7 +360,7 @@ else:
     skip = min(len(ts) - 10, max(1, int(source_off_time / dt)))
 signal = ts[skip:]
 analysis_duration = harminv_record_duration(len(signal), dt, fmax_hz)
-# How long AFTER source-off the analysed span begins. Zero on the tau-scaled
+# How long AFTER source-off the raw measured span begins. Zero on the tau-scaled
 # lane (the span starts at source-off); on the verdict lane the calibrated 40%
 # skip lands well after source-off, so the "peak" the whole-signal witness
 # below divides by is an already-decayed one. The witness prints this.
@@ -393,9 +393,9 @@ print(f"\n  Found {len(rfx_modes)} modes")
 
 # --- Per-mode ring-down settling witness (repo rule; cv02 is open/CPML) -----
 # For every extracted mode: T/tau (tau = Q/(pi f)) and the energy end/peak dB
-# its own decay implies over the free-decay record, plus the measured
-# whole-signal end/peak dB. All computed from THIS run's (f, Q) and record
-# length -- nothing pinned to this geometry.
+# its own decay implies over the retained pole-fit span. Q observability uses
+# that same analysis duration as the judge. The measured whole-signal
+# end/peak still uses the full raw free-decay record and its original offset.
 print(f"\n{'-' * 70}")
 print("  Ring-down settling witness (per extracted mode)")
 record_after_source = (len(signal) - 1) * dt   # full observed free-decay span
@@ -411,36 +411,34 @@ witness_modes = ring_mode_judge.admit(
      for f, Q, amp in rfx_modes],
     fmin_hz, fmax_hz)
 settling_rows = [ring_mode_judge.mode_settling(m.freq, m.Q,
-                                               record_after_source)
+                                               analysis_duration)
                  for m in witness_modes]
 signal_db = ring_mode_judge.signal_settling_db(signal)
 if settling_rows:
     print(ring_mode_judge.format_settling_report(
         settling_rows, signal_db, record_after_source,
-        peak_offset_after_source=peak_offset_after_source))
+        peak_offset_after_source=peak_offset_after_source,
+        analysis_duration=analysis_duration))
     # The record length the SLOWEST mode WOULD need, computed at runtime from
     # its own tau -- the physical limitation, quantified (not a gate).
     tau_max = ring_mode_judge.slowest_amplitude_tau(witness_modes)
     if tau_max:
-        need_gate = source_off_time + \
-            ring_mode_judge.Q_RECORD_MIN_EFOLDS * tau_max
+        need_gate = ring_mode_judge.Q_RECORD_MIN_EFOLDS * tau_max
         need_40db = source_off_time + \
             (-40.0 / ring_mode_judge.ENERGY_DB_PER_EFOLD) * tau_max
         scale = C0 / a  # seconds -> Meep units (a/c)
-        # FRAMES, stated: "span" numbers are AFTER-source free-decay lengths;
-        # "total" numbers add the source-off time (2*t0), so they are the
-        # numbers to compare against a run length from t=0. The two used to be
-        # printed side by side without saying which was which.
+        # Q admission needs retained analysis time; a raw run also includes
+        # the discarded FIR support. The -40 dB physical settling interval
+        # remains a raw free-decay span, with source-off added for its total.
         print(f"  slowest-mode tau = {tau_max * scale:.0f} (Meep units); this "
-              f"record spans {record_after_source / tau_max:.3f} e-folding(s) "
-              f"of it (free-decay span, source-off at "
+              f"pole-fit record spans {analysis_duration / tau_max:.3f} e-folding(s) "
+              f"of it (usable analysis span, source-off at "
               f"{source_off_time * scale:.0f}).")
         print(f"  to Q-gate the slowest mode "
               f"(>= {ring_mode_judge.Q_RECORD_MIN_EFOLDS:g} e-fold) needs a "
-              f"free-decay span of "
-              f"{(need_gate - source_off_time) * scale:.0f} "
-              f"= {need_gate * scale:.0f} total; to reach -40 dB, "
-              f"{(need_40db - source_off_time) * scale:.0f} span "
+              f"usable pole-fit span of {need_gate * scale:.0f}; "
+              f"to reach -40 dB, "
+              f"{(need_40db - source_off_time) * scale:.0f} raw free-decay span "
               f"= {need_40db * scale:.0f} total (Meep units).")
 else:
     print("  (no in-band modes extracted -- no settling witness)")

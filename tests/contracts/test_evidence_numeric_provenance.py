@@ -358,6 +358,7 @@ MARKDOWN_SITES: dict[str, str] = {
     # GATED. Adding it here breaks collection for every doc.)
     "docs/design_notes/20260908_docs_truth_audit.md": r"^#+\s+(.*\S)\s*$",
     "docs/design_notes/chain_closure_contract.md": r"^#+\s+(.*\S)\s*$",
+    "docs/design_notes/20260911_harminv_record_support.md": r"^#+\s+(.*\S)\s*$",
 }
 
 DOCUMENTS = (MANIFEST, *MARKDOWN_SITES)
@@ -365,6 +366,7 @@ DOCUMENTS = (MANIFEST, *MARKDOWN_SITES)
 # Sites that MUST carry at least this many value-checked references. Lowering a
 # floor is a deliberate act that belongs in the same commit as the reason.
 REQUIRED_SITES: dict[tuple[str, str], int] = {
+    ("docs/design_notes/20260911_harminv_record_support.md", "Actual FDTD records"): 3,
     (MANIFEST, "11_waveguide_port_wr90"): 4,
     (MANIFEST, "15_patch_antenna_rt5880"): 3,
     (MANIFEST, "17_dielectric_sphere_mie"): 2,
@@ -555,6 +557,7 @@ CLASSIFICATION: dict[str, str] = {
     # test-name reference, not an artifact path (no `.json`), so it lands in
     # `others` and never `parses`; NO_ARTIFACT_REFERENCE only checks `parses`.
     "docs/design_notes/20260910_cv05_crossval_disposition.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260911_harminv_record_support.md": GATED,
     # 2026-09-10 (#931 lattice-ownership merge): 591e296e added a resolvable
     # citation to this note (cv18's Richardson envelope); opted in rather than
     # left failing NO_ARTIFACT_REFERENCE's own vacuity check.

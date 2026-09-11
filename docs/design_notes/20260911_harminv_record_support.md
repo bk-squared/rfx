@@ -33,7 +33,9 @@ sample. `harminv_record_duration` shares the estimator's sampling plan. cv02
 uses it for Q admission/window inputs and for its record planner. The planner
 adds the discarded interval back when asking for a longer raw run. Q cutoffs,
 window formulas, and matching policy are unchanged. A shorter usable interval
-can change the numerical window produced by the existing formula.
+can change the numerical window produced by the existing formula. The per-mode
+settling flag uses the same retained span; the measured whole-signal end/peak
+continues to use its full raw span, printed separately with its original offset.
 
 ## Joint amplitudes and checks
 
@@ -101,6 +103,13 @@ The final joint fit and the case's existing exact discrete-lattice oracle give:
 | Graded, final automatic | 0.0171 ppm | 0.2132 ppm |
 | Graded, final undecimated control | 0.0788 ppm | 0.1080 ppm |
 | Swapped-metric falsifier, final automatic | **5545.7482 ppm** | 0.0699 ppm |
+
+The maximum signed lattice residuals supporting the three final automatic
+rows are resolved by the numeric-provenance contract from the retained reports:
+`docs/research_notes/issue872/cv24-uniform-joint-adjudication.json::variants.candidate_auto.residual_ppm.TM111 = -0.4619`,
+`docs/research_notes/issue872/cv24-single_band-joint-adjudication.json::variants.candidate_auto.residual_ppm.TE201 = -0.0171`,
+and `docs/research_notes/issue872/cv24-metric_defect-joint-adjudication.json::variants.candidate_auto.residual_ppm.TE102 = 5545.7482`
+(each stored in ppm).
 
 The falsifier is a fresh run of cv24's existing metric swap on the same
 single-band profile. It still has seven stationary modes, but **fails the
@@ -174,3 +183,27 @@ All three VESSL runs (two bootstrap failures before any solve and the final
 successful test) were deleted only after their full provider logs were
 backed up and hashed under `docs/research_notes/vessl_logs/`. No running
 external experiment was terminated.
+
+## CI follow-up: short-record capacity remains unresolved
+
+CI exposed a separate consumer failure in the stage1 NU cavity gate. Its
+1,846 raw input samples shrink to 18 after two FIR stages, leaving only five
+pencil columns. The preceding stage has ten singular values above the same
+relative rank cutoff; the final pencil saturates all five columns. The
+current ten-sample minimum therefore permits loss of model capacity on this
+short physical record.
+
+The unchanged 0.03% continuum gate fails at 0.0827%. Both the native analysis
+and stopping after the first decimation stage pass it; their frequencies also
+agree closely with the closed-form p=0 Yee dispersion. The raw input and
+before/after reports are retained in `stage1-short-record/`, with the input
+under `tests/fixtures/harminv_decimation/stage1/`. This failure is **unresolved**
+pending the PI's choice between a general model-capacity stop condition and
+explicitly disabling decimation for this bounded short consumer. No tolerance
+has been widened. The earlier successful validations remain limited to their
+recorded inputs; they do not establish that all consumers pass.
+
+The new note is now registered in the numeric-provenance contract with three
+required value references (1,326 checks passed). The cv02 advisory report's
+Q-observability flag now uses retained analysis time, while its raw measured
+end/peak and offset remain unchanged (43 consumer/judge checks passed).
