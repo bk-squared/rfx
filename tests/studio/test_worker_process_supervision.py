@@ -279,18 +279,32 @@ def test_interrupted_supervision_still_reaps_the_owned_child(tmp_path, native_ch
 
 
 def test_sqlite_lock_cannot_delay_stopping_native_computation(tmp_path, native_child):
-    repository, _, run = _run(tmp_path)
+    # Build the read-poll surface directly in a fresh rollback-journal DB.
+    # Switching a repository's live WAL file to DELETE first needs every
+    # other connection closed; relying on GC for that made setup itself fail
+    # before this test had acquired the lock it intends to exercise.
+    database = tmp_path / "cancel-control.sqlite3"
+    run_id = "native-lock-control"
     ready = tmp_path / "native-ready.json"
-    lock = sqlite3.connect(repository.path)
-    lock.execute("PRAGMA journal_mode=DELETE")
+    lock = sqlite3.connect(database)
+    lock.execute("CREATE TABLE runs(id TEXT PRIMARY KEY, cancel_requested INTEGER)")
+    lock.execute("INSERT INTO runs VALUES (?, 0)", (run_id,))
+    lock.commit()
+    assert lock.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
     lock.execute("BEGIN EXCLUSIVE")
+    contender = sqlite3.connect(database, timeout=0)
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="locked"):
+            contender.execute("SELECT count(*) FROM sqlite_master")
+    finally:
+        contender.close()
     process = subprocess.Popen(native_child(ready))
     started = time.monotonic()
     try:
         observed = worker._wait_for_child(
             process,
             deadline=started + 1,
-            cancelled=lambda: worker._cancel_requested(repository.path, run.id),
+            cancelled=lambda: worker._cancel_requested(database, run_id),
         )
         assert observed == "timeout"
         assert time.monotonic() - started < 5

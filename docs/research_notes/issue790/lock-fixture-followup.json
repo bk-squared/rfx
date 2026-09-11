@@ -1,0 +1,18 @@
+{
+  "contract_tests": 32,
+  "evidence_sha256": {
+    "LOCK-CONTROL.md": "77fbb644bfb4aac1eff8e5addab5e1f1edbda2e641b957b5031a7a703e744297",
+    "ci-7ce947bc-py311-shard2-failed.log.gz": "7be929fc31015217ab2ea822562161e317a63b988cbe9f619dfecbe664368829",
+    "ci-7ce947bc-windows-passed.log.gz": "3c7005edd88b747548c2b78ade5c56e6f33a179a5f086becafcfc6af88f1ef96",
+    "lock-fixture-contracts.log": "d921f740fdd628bda6b36c0667352b0709235cde4f893bf972882e3ae3cb7f65",
+    "lock-fixture-mode-repro.log": "73365d4876e9cad93f334d5190f3b9e2c40e887a8c56788da37aa57512769f4e",
+    "waiting-poll-control.log.gz": "3edea33b816558c703fe3a032def261d2db44cb40f551ebf16d02c58c59e9e05",
+    "waiting-poll-control.py": "941cf2494a1739a0b8c5218eb3da5adf3ffee8d16334a9293dc8d5a0975c28b6"
+  },
+  "failed_setup_job": 103386174797,
+  "passed_windows_job": 103386174171,
+  "preceding_head": "7ce947bc0b08e4525167afbe4feb978c20654973",
+  "seconds": 8.0,
+  "test_sha256": "8d3bf88a54a90d18b88cf60a72f99dc79afac8d5de26a9cd94f411548577ce67",
+  "waiting_poll_mutation": "expected deadline-test failure at6.008seconds; source unchanged"
+}
