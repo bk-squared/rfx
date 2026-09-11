@@ -1,0 +1,21 @@
+{
+  "source_commit": "525b8001117ef6756b59c2657ad9a052a4202686",
+  "source_dirty": true,
+  "numpy": "2.2.6",
+  "scipy": "1.15.3",
+  "jax": "0.6.2",
+  "devices": "[CpuDevice(id=0)]",
+  "affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "field_precision": "default float32",
+  "test": "test_msl_thru_line_passive_gate",
+  "driver_sha256": "06c82df74c9919833340ea5a89ccec7782b1a59f2899ebf102fe625e6c03bf81"
+}

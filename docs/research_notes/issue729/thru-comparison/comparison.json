@@ -1,0 +1,34 @@
+{
+  "baseline_source": "f85ed76790f4b34bfa657622dc9b013351ebf3cb",
+  "candidate_numerical_sources_committed_as": "6b9275ed",
+  "same_grid_port_record_metadata": true,
+  "same_frequency_bytes": true,
+  "max_abs_delta_S_all": 6.037412094883621e-05,
+  "max_abs_delta_S_gate": 5.0307200581301004e-05,
+  "max_S21_phase_change_deg_gate": 0.0025363327004015446,
+  "max_Z0_change_ohm_gate": 0.13854661583900452,
+  "baseline": {
+    "mean_s11": 0.02035447210073471,
+    "mean_s21": 1.000105381011963,
+    "mean_z0": 46.16007995605469,
+    "max_column_power": 1.0006822347640991,
+    "settling_db": [
+      -105.4086007490053,
+      -103.33429511538732
+    ],
+    "max_projection_correction": 0.0008857250213623047
+  },
+  "candidate": {
+    "mean_s11": 0.020354220643639565,
+    "mean_s21": 1.0000964403152466,
+    "mean_z0": 46.22343063354492,
+    "max_column_power": 1.000678539276123,
+    "settling_db": [
+      -102.92681618770973,
+      -100.60469508582202
+    ],
+    "max_projection_correction": 0.0008676052093505859
+  },
+  "note": "Both use unchanged existing thru fixture/gates and identical physical device geometry, grid, port declarations and record length. The changed source/termination normal support is the intended correction. Untested NU/mismatched-plane models are not validated by this pair.",
+  "candidate_source_hashes_match_commit": true
+}

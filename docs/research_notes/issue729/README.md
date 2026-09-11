@@ -112,3 +112,15 @@ it is candidate evidence, not a pristine baseline. A clean f85ed767 baseline
 run is separate and is still being completed. These results do not close
 #729 until realized-plane validation and the remaining consumer checks are
 finished.
+
+## Paired physical result completed
+
+The clean baseline completed successfully after the candidate run. Raw V/I
+and S, full logs, parameter equality and source receipts are now retained in
+`thru-comparison/`. In the existing3–4.5GHz gate band, max absolute complex S
+change is5.03072e-5 and max S21 phase change is0.00253633degrees. Baseline
+meanRe(Z0)=46.1601ohm, candidate46.2234ohm; both satisfy the original gates.
+No physical tolerance or passivity projection was used to conceal a failure.
+The corrected1V/50ohm source consistency and the stable thru S-matrix measure
+different things; both are reported. Geometry-mismatch policy and remaining
+consumer checks are still pending before issue closure.

@@ -1,0 +1,75 @@
+{
+  "README.md": {
+    "bytes": 1947,
+    "sha256": "e3819a634e674dc1e16c86ba14746139ed5dff3a9930b3dc65d29198c9d9ee71"
+  },
+  "baseline/measured.json": {
+    "bytes": 271,
+    "sha256": "51a7395695770a37549515fb3e09180b008cad466c593117a6f94dd8d48f19e9"
+  },
+  "baseline/outcome.json": {
+    "bytes": 60,
+    "sha256": "d1ceeefebabb87cf225b75c34e25f63d1aa4e2f5bd7e5af9f386bb53c55812ce"
+  },
+  "baseline/raw-vi.npz": {
+    "bytes": 20363,
+    "sha256": "cff842feedb921504f71c71b9454a30dd2915566b57ff558e3ee9be931d872a0"
+  },
+  "baseline/receipt.json": {
+    "bytes": 432,
+    "sha256": "8f1c2e4614c614759fd07747fba2a9afcc9bf8c485144e55a39ee53ebe3903cc"
+  },
+  "baseline/result.npz": {
+    "bytes": 4267,
+    "sha256": "cafbaca6a3cf99c7eb70a6057e750e5e6bada0cd460393b1c907c8f27add1564"
+  },
+  "baseline/run.log.gz": {
+    "bytes": 2667,
+    "sha256": "1dba63f6ac1951c0402280b54687a99d1e6cd1d76c4529d41d98c759ea04caad"
+  },
+  "candidate/driver.py": {
+    "bytes": 2441,
+    "sha256": "06c82df74c9919833340ea5a89ccec7782b1a59f2899ebf102fe625e6c03bf81"
+  },
+  "candidate/measured.json": {
+    "bytes": 273,
+    "sha256": "deed5313e087bda6d4e1f3debdf70dcd4518a09df5bc434c08b557f2da105d28"
+  },
+  "candidate/outcome.json": {
+    "bytes": 59,
+    "sha256": "9d34f423685fe27dc0ad8b271d5bf012f8f398f1bdbffafb29391f559b3b8c3b"
+  },
+  "candidate/raw-vi.npz": {
+    "bytes": 20363,
+    "sha256": "e80202bdfc8a9785503ba90f7f1ca4110c8051fe3298e904a49c338041394c7a"
+  },
+  "candidate/receipt.json": {
+    "bytes": 431,
+    "sha256": "44fe0d40a93f15b9df3e2d933ee64933deb603dfc5d2642c845b093570a1cb28"
+  },
+  "candidate/result.npz": {
+    "bytes": 4258,
+    "sha256": "abb032db9f6d0e7e22d97487b3ad51f1c6fa4d53f35c13fcc1a011b139d5ce6f"
+  },
+  "candidate/run.log.gz": {
+    "bytes": 2662,
+    "sha256": "470f460d47a65734dc4a9778ae5000a3d2eda0d238a470854265a27162b1334b"
+  },
+  "candidate/source-correction.json": {
+    "bytes": 851,
+    "sha256": "1721ae6bfe52986da182813353d4fb3dc29b5a72c43b398e7548d4345921e121"
+  },
+  "candidate/source-working.diff.gz": {
+    "bytes": 2652,
+    "sha256": "789dc6e7ca60632f514dc061ad5605d0016baa5ef6942e486bc83a8a714a562f",
+    "uncompressed_sha256": "b72a5528d9898dd45bfd5ed784a248718bc30c9a323669befd9ca06a74679334"
+  },
+  "comparison.json": {
+    "bytes": 1353,
+    "sha256": "204c9e5b1d435b83e251eb99faf2b592a2be6afaba632927f815d26c72e9c175"
+  },
+  "driver.py": {
+    "bytes": 2647,
+    "sha256": "cc261bbedcce6fefe7f448c7510e96c43a6cb45c2ad303774d9ae0beb7070261"
+  }
+}

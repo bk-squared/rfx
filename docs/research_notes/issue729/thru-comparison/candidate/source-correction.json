@@ -1,0 +1,27 @@
+{
+  "source_commit": "525b8001117ef6756b59c2657ad9a052a4202686",
+  "source_dirty": true,
+  "numpy": "2.2.6",
+  "scipy": "1.15.3",
+  "jax": "0.6.2",
+  "devices": "[CpuDevice(id=0)]",
+  "affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "field_precision": "default float32",
+  "test": "test_msl_thru_line_passive_gate",
+  "driver_sha256": "06c82df74c9919833340ea5a89ccec7782b1a59f2899ebf102fe625e6c03bf81",
+  "actual_variant": "candidate WIP, NOT baseline; launch cwd was root branch",
+  "source_files": {
+    "rfx/sources/msl_port.py": "7ab3c8373850f9ee040f45ae3b978db86035a5d6d7c69437b8c0b46ae4e66fea",
+    "rfx/api/_execute.py": "78497dcf947f05eac8a195733bcf871e2dbe2faf4525f41b4c90824a4907652c",
+    "tests/unit/sparams/test_msl_port_integration.py": "6da4a3bf4b1ad4e7c40c9feea161c4646cdd109533f948fe45bebb593ec0afe1"
+  }
+}
