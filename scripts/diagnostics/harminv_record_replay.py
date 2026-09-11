@@ -72,7 +72,9 @@ def main():
             kwargs = dict(record["kwargs"], decimate=decimate)
             start = time.monotonic()
             modes = module.harminv(signal, dt, fmin, fmax, **kwargs)
-            duration = (new.harminv_record_duration(len(signal), dt, fmax, decimate=decimate)
+            plan_kwargs = {k: kwargs[k] for k in
+                           ("decimate", "pencil_parameter", "max_modes") if k in kwargs}
+            duration = (new.harminv_record_duration(len(signal), dt, fmax, **plan_kwargs)
                         if name.startswith("candidate_") else (len(signal) - 1) * dt)
             row["variants"][name] = dict(modes=[m._asdict() for m in modes],
                                           reported_input_or_analysis_duration_s=duration,

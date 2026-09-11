@@ -29,19 +29,39 @@ _FIR_HALF_OUTPUT_SAMPLES = 10
 _MIN_PENCIL_SAMPLES = 10
 
 
+def _pencil_columns(n_samples: int, pencil_parameter: float) -> int:
+    """The same clamped pencil shape for planning and the actual solve."""
+    return max(4, min(int(n_samples * pencil_parameter), n_samples - 2))
+
+
 def _decimation_plan(n_samples: int, dt: float, f_max: float,
-                     decimate: str | bool) -> tuple[tuple[int, ...], int]:
-    """Stages that leave at least the core's minimum number of valid samples."""
+                     decimate: str | bool, *, pencil_parameter: float = 0.33,
+                     max_modes: int = 50) -> tuple[tuple[int, ...], int]:
+    """Preserve requested pencil capacity as well as finite FIR support.
+
+    A K-pole pencil needs at least K rows and columns. Leave one additional
+    singular direction for the relative rank cut, up to max_modes poles.
+    If the original record/shape cannot provide that capacity, preserve what
+    it already has; preprocessing cannot supply missing information. This
+    also respects the core's historical clamp for extreme pencil fractions.
+    """
     if decimate not in ("auto", False):
         raise ValueError("decimate must be 'auto' or False")
+    if n_samples < _MIN_PENCIL_SAMPLES:
+        return (), n_samples
+    columns = _pencil_columns(n_samples, pencil_parameter)
+    capacity = min(max_modes + 1, columns, n_samples - columns)
     factors = []
     if decimate == "auto" and 1.0 / dt > DECIMATION_GUARD * f_max:
         target = int(1.0 / dt / (4.0 * f_max))
         for factor in _decimation_factors(target):
             kept = (n_samples + factor - 1) // factor - 2 * _FIR_HALF_OUTPUT_SAMPLES
-            if kept < _MIN_PENCIL_SAMPLES:
-                # Stop before consuming the record. Since factor <= 13,
-                # this fallback leaves fewer than 390 samples for the SVD.
+            columns = _pencil_columns(kept, pencil_parameter)
+            if (kept < _MIN_PENCIL_SAMPLES
+                    or min(columns, kept - columns) < capacity):
+                # Default p=.33/K=50 needs 155 retained samples. A rejected
+                # stage (q<=13) therefore leaves at most 2262 inputs to the
+                # core. Other requested pencil shapes/ranks change that bound.
                 break
             factors.append(factor)
             n_samples = kept
@@ -49,16 +69,22 @@ def _decimation_plan(n_samples: int, dt: float, f_max: float,
 
 
 def harminv_record_duration(n_samples: int, dt: float, f_max: float, *,
-                           decimate: str | bool = "auto") -> float:
+                           decimate: str | bool = "auto",
+                           pencil_parameter: float = 0.33,
+                           max_modes: int = 50) -> float:
     """Time between the first and last samples used to estimate the poles.
 
     Use this duration, rather than the unfiltered input length, for record-
     length admission or uncertainty calculations. Each zero-phase FIR stage
     excludes outputs whose filter support reaches outside its input record.
     This helper shares the estimator's sampling plan and performs no solve.
-    It describes the pole fit; amplitudes still use the original input.
+    Pass the same ``pencil_parameter`` and ``max_modes`` as the estimator:
+    they determine when further decimation would reduce its model capacity.
+    This describes the pole fit; amplitudes still use the original input.
     """
-    factors, kept = _decimation_plan(n_samples, dt, f_max, decimate)
+    factors, kept = _decimation_plan(n_samples, dt, f_max, decimate,
+                                      pencil_parameter=pencil_parameter,
+                                      max_modes=max_modes)
     for factor in factors:
         dt *= factor
     return max(0, kept - 1) * dt
@@ -136,7 +162,8 @@ def harminv(
     min_Q : float
         Discard modes with Q < min_Q.
     max_modes : int
-        Maximum modes to return.
+        Maximum complex-pole rank and maximum modes to return. Both members
+        of a real signal's conjugate pair consume rank before reporting.
     sv_threshold : float
         Relative singular value threshold for rank determination (relative
         to the largest singular value). The same threshold is used after
@@ -151,7 +178,11 @@ def harminv(
         boundary are excluded: filtering an interior exponential preserves
         its pole, while zero padding introduces transients. This SHORTENS
         the usable record; ``harminv_record_duration`` reports its duration.
-        A stage is omitted if fewer than 10 interior samples would remain.
+        A stage is omitted if fewer than 10 interior samples would remain or
+        its pencil could not hold ``max_modes`` poles plus one singular
+        direction for rank selection. If the original pencil is smaller,
+        its existing capacity is preserved instead. This is a dimension
+        safeguard, not a guarantee that noisy/nearby modes are identifiable.
         Set to ``False`` to retain every input sample. Decimation avoids
         redundant work because the estimator scales approximately as
         :math:`O(N^{2.7})`.
@@ -169,7 +200,9 @@ def harminv(
     real_signal = not np.any(y.imag)
     amplitude_signal = y
     amplitude_dt = dt
-    factors, _ = _decimation_plan(len(y), dt, f_max, decimate)
+    factors, _ = _decimation_plan(len(y), dt, f_max, decimate,
+                                 pencil_parameter=pencil_parameter,
+                                 max_modes=max_modes)
     for factor in factors:
         # A symmetric FIR of order 20*q has support [-10*q, +10*q]
         # in input samples. At output k (input centre k*q), precisely
@@ -185,7 +218,7 @@ def harminv(
         return []
 
     # Pencil parameter L: matrix size
-    L = max(4, min(int(N * pencil_parameter), N - 2))
+    L = _pencil_columns(N, pencil_parameter)
 
     # Build Hankel matrices Y0 and Y1
     # Y0[i,j] = y[i+j],     i=0..N-L-1, j=0..L-1

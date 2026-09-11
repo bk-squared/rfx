@@ -25,7 +25,12 @@ used to cite for corroboration moved from 2.66% @ 4% to 0.025% @ 0.04% (#573),
 and this script's gate got the same envelope-derived treatment in #596: the
 residual measures 0.0144% and the enforced gate is 0.03%, derived through the
 shared ``tests/_gate_policy.gate_from_envelope`` (#528/#539) — see the gate
-block in ``run_gate`` for the derivation, falsifier, and invariance evidence.
+block in ``run_gate`` for that historical derivation and falsifier evidence.
+With #872's finite-support and pencil-capacity correction, the unchanged gate
+measures 0.0227%: close to the p=0 Yee dispersion's 0.0229% continuum offset.
+The older 0.0144% partly cancelled lattice dispersion with estimator bias;
+it is not a tighter physical discretization result. The short record and
+native control are retained under ``docs/research_notes/issue872/``.
 
 Run:
     python scripts/stage1_nu_cavity_physics_gate.py

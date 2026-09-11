@@ -77,7 +77,9 @@ def test_fir_interior_preserves_a_known_damped_pole(n, samples_per_period, real_
     signal = np.exp((-np.pi * f / q + 2j * np.pi * f) * t + 0.3j)
     if real_signal:
         signal = signal.real
-    modes = harminv(signal, dt, 0.8e9, 1.2e9)
+    # Four poles allow room for a conjugate pair and exercise FIR stages even
+    # on these short exact records (the production default reserves 50).
+    modes = harminv(signal, dt, 0.8e9, 1.2e9, max_modes=4)
     assert len(modes) == 1
     assert modes[0].freq == pytest.approx(f, rel=1e-7)
     assert modes[0].Q == pytest.approx(q, rel=1e-7)
@@ -131,7 +133,9 @@ def test_short_record_keeps_raw_samples_instead_of_disappearing():
 
 
 @pytest.mark.parametrize("n", [80, 512, 2048, 2053])
-def test_reported_duration_matches_samples_actually_passed_to_svd(n, monkeypatch):
+@pytest.mark.parametrize("pencil_parameter,max_modes", [(0.33, 50), (0.2, 8), (0.5, 12)])
+def test_reported_duration_matches_samples_actually_passed_to_svd(
+        n, pencil_parameter, max_modes, monkeypatch):
     import importlib
     module = importlib.import_module("rfx.harminv")
     decimate_original, svd_original = module.scipy_decimate, np.linalg.svd
@@ -149,12 +153,49 @@ def test_reported_duration_matches_samples_actually_passed_to_svd(n, monkeypatch
     monkeypatch.setattr(np.linalg, "svd", svd_spy)
     dt = 1 / (128 * 1e9)
     t = np.arange(n) * dt
+    settings = dict(pencil_parameter=pencil_parameter, max_modes=max_modes)
     harminv(np.exp((-np.pi * 1e9 / 100 + 2j * np.pi * 1e9) * t),
-            dt, 0.8e9, 1.2e9)
+            dt, 0.8e9, 1.2e9, **settings)
     (shape,) = observed_shapes
     used_samples = sum(shape)  # Hankel M=N-L rows and L columns
     effective_dt = dt * np.prod(observed_factors, dtype=int)
-    assert harminv_record_duration(n, dt, 1.2e9) == pytest.approx(
+    assert harminv_record_duration(n, dt, 1.2e9, **settings) == pytest.approx(
         (used_samples - 1) * effective_dt)
+    original_columns = max(4, min(int(n * pencil_parameter), n - 2))
+    assert min(shape) >= min(max_modes + 1, original_columns, n - original_columns)
     if observed_factors:
-        assert harminv_record_duration(n, dt, 1.2e9) < (n - 1) * dt
+        assert harminv_record_duration(n, dt, 1.2e9, **settings) < (n - 1) * dt
+
+
+@pytest.mark.parametrize("pencil_parameter", [-0.1, 0.0, 1.0, 1.1])
+def test_clamped_pencil_fractions_do_not_disable_all_decimation(pencil_parameter):
+    from rfx.harminv import _decimation_plan
+
+    # Historically the core clamps these shapes to four columns or two rows.
+    # An impossible 51-direction requirement would turn even huge records
+    # into a raw SVD. Preserve their actual capacity without promising 50 poles.
+    n = 1_000_000
+    factors, kept = _decimation_plan(n, 1e-15, 1e9, "auto",
+                                      pencil_parameter=pencil_parameter)
+    assert factors and kept < 1000
+    columns = max(4, min(int(kept * pencil_parameter), kept - 2))
+    assert min(columns, kept - columns) >= (4 if pencil_parameter <= 0 else 2)
+
+
+def test_short_multimode_record_keeps_enough_dimensions_to_resolve_its_poles():
+    # Twelve distinct complex poles fit the requested rank, but not the
+    # five-column pencil produced by the former ten-sample-only stop rule.
+    n, dt = 1846, 1 / 1280e9
+    # All poles also lie below the old q45 Nyquist (14.22 GHz), so lost
+    # dimensions, rather than aliasing, distinguish the two plans.
+    freqs = np.linspace(1.0e9, 12e9, 12)
+    t = np.arange(n) * dt
+    signal = sum(np.exp((-np.pi * f / 100 + 2j * np.pi * f) * t)
+                 for f in freqs)
+    # Most poles lie outside the report band yet still affect the fit.
+    modes = harminv(signal, dt, 1e9, 6.9e9, max_modes=12, sv_threshold=1e-6)
+    expected = freqs[freqs <= 6.9e9 * 1.1]
+    assert len(modes) == len(expected)
+    for mode, f in zip(sorted(modes, key=lambda m: m.freq), expected):
+        assert mode.freq == pytest.approx(f, rel=1e-7)
+        assert mode.Q == pytest.approx(100.0, rel=1e-7)

@@ -16,6 +16,9 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   prevent overlapping modes from corrupting the reported dominant mode;
   real records retain the positive-frequency conjugate's phase. cv02 uses the
   actual retained analysis duration in its existing Q gates and record planner.
+- Automatic decimation preserves the pencil capacity requested by `max_modes`
+  and `pencil_parameter`, preventing short multi-mode records from shrinking
+  below the dimensions needed for their fit.
 
 ### Fixed — public validation numbers follow the regenerated #931 artifacts
 

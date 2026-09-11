@@ -16,6 +16,22 @@ from validation.crossval.comparators import nu_cavity_gates as G
 ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "harminv_decimation"
 
 
+def test_short_stage1_record_meets_its_existing_continuum_gate():
+    from rfx.grid import C0
+    from scripts.stage1_nu_cavity_physics_gate import _GATE_PCT
+
+    directory = ROOT / "stage1"
+    receipt = json.loads((directory / "receipt.json").read_text())
+    path = directory / "input.npz"
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == receipt["input_sha256"]
+    with np.load(path) as data:
+        modes = harminv(data["signal"], float(data["dt"]),
+                        float(data["fmin"]), float(data["fmax"]))
+    continuum = C0 / 2 * np.sqrt(2) / 0.04  # TM110, a=b=40 mm, air
+    mode = min(modes, key=lambda m: abs(m.freq - continuum))
+    assert 100 * abs(mode.freq / continuum - 1) <= _GATE_PCT
+
+
 @pytest.mark.parametrize("case,correct_metric", [
     ("cv24-uniform", True), ("cv24-single_band", True), ("cv24-metric_defect", False),
 ])

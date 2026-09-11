@@ -18,9 +18,22 @@ Each stage explicitly uses a symmetric FIR of order `20*q`, with half-support
 `10*q` input samples. Output `k` is centered at input `k*q`; the valid outputs
 are exactly `k = 10 .. ceil(N/q)-11`. Exclude ten outputs at each end, at each
 stage. A stage is omitted if fewer than the core's existing ten-sample minimum
-would remain. Since every stage factor is at most 13, stopping leaves fewer
-than 390 samples for the core; this fallback does not send an arbitrarily
-large raw record into the SVD.
+would remain or if its Hankel matrix cannot preserve the requested pole
+capacity. For `N` samples, `L = max(4, min(int(N*p), N-2))` and `M = N-L`;
+a `K`-pole model requires at least `K` rows and columns. Preserve
+`min(max_modes+1, L_original, M_original)` singular directions at each stage.
+The extra direction allows the relative rank cut to distinguish a requested
+rank from a saturated matrix. If the original record is already too small,
+preserve its available dimensions; this cannot invent missing information.
+The same shape helper is used by planning and the actual SVD.
+
+At the default `p=0.33, max_modes=50`, this requires 155 retained samples when
+the original record has sufficient capacity. A rejected factor at most 13
+then leaves at most 2,262 inputs for the core. Other requested pencil shapes
+and ranks change that bound. The historical four-column/two-row clamp at
+extreme fractions remains effective, so an impossible 51-direction request
+does not force every such record into a raw SVD. Capacity is a dimensional
+safeguard, not a frequency/Q accuracy or noise-identifiability guarantee.
 
 Keep the caller's dimensionless `sv_threshold` relative to the largest singular
 value. Remove the implicit `sqrt(target_factor)` multiplier. This preserves
@@ -184,26 +197,42 @@ successful test) were deleted only after their full provider logs were
 backed up and hashed under `docs/research_notes/vessl_logs/`. No running
 external experiment was terminated.
 
-## CI follow-up: short-record capacity remains unresolved
+## CI follow-up: short-record capacity correction
 
-CI exposed a separate consumer failure in the stage1 NU cavity gate. Its
-1,846 raw input samples shrink to 18 after two FIR stages, leaving only five
-pencil columns. The preceding stage has ten singular values above the same
-relative rank cutoff; the final pencil saturates all five columns. The
-current ten-sample minimum therefore permits loss of model capacity on this
-short physical record.
+The PI approved the general capacity-preserving stop condition on 2026-09-11.
+CI had exposed a stage1 NU cavity failure: 1,846 raw input samples became 18
+after two FIR stages, leaving only five pencil columns. The preceding stage
+had ten singular values above the same relative rank cutoff. The old
+minimum-sample check therefore allowed a saturated model matrix.
 
-The unchanged 0.03% continuum gate fails at 0.0827%. Both the native analysis
-and stopping after the first decimation stage pass it; their frequencies also
-agree closely with the closed-form p=0 Yee dispersion. The raw input and
-before/after reports are retained in `stage1-short-record/`, with the input
-under `tests/fixtures/harminv_decimation/stage1/`. This failure is **unresolved**
-pending the PI's choice between a general model-capacity stop condition and
-explicitly disabling decimation for this bounded short consumer. No tolerance
-has been widened. The earlier successful validations remain limited to their
-recorded inputs; they do not establish that all consumers pass.
+The new plan stops after factor 9, retaining 186 samples and 61 columns.
+The unchanged 0.03% continuum gate now passes at
+`docs/research_notes/issue872/capacity-impact/report.json::records[52].after.continuum_error_pct = 0.0227`
+(percent units), versus 0.0827% with the earlier crop-only plan. A fresh full
+stage1 FDTD gate also passes. Its old 3.5% test-side assertion was stale; the
+test now names the same existing 0.03% constant already enforced by the script.
+The original failing input and controls remain in `stage1-short-record/`.
 
-The new note is now registered in the numeric-provenance contract with three
-required value references (1,326 checks passed). The cv02 advisory report's
-Q-observability flag now uses retained analysis time, while its raw measured
-end/peak and offset remain unchanged (43 consumer/judge checks passed).
+A synthetic 12-pole check isolates model capacity: every pole lies below
+even the earlier plan's Nyquist frequency. The old five-column plan fails;
+the new plan recovers the in-band poles and decay rates at the unchanged
+1e-7 arithmetic check. Actual SVD-shape spies verify capacity and duration
+with multiple non-default pencil/rank settings. Extreme clamped fractions
+and originally insufficient records retain their existing dimension limits.
+
+The impact replay checks 53 actual estimator inputs in the same environment:
+30 cv02/cv24 inputs, two Meep-version inputs, 20 fed/unfed GPU probe traces,
+and the failing stage1 input. The first
+`docs/research_notes/issue872/capacity-impact/report.json::unchanged_records = 52`
+have identical plans and **exactly identical mode outputs** before/after the
+capacity correction; only stage1 changes. Source and input hashes, both mode
+lists and a reproduction script are retained in `capacity-impact/`. This
+same-input check justifies retaining the earlier Meep/GPU integration evidence
+at its recorded commit; those FDTD runs were not repeated for this safeguard.
+
+The cv02 advisory report's Q-observability flag now uses retained analysis
+time, while its raw measured end/peak and offset remain unchanged (43
+consumer/judge checks passed). Numeric-provenance classification now covers
+this note and its cited values. The combined estimator, retained-record,
+stage1 and cv02 selection passed 93 checks; the final 32 decimation checks
+also include the below-Nyquist synthetic falsifier.

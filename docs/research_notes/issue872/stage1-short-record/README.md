@@ -27,3 +27,10 @@ The two diagnostic scripts document capture and one-stage analysis; their
 `/tmp` paths are session-local locations, not a reusable public CLI.
 No solver threshold or production decimation policy was changed for this
 capture. The general rank-capacity fallback proposal awaits PI decision.
+
+## Resolution after capture
+
+The PI approved a general mode-capacity stop condition. The final plan stops
+after factor 9; the unchanged continuum gate passes at 0.0227 percent.
+`../capacity-impact/report.json` retains the result on these exact input bytes.
+The earlier failures above remain the recorded pre-correction evidence.
