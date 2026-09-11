@@ -33,11 +33,14 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import os
 import sys
+from contextlib import contextmanager, ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
 from typing import Callable
+from unittest.mock import patch
 
 import jax.numpy as jnp
 
@@ -51,6 +54,7 @@ SNAPSHOT_PATH = REPO_ROOT / "tests" / "data" / "example_fidelity_snapshot.json"
 # either solving for real (forbidden) or forking the script (out of scope).
 SOLVE_ATTRS = frozenset({
     "run",
+    "forward",
     "compute_msl_s_matrix",
     "compute_waveguide_s_matrix",
     "compute_mixed_s_matrix",
@@ -60,6 +64,70 @@ SOLVE_ATTRS = frozenset({
     "compute_coax_msl_transition",
     "compute_rcs",
 })
+
+
+class UnsafeExampleExecution(RuntimeError):
+    """A build-only audit attempted a solve or changed crossval evidence."""
+
+
+_protected_roots: list[Path] = []
+
+
+def _block_evidence_mutation(event, args):
+    """Reject Python file mutations before they touch crossval evidence.
+
+    The audit hook stays installed but is inert outside ``build_only``.
+    This is an accidental-side-effect guard, not a sandbox for native code
+    or child processes. The contract also checks file hashes after its run.
+    """
+    if not _protected_roots:
+        return
+    if event == "open":
+        path, _mode, flags = args
+        if not flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND):
+            return
+        paths = (path,)
+    elif event in {"os.remove", "os.rmdir", "os.mkdir"}:
+        paths = args[:1]
+    elif event in {"os.rename", "os.link", "os.symlink"}:
+        paths = args[:2]
+    else:
+        return
+    for path in paths:
+        if not isinstance(path, (str, bytes, os.PathLike)):
+            continue
+        resolved = Path(os.fsdecode(path)).resolve()
+        # Import caches are not measured evidence. Existing mkdir(exist_ok)
+        # calls are harmless and common at script module scope.
+        if "__pycache__" in resolved.parts:
+            continue
+        if event == "os.mkdir" and resolved.is_dir():
+            continue
+        if any(resolved.is_relative_to(root) for root in _protected_roots):
+            raise UnsafeExampleExecution(
+                f"build-only audit forbids crossval mutation: {event} {resolved}")
+
+
+sys.addaudithook(_block_evidence_mutation)
+
+
+@contextmanager
+def build_only():
+    """Keep imports, builders and digests from solving or writing evidence."""
+    from rfx import Simulation
+
+    root = (REPO_ROOT / "validation" / "crossval").resolve()
+    _protected_roots.append(root)
+    try:
+        with ExitStack() as stack:
+            for method in SOLVE_ATTRS:
+                if hasattr(Simulation, method):
+                    stack.enter_context(patch.object(
+                        Simulation, method, side_effect=UnsafeExampleExecution(
+                            f"build-only audit forbids Simulation.{method}()")))
+            yield
+    finally:
+        _protected_roots.remove(root)
 
 
 def discover_scripts() -> list[str]:
@@ -217,6 +285,13 @@ OPTIONAL_DEPENDENCIES: dict[str, frozenset[str]] = {
 
 
 def load_module(relpath: str) -> ModuleType:
+    # Check at the point of execution, even if a caller did not run the
+    # classification tests first. cv01-cv05 must never execute here (#967).
+    if not has_main_guard(relpath) or has_top_level_solve_call(
+            relpath, skip_main_guard=True):
+        raise UnsafeExampleExecution(
+            f"{relpath}: build-only imports require a main guard and no "
+            "module-scope solve")
     path = REPO_ROOT / relpath
     name = f"_example_fidelity_{path.stem}_{abs(hash(relpath))}"
     spec = importlib.util.spec_from_file_location(name, path)
@@ -224,7 +299,8 @@ def load_module(relpath: str) -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
     try:
-        spec.loader.exec_module(module)
+        with build_only():
+            spec.loader.exec_module(module)
     except ModuleNotFoundError as exc:
         declared = OPTIONAL_DEPENDENCIES.get(relpath, frozenset())
         if exc.name in declared:
@@ -894,14 +970,15 @@ def iter_audited_variants():
     for relpath, entry in sorted(CLASSIFICATION.items()):
         if entry.kind != "audited":
             continue
-        module = load_module(relpath)
-        for builder in entry.builders:
-            fn = getattr(module, builder.fn)
-            for variant in builder.variants:
-                kwargs = variant.kwargs(module)
-                result = fn(**kwargs)
-                sim = result if builder.result_index is None else result[builder.result_index]
-                yield relpath, builder.fn, variant.label, sim
+        with build_only():
+            module = load_module(relpath)
+            for builder in entry.builders:
+                fn = getattr(module, builder.fn)
+                for variant in builder.variants:
+                    kwargs = variant.kwargs(module)
+                    result = fn(**kwargs)
+                    sim = result if builder.result_index is None else result[builder.result_index]
+                    yield relpath, builder.fn, variant.label, sim
 
 
 # --------------------------------------------------------------------------
