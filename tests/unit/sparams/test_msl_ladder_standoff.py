@@ -426,15 +426,15 @@ def test_witness_reproduces_the_committed_coax_ladder_reading():
 
 
 # ---------------------------------------------------------------------------
-# 5. End to end on the committed attempt-3 fixture (one short FDTD pair)
+# 5. End to end on an aligned instrumentation fixture (one short FDTD pair)
 # ---------------------------------------------------------------------------
 
 _N_STEPS_SMOKE = 200
 
 
 @pytest.fixture(scope="module")
-def _attempt3_smoke():
-    """One 200-step attempt-3 call. Far too short for a settled S (the
+def _instrument_smoke():
+    """One 200-step call. Far too short for a settled S (the
     ring-down witness rightly screams and every number below is a truncation
     artifact) -- irrelevant here: the advisory is pure ladder GEOMETRY and
     the witness's SHAPE/dtype/finiteness contract is step-count independent.
@@ -442,17 +442,17 @@ def _attempt3_smoke():
     the ladder dump (None on a default call; pinned in
     tests/unit/sparams/test_coax_msl_transition_ladder_dump.py).
     """
-    import test_coax_msl_transition as T
+    from tests._coax_msl_instrument_fixture import build_instrument_junction, instrument_kwargs
 
-    sim = T._build_coax_msl_transition_sim_attempt3()
+    sim = build_instrument_junction()
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         res = sim.compute_coax_msl_transition(
-            **T._attempt2_kwargs(_N_STEPS_SMOKE), return_ladder_voltages=True)
+            **instrument_kwargs(_N_STEPS_SMOKE), return_ladder_voltages=True)
     return res, [str(w.message) for w in caught]
 
 
-def test_realized_ladder_standoff_advisory_fires_on_attempt3(_attempt3_smoke):
+def test_realized_ladder_standoff_advisory_fires_on_aligned_junction(_instrument_smoke):
     """FAIL-BEFORE-FIX gate for the method-side advisory.
 
     ``msl_probe_*`` are METHOD arguments, invisible to preflight (they are
@@ -461,7 +461,7 @@ def test_realized_ladder_standoff_advisory_fires_on_attempt3(_attempt3_smoke):
     predicate on its OWN realized ``xs_sorted``, at both ends the ladder is
     referred to, and says so via ``warnings.warn``.
     """
-    _res, msgs = _attempt3_smoke
+    _res, msgs = _instrument_smoke
     hits = [m for m in msgs
             if STANDOFF_TOKEN in m and "compute_coax_msl_transition" in m]
     assert len(hits) == 1, msgs
@@ -471,11 +471,11 @@ def test_realized_ladder_standoff_advisory_fires_on_attempt3(_attempt3_smoke):
     assert "1.50" in msg           # the required standoff, 1.50 mm
 
 
-def test_witness_fields_are_on_the_result_and_report_only(_attempt3_smoke):
+def test_witness_fields_are_on_the_result_and_report_only(_instrument_smoke):
     """The two witness fields exist (the fixture opted in with
     ``return_ladder_voltages=True``), are shaped like the diagnostics they
     sit beside, and refuse nothing."""
-    res, _msgs = _attempt3_smoke
+    res, _msgs = _instrument_smoke
     n_f = len(res.freqs)
     for name in ("ladder_split_gamma_dev", "ladder_split_reflection_decades"):
         arr = np.asarray(getattr(res, name))

@@ -48,6 +48,7 @@ def _sim_with_feed_and_patch(patch_x0=0.012466, patch_x1=0.015006):
                      boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (DOMAIN[0], DOMAIN[1], H_SUB)), material="sub")
+    sim.add(Box((0, 0, 0), (DOMAIN[0], DOMAIN[1], 0)), material="pec")
     # the port's own feed trace (contains the feed plane -> excluded)
     sim.add(Box((0.001, Y_C - W_TRACE / 2, H_SUB),
                 (patch_x0, Y_C + W_TRACE / 2, H_SUB)), material="pec")

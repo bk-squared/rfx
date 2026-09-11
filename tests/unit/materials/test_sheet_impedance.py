@@ -88,7 +88,6 @@ from rfx.materials.thin_conductor import (
     build_sheet_impedance_ctx,
     leontovich_rs,
     refuse_f0_sheets,
-    sheet_update_coeffs,
 )
 from rfx.runners.nonuniform import assemble_materials_nu, build_nonuniform_grid
 
@@ -1155,6 +1154,9 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
     ("rfx/api/_sparams.py", "compute_mixed_s_matrix",
      "MSL junction S-parameter"):
         (__name__, "test_fence_msl_junction_mixed_s_matrix"),
+    ("rfx/api/_sparams.py", "compute_coax_msl_transition", "coax-MSL transition"):
+        ("tests.unit.ports.test_msl_realized_port_contract",
+         "test_direct_transition_cannot_silently_drop_lossy_sheets"),
     ("rfx/differentiable_material_fit.py", "forward",
      "differentiable material fit"):
         (__name__, "test_fence_differentiable_material_fit"),

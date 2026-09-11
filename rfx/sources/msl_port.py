@@ -257,6 +257,145 @@ def msl_port_from_entry(pe) -> "MSLPort":
 # ---------------------------------------------------------------------------
 
 
+def _msl_grid_geometry(grid):
+    from rfx.core.jax_utils import is_tracer
+    from rfx.geometry.rasterize_grid import (
+        coords_from_nonuniform_grid, coords_from_uniform_grid,
+        cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
+    )
+    from rfx.nonuniform import NonUniformGrid
+    coords = (coords_from_nonuniform_grid(grid) if isinstance(grid, NonUniformGrid)
+              else coords_from_uniform_grid(grid))
+    if any(is_tracer(x) for x in coords[:3]):
+        raise NotImplementedError("MSL conductor-plane validation requires concrete mesh coordinates")
+    sizes = (cell_sizes_from_nonuniform_grid(grid) if isinstance(grid, NonUniformGrid)
+             else cell_sizes_from_uniform_grid(grid))
+    return tuple(np.asarray(x, dtype=np.float64) for x in coords[:3]), sizes
+
+
+def _msl_normal_bounds(grid, port):
+    """Snap the two physical conductor planes by the #931 sheet rule."""
+    from rfx.geometry.rasterize_grid import _local_cell, _nearest_plane
+    axes, sizes = _msl_grid_geometry(grid)
+    nodes = axes[2]
+    if len(nodes) < 2 or not np.isfinite([port.z_lo, port.z_hi]).all():
+        raise ValueError("MSL port requires finite ground/trace planes on a resolved normal axis")
+    if port.z_hi <= port.z_lo:
+        raise ValueError("MSL port trace plane must be above its ground plane")
+    indices = []
+    for label, position in (("ground", port.z_lo), ("trace", port.z_hi)):
+        local = _local_cell(nodes, sizes[2], position)
+        indices.append(_nearest_plane(nodes, position, local,
+                                       what=f"MSL port {label}", axis=2))
+    return tuple(indices)
+
+
+def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
+                               sheet_specs=(), sheet_impedance=None,
+                               pec_faces=(), periodic=(False, False, False),
+                               name=None):
+    """Require the source interval to meet its actual conductor surfaces.
+
+    Read ORIGINAL geometry before any port clearing. Lossy sheet edges are
+    observation-only; they must never be returned to the PEC zeroing path.
+    This validates attachment and the open substrate interval, not modal
+    accuracy or the approximation of a coarse trace width.
+    """
+    from rfx.boundaries.pec import realized_wall_planes
+    from rfx.geometry.rasterize_grid import _box_axis_closed, _local_cell
+    from rfx.materials.thin_conductor import build_sheet_impedance_ctx
+
+    nodes, sizes = _msl_grid_geometry(grid)
+    span = msl_cross_section_span(grid, port)
+    ip, iw = span["prop_idx"], span["width_idx"]
+    p, lower, upper = span["i_feed"], span["n_lo"], span["n_hi"]
+    label = f"MSL port {name!r}" if name is not None else "MSL port"
+    if len(nodes[ip]) < 2 or len(nodes[iw]) < 2:
+        raise ValueError(f"{label}: propagation and width axes must both be resolved")
+    hard = (tuple(np.zeros(grid.shape, dtype=bool) for _ in range(3))
+            if pec_edge_masks is None else tuple(np.asarray(m, dtype=bool) for m in pec_edge_masks))
+    if sheet_impedance is None and sheet_specs:
+        sheet_impedance = build_sheet_impedance_ctx(
+            sheet_specs, pec_edge_masks=pec_edge_masks, periodic=periodic)
+    observed = hard
+    if sheet_impedance is not None:
+        observed = tuple(h | np.asarray(getattr(sheet_impedance, f"mask_e{ax}"), dtype=bool)
+                         for h, ax in zip(hard, "xyz"))
+    faces = set(pec_faces or ())
+    domain_planes = set()
+    if "z_lo" in faces:
+        domain_planes.add(0)
+    if "z_hi" in faces:
+        domain_planes.add(grid.shape[2]-1)
+
+    # Sheet footprints are CLOSED node intervals. Do not demand conductor
+    # beneath the intentional lateral fringing part of a Laplace source.
+    width_nodes = nodes[iw]
+    local = _local_cell(width_nodes, sizes[iw], .5*(port.y_lo+port.y_hi))
+    widths = np.flatnonzero(_box_axis_closed(width_nodes, port.y_lo, port.y_hi, local))
+    if not len(widths):
+        raise ValueError(f"{label}: the declared width contains no grid node")
+    widths = sorted(set(map(int, widths)) | {span["w_centre"]})
+    for axis, indices in ((ip, [p]), (iw, widths)):
+        for side, boundary_node in (("lo", 0), ("hi", grid.shape[axis]-1)):
+            face = f"{'xyz'[axis]}_{side}"
+            if face in faces and boundary_node in indices:
+                raise ValueError(
+                    f"{label}: the source touches domain PEC face {face}, which "
+                    "zeros its substrate-normal E component. Move the port off that wall.")
+
+    def along_trace(w, k):
+        if k in domain_planes:
+            return True
+        idx = list(msl_cell(port.direction, p, w, k))
+        found = bool(observed[ip][tuple(idx)])
+        if p > 0:
+            idx[ip] = p-1
+            found = found or bool(observed[ip][tuple(idx)])
+        elif periodic[ip]:
+            idx[ip] = grid.shape[ip]-1
+            found = found or bool(observed[ip][tuple(idx)])
+        return found
+
+    for w in widths:
+        for role, k, declared in (("ground", lower, port.z_lo), ("trace", upper, port.z_hi)):
+            if not along_trace(w, k):
+                ij = msl_cell(port.direction, p, w, k)[:2]
+                alternatives = sorted(set(realized_wall_planes(
+                    observed, 2, ij=ij, periodic=periodic)) | domain_planes)
+                locations = [float(nodes[2][j]) for j in alternatives]
+                raise ValueError(
+                    f"{label}: declared {role} at z={declared:.9g} m maps to node "
+                    f"{k} (z={nodes[2][k]:.9g} m), but no longitudinal conductor "
+                    f"edge meets it at width node {w}. Observed conductor planes "
+                    f"on this column are {locations} m. Make the port ground/trace "
+                    "declarations agree with the realized conductor surfaces.")
+        # A volume owns internal planes too. Its substrate-facing surface
+        # must leave ALL normal source edges live, not merely appear in a
+        # tangential-wall census. Also catches posts crossing the port.
+        occupied = [k for k in range(lower, upper)
+                    if hard[2][msl_cell(port.direction, p, w, k)]]
+        if occupied:
+            raise ValueError(
+                f"{label}: substrate interval [{lower}, {upper}) intersects PEC "
+                f"normal edges {occupied} at width node {w}; use the substrate-facing "
+                "surfaces, not a plane inside the ground/trace volume.")
+        loaded = [k for k in range(lower, upper)
+                  if observed[2][msl_cell(port.direction, p, w, k)]]
+        if loaded:
+            raise ValueError(
+                f"{label}: surface-impedance sheet edges {loaded} load the "
+                f"substrate-normal source at width node {w}. Move the port "
+                "off the intersecting sheet.")
+        ij = msl_cell(port.direction, p, w, lower)[:2]
+        intervening = [k for k in realized_wall_planes(observed, 2, ij=ij, periodic=periodic)
+                      if lower < k < upper]
+        if intervening:
+            raise ValueError(
+                f"{label}: additional conductor planes {intervening} lie inside "
+                f"the substrate interval [{lower}, {upper}); the port cannot span them.")
+
+
 def _axis_cell_size(grid, axis: str, idx: int) -> float:
     """Return the cell size at index ``idx`` along ``axis``.
 
@@ -337,7 +476,7 @@ def _msl_yz_cells(grid, port: MSLPort) -> list[tuple[int, int, int]]:
     )
     i_feed = int(lo_idx[ip])
     w_a, w_b = sorted((int(lo_idx[iw]), int(hi_idx[iw])))
-    n_a, n_b = sorted((int(lo_idx[inr]), int(hi_idx[inr])))
+    n_a, n_b = _msl_normal_bounds(grid, port)
 
     if n_b <= n_a:
         raise ValueError(
@@ -378,12 +517,14 @@ def msl_cross_section_span(grid, port: MSLPort) -> dict:
     cells = _msl_yz_cells(grid, port)
     ws = sorted({c[iw] for c in cells})
     ns = sorted({c[inr] for c in cells})
+    centre = _msl_position_to_index(grid, msl_physical_point(
+        port.direction, port.feed_x, .5*(port.y_lo+port.y_hi), port.z_lo))[iw]
     return dict(
         prop_axis=prop, width_axis=width, normal_axis=normal, sign=sign,
         prop_idx=ip, width_idx=iw, normal_idx=inr,
         i_feed=int(cells[0][ip]),
         w_lo=int(ws[0]), w_hi=int(ws[-1]),
-        w_centre=int((ws[0] + ws[-1]) // 2),
+        w_centre=int(centre),
         n_lo=int(ns[0]), n_hi=int(ns[-1]) + 1,
         cells=cells,
     )
@@ -765,8 +906,7 @@ def compute_msl_mode_profile(
     # Measured on a 2:1 z-graded substrate, realized termination impedance
     # against a nominal 50 Ω: 135.56 Ω with the scalar, 50.00 Ω with this.
     j_trace_coarse_lo = laplace_pad_y_coarse
-    j_trace_coarse_hi = laplace_pad_y_coarse + (n_y_trace - 1)
-    j_centre_coarse = (j_trace_coarse_lo + j_trace_coarse_hi) // 2
+    j_centre_coarse = j_trace_coarse_lo + span["w_centre"] - j_trace_lo
     dz_span = np.array(
         [_axis_cell_size(grid, normal_axis, k_grid_lo + k_c)
          for k_c in range(n_z_sub)], dtype=np.float64)

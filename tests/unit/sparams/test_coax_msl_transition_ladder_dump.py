@@ -9,8 +9,8 @@ trusting any incident/outgoing LABEL.
 The whole value of that instrument depends on it being an instrument: it must
 not move a single bit of the S-parameter output, and the arrays it hands back
 must be the arrays the assembler itself consumed (not a re-derivation that
-could drift). Both are asserted here on the attempt-3 fixture, the same
-discipline as
+could drift). Both are asserted on a separate aligned instrumentation fixture, with the
+same discipline as
 ``tests/unit/sparams/test_coax_msl_transition.py::test_extra_flux_monitors_do_not_perturb_s``.
 
 Bit-identity (``np.array_equal``), not ``allclose``, is deliberate and is NOT
@@ -20,7 +20,7 @@ the field math and the ladder dump cannot be trusted as a witness of the run
 it came from. If this reds after a backend/XLA change, re-measure and
 re-declare on #589 before running an adjudication.
 
-Cost: three 200-step attempt-3 method calls (two internal drive runs each),
+Cost: three 200-step method calls (two internal drive runs each),
 ~45 s wall on the 2026-08 CPU pod. 200 steps is far too short for a settled
 S (the ring-down witness rightly screams, and the numbers below are
 truncation artifacts) -- irrelevant here, because bit-identity of two runs of
@@ -44,8 +44,9 @@ from test_coax_msl_transition import (  # noqa: E402  (sibling fixture module)
     LY,
     LZ_2,
     Y_C,
-    _attempt2_kwargs,
-    _build_coax_msl_transition_sim_attempt3,
+)
+from tests._coax_msl_instrument_fixture import (  # noqa: E402
+    build_instrument_junction, instrument_kwargs,
 )
 from rfx.api._sparams import (  # noqa: E402
     _assemble_coax_msl_transition_from_voltages,
@@ -94,13 +95,13 @@ def _ladder_dump_scratch_flux_entries():
 
 
 def _run(**extra):
-    sim = _build_coax_msl_transition_sim_attempt3()
-    return sim.compute_coax_msl_transition(**_attempt2_kwargs(N_STEPS), **extra)
+    sim = build_instrument_junction()
+    return sim.compute_coax_msl_transition(**instrument_kwargs(N_STEPS), **extra)
 
 
 @pytest.fixture(scope="module")
 def _abc():
-    """(off, ladders-on, ladders+flux-on) on the attempt-3 fixture."""
+    """(off, ladders-on, ladders+flux-on) on the aligned instrumentation fixture."""
     with pytest.warns(UserWarning):
         off = _run()
         on = _run(return_ladder_voltages=True)
@@ -220,7 +221,7 @@ def test_ladder_dump_round_trips_through_the_assembler(_abc):
         v_msl_by_drive=d["msl_ladder_v"],
         z0_coax=float(d["z0_ref"][0]),
         z0_msl=float(d["z0_ref"][1]),
-        cond_warn=float(_attempt2_kwargs(N_STEPS).get("cond_warn", 1.0e3)),
+        cond_warn=float(instrument_kwargs(N_STEPS).get("cond_warn", 1.0e3)),
     )
     for name, got in (
         ("s_params", s_params), ("cond_a", cond_a),

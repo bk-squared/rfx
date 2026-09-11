@@ -637,7 +637,8 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
 
 
 def _setup_msl_ports_nu(sim, grid, materials, materials_concrete, sources,
-                        n_steps, pec_edge_masks):
+                        n_steps, pec_edge_masks, *, geometry_edge_masks=None,
+                        sheet_specs=()):
     """Set up MSL ports on the non-uniform mesh (Ez static-Laplace feed only).
 
     Mirrors the uniform MSL block (``rfx/runners/uniform.py``: ``_msl_ports``)
@@ -666,6 +667,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_concrete, sources,
         msl_port_from_entry,
         setup_msl_port,
     )
+    original_edges = pec_edge_masks if geometry_edge_masks is None else geometry_edge_masks
     for pe in sim._msl_ports:
         # Issue #661: one shared projection of position -> port frame.
         mp = msl_port_from_entry(pe)
@@ -680,6 +682,10 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_concrete, sources,
             )
         # laplace / uniform: build the static-Laplace Ez mode profile from the
         # substrate eps_r read concretely under the trace centre.
+        from rfx.sources.msl_port import validate_msl_port_geometry
+        validate_msl_port_geometry(
+            grid, mp, pec_edge_masks=original_edges, sheet_specs=sheet_specs,
+            pec_faces=sim._boundary_spec.pec_faces(), name=pe.name)
         span = msl_cross_section_span(grid, mp)
         k_mid = (span["n_lo"] + span["n_hi"]) // 2
         eps_cell = msl_cell(
@@ -917,6 +923,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     if pec_mask is not None or _pec_sheets or _pec_wires:
         pec_edge_masks = _rpem(pec_mask, sheets=_pec_sheets,
                                wires=_pec_wires)
+    _msl_geometry_edges = pec_edge_masks  # before ANY port clearing
 
     # ── Subpixel smoothing on non-uniform mesh ─────────────────────────
     # Builds Kottke tensor-averaged ε per E-component using per-axis
@@ -1329,6 +1336,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         materials, pec_edge_masks = _setup_msl_ports_nu(
             sim, grid, materials, materials_concrete, sources, sizing_n,
             pec_edge_masks,
+            geometry_edge_masks=_msl_geometry_edges, sheet_specs=_sheet_specs,
         )
 
     # Optional per-waveguide-port Poynting flux monitors at each port's

@@ -167,6 +167,7 @@ def test_substrate_walk_starts_at_the_ports_own_ground_plane():
     sim.add_material("ro4350b", eps_r=EPS_R)
     sim.add(Box((0, 0, 0), (LX, ly, z_gnd)), material="filler")
     sim.add(Box((0, 0, z_gnd), (LX, ly, z_gnd + H_SUB)), material="ro4350b")
+    sim.add(Box((0, 0, z_gnd), (LX, ly, z_gnd)), material="pec")
     y_c = ly / 2.0
     sim.add(Box((0, y_c - W_TRACE / 2, z_gnd + H_SUB),
                 (LX, y_c + W_TRACE / 2, z_gnd + H_SUB)), material="pec")
@@ -1088,4 +1089,3 @@ def test_open_stub_is_galvanically_joined_to_the_trace():
         "the trace and the stub share a plane, so their union must be one "
         "conductor: every Ey edge between the first and last footprint row "
         f"of column {i} has to be PEC; got {span.sum()}/{span.size}")
-

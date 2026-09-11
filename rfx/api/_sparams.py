@@ -5019,6 +5019,7 @@ class _SparamMixin:
         from rfx.sources.msl_port import (
             MSLPort,
             _msl_yz_cells,
+            msl_cross_section_span,
             msl_loop_current,
             msl_probe_x_coords_n,
         )
@@ -5206,14 +5207,11 @@ class _SparamMixin:
         dz_arr = _msl_cell_profile(grid, "z", grid.nz)
         port_idx_meta = []
         for mp in msl_ports:
-            cells = _msl_yz_cells(grid, mp)
-            j_set = sorted({c[1] for c in cells})
-            k_set = sorted({c[2] for c in cells})
-            j_lo, j_hi = j_set[0], j_set[-1]
-            k_lo, k_hi = k_set[0], k_set[-1]
+            span = msl_cross_section_span(grid, mp)
             port_idx_meta.append(dict(
-                j_lo=j_lo, j_hi=j_hi, k_lo=k_lo, k_hi=k_hi,
-                j_centre=(j_lo + j_hi) // 2, k_top=k_hi,
+                j_lo=span["w_lo"], j_hi=span["w_hi"],
+                k_lo=span["n_lo"], k_hi=span["n_hi"],
+                j_centre=span["w_centre"], k_top=span["n_hi"],
             ))
 
         # One materials assembly shared by the HJ eps anchor AND every
@@ -7303,8 +7301,8 @@ class _SparamMixin:
         Exactly one :meth:`add_coaxial_port` (``face='bottom'`` — the
         physical convention this method assumes: the coax stub is built
         FROM the domain's low-z CPML face UP TO ``position[2]`` (rounded to
-        the nearest grid z-node, :meth:`~rfx.grid.Grid.position_to_index`'s
-        own convention), where ``position[0], position[1]`` is the coax
+        the nearest grid z-node, half-cell ties to the lower node under
+        the conductor-plane convention), where ``position[0], position[1]`` is the coax
         axis centre (x, y) and ``position[2]`` is the physical height of
         the caller's OWN registered ground-plane conductor — i.e. this is
         the ONE parameter that ties this method's auto-built coax stub to
@@ -7317,8 +7315,10 @@ class _SparamMixin:
         RLC, no pre-registered probes/DFT planes/flux monitors/NTFF (this
         method builds its own). ``self._geometry`` must be non-empty (the
         caller's substrate/trace/ground-plane/pin-post Boxes and
-        Cylinders) — arbitrary, not validated here, same delegation
-        :meth:`compute_mixed_s_matrix` uses for its own MSL DUT geometry.
+        Cylinders). The MSL source interval must meet its realized conductor
+        surfaces. The auto-built stub stops below the junction node and
+        preserves the caller's materials at and above it. These checks do
+        not certify the junction's connectivity or its modal accuracy.
         Same solver/precision/boundary contract as
         :meth:`compute_coaxial_two_port` (float32, 3D uniform Yee,
         ``boundary='cpml'`` with positive CPML on all six faces) EXCEPT
@@ -7470,7 +7470,7 @@ class _SparamMixin:
         from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
         from rfx.sources.msl_port import (
             MSLPort as _MSLPortLL,
-            _msl_yz_cells,
+            msl_cross_section_span,
             compute_msl_mode_profile,
             setup_msl_port,
             make_msl_port_sources,
@@ -7487,6 +7487,8 @@ class _SparamMixin:
         flux_by_drive: dict = {}
 
         # ---- Registration guards ----------------------------------------
+        from rfx.materials.thin_conductor import refuse_f0_sheets
+        refuse_f0_sheets(self._thin_conductors, "coax-MSL transition")
         if self._boundary != "cpml" or self._cpml_layers <= 0:
             raise ValueError(
                 "compute_coax_msl_transition() requires boundary='cpml' "
@@ -7660,9 +7662,31 @@ class _SparamMixin:
         freqs_jnp = jnp.asarray(freqs_arr, dtype=jnp.float32)
 
         # ---- Coax stub (mirrors compute_coaxial_two_port's single end) --
+        x_feed, y_centre, msl_z_lo = (float(c) for c in msl_pe.position)
+        msl_port_base = _MSLPortLL(
+            feed_x=x_feed,
+            y_lo=y_centre - msl_pe.width / 2, y_hi=y_centre + msl_pe.width / 2,
+            z_lo=msl_z_lo, z_hi=msl_z_lo + msl_pe.height,
+            direction=msl_pe.direction, impedance=msl_pe.impedance,
+            excitation=None,
+        )
         center_xy = (float(port.position[0]), float(port.position[1]))
         a, b = float(port.pin_radius), float(port.outer_radius)
-        z_junction_idx = int(grid.position_to_index(port.position)[2])
+        from rfx.geometry.rasterize_grid import (
+            _local_cell, _nearest_plane, coords_from_uniform_grid,
+            cell_sizes_from_uniform_grid,
+        )
+        z_nodes = coords_from_uniform_grid(grid)[2]
+        z_sizes = cell_sizes_from_uniform_grid(grid)[2]
+        z_local = _local_cell(z_nodes, z_sizes, float(port.position[2]))
+        z_junction_idx = _nearest_plane(
+            z_nodes, float(port.position[2]), z_local,
+            what="coax-MSL junction", axis=2)
+        if z_junction_idx > msl_cross_section_span(grid, msl_port_base)["n_lo"]:
+            raise ValueError(
+                "compute_coax_msl_transition(): the realized coax junction is "
+                "above the MSL ground plane; make both registrations refer "
+                "to the same physical ground layer.")
         z_stub_lo = int(grid.pad_z_lo) + 2
         z_feed = z_stub_lo + 1
         z_src = z_stub_lo + 3
@@ -7688,6 +7712,7 @@ class _SparamMixin:
 
         z_tem = coaxial_tem_characteristic_impedance(a, b)
         r_feed = float(feed_impedance) if feed_impedance is not None else float(z_tem)
+        junction_materials = materials
         materials, shell_inner = stamp_coaxial_line(
             grid, materials, center_xy=center_xy, z_lo_index=z_stub_lo,
             z_hi_index=z_stub_hi, pin_radius=a, outer_radius=b,
@@ -7696,6 +7721,16 @@ class _SparamMixin:
             grid, materials, center_xy=center_xy, z_index=z_feed,
             pin_radius=a, outer_radius=b, target_impedance=r_feed,
             shell_inner_radius=shell_inner,
+        )
+        # The shared line stamper includes axial padding for standalone
+        # coax runs. Here the caller owns the junction, post and laminate:
+        # stop the generated stub BELOW the junction node. Restore the
+        # registered arrays, not air, so no DUT conductor/dielectric is cut.
+        materials = materials._replace(
+            eps_r=materials.eps_r.at[:, :, z_junction_idx:].set(
+                junction_materials.eps_r[:, :, z_junction_idx:]),
+            sigma=materials.sigma.at[:, :, z_junction_idx:].set(
+                junction_materials.sigma[:, :, z_junction_idx:]),
         )
 
         src_port = _CoaxPort(
@@ -7724,14 +7759,11 @@ class _SparamMixin:
             )
 
         # ---- MSL side (mirrors compute_mixed_s_matrix's MSL consumption) ---
-        x_feed, y_centre, msl_z_lo = (float(c) for c in msl_pe.position)
-        msl_port_base = _MSLPortLL(
-            feed_x=x_feed,
-            y_lo=y_centre - msl_pe.width / 2, y_hi=y_centre + msl_pe.width / 2,
-            z_lo=msl_z_lo, z_hi=msl_z_lo + msl_pe.height,
-            direction=msl_pe.direction, impedance=msl_pe.impedance,
-            excitation=None,
-        )
+        from rfx.sources.msl_port import validate_msl_port_geometry
+        validate_msl_port_geometry(
+            grid, msl_port_base, pec_edge_masks=_cx_pec_edge_masks,
+            periodic=self._periodic_flags(),
+            pec_faces=self._boundary_spec.pec_faces(), name=msl_pe.name)
         mode_profile = compute_msl_mode_profile(grid, msl_port_base, eps_r_sub_resolved)
         materials = setup_msl_port(grid, msl_port_base, materials, mode_profile=mode_profile)
         z0_msl, eps_eff_msl = hammerstad_jensen_z0_eps_eff(
@@ -7882,13 +7914,10 @@ class _SparamMixin:
                 stacklevel=2,
             )
 
-        cells = _msl_yz_cells(grid, msl_port_base)
-        j_set = sorted({c[1] for c in cells})
-        k_set = sorted({c[2] for c in cells})
-        j_lo_msl, j_hi_msl = j_set[0], j_set[-1]
-        k_lo_msl, k_hi_msl = k_set[0], k_set[-1]
-        j_centre_msl = (j_lo_msl + j_hi_msl) // 2
-        i_feed_msl = cells[0][0]
+        span = msl_cross_section_span(grid, msl_port_base)
+        k_lo_msl, k_hi_msl = span["n_lo"], span["n_hi"]
+        j_centre_msl = span["w_centre"]
+        i_feed_msl = span["i_feed"]
         # #931 §1.9: realized wall planes locate the trace, not cells.
         from rfx.probes.msl_wave_decomp import (
             realized_trace_planes_on_column as _trace_planes_cx,

@@ -459,7 +459,7 @@ class _RealizedPEC:
     """
 
     def __init__(self, *, lane, grid, materials, pec_mask, sheets, wires,
-                 periodic):
+                 periodic, sheet_specs=()):
         self.lane = lane
         self.grid = grid
         self.materials = materials
@@ -467,6 +467,7 @@ class _RealizedPEC:
                          else np.asarray(pec_mask, dtype=bool))
         self.sheets = list(sheets)
         self.wires = list(wires)
+        self.sheet_specs = list(sheet_specs)  # observational f0 geometry, not PEC
         self.periodic = tuple(bool(p) for p in periodic)
         self.edges = _realized_edges_np(
             pec_mask, self.sheets, self.wires, self.periodic, grid.shape)
@@ -2179,7 +2180,7 @@ class _PreflightMixin:
         return _RealizedPEC(
             lane="nonuniform" if nonuniform else "uniform", grid=grid,
             materials=mats, pec_mask=pec_mask, sheets=sheets, wires=wires,
-            periodic=self._periodic_flags())
+            periodic=self._periodic_flags(), sheet_specs=sheet_specs)
 
     def _port_realized_edges(self, grid):
         """:class:`_RealizedPEC` for the uniform lane, or ``None``.
@@ -7462,6 +7463,28 @@ class _PreflightMixin:
         _msl_assembled = self._msl_assemble_once()
 
         for pe in self._msl_ports:
+            if _msl_assembled is None:
+                _w.warn(PreflightWarning(
+                    f"MSL port {pe.name!r}: conductor attachment could not be "
+                    "validated because the run geometry could not be assembled.",
+                    code="msl_port_conductor_planes", severity="error",
+                    source="_check_msl_port_geometry"))
+            else:
+                from rfx.sources.msl_port import validate_msl_port_geometry
+                _geometry = _msl_assembled[4]
+                try:
+                    validate_msl_port_geometry(
+                        _msl_assembled[0], _msl_port_from_entry(pe),
+                        pec_edge_masks=_geometry.edges,
+                        sheet_specs=_geometry.sheet_specs,
+                        periodic=_geometry.periodic,
+                        pec_faces=self._boundary_spec.pec_faces(), name=pe.name)
+                except ValueError as exc:
+                    _w.warn(PreflightWarning(
+                        str(exc), code="msl_port_conductor_planes", severity="error",
+                        source="_check_msl_port_geometry"))
+            # A blocking attachment finding does not hide independent
+            # clearance/reflection diagnostics useful for repairing the model.
             # Issue #661: every check below runs on the port's OWN axes.
             # ``prop`` is the propagation axis (checks 3/4/4a fire along
             # it), ``width`` the trace-width axis (check 1 fires across

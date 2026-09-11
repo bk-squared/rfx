@@ -358,6 +358,21 @@ def run_uniform(
     if pec_mask is not None or pec_sheets or pec_wires:
         pec_edge_masks = _rpem(pec_mask, sheets=pec_sheets, wires=pec_wires,
                                periodic=_pec_periodic)
+    _msl_geometry_edges = pec_edge_masks  # before ANY port clearing
+    if sim._msl_ports and use_kottke_pec:
+        from rfx.boundaries.pec import PEC_INV_THRESHOLD, kottke_fenced_edge_masks
+        # Observe the operator the stepper will actually apply: partial
+        # volume edges are released, while declared sheets/wires and every
+        # tensor-frozen component remain metal. This observation must not
+        # change the masks passed to the stepper or turn Kottke into stairs.
+        frozen = tuple(v < PEC_INV_THRESHOLD for v in aniso_inv_eps)
+        if _msl_geometry_edges is None:
+            _msl_geometry_edges = frozen
+        else:
+            fenced = kottke_fenced_edge_masks(
+                _msl_geometry_edges, aniso_inv_eps, sheets=pec_sheets,
+                wires=pec_wires, periodic=_pec_periodic)
+            _msl_geometry_edges = tuple(m | f for m, f in zip(fenced, frozen))
 
     # Port sources — fold impedances into materials first
     lumped_ports = []
@@ -408,7 +423,7 @@ def run_uniform(
                 grid, wp, pec_edge_masks)
             wire_port_live_cells.append(tuple(
                 (int(c[0]), int(c[1]), int(c[2]))
-                for c, l in zip(_wp_cells_764, _wp_live_764) if l))
+                for c, live in zip(_wp_cells_764, _wp_live_764) if live))
             # Live-cell-aware fold + injection (issue #318): dead extent
             # cells inside PEC carry no port sigma and no source. The mask
             # here is the assembled-geometry state BEFORE this port's own
@@ -485,6 +500,11 @@ def run_uniform(
         for pe in sim._msl_ports:
             # Issue #661: one shared projection of position -> port frame.
             mp = msl_port_from_entry(pe)
+            from rfx.sources.msl_port import validate_msl_port_geometry
+            validate_msl_port_geometry(
+                grid, mp, pec_edge_masks=_msl_geometry_edges,
+                sheet_specs=sheet_specs, periodic=_pec_periodic,
+                pec_faces=sim._boundary_spec.pec_faces(), name=pe.name)
             mode_profile = None
             eigenmode_data = None
             port_mode = getattr(pe, "mode", "uniform")

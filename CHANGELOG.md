@@ -16,6 +16,13 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   count, and port clearing preserves normal PEC edges inside a volume trace.
 - The uniform forward path uses the shared port-frame conversion for both
   x- and y-directed feeds, matching the run path's physical source position.
+- MSL ports reject missing or displaced conductor planes and metal crossing
+  the source interval before stepping, including when preflight is skipped.
+  Plane rounding follows the conductor rule; Kottke runs check their actual
+  frozen edges. Forward density reservation includes every source-edge owner.
+- Direct coax-to-MSL setup preserves registered junction materials at and
+  above the junction node and refuses unsupported lossy sheets. Its MSL
+  reader shares the registered centre and bounding planes with other paths.
 
 ### Fixed — GPU passivity projection honors its reconstruction precision (#729)
 

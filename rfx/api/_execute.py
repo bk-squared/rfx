@@ -1489,6 +1489,7 @@ class _ExecuteMixin:
             pec_edge_masks_local = _rpem_fwd(
                 pec_mask, sheets=pec_sheets, wires=pec_wires,
                 periodic=periodic_bool)
+        _msl_geometry_edges = pec_edge_masks_local  # before ANY port clearing
         lumped_port_sparam_specs: list = []
         wire_port_sparam_specs: list = []
         wire_refplane_specs: list = []
@@ -1606,7 +1607,7 @@ class _ExecuteMixin:
                 if _s11_freqs_arr is not None and wp_cells:
                     _live_764 = tuple(
                         (int(c[0]), int(c[1]), int(c[2]))
-                        for c, l in zip(wp_cells, wp_live_flags) if l)
+                        for c, live in zip(wp_cells, wp_live_flags) if live)
                     mid_cell = _live_764[len(_live_764) // 2]
                     wire_port_sparam_specs.append(WirePortSParamSpec(
                         mid_i=int(mid_cell[0]),
@@ -1771,6 +1772,11 @@ class _ExecuteMixin:
                 # Use the same physical-to-port frame as run(). In a y-fed
                 # port feed_x names physical y, and y_lo/y_hi name width x.
                 mp = msl_port_from_entry(pe)
+                from rfx.sources.msl_port import validate_msl_port_geometry
+                validate_msl_port_geometry(
+                    grid, mp, pec_edge_masks=_msl_geometry_edges,
+                    sheet_impedance=sheet_impedance, periodic=periodic_bool,
+                    pec_faces=self._boundary_spec.pec_faces(), name=pe.name)
                 # Honour `pe.mode` so the source distribution matches
                 # the imperative `run_uniform_path` (Phase 3 of gap #2/#4
                 # closure, 2026-05-07).  ``laplace`` is the default for
@@ -1843,9 +1849,24 @@ class _ExecuteMixin:
                 for cell in _msl_cells:
                     if pec_mask_local is not None:
                         pec_mask_local = pec_mask_local.at[cell[0], cell[1], cell[2]].set(False)
-                    if pec_occupancy_local is not None:
-                        pec_occupancy_local = pec_occupancy_local.at[cell[0], cell[1], cell[2]].set(0.0)
                     _port_cleared_cells.append((int(cell[0]), int(cell[1]), int(cell[2])))
+                if pec_occupancy_local is not None and _msl_cells:
+                    # Ez[i,j,k] is owned by four primal cells (#931 §1.2),
+                    # including (i-1,j-1,k). The existing six-face Kottke
+                    # guard below cannot reserve that diagonal owner.
+                    # Reserve only this fixed port region; keep the traced
+                    # design density and its derivatives elsewhere intact.
+                    reserved = set()
+                    for i, j, k in _msl_cells:
+                        for di, dj in ((0, 0), (-1, 0), (0, -1), (-1, -1)):
+                            idx = [i + di, j + dj, k]
+                            for axis in (0, 1):
+                                if periodic_bool[axis] or grid.shape[axis] == 1:
+                                    idx[axis] %= grid.shape[axis]
+                            if all(0 <= idx[a] < grid.shape[a] for a in range(3)):
+                                reserved.add(tuple(idx))
+                    indices = tuple(np.asarray(sorted(reserved), dtype=int).T)
+                    pec_occupancy_local = pec_occupancy_local.at[indices].set(0.0)
 
         for pe in self._probes:
             probes.append(make_probe(grid, pe.position, pe.component))

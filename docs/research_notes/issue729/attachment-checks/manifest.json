@@ -1,0 +1,41 @@
+{
+  "date": "2026-09-11",
+  "state": "pre-commit worktree checks; see adjacent note for scope",
+  "logs": [
+    {
+      "file": "rfx729-expanded-port-regression.log.gz",
+      "raw_bytes": 137384,
+      "raw_sha256": "568faf423dc4c5097cc88b63c54131af6000edb9048b7e8620aa6cc9e99a7170"
+    },
+    {
+      "file": "rfx729-repaired-fixture-regression.log.gz",
+      "raw_bytes": 15111,
+      "raw_sha256": "79247d7e46c053d95ac0b0af130e5ed0982f7d55e131b917935a464e830e2f0e"
+    },
+    {
+      "file": "rfx729-source-geometry-final.log.gz",
+      "raw_bytes": 14892,
+      "raw_sha256": "775a2117be42fc6dd66c87e8f5544c373a94e63b49637aad66e65d3d2c2cbb1b"
+    },
+    {
+      "file": "rfx729-instrument-geometry.log.gz",
+      "raw_bytes": 113,
+      "raw_sha256": "5a4aae61aa6147a53cd075896c1676c8b0246da480e423e25e15d4cfebf6d03e"
+    },
+    {
+      "file": "rfx729-density-derivative.log.gz",
+      "raw_bytes": 113,
+      "raw_sha256": "5ce69b1a508194d9b6b72c68be2672a2bbb1e47acaf43547b5cbdd6e3932c4cd"
+    },
+    {
+      "file": "rfx729-aligned-instrument-smoke.log.gz",
+      "raw_bytes": 1215,
+      "raw_sha256": "ace6d89b8f51203b3d301d0886bdd991e8b6a4a1e9e5aed82f6a5292bf5e710e"
+    },
+    {
+      "file": "rfx729-attachment-final-contracts.log.gz",
+      "raw_bytes": 11658,
+      "raw_sha256": "e63f2e48dac1c0ce9f9928cb9c54d252705f651cf2444cbc2ef089c17a31022b"
+    }
+  ]
+}

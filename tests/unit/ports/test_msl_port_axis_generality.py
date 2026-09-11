@@ -69,7 +69,6 @@ from rfx.sources.msl_port import (
     msl_axis_roles,
     msl_cross_section_span,
     msl_physical_point,
-    msl_port_from_entry,
     msl_probe_x_coords_n,
     setup_msl_port,
 )
@@ -306,8 +305,9 @@ def test_graded_mesh_probe_ladder_reads_its_own_axis_profile():
         assert _msl_cell_profile(g, ax, n).shape == (n,)
 
     kw = dict(n_probes=5, n_offset_cells=6, n_spacing_cells=3)
-    mk = lambda d: MSLPort(feed_x=0.006, y_lo=0.008, y_hi=0.010, z_lo=0.0,
-                           z_hi=0.002, direction=d, impedance=50.0)
+    def mk(d):
+        return MSLPort(feed_x=0.006, y_lo=0.008, y_hi=0.010, z_lo=0.0,
+                       z_hi=0.002, direction=d, impedance=50.0)
     lad_x = np.asarray(msl_probe_x_coords_n(g, mk("+x"), **kw))
     lad_y = np.asarray(msl_probe_x_coords_n(g, mk("+y"), **kw))
 
@@ -328,29 +328,18 @@ def test_graded_mesh_probe_ladder_reads_its_own_axis_profile():
 # ---------------------------------------------------------------------------
 
 
-class _AnisoGrid:
-    """Uniform-Grid duck type with independently settable per-axis spacing.
+def _anisotropic_grid(dx, dy, dz, shape):
+    """Actual supported grid with unequal constant spacings on each axis.
 
-    Exists because a CUBIC grid cannot detect a propagation-axis mix-up:
-    sigma scales as ``1/d_prop``, so on ``dx == dy`` an x-flavoured sigma
-    applied to a y-port is bit-identical to the correct one. The
-    end-to-end rotation-equivalence test below runs on a cubic mesh and is
-    therefore BLIND to this stage -- this test is the one that sees it.
+    A cubic mesh cannot expose a propagation/width metric swap. Use the
+    NU coordinate owner rather than a duck type with its own rounding rule.
     """
-
-    def __init__(self, dx, dy, dz, shape):
-        self.dx = dx
-        self.dx_profile = np.full(shape[0], dx)
-        self.dy_profile = np.full(shape[1], dy)
-        self.dz_profile = np.full(shape[2], dz)
-        self.shape = shape
-        self.nx, self.ny, self.nz = shape
-        self.dt = 1e-13
-
-    def position_to_index(self, pos):
-        return (int(round(pos[0] / self.dx_profile[0])),
-                int(round(pos[1] / self.dy_profile[0])),
-                int(round(pos[2] / self.dz_profile[0])))
+    from rfx.nonuniform import make_nonuniform_grid
+    return make_nonuniform_grid(
+        (0., 0.), np.full(shape[2], dz), dx,
+        dx_profile=np.full(shape[0], dx), dy_profile=np.full(shape[1], dy),
+        cpml_layers=0,
+        pec_faces={f"{axis}_{side}" for axis in "xyz" for side in ("lo", "hi")})
 
 
 class _Mat:
@@ -372,11 +361,11 @@ def _sigma_sum(direction, d_prop, d_width, d_norm):
     prop, width, _n, _s = msl_axis_roles(direction)
     sizes[prop] = d_prop
     sizes[width] = d_width
-    g = _AnisoGrid(sizes["x"], sizes["y"], sizes["z"], shape)
+    g = _anisotropic_grid(sizes["x"], sizes["y"], sizes["z"], shape)
     port = MSLPort(feed_x=10 * d_prop, y_lo=10 * d_width, y_hi=16 * d_width,
                    z_lo=0.0, z_hi=3 * d_norm, direction=direction,
                    impedance=50.0)
-    out = setup_msl_port(g, port, _Mat(shape))
+    out = setup_msl_port(g, port, _Mat(g.shape))
     return float(np.sum(np.asarray(out.sigma)))
 
 
