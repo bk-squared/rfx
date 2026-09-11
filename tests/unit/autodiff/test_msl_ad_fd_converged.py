@@ -35,7 +35,6 @@ from tests._x64_compat import enable_x64  # SCOPED x64 — never flip it at modu
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.geometry.csg import Box
-from tests._gate_policy import gate_from_envelope
 from tests._msl_ad_objective import msl_band_mean_s21_sq
 
 # ---------------------------------------------------------------------------
@@ -51,7 +50,7 @@ _MSL_PORT_MARGIN = 2e-3
 _MSL_F_MAX = 5e9
 
 
-def _build_msl_sim() -> Simulation:
+def _build_msl_sim(*, precision="float32") -> Simulation:
     """Tiny MSL thru-line sim (2 ports, minimal domain)."""
     lx = _MSL_L_LINE + 2 * _MSL_PORT_MARGIN
     ly = _MSL_W_TRACE + 2 * (2 * _MSL_H_SUB + 8 * _MSL_DX)
@@ -61,6 +60,7 @@ def _build_msl_sim() -> Simulation:
         freq_max=_MSL_F_MAX,
         domain=(lx, ly, lz),
         dx=_MSL_DX,
+        precision=precision,
         cpml_layers=8,
         boundary=BoundarySpec(
             x="cpml",
@@ -109,6 +109,15 @@ def _build_msl_sim() -> Simulation:
         impedance=50.0,
     )
     return sim
+
+
+def _build_msl_f64_referee() -> Simulation:
+    """Use float64 FDTD fields as well as float64 loss/extractor arithmetic.
+
+    The caller also enters enable_x64(). That context alone cannot select
+    the field dtype: Simulation's explicit default remains float32.
+    """
+    return _build_msl_sim(precision="float64")
 
 
 # ---------------------------------------------------------------------------
@@ -488,10 +497,14 @@ def test_msl_ad_fd_converged_tight():
     )
 
     # --- Central finite-difference, float64 reference -------------------------
-    # The two loss evaluations run under a SCOPED x64 context. Never flip x64 at
+    # The two loss evaluations run with explicit float64 FIELDS under a
+    # SCOPED x64 context. Never flip x64 at
     # module level: it is process-global, flips at pytest collection, and reds
     # every same-process pytest-split shard. rfx/probes/probes.py already keys
-    # its DFT accumulator dtype off jax.config.x64_enabled, so x64 reaches S.
+    # its DFT accumulator dtype off jax.config.x64_enabled. The context and
+    # eps64 alone only promoted part of the evaluation: the core otherwise
+    # rounded every E/H step back to float32. A float64 final loss does not
+    # resolve that internal evaluation noise (#729 consumer audit).
     #
     # `grid` and `checkpoint_segments` are computed OUTSIDE this context and
     # reused inside it. Verified identical under both configs — shape
@@ -501,7 +514,8 @@ def test_msl_ad_fd_converged_tight():
     # in the segmented scan (plus the local assert above).
     t_fd_start = time.perf_counter()
     with enable_x64():
-        sim64 = _build_msl_sim()
+        sim64 = _build_msl_f64_referee()
+        assert sim64._resolve_field_dtype() == jnp.float64
         eps64 = jnp.ones(grid.shape, dtype=jnp.float64)
 
         def objective64(alpha):
@@ -728,3 +742,34 @@ def _assert_trace_sheet_realized(sim_sim):
 
 def test_migrated_trace_is_a_sheet_on_the_declared_plane():
     _assert_trace_sheet_realized(_build_msl_sim())
+
+
+@pytest.mark.parametrize("referee,expected", [(False, np.float32), (True, np.float64)])
+def test_referee_precision_reaches_the_actual_field_state(referee, expected, monkeypatch):
+    """Observe real core initialization; stop before any FDTD scan.
+
+    Both arms enable x64 and supply eps64. The default-field arm is the
+    negative control for the old assumption that this alone makes a
+    double-precision finite-difference reference.
+    """
+    import rfx.simulation as simulation_core
+
+    original = simulation_core.init_state
+    seen = []
+
+    class Captured(Exception):
+        pass
+
+    def capture(shape, **kwargs):
+        state = original(shape, **kwargs)
+        seen.append({getattr(state, key).dtype for key in ("ex", "ey", "ez", "hx", "hy", "hz")})
+        raise Captured
+
+    monkeypatch.setattr(simulation_core, "init_state", capture)
+    with enable_x64():
+        sim = _build_msl_f64_referee() if referee else _build_msl_sim()
+        grid = sim._build_grid()
+        with pytest.raises(Captured):
+            sim.compute_msl_s_matrix(n_steps=1, n_freqs=1, checkpoint_segments=1,
+                                     eps_override=jnp.ones(grid.shape, dtype=jnp.float64))
+    assert seen == [{np.dtype(expected)}]

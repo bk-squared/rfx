@@ -1,0 +1,63 @@
+{
+  "run_id": "369367260430",
+  "status": "failed",
+  "full_provider_log": "docs/research_notes/vessl_logs/369367260430-issue729-ad-controls-failed.log.gz",
+  "provider_log_raw_sha256": "6478555fc67ef039d367e5945ceae273497a2987b423d6ad123358f84f2b4071",
+  "provider_log_gzip_sha256": "72c2589a5f0bef9c965e6e59a444c4ff0dab5f4d9ff68668a13ac608f663e48e",
+  "provider_log_raw_bytes": 165441,
+  "files": {
+    "controller.py": "fcc9c8ac85ccde368ac8a6fa46f1088f5fdb5efe1e106faa7e2684848d6851ff",
+    "candidate_highest.log.gz": "4e8da6edba560ec494a512b0f3e6c4a63d870e284a72968d768f0fe209a593dd",
+    "outcomes.json": "1f35f16360698626d106f922d0198e3e5d54cfd105acc38c48ae2217f1fe0615",
+    "run.yaml": "206353e26519a986cef15055072a8b6198158514ac0d5a4e4d94137f16b95580",
+    "arms.json": "efa275b24e0039ee1091bcbfa4657cf4f10159c1b2ab497b7377da5f1bbe1584",
+    "main_default.log.gz": "4905b33651bc10ff1214a6d6298685c3a02939f3841a60c9a8e52dea18aab827",
+    "provider-status.txt.gz": "6797cc1a4097979e17930f51fd8f610f65a3ee7afcc055d01de93a88d7783d47",
+    "driver.py": "7d88e038937a45b46cfda08d12802145b022dd8c9f6ae19915baee09f58daeb6",
+    "candidate_highest/environment.json": "9f46464f2ad0d0cae63d43999ab187cf8621589d23596df1577ef23fc4c98599",
+    "candidate_highest/ad.log.gz": "9305a7cb120cfa4d83b60db06500edb16d8d4e65b63a8f52c8b8430d9ba8f7c3",
+    "candidate_highest/outcomes.json": "dbd9e839aea0f556766bebf9333bdbd9248fafe967c3b824db2c3352e56c3dda",
+    "candidate_highest/ad/call-0-result.npz": "dcf27fcedb742f292f98e7f64d51e55804cccfc4dedea7675c1261505991ecec",
+    "candidate_highest/ad/call-3-result.npz": "70b03f5f97e9dbe2c946d5b7b87baf56ca42fd82cf04ded986432fc868e49a98",
+    "candidate_highest/ad/junit.xml.gz": "78fa68915c86db10f7f389f884456b497ccdfd38e2ad18074e639a3eb9926cd7",
+    "candidate_highest/ad/outcome.json": "1b6f94e87c78dbb5c05bcb875e632b4960e4ecbff943a64bac8da6d5cfaf5a9a",
+    "candidate_highest/ad/calls.json": "e7f3ab9cb5ef6b9a92b7923b88e8bd7f7b8471451c9e2cecfd3ff356e9e761bc",
+    "candidate_highest/ad/call-2-result.npz": "50c340975c5f4b73af2aa9aef4463360cf190d08074075344d67633a540ea823",
+    "main_default/environment.json": "0dc44f48cd18cb45daa4d1e5ecb2859f88739335cb09604d2a944644dcfc0206",
+    "main_default/ad.log.gz": "de338a1b95b4546bb7fdd29091b593e0224546629b0b63072de197d3e19566f0",
+    "main_default/outcomes.json": "81098d8b7a1f1c3f7a0323f8403ebb75be331d2f7a5e658d6efa14c94c49172c",
+    "main_default/ad/call-0-result.npz": "cd06f7f4a02339694f0865f4342c34da6782218459c93ecb6196a47814552fa6",
+    "main_default/ad/call-3-result.npz": "b53497ba5532c1c661ac0a31240468b2e6b1b984c35a667081d931a5a79ffb11",
+    "main_default/ad/junit.xml.gz": "b0a2b234aae8696d7256aa4c3275091237ba853876c7cbff3fa40c46574755b9",
+    "main_default/ad/outcome.json": "6588706bca9f2575ee7f98f0c4c4a0ffcc2aa7e8e3eb70bf943410cce000ba0a",
+    "main_default/ad/calls.json": "e7f3ab9cb5ef6b9a92b7923b88e8bd7f7b8471451c9e2cecfd3ff356e9e761bc",
+    "main_default/ad/call-2-result.npz": "be370c5b5e498fe15fc9fef8e07a7b43f030dedad6632c0bf6bd9fb46e7e59f4"
+  },
+  "compressed_logs": {
+    "candidate_highest/ad.log.gz": {
+      "raw_sha256": "828ddb69d45e2fa3438ff86c2a2b42895805976dde3904a31ca23bbd78325d18",
+      "raw_bytes": 88922
+    },
+    "main_default/ad.log.gz": {
+      "raw_sha256": "2c95c8e038c02948357f32084c4d0de5df749b7911e472366152dbe672b305e8",
+      "raw_bytes": 61277
+    }
+  },
+  "compressed_artifacts": {
+    "provider-status.txt.gz": {
+      "original_path": "provider-status.txt",
+      "raw_sha256": "9a703841d29271c090fc834652346ad3ca03112777a0686692647c927457fa3b",
+      "raw_bytes": 1899
+    },
+    "candidate_highest/ad/junit.xml.gz": {
+      "original_path": "candidate_highest/ad/junit.xml",
+      "raw_sha256": "24438b3f1b2cba429c39bb96fa603a66b7c3739f6b6896124d5c115aa7c86944",
+      "raw_bytes": 27730
+    },
+    "main_default/ad/junit.xml.gz": {
+      "original_path": "main_default/ad/junit.xml",
+      "raw_sha256": "23d660228b49ac6b73e5c278b61a690232263a8f1ba454780a79186cd510462b",
+      "raw_bytes": 388
+    }
+  }
+}

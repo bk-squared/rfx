@@ -1,0 +1,142 @@
+[
+  {
+    "call": 0,
+    "num_periods": 2.0,
+    "n_freqs": null,
+    "has_eps_override": false,
+    "checkpoint_segments": null,
+    "traced": false,
+    "array_shapes": {
+      "S": [
+        2,
+        2,
+        16
+      ],
+      "S_raw": [
+        2,
+        2,
+        16
+      ],
+      "freqs": [
+        16
+      ],
+      "Z0": [
+        2,
+        16
+      ],
+      "beta": [
+        16
+      ],
+      "settling_db": [
+        2
+      ],
+      "reliable": [
+        2,
+        16
+      ],
+      "passivity_correction": [
+        16
+      ]
+    },
+    "array_dtypes": {
+      "S": "complex64",
+      "S_raw": "complex64",
+      "freqs": "float32",
+      "Z0": "complex64",
+      "beta": "complex64",
+      "settling_db": "float64",
+      "reliable": "bool",
+      "passivity_correction": "float32"
+    }
+  },
+  {
+    "call": 1,
+    "num_periods": 2.0,
+    "n_freqs": null,
+    "has_eps_override": false,
+    "checkpoint_segments": null,
+    "traced": false,
+    "array_shapes": {
+      "S": [
+        2,
+        2,
+        16
+      ],
+      "freqs": [
+        16
+      ],
+      "Z0": [
+        2,
+        16
+      ],
+      "beta": [
+        16
+      ],
+      "settling_db": [
+        2
+      ],
+      "reliable": [
+        2,
+        16
+      ]
+    },
+    "array_dtypes": {
+      "S": "complex64",
+      "freqs": "float32",
+      "Z0": "complex64",
+      "beta": "complex64",
+      "settling_db": "float64",
+      "reliable": "bool"
+    }
+  },
+  {
+    "call": 2,
+    "num_periods": 2.0,
+    "n_freqs": null,
+    "has_eps_override": false,
+    "checkpoint_segments": null,
+    "traced": false,
+    "array_shapes": {
+      "S": [
+        2,
+        2,
+        16
+      ],
+      "S_raw": [
+        2,
+        2,
+        16
+      ],
+      "freqs": [
+        16
+      ],
+      "Z0": [
+        2,
+        16
+      ],
+      "beta": [
+        16
+      ],
+      "settling_db": [
+        2
+      ],
+      "reliable": [
+        2,
+        16
+      ],
+      "passivity_correction": [
+        16
+      ]
+    },
+    "array_dtypes": {
+      "S": "complex64",
+      "S_raw": "complex64",
+      "freqs": "float32",
+      "Z0": "complex64",
+      "beta": "complex64",
+      "settling_db": "float64",
+      "reliable": "bool",
+      "passivity_correction": "float32"
+    }
+  }
+]

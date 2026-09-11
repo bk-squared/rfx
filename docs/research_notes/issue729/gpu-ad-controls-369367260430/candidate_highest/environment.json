@@ -1,0 +1,13 @@
+{
+  "source_sha": "b036dbc706b4026b816fe6a4be5bd0fbb14e1a51",
+  "source_dirty": false,
+  "jax": "0.4.33.dev20241023+e3c6d6430",
+  "numpy": "1.26.4",
+  "scipy": "1.14.1",
+  "devices": "[CudaDevice(id=0)]",
+  "matmul_precision": "float32",
+  "cases": {
+    "ad": "tests/unit/autodiff/test_msl_ad_fd_converged.py::test_msl_ad_fd_converged_tight"
+  },
+  "driver_sha256": "7d88e038937a45b46cfda08d12802145b022dd8c9f6ae19915baee09f58daeb6"
+}

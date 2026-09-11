@@ -1,0 +1,12 @@
+[
+  {
+    "arm": "main_default",
+    "exit_code": 0,
+    "wall_s": 142.78609642013907
+  },
+  {
+    "arm": "candidate_highest",
+    "exit_code": 1,
+    "wall_s": 131.89567317720503
+  }
+]

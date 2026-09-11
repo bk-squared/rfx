@@ -10,9 +10,21 @@
     "environment.json": "392e90f6596f83c398b1f8cb6d8b5d61460519d995186c426837f92bc18a2e78",
     "outcomes.json": "0e4dd9d7dab7c54cad8ad1ff02817b09459745945a7dd86eaab92a395b017d87",
     "run.yaml": "0f214cb46de387c0c602a669c1ea6e73e6f71078e4885642c5842dfa0846eaf5",
-    "provider-status.txt": "d3385155b81eae7f31bdbee5e399aadbe3934dfa23cb625d46535754408631e7",
+    "provider-status.txt.gz": "13412908a275ad57a41f55a9b33b730948fad98cc99f553f712503af1542781f",
     "driver.py": "9284da9fb980633668835caef2ac215ed67ffba09c39db420c3fa91eda0c5be8",
-    "projection/junit.xml": "2d1d3a9ee41ea54262a324d64610a009067c916f4bb55c238a29cf9a780f6273",
+    "projection/junit.xml.gz": "703ce8781109cdf15adc4b7c57d3fd5acbe727287138e6c4a81848685d6884e0",
     "projection/outcome.json": "f0c75deaca86b9950cf5a297e272bed5aab3371e9b5b2945f00261e99c245431"
+  },
+  "compressed_artifacts": {
+    "provider-status.txt.gz": {
+      "original_path": "provider-status.txt",
+      "raw_sha256": "d3385155b81eae7f31bdbee5e399aadbe3934dfa23cb625d46535754408631e7",
+      "raw_bytes": 2212
+    },
+    "projection/junit.xml.gz": {
+      "original_path": "projection/junit.xml",
+      "raw_sha256": "2d1d3a9ee41ea54262a324d64610a009067c916f4bb55c238a29cf9a780f6273",
+      "raw_bytes": 39869
+    }
   }
 }

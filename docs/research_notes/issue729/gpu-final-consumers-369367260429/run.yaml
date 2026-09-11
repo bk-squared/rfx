@@ -1,0 +1,44 @@
+name: rfx-i729-final-consumers
+description: Sequential projection / rotation / AD-FD / NU patch validation; exact
+  matrix referee corrected, physical inequalities unchanged.
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: '1'
+  OMP_NUM_THREADS: '1'
+  OPENBLAS_NUM_THREADS: '1'
+  XLA_PYTHON_CLIENT_PREALLOCATE: 'false'
+  XLA_FLAGS: --xla_force_host_platform_device_count=2
+  HDF5_USE_FILE_LOCKING: 'FALSE'
+  RFX_CHECKOUT: /root/workspace/claude-workspace/rfx/checkouts/codex-729-b036dbc7
+  RFX_SHA: b036dbc706b4026b816fe6a4be5bd0fbb14e1a51
+  RFX_OUT: /root/workspace/claude-workspace/rfx/runs/codex-i729-final-consumers-tb0aowrs
+  RFX_DRIVER: /root/workspace/claude-workspace/rfx/runs/codex-i729-final-consumers-tb0aowrs/driver.py
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: 'set -eu
+
+  RFX_WORK=/tmp/rfx-i729-consumers
+
+  git config --global --add safe.directory "$RFX_CHECKOUT"
+
+  git config --global --add safe.directory "$RFX_CHECKOUT/.git"
+
+  git clone --quiet --no-checkout "$RFX_CHECKOUT" "$RFX_WORK"
+
+  git -C "$RFX_WORK" checkout --quiet --detach "$RFX_SHA"
+
+  cd "$RFX_WORK"
+
+  python -m pip install -q "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pyyaml
+  pytest
+
+  export PYTHONPATH="$RFX_WORK"
+
+  export MPLBACKEND=Agg
+
+  python -u "$RFX_DRIVER" run
+
+  '

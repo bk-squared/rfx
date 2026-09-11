@@ -1,0 +1,14 @@
+[
+  {
+    "name": "main_default",
+    "source_sha": "e32e386da17a8a4ad11fee46900dbd68ba8d694e",
+    "checkout": "/root/workspace/claude-workspace/rfx/checkouts/codex-729-base-e32e386d",
+    "precision": null
+  },
+  {
+    "name": "candidate_highest",
+    "source_sha": "b036dbc706b4026b816fe6a4be5bd0fbb14e1a51",
+    "checkout": "/root/workspace/claude-workspace/rfx/checkouts/codex-729-b036dbc7",
+    "precision": "float32"
+  }
+]

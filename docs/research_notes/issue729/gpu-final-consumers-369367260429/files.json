@@ -1,0 +1,62 @@
+{
+  "run_id": "369367260429",
+  "status": "failed",
+  "full_provider_log": "docs/research_notes/vessl_logs/369367260429-issue729-final-consumers-ad-failed.log.gz",
+  "provider_log_raw_sha256": "e1ecdf1ea5ec89e1c63d909dc720865363d30026f9981420d82d4dd795ac0f43",
+  "provider_log_gzip_sha256": "82d47304d2dada47dffbf764a48c9dc65a725ebf70f65ebe1742e8dfd1ff0c97",
+  "provider_log_raw_bytes": 131043,
+  "files": {
+    "projection.log.gz": "d4263f8e81754fabdc372f1fc4928d2dba22fc9027e77e1aaa1bbc21d8711fba",
+    "environment.json": "c17f22963df6fd24cd2bd3e203d6c64471f6cc775136493dec47f49543fdd410",
+    "ad.log.gz": "ea79fb7fbb7dbe58a3d64e5d4234383eded947a62e6eafb45effffe131214a3e",
+    "outcomes.json": "79b34d5529eb95a5eeab57f080781394ed210db87a85a76494f36177566512d9",
+    "run.yaml": "50a99fc7d282ac7decad1cb9154083340d8b213cef13819921ce0da4265df5c2",
+    "provider-status.txt.gz": "a4e9b682e8b4c2f5d39e7265ca3707d3bce647a6435d85269840504b07cfaa9e",
+    "axis.log.gz": "901f708e1de57f0093afe0bae7e9c63cafebdbe1b29f9a104d4e5de830d44537",
+    "driver.py": "5a0feafe1ec520f30c027d963f014a279825e2ade14bfc4845e671de525222b9",
+    "ad/call-0-result.npz": "dcf27fcedb742f292f98e7f64d51e55804cccfc4dedea7675c1261505991ecec",
+    "ad/call-3-result.npz": "70b03f5f97e9dbe2c946d5b7b87baf56ca42fd82cf04ded986432fc868e49a98",
+    "ad/junit.xml.gz": "79bd3d21d53e1063c4f891496a09a0807feee79bedb75d8fb254b12ff3389087",
+    "ad/outcome.json": "516f8aad4f5bc1f7cdca99dd842bc2127bf2969bcb21390516a813f42f8511f7",
+    "ad/calls.json": "e7f3ab9cb5ef6b9a92b7923b88e8bd7f7b8471451c9e2cecfd3ff356e9e761bc",
+    "ad/call-2-result.npz": "50c340975c5f4b73af2aa9aef4463360cf190d08074075344d67633a540ea823",
+    "projection/call-0-result.npz": "939bb77d2d26b00d7cb7b410353d8596959ef68ed93bdeb748e51d6a8f4474e7",
+    "projection/call-0-raw-vi.npz": "bb0d1b19c0e7c14d7b3687e4d7f6de3a73d03713a0628acea0d8a193421bf2e7",
+    "projection/call-1-raw-vi.npz": "bb0d1b19c0e7c14d7b3687e4d7f6de3a73d03713a0628acea0d8a193421bf2e7",
+    "projection/call-2-raw-vi.npz": "bb0d1b19c0e7c14d7b3687e4d7f6de3a73d03713a0628acea0d8a193421bf2e7",
+    "projection/call-1-result.npz": "16dd887a4928d5696eca6133eb6cd4f8582b76f6a224d1606476e323be6a02ef",
+    "projection/junit.xml.gz": "7503304a5140a3902f3e371e7fac01e50eaa3bd2c1aa0e7786b418eadfe68328",
+    "projection/outcome.json": "7e788513870fa93f397d53cfd37cd16b3a5a26d882a26e31a90a13b716870278",
+    "projection/calls.json": "71139b0531610116e442b5cec140a981b743cb81cbe2fd80ba406c43918753df",
+    "projection/call-2-result.npz": "939bb77d2d26b00d7cb7b410353d8596959ef68ed93bdeb748e51d6a8f4474e7",
+    "axis/call-0-result.npz": "bfd2a914cf79ce856e6804c9aab9806ec16492afb02477b7e87f05f7496f1b8b",
+    "axis/call-0-raw-vi.npz": "f2a43ce80e97b02f91c35a29a025e896eba2b6bd7e0b2e431228ec5fe8d17cab",
+    "axis/call-1-raw-vi.npz": "135bc32581e57a539b2e507dba5b26be66f0004df082a661bdc1545fada9c4c5",
+    "axis/call-1-result.npz": "f47050d8663a36a76af70da355f9caf82f7c387f62ab0af24a8bf375732c38ad",
+    "axis/junit.xml.gz": "d9430e3cbe2690b4eb7a67e3bafd1f307450ae22b0e0867fc05247ca736ca779",
+    "axis/outcome.json": "d74d1c58b2c4ce49abbcbcd96c578c93952eff5ffa31aa0bbbd8cbf8841c0e52",
+    "axis/calls.json": "1cb2626928fda4d1a24d55241d48c71f0fcd898253ee7983945cfd2ba8fad61d"
+  },
+  "compressed_artifacts": {
+    "provider-status.txt.gz": {
+      "original_path": "provider-status.txt",
+      "raw_sha256": "876cb8ccdb87942a634efdde7ff01e7ec8d1157d71b370fb571ff027b7c908fe",
+      "raw_bytes": 2192
+    },
+    "ad/junit.xml.gz": {
+      "original_path": "ad/junit.xml",
+      "raw_sha256": "500c32c54b316db99d9ac961fe8d992ef821a2ac3898f945d42e1784c0eb07a0",
+      "raw_bytes": 27730
+    },
+    "projection/junit.xml.gz": {
+      "original_path": "projection/junit.xml",
+      "raw_sha256": "9dd46ce657e187c6914a7ed11814e38e2751229831a7837a78eaa1b874e4e870",
+      "raw_bytes": 4216
+    },
+    "axis/junit.xml.gz": {
+      "original_path": "axis/junit.xml",
+      "raw_sha256": "1994ca1edaec2a2588db296a466073847a183b3c38cc0db9f930e5e3cdb84462",
+      "raw_bytes": 409
+    }
+  }
+}

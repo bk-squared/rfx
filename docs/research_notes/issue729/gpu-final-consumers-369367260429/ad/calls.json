@@ -1,0 +1,130 @@
+[
+  {
+    "call": 0,
+    "num_periods": 20,
+    "n_freqs": 8,
+    "has_eps_override": true,
+    "checkpoint_segments": 141,
+    "traced": false,
+    "array_shapes": {
+      "S": [
+        2,
+        2,
+        8
+      ],
+      "freqs": [
+        8
+      ],
+      "Z0": [
+        2,
+        8
+      ],
+      "beta": [
+        8
+      ],
+      "settling_db": [
+        2
+      ],
+      "reliable": [
+        2,
+        8
+      ]
+    },
+    "array_dtypes": {
+      "S": "complex64",
+      "freqs": "float32",
+      "Z0": "complex64",
+      "beta": "complex64",
+      "settling_db": "float64",
+      "reliable": "bool"
+    }
+  },
+  {
+    "call": 1,
+    "num_periods": 20,
+    "n_freqs": 8,
+    "has_eps_override": true,
+    "checkpoint_segments": 141,
+    "traced": true
+  },
+  {
+    "call": 2,
+    "num_periods": 20,
+    "n_freqs": 8,
+    "has_eps_override": true,
+    "checkpoint_segments": 141,
+    "traced": false,
+    "array_shapes": {
+      "S": [
+        2,
+        2,
+        8
+      ],
+      "freqs": [
+        8
+      ],
+      "Z0": [
+        2,
+        8
+      ],
+      "beta": [
+        8
+      ],
+      "settling_db": [
+        2
+      ],
+      "reliable": [
+        2,
+        8
+      ]
+    },
+    "array_dtypes": {
+      "S": "complex128",
+      "freqs": "float64",
+      "Z0": "complex128",
+      "beta": "complex128",
+      "settling_db": "float64",
+      "reliable": "bool"
+    }
+  },
+  {
+    "call": 3,
+    "num_periods": 20,
+    "n_freqs": 8,
+    "has_eps_override": true,
+    "checkpoint_segments": 141,
+    "traced": false,
+    "array_shapes": {
+      "S": [
+        2,
+        2,
+        8
+      ],
+      "freqs": [
+        8
+      ],
+      "Z0": [
+        2,
+        8
+      ],
+      "beta": [
+        8
+      ],
+      "settling_db": [
+        2
+      ],
+      "reliable": [
+        2,
+        8
+      ]
+    },
+    "array_dtypes": {
+      "S": "complex128",
+      "freqs": "float64",
+      "Z0": "complex128",
+      "beta": "complex128",
+      "settling_db": "float64",
+      "reliable": "bool"
+    }
+  }
+]

@@ -7,9 +7,18 @@
   "provider_log_raw_bytes": 6536,
   "files": {
     "projection-probe.json": "9455dd177902ee13b3b10964371041fdafde17d484c317f9c97596bc88cd273d",
+    "cpu-before.log.gz": "618840cc8d5e7c958d768ab10e1434fb443613fa717e6b6e7c750e1422cc617f",
     "run.yaml": "57b4134c2ace80cce1aac121690efd648304e1110e5e4e5ea0adf7d89c049da3",
     "projection-probe.npz": "dc5b2cda190512c2a5ce48cb71302a123b12d319ffd233bf5cdac76a22c8da38",
-    "provider-status.txt": "3aa9467fd93253a6ba7e57037089d15cada3d5011c9374b9934d583bfdbc26e8",
+    "cpu-after.log.gz": "505b8ed412c7599d9704abfe81b2bc05d4166bef6cb63c5babd4dff18bea7d56",
+    "provider-status.txt.gz": "58a0c5de850bfd720bbf787e965e0e5ba84dae9e9cb64a2db64473fe3021284b",
     "projection_probe.py": "a064896159ca1fd807471deecaf23b8194ae9b0e591ea154fc44986912120c7f"
+  },
+  "compressed_artifacts": {
+    "provider-status.txt.gz": {
+      "original_path": "provider-status.txt",
+      "raw_sha256": "3aa9467fd93253a6ba7e57037089d15cada3d5011c9374b9934d583bfdbc26e8",
+      "raw_bytes": 2290
+    }
   }
 }

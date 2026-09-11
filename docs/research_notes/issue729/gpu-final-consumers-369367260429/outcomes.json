@@ -1,0 +1,17 @@
+[
+  {
+    "case": "projection",
+    "exit_code": 0,
+    "wall_s": 31.533034710679203
+  },
+  {
+    "case": "axis",
+    "exit_code": 0,
+    "wall_s": 34.01867238385603
+  },
+  {
+    "case": "ad",
+    "exit_code": 1,
+    "wall_s": 130.311636087019
+  }
+]

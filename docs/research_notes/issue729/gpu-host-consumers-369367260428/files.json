@@ -11,14 +11,26 @@
     "outcomes.json": "6ccddc47f284b1bc22b5d3978d472acae301eb77ff21d178930f5f1811748d08",
     "run.yaml": "151cbfc4a54441579cc8681dfa409c12e82ff995d3c2080b5f36935a784836dd",
     "referee-comparison.json": "9a7a90581542a1b6e27e27e93ea83f322dee9538c1dc226dc2b0508d1c484cb3",
-    "provider-status.txt": "46a7e4affd5cfaa1ac684dfd1a78e131193f7231cbdc83d2bf739a59b3f1605c",
+    "provider-status.txt.gz": "3165159952b68c53f86c4a01e3c29b9156484ef2125c20ef6bca8864e9090522",
     "driver.py": "5a0feafe1ec520f30c027d963f014a279825e2ade14bfc4845e671de525222b9",
-    "projection/junit.xml": "0ebf1a3353728be39cca0c525963109b07376099e9bc72193c047da9da804066",
     "projection/call-0-result.npz": "939bb77d2d26b00d7cb7b410353d8596959ef68ed93bdeb748e51d6a8f4474e7",
     "projection/call-0-raw-vi.npz": "bb0d1b19c0e7c14d7b3687e4d7f6de3a73d03713a0628acea0d8a193421bf2e7",
     "projection/call-1-raw-vi.npz": "bb0d1b19c0e7c14d7b3687e4d7f6de3a73d03713a0628acea0d8a193421bf2e7",
     "projection/call-1-result.npz": "16dd887a4928d5696eca6133eb6cd4f8582b76f6a224d1606476e323be6a02ef",
+    "projection/junit.xml.gz": "d049869c80f471c95fb95e2d757171b824e13767dfad7b367382c18ca8a68c19",
     "projection/outcome.json": "cd5cd009908313d7a356d9940a998b47a6bf875467884571c6b84eb9e6249788",
     "projection/calls.json": "ac98292d147b56f8c0c7cb9cd69afb7aa9958d6d3d415cf0369db65b53f44d1b"
+  },
+  "compressed_artifacts": {
+    "provider-status.txt.gz": {
+      "original_path": "provider-status.txt",
+      "raw_sha256": "46a7e4affd5cfaa1ac684dfd1a78e131193f7231cbdc83d2bf739a59b3f1605c",
+      "raw_bytes": 2206
+    },
+    "projection/junit.xml.gz": {
+      "original_path": "projection/junit.xml",
+      "raw_sha256": "0ebf1a3353728be39cca0c525963109b07376099e9bc72193c047da9da804066",
+      "raw_bytes": 24387
+    }
   }
 }

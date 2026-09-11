@@ -9,15 +9,27 @@
     "environment.json": "47fed36f34e528782b584d77c435892025f1574a4f57136d42509174ec85c5e4",
     "outcomes.json": "a24330419f914265f2fe83e10a206c9b17d346eefa153fed3e28d9870cddc863",
     "run.yaml": "b1c0dc61d5906ab469a9a27cea69c117966ffcbcbc0fcf57a7ec06843065789c",
-    "provider-status.txt": "f4762a964a30afb1739c81fc8c23d5d919b46ee3680eee14ee272850add3ac62",
+    "provider-status.txt.gz": "ccc2114dd95ed6b2f753b018686a0722b65e515a718588bede83f3c1a1b9685f",
     "axis.log.gz": "86ed81bb20efd8baf0eeeb3b8540cc36920ac7a774577543d0bbf0216bf1e490",
     "driver.py": "4a8d42f6346effdb30afbd835e86dd5a435ec22244980352f0790a9cc0df96f5",
-    "axis/junit.xml": "dbe68e49132a9afe65facf8bf9e58f60d08c77a52ee6b1cdf8f4c4b87f0d4759",
     "axis/call-0-result.npz": "04162b904f1459be426c7499f215c2838114220ae07069777efbc8372cf74e0f",
     "axis/call-0-raw-vi.npz": "f2a43ce80e97b02f91c35a29a025e896eba2b6bd7e0b2e431228ec5fe8d17cab",
     "axis/call-1-raw-vi.npz": "135bc32581e57a539b2e507dba5b26be66f0004df082a661bdc1545fada9c4c5",
     "axis/call-1-result.npz": "ae35142a56f5f858b8aedd2b0947faf19d093108ff4d97de33cc1e93ff9fdceb",
+    "axis/junit.xml.gz": "07a32ab72470c2470241a11e4862173b4adc243b187d55544c58fafe4609222d",
     "axis/outcome.json": "9ee598393da4cd90095249d96af9b02b4e035c9ab8cba1f319c13cb3e7289e20",
     "axis/calls.json": "1cb2626928fda4d1a24d55241d48c71f0fcd898253ee7983945cfd2ba8fad61d"
+  },
+  "compressed_artifacts": {
+    "provider-status.txt.gz": {
+      "original_path": "provider-status.txt",
+      "raw_sha256": "f4762a964a30afb1739c81fc8c23d5d919b46ee3680eee14ee272850add3ac62",
+      "raw_bytes": 2175
+    },
+    "axis/junit.xml.gz": {
+      "original_path": "axis/junit.xml",
+      "raw_sha256": "dbe68e49132a9afe65facf8bf9e58f60d08c77a52ee6b1cdf8f4c4b87f0d4759",
+      "raw_bytes": 5769
+    }
   }
 }

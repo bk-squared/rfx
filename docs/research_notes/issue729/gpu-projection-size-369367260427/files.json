@@ -7,8 +7,17 @@
   "provider_log_raw_bytes": 9682,
   "files": {
     "size-probe.json": "1c4e26a3cfe8c57db9f5da79a6ce5f9d2e8e50b185db87482c21c29a7b8f90b2",
+    "analytic-context-cpu.log.gz": "3d7d88dd8e230c9a7e8fa8f9b76cbc540d0d568c9267faa0946b0c62de3264ff",
     "size_probe.py": "a9ad9324b7d95dc3d051159b1d14b07728c09eabc5a8313d4f33d753ac208e79",
     "run.yaml": "245835101da5b05e67bbfb6960fc19f22190b14ef4426ffc703c6c2829339478",
-    "provider-status.txt": "a6f6868ebcb5a50ce295a0c1d56a47bed03e3f3508bf7d607a2b3984c43f2224"
+    "provider-status.txt.gz": "1281a7b89479803cd08ee4bcc001d156173c70352acba055e63e2aff3a902528",
+    "host-cpu-suite.log.gz": "713bace8beb576a67faacf7f717aed4dc16e753fe8d96f0126a146df0e9b8fb6"
+  },
+  "compressed_artifacts": {
+    "provider-status.txt.gz": {
+      "original_path": "provider-status.txt",
+      "raw_sha256": "a6f6868ebcb5a50ce295a0c1d56a47bed03e3f3508bf7d607a2b3984c43f2224",
+      "raw_bytes": 2228
+    }
   }
 }
