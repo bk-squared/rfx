@@ -1,0 +1,5 @@
+{
+  "stored_dtype": "complex64",
+  "sigma_max_f32_referee": 1.0,
+  "sigma_max_f64_referee": 1.0000000100004154
+}

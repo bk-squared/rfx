@@ -25,11 +25,24 @@ from tests._realized_geometry import assert_sheet_planes, assert_wall_planes
 
 
 def _sigma_max(S):
-    S = np.asarray(S)
+    # Verify the stored matrix, not a singular value rounded back to f32.
+    # A tiny off-diagonal term can make sigma_max > 1 even when that
+    # singular value rounds to exactly 1 in the matrix's storage dtype.
+    S = np.asarray(S, dtype=np.complex128)
     return np.array([
         np.linalg.svd(S[:, :, k], compute_uv=False)[0]
         for k in range(S.shape[2])
     ])
+
+
+def test_passivity_referee_resolves_gain_below_one_float32_ulp():
+    coupling = np.float32(1e-8)
+    matrix = np.array([[1., coupling], [coupling, 1.]], dtype=np.complex64)[:, :, None]
+    # The symmetric common-mode vector has the analytic gain 1+coupling.
+    measured = float(_sigma_max(matrix)[0])
+    assert measured > 1.
+    assert measured == pytest.approx(1.+float(coupling), rel=0.,
+                                     abs=8.*np.finfo(np.float64).eps)
 
 
 # ---------------------------------------------------------------------------

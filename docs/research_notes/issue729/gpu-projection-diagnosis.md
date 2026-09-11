@@ -88,8 +88,17 @@ and orthonormal factors, without sharing the production SVD as their oracle.
 A separate Hermitian power-operator eigensolve checks the passive bound.
 They cover both dtypes, near-unitary 2/8/32-port matrices, and existing
 strongly nonpassive 2/8/32-port inputs. Context and invalid-bin tests pin
-the compatibility requirements. GPU acceptance of the final implementation
-is pending at this checkpoint.
+the compatibility requirements.
+
+Run 369367260428 passed the full analytic CPU/GPU matrix battery, including
+complex128 at 32 ports, plus the dtype-context and invalid-bin tests. Its
+next failure was in the legacy disabled-projection integration test's
+referee: it computed singular values in the stored complex64 precision,
+rounding a true maximum of 1.0000000100004154 to 1.0. The raw matrix bytes
+are retained. The referee now computes in complex128; an analytic
+`[[1, e], [e, 1]]`, e=float32(1e-8), regression detects the old blindness.
+The strict `> 1` stimulus check and `<= 1` projected bound are unchanged.
+The run stopped at that test, so axis/AD/NU acceptance still remains.
 
 Evidence:
 
@@ -99,5 +108,7 @@ Evidence:
 - `gpu-projection-precision-369367260417/`: controlled precision replay.
 - `gpu-corrected-consumers-369367260422/`: the broader strict-bound failure.
 - `gpu-projection-size-369367260427/`: factor and reconstruction attribution.
+- `gpu-host-consumers-369367260428/`: successful matrix battery and the
+  legacy referee's loss of resolution, with retained matrices.
 - Corresponding complete provider logs and hashes are under
   `docs/research_notes/vessl_logs/` and each run's `files.json`.

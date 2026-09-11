@@ -1,0 +1,15 @@
+{
+  "source_sha": "e16001d7f9e1bf29ad1193d974968bf21f546567",
+  "source_dirty": false,
+  "jax": "0.4.33.dev20241023+e3c6d6430",
+  "numpy": "1.26.4",
+  "scipy": "1.14.1",
+  "devices": "[CudaDevice(id=0)]",
+  "cases": {
+    "projection": "tests/unit/sparams/test_msl_passivity_enforcement.py",
+    "axis": "tests/unit/ports/test_msl_port_axis_generality.py::test_y_directed_thru_reproduces_the_x_directed_thru",
+    "ad": "tests/unit/autodiff/test_msl_ad_fd_converged.py::test_msl_ad_fd_converged_tight",
+    "nu": "tests/locks/test_msl_nu_sparam_gate.py::test_nu_msl_patch_s11_passive_and_edge_fed_match"
+  },
+  "driver_sha256": "5a0feafe1ec520f30c027d963f014a279825e2ade14bfc4845e671de525222b9"
+}
