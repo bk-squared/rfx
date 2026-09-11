@@ -153,7 +153,7 @@ from rfx.boundaries.spec import BoundarySpec
 from rfx.geometry.csg import Cylinder as RfxCylinder
 from rfx.sources.sources import ModulatedGaussian
 from rfx.simulation import SnapshotSpec
-from rfx.harminv import harminv
+from rfx.harminv import harminv, harminv_record_duration
 import jax.numpy as jnp
 
 sim_rfx = Simulation(freq_max=0.25 * C0 / a, domain=(domain, domain, dx),
@@ -320,7 +320,9 @@ else:
         ts_r = np.array(res_rfx.time_series).ravel()
         dt_r = float(res_rfx.dt)
         skip_r = min(len(ts_r) - 10, max(1, int(source_off_time / dt_r)))
-        free_r = len(ts_r[skip_r:]) * dt_r
+        # #872: only the FIR-interior samples determine the fitted decay.
+        # Admission must not credit the fit with discarded boundary time.
+        free_r = harminv_record_duration(len(ts_r[skip_r:]), dt_r, fmax_hz)
         modes_r = [m for m in harminv(ts_r[skip_r:], dt_r, fmin_hz, fmax_hz)
                    if m.amplitude > HARMINV_AMP_FLOOR]
         plan = ring_mode_judge.plan_record(
@@ -340,7 +342,10 @@ else:
                   f"free decay). Modes flagged 'truncation-susp' below stay "
                   f"suspect; this is reported, not gated.")
             break
-        n_steps_rfx = int((source_off_time + plan.length) / dt_rfx) + 500
+        # plan.length asks for usable analysis time. Include the time the
+        # current sampling plan discards when requesting the next raw run.
+        discarded_r = (len(ts_r[skip_r:]) - 1) * dt_r - free_r
+        n_steps_rfx = int((source_off_time + plan.length + discarded_r) / dt_rfx) + 500
 
 # Harminv on the rfx probe signal, over the free-decay span. On the Meep
 # (verdict) lane the harminv window is UNCHANGED from the calibrated design
@@ -354,6 +359,7 @@ if HAVE_MEEP:
 else:
     skip = min(len(ts) - 10, max(1, int(source_off_time / dt)))
 signal = ts[skip:]
+analysis_duration = harminv_record_duration(len(signal), dt, fmax_hz)
 # How long AFTER source-off the analysed span begins. Zero on the tau-scaled
 # lane (the span starts at source-off); on the verdict lane the calibrated 40%
 # skip lands well after source-off, so the "peak" the whole-signal witness
@@ -392,7 +398,7 @@ print(f"\n  Found {len(rfx_modes)} modes")
 # length -- nothing pinned to this geometry.
 print(f"\n{'-' * 70}")
 print("  Ring-down settling witness (per extracted mode)")
-record_after_source = len(signal) * dt   # seconds of observed free decay
+record_after_source = (len(signal) - 1) * dt   # full observed free-decay span
 # Witness pool = the JUDGE's band, taken through the judge's own admit().
 # rfx.harminv searches a deliberately 10%-widened band, and the modes it
 # returns outside [fmin_hz, fmax_hz] are band-edge content no gate reads --
@@ -463,7 +469,7 @@ rfx_freqs_meep = [f * a / C0 for f, Q, amp in rfx_modes]
 # Record length harminv actually saw, in Meep units (a/c). Every Q window below
 # is tau_ref / T computed from THIS and from the reference Q -- no chosen
 # number. See docs/design_notes/20260831_cv02_ring_judge_predeclaration.md.
-record_T_meep = len(signal) * dt * C0 / a
+record_T_meep = analysis_duration * C0 / a
 fmin_meep = fcen - df / 2
 fmax_meep = fcen + df / 2
 
@@ -552,10 +558,11 @@ _doc = {
         "rfx_source_off_time_s": float(source_off_time),
         "harminv_skip_samples": int(skip),
         "harminv_span_samples": int(len(signal)),
+        "harminv_analysis_duration_s": float(analysis_duration),
         "harminv_amp_floor": float(HARMINV_AMP_FLOOR),
         "harminv_min_Q": float(ring_mode_judge.MIN_Q),
         "record_length_meep_units": float(record_T_meep),
-        "record_after_source_s": float(len(signal) * dt),
+        "record_after_source_s": float(record_after_source),
         "peak_offset_after_source_s": float(peak_offset_after_source),
         "meep_leg": None if not HAVE_MEEP else {
             "resolution": int(resolution), "cell_over_a": float(sxy),

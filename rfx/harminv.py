@@ -25,6 +25,43 @@ from scipy.signal import decimate as scipy_decimate
 
 DECIMATION_GUARD = 8
 _MAX_DECIMATION_STAGE = 13
+_FIR_HALF_OUTPUT_SAMPLES = 10
+_MIN_PENCIL_SAMPLES = 10
+
+
+def _decimation_plan(n_samples: int, dt: float, f_max: float,
+                     decimate: str | bool) -> tuple[tuple[int, ...], int]:
+    """Stages that leave at least the core's minimum number of valid samples."""
+    if decimate not in ("auto", False):
+        raise ValueError("decimate must be 'auto' or False")
+    factors = []
+    if decimate == "auto" and 1.0 / dt > DECIMATION_GUARD * f_max:
+        target = int(1.0 / dt / (4.0 * f_max))
+        for factor in _decimation_factors(target):
+            kept = (n_samples + factor - 1) // factor - 2 * _FIR_HALF_OUTPUT_SAMPLES
+            if kept < _MIN_PENCIL_SAMPLES:
+                # Stop before consuming the record. Since factor <= 13,
+                # this fallback leaves fewer than 390 samples for the SVD.
+                break
+            factors.append(factor)
+            n_samples = kept
+    return tuple(factors), n_samples
+
+
+def harminv_record_duration(n_samples: int, dt: float, f_max: float, *,
+                           decimate: str | bool = "auto") -> float:
+    """Time between the first and last samples used to estimate the poles.
+
+    Use this duration, rather than the unfiltered input length, for record-
+    length admission or uncertainty calculations. Each zero-phase FIR stage
+    excludes outputs whose filter support reaches outside its input record.
+    This helper shares the estimator's sampling plan and performs no solve.
+    It describes the pole fit; amplitudes still use the original input.
+    """
+    factors, kept = _decimation_plan(n_samples, dt, f_max, decimate)
+    for factor in factors:
+        dt *= factor
+    return max(0, kept - 1) * dt
 
 
 class HarminvMode(NamedTuple):
@@ -78,42 +115,44 @@ def harminv(
     max_modes : int
         Maximum modes to return.
     sv_threshold : float
-        Singular value threshold for rank determination.
+        Relative singular value threshold for rank determination (relative
+        to the largest singular value). The same threshold is used after
+        resampling; it is not a calibrated noise-confidence bound.
     decimate : {"auto", False}
         Automatically reduce oversampled, band-limited inputs before matrix
         pencil analysis. With the default ``"auto"``, decimation is applied
         when ``1 / dt > 8 * f_max`` using a target factor of
         ``int(1 / dt / (4 * f_max))``. Anti-aliased, zero-phase FIR stages of
         at most 13 are used, and the effective timestep is passed to the core
-        algorithm. Set to ``False`` to retain every input sample. This avoids
+        algorithm. At each stage, outputs touching the filter's zero-padded
+        boundary are excluded: filtering an interior exponential preserves
+        its pole, while zero padding introduces transients. This SHORTENS
+        the usable record; ``harminv_record_duration`` reports its duration.
+        A stage is omitted if fewer than 10 interior samples would remain.
+        Set to ``False`` to retain every input sample. Decimation avoids
         redundant work because the estimator scales approximately as
-        :math:`O(N^{2.7})`, while retaining the record's time span and hence
-        its frequency resolution.
+        :math:`O(N^{2.7})`.
 
     Returns
     -------
     list of HarminvMode, sorted by amplitude (strongest first).
     """
-    if decimate not in ("auto", False):
-        raise ValueError("decimate must be 'auto' or False")
-
     y = np.asarray(signal, dtype=np.complex128).ravel()
     amplitude_signal = y
     amplitude_dt = dt
-    effective_sv_threshold = sv_threshold
-    if decimate == "auto" and 1.0 / dt > DECIMATION_GUARD * f_max:
-        target_factor = int(1.0 / dt / (4.0 * f_max))
-        factors = _decimation_factors(target_factor)
-        for factor in factors:
-            y = scipy_decimate(y, factor, ftype="fir", zero_phase=True)
-            dt *= factor
-        # Signal singular values shrink with the reduced sample count while
-        # broadband noise does not shrink at the same rate. Preserve the
-        # original rank-selection meaning across the resampling operation.
-        effective_sv_threshold *= np.sqrt(target_factor)
+    factors, _ = _decimation_plan(len(y), dt, f_max, decimate)
+    for factor in factors:
+        # A symmetric FIR of order 20*q has support [-10*q, +10*q]
+        # in input samples. At output k (input centre k*q), precisely
+        # k=10 .. ceil(N/q)-11 have their whole support inside the record.
+        # Pin the order explicitly rather than depending on SciPy defaults.
+        half = _FIR_HALF_OUTPUT_SAMPLES
+        y = scipy_decimate(y, factor, n=2 * half * factor,
+                           ftype="fir", zero_phase=True)[half:-half]
+        dt *= factor
 
     N = len(y)
-    if N < 10:
+    if N < _MIN_PENCIL_SAMPLES:
         return []
 
     # Pencil parameter L: matrix size
@@ -134,7 +173,7 @@ def harminv(
 
     # Determine effective rank from singular values
     sv_norm = sv / sv[0] if sv[0] > 0 else sv
-    rank = max(1, int(np.sum(sv_norm > effective_sv_threshold)))
+    rank = max(1, int(np.sum(sv_norm > sv_threshold)))
     rank = min(rank, max_modes, len(sv))
 
     # Truncate to rank
