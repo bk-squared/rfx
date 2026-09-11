@@ -17,7 +17,9 @@ not only on a replayed sweep. This runs cv06b's own solve three times:
               docs/design_notes/estimator_resolution_regate.md section 3 T1,
               so a one-cell error is made VISIBLE here, not fatal -- that
               distinction is stated, not gated away.
-  stub_narrow W_STUB reduced to 5 cells (on-lattice), so r = Z0_line/Z_stub
+  stub_narrow W_STUB reduced to 5 geometric cell intervals (6 nodes), with
+              node-aligned faces and the baseline's realized centre retained,
+              so r = Z0_line/Z_stub
               drops below 1 -- the coupling degradation whose CPU-side,
               geometry-built analogue is case C of
               scripts/diagnostics/cv06b_estimator_falsifiers.py.
@@ -27,6 +29,9 @@ not only on a replayed sweep. This runs cv06b's own solve three times:
 Each run writes its full metric dict as JSON, and the three are reduced to
 cv06b_build_falsifiers_summary.json, so every number the verdict rests on is
 re-derivable without re-solving and prose can cite it by key.
+All input geometries are checked before the first field solve. The retained
+2026-09-07 narrow-arm result belongs to the older four-interval, shifted input;
+it is historical evidence, not a measurement of the corrected five-cell arm.
 
 CRITERION (A) LIVES HERE TOO. The ``baseline`` leg is cv06b's own board,
 own mesh and own ``evaluate()`` -- so its ``gates`` block IS the criterion-(A)
@@ -76,9 +81,70 @@ def _load():
     return mod
 
 
-def solve(cv, label):
-    sim = cv._build_sim()
-    w_realized = cv._realized_trace_width(sim)
+def _centred_stub_bounds(sim, baseline, cells):
+    """Exact node endpoints around the baseline's physical stub centre.
+
+    The baseline is fully declared, including its ports and boundary padding.
+    Pass coordinates to a new builder, never its padding-dependent indices.
+    A parity mismatch is refused rather than moving the centre half a cell.
+    """
+    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
+
+    nodes = np.asarray(coords_from_uniform_grid(sim._build_grid()).x)
+    centre = sum(baseline["stub_x"]) / 2.0
+    candidates = np.flatnonzero(np.isclose(
+        0.5 * (nodes[:-cells] + nodes[cells:]), centre, rtol=0, atol=1e-12,
+    ))
+    if candidates.size != 1:
+        raise RuntimeError(
+            f"cannot place a {cells}-cell stub on nodes at the baseline centre"
+        )
+    lo = int(candidates[0])
+    return float(nodes[lo]), float(nodes[lo + cells])
+
+
+def _assert_arm_geometry(label, geometry, baseline, dx):
+    """Check the realized input before paying for any field solves."""
+    problems = []
+    for key in ("plane_z", "trace_w", "trace_y"):
+        if not np.allclose(geometry[key], baseline[key], rtol=0, atol=1e-12):
+            problems.append(f"{key} changed")
+    if geometry["n_sheets"] != 2 or geometry["n_volume_cells"] or geometry["n_ez"]:
+        problems.append("expected two PEC sheets with live normal edges")
+    if abs(sum(geometry["stub_x"]) - sum(baseline["stub_x"])) > 2e-12:
+        problems.append("stub centre changed")
+    width = 5 * dx if label == "stub_narrow" else baseline["stub_w"]
+    if abs(geometry["stub_w"] - width) > 1e-12:
+        problems.append(f"stub width is {geometry['stub_w']}, expected {width}")
+    length = baseline["stub_len"] - (dx if label == "stub_1cell" else 0)
+    if abs(geometry["stub_len"] - length) > 1e-12:
+        problems.append(f"stub length is {geometry['stub_len']}, expected {length}")
+    if problems:
+        raise RuntimeError(f"{label} input contract failed: " + "; ".join(problems))
+
+
+def prepare_inputs():
+    """Build and validate all three geometries before the first field solve."""
+    baseline_cv = _load()
+    baseline_sim = baseline_cv._build_sim()
+    baseline = baseline_cv.assert_realized_metal(baseline_sim)
+    inputs = [("baseline", baseline_cv, baseline_sim, baseline)]
+    bounds = _centred_stub_bounds(baseline_sim, baseline, 5)
+    for label, mutate in (
+        ("stub_1cell", lambda cv: setattr(cv, "STUB_LEN", cv.STUB_LEN - cv.DX)),
+        ("stub_narrow", lambda cv: setattr(cv, "W_STUB", 5 * cv.DX)),
+    ):
+        cv = _load()
+        mutate(cv)
+        sim = cv._build_sim(stub_x_bounds=bounds) if label == "stub_narrow" else cv._build_sim()
+        geometry = cv.realized_metal(sim)
+        _assert_arm_geometry(label, geometry, baseline, cv.DX)
+        inputs.append((label, cv, sim, geometry))
+    return inputs
+
+
+def solve(cv, label, *, sim, geometry):
+    w_realized = geometry["trace_w_elec"]
     u = w_realized / cv.H_SUB
     eps_eff = (cv.EPS_R + 1) / 2 + (cv.EPS_R - 1) / 2 * (1 + 12 / u) ** -0.5
     f_an = cv.C0 / (4 * cv.STUB_LEN * np.sqrt(eps_eff))
@@ -112,14 +178,9 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
 
     results = {}
-    for label, mutate in (
-        ("baseline", lambda cv: None),
-        ("stub_1cell", lambda cv: setattr(cv, "STUB_LEN", cv.STUB_LEN - cv.DX)),
-        ("stub_narrow", lambda cv: setattr(cv, "W_STUB", 5 * cv.DX)),
-    ):
-        cv = _load()            # fresh module: mutations never leak between runs
-        mutate(cv)
-        m = solve(cv, label)
+    for label, cv, sim, geometry in prepare_inputs():
+        m = solve(cv, label, sim=sim, geometry=geometry)
+        m["realized_metal"] = geometry
         results[label] = m
         (out / f"cv06b_falsifier_{label}.json").write_text(
             json.dumps(_plain(m), indent=2) + "\n")

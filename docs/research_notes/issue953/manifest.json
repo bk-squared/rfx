@@ -1,0 +1,63 @@
+{
+  "base_main": "0662c3b96d82ca65d7bd041b94c4ab984230e00d",
+  "checks": {
+    "cv06b": {
+      "files": [
+        "tests/crossval/test_cv06b_build_falsifier_plumbing.py",
+        "tests/crossval/test_cv06b_shallow_stub_model.py"
+      ],
+      "passed": 15,
+      "seconds": 13.55
+    },
+    "example_audit": {
+      "extra_env": "JAX_ENABLE_X64=0",
+      "files": [
+        "tests/contracts/test_example_fidelity_contract.py",
+        "tests/contracts/test_example_fidelity_safety.py"
+      ],
+      "passed": 206,
+      "seconds": 107.6
+    },
+    "old_advisory_control": "expected2failures, method from baseline restored in memory; source unchanged",
+    "preflight": {
+      "files": [
+        "tests/unit/preflight/test_preflight_rasterization.py"
+      ],
+      "passed": 46,
+      "seconds": 32.39
+    },
+    "pytest_args": "-q -o addopts='' -p no:cacheprovider",
+    "snapshot_semantic_change": "exactly7messagefields; all other values equal"
+  },
+  "command_prefix": "taskset -c 0-3 env JAX_PLATFORMS=cpu OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python -m pytest",
+  "evidence_sha256": {
+    "README.md": "d5d5252e091721eff281383e53ab99aec2a079ebcf8d4fc579a8df6b27d97379",
+    "before-baseline-build.json": "7181a5abc00d4a99f1338d71e64e8e758cddf749474204dd1a7fb7f090d4eea8",
+    "before-narrow-build.json": "80de1ce5e7ac0ca0a25b8e0586358e97df809f4aa1bc6cd8e77434df4c23212b",
+    "before-narrow-preflight.json": "8998893f4ad5b6d958b9654cc57cdc10deae75d33496703ac1497e81650ae2c7",
+    "before-preflight-stdout.log.gz": "c6dafb7641284c17c6eb621b1ad4c77217974fd8c7148d9bcae4e306acc9ebce",
+    "build_probe_before.py": "04dbe7e7ca3ecb560863cdf94d978eaac4ab02775bced0a958931e2caf8618ce",
+    "ci-style-ruff.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "example-audit.log.gz": "99398256db8c6634bb2c032b1bd7255476e2f4b2a7d327d88b9f10c1243ec0b5",
+    "geometry-tests.log.gz": "409e99bcb5aa9cc3e66139e01b5214c42b8caccd376fca6a5c444b626140d5b1",
+    "input_certificate.py": "7ff8b118296c5a989dec151854583e594fc9a176fb4d849846f1f7c8071fc104",
+    "old-advisory-control.log.gz": "8e50248513494e58096d6532e30038d58e64c5acaf71811d713e998c04b92a8b",
+    "old_advisory_control.py": "269fe74882f4874e17b19379530d5d5238ea9b5eb653bd7fdb32185cbdaeb02a",
+    "preflight-tests.log.gz": "bd14d67e1266a665d67cef866ac618888f32a5fe406b165d924709c3d30d44ad",
+    "preflight_probe_before.py": "d700a519d2a025a067e878b56acd1aff0d30a03b99db26500ca67f3185a0b61e",
+    "production-inputs.json": "bc336be98f0841b656e56f03deba44376174bdac1997f52f0a30bef8bdd5264b",
+    "reference-sensitivity.json": "d884ca8f288024757707e585dba5185c5dea19d1c391ff968944f3cfa8c79803",
+    "ruff.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "snapshot-message-paths.json": "cc3cf049e5de6d87d981aac76490a3699d66884393e2cb17bb9c90ea454b9135"
+  },
+  "no_new_rf_solve": true,
+  "source_sha256": {
+    "rfx/api/_preflight.py": "fd56a0167f4881c37e06339f77e7e0386a8a666370be096fc4ceef1c55083457",
+    "scripts/diagnostics/cv06b_build_falsifiers.py": "eca5b90c7896033259b4eb219fe52cc8f6a66fd0630be5b8dc2c8bc50393ac06",
+    "tests/crossval/test_cv06b_build_falsifier_plumbing.py": "a703334a36d6ef071d36a8bf7aef9867babf6074faab7e44d245c412662d01c4",
+    "tests/data/example_fidelity_snapshot.json": "fc3fbb0d3ed885a620eeec4f880e1e356d4ec5ea2ee6a110177c306b9e2771ec",
+    "tests/unit/preflight/test_preflight_rasterization.py": "3e29e2fa63179754736b3931487c32d41c59787117823aea082420ce2b53e947",
+    "validation/crossval/06b_msl_notch_filter_uniform.py": "3d064b4b8beea42e70b1fd7935f28a56a51fc1b471c158540b731b34210adfa1"
+  },
+  "status": "input and advisory checkpoint; G1 policy/reference/reporting and RF validation unfinished"
+}

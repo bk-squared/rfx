@@ -4,11 +4,10 @@
 solves. A crash in its reporting or JSON path AFTER those solves costs the run,
 so the non-FDTD half is exercised here with the solve stubbed out.
 
-This test asserts NOTHING about physics. It checks only that the summary is
-written, that it carries the keys the design note and the lane's prose cite by
-name, and that gate verdicts survive as JSON booleans rather than being coerced
-to 1.0/0.0 by a ``default=`` fallback (``evaluate()`` returns ``np.bool_``
-whenever the analytic anchor arrives as ``np.float64``, which it does).
+The input contracts use the production geometry assembly but do not establish
+RF accuracy. The reporting test checks that summary keys survive and gate
+verdicts remain JSON booleans rather than 1.0/0.0 (``evaluate()`` returns
+``np.bool_`` whenever its analytic anchor arrives as ``np.float64``).
 """
 from __future__ import annotations
 
@@ -17,6 +16,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BUILDER = REPO_ROOT / "scripts/diagnostics/cv06b_build_falsifiers.py"
@@ -37,7 +37,7 @@ def test_summary_json_is_written_and_keeps_boolean_gates(tmp_path, monkeypatch):
     s21 = np.asarray(d["s21_mag"], dtype=float)
     z0 = np.full_like(f, float(d["re_z0_median_ohm"]))
 
-    def fake_solve(cv, label):
+    def fake_solve(cv, label, **_):
         # np.float64 anchor on purpose: that is what the real path passes, and
         # it is what makes evaluate()'s gate values np.bool_.
         f_an = np.float64(3.711e9)
@@ -73,11 +73,74 @@ def test_summary_json_is_written_and_keeps_boolean_gates(tmp_path, monkeypatch):
         assert isinstance(leg["gates"]["G2 -10 dB stopband width"], bool)
 
 
-def test_the_three_legs_differ_only_in_one_geometric_input():
-    """stub_1cell changes STUB_LEN; stub_narrow changes W_STUB; nothing else."""
-    src = BUILDER.read_text()
-    assert 'setattr(cv, "STUB_LEN", cv.STUB_LEN - cv.DX)' in src
-    assert 'setattr(cv, "W_STUB", 5 * cv.DX)' in src
+def test_three_arms_preserve_realized_centre_and_the_unmodified_dimensions():
+    mod = _load(BUILDER, "_cv06b_realized_inputs")
+    arms = {label: (cv, sim, geometry) for label, cv, sim, geometry in mod.prepare_inputs()}
+    baseline_cv, _, baseline = arms["baseline"]
+    dx = baseline_cv.DX
+    for label in ("stub_1cell", "stub_narrow"):
+        _, _, geometry = arms[label]
+        assert geometry["plane_z"] == baseline["plane_z"]
+        assert geometry["trace_y"] == baseline["trace_y"]
+        assert sum(geometry["stub_x"]) == pytest.approx(sum(baseline["stub_x"]), abs=1e-15)
+    one = arms["stub_1cell"][2]
+    narrow = arms["stub_narrow"][2]
+    assert one["stub_w"] == pytest.approx(baseline["stub_w"], abs=1e-15)
+    assert one["stub_len"] == pytest.approx(baseline["stub_len"] - dx, abs=1e-15)
+    assert narrow["stub_len"] == pytest.approx(baseline["stub_len"], abs=1e-15)
+    assert narrow["stub_w"] == pytest.approx(5 * dx, abs=1e-15)
+    assert narrow["n_cols"] == 6  # five intervals require six endpoint nodes
+
+
+@pytest.mark.parametrize("fault", ["discard_bounds", "shift_centre"])
+def test_bad_narrow_input_is_rejected_before_any_solve(tmp_path, monkeypatch, fault):
+    mod = _load(BUILDER, "_cv06b_reject_bad_input")
+    original_load = mod._load
+
+    def load_faulty_case():
+        cv = original_load()
+        build = cv._build_sim
+
+        def faulty_build(*, stub_x_bounds=None):
+            if stub_x_bounds is not None and fault == "shift_centre":
+                from rfx.geometry.rasterize_grid import coords_from_uniform_grid
+
+                complete = build(stub_x_bounds=stub_x_bounds)
+                nodes = np.asarray(coords_from_uniform_grid(complete._build_grid()).x)
+                indices = [int(np.argmin(abs(nodes - value))) for value in stub_x_bounds]
+                stub_x_bounds = tuple(float(nodes[i + 1]) for i in indices)
+            if fault == "discard_bounds":
+                stub_x_bounds = None
+            return build(stub_x_bounds=stub_x_bounds)
+
+        cv._build_sim = faulty_build
+        return cv
+
+    calls = []
+    monkeypatch.setattr(mod, "_load", load_faulty_case)
+    monkeypatch.setattr(mod, "solve", lambda *args, **kwargs: calls.append(True))
+    monkeypatch.setattr("sys.argv", ["x", "--out-dir", str(tmp_path)])
+    reason = "stub width" if fault == "discard_bounds" else "stub centre changed"
+    with pytest.raises(RuntimeError, match=reason):
+        mod.main()
+    assert not calls
+    assert not list(tmp_path.glob("cv06b_falsifier_*.json"))
+
+
+def test_centre_parity_conflict_is_refused_instead_of_silently_shifting(monkeypatch):
+    mod = _load(BUILDER, "_cv06b_parity_conflict")
+    original_load = mod._load
+
+    def load_even_span():
+        cv = original_load()
+        # This placement realizes ten intervals on both trace and stub.
+        # Its centre is a node, incompatible with an odd five-interval span.
+        cv.W_TRACE = cv.W_STUB = 10.7 * cv.DX
+        return cv
+
+    monkeypatch.setattr(mod, "_load", load_even_span)
+    with pytest.raises(RuntimeError, match="cannot place a 5-cell stub"):
+        mod.prepare_inputs()
 
 
 def test_committed_gpu_summary_records_criterion_a_and_the_falsifier_lane():

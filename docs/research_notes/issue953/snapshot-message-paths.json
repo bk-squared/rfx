@@ -1,0 +1,9 @@
+[
+  "/variants/examples/tutorials/patch_antenna_demo.py::build_simulation::default/preflight/2",
+  "/variants/validation/crossval/06b_msl_notch_filter_uniform.py::_build_sim::default/preflight/1",
+  "/variants/validation/crossval/07_sheen_lpf.py::build_rfx_sim::default/preflight/4",
+  "/variants/validation/crossval/15_patch_antenna_rt5880.py::build_rfx_sim::default/preflight/0",
+  "/variants/validation/crossval/19_wr90_iris_filter_aghanim.py::build::gated/preflight/0",
+  "/variants/validation/tmtt_paper/beam_steering_superstrate.py::build_problem::default/preflight/1",
+  "/variants/validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target/preflight/3"
+]

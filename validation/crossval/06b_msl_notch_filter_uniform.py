@@ -514,7 +514,7 @@ DX = H_SUB / 4         # 63.5um — REALIZE-DECLARED on z (issue #723); see
                         # "Mesh convention" below.
 
 
-def _build_sim() -> Simulation:
+def _build_sim(*, stub_x_bounds: tuple[float, float] | None = None) -> Simulation:
     """Build the notch-filter simulation with msl_port at both ends."""
     LX = L_LINE + 2 * PORT_MARGIN
     # Lateral box: W + 2·(2·h_sub + 8·dx) on the MSL side, plus stub_length
@@ -558,6 +558,14 @@ def _build_sim() -> Simulation:
     stub_x_centre = LX / 2.0
     stub_x_lo = stub_x_centre - W_STUB / 2.0
     stub_x_hi = stub_x_centre + W_STUB / 2.0
+    if stub_x_bounds is not None:
+        # The build falsifier supplies physical coordinates from a completed
+        # baseline grid. A width in cells alone does not align both faces.
+        stub_x_lo, stub_x_hi = map(float, stub_x_bounds)
+        if (not np.isfinite([stub_x_lo, stub_x_hi]).all()
+                or stub_x_hi <= stub_x_lo
+                or abs(stub_x_hi - stub_x_lo - W_STUB) > 1e-12):
+            raise ValueError("stub_x_bounds must span the declared W_STUB")
     sim.add(
         Box((stub_x_lo, trace_y_hi, H_SUB),
             (stub_x_hi, trace_y_hi + STUB_LEN, H_SUB)),
@@ -683,6 +691,7 @@ def realized_metal(sim: Simulation) -> dict:
         trace_j=(j0, j1), trace_w=trace_w, n_rows=n_rows,
         trace_y=(float(nodes[1][j0]), float(nodes[1][j1])),
         stub_i=(i0, i1), stub_w=stub_w, n_cols=n_cols,
+        stub_x=(float(nodes[0][i0]), float(nodes[0][i1])),
         trace_w_elec=n_rows * DX, stub_w_elec=n_cols * DX,
         stub_len=stub_len, stub_open_j=stub_open,
         stub_len_centreline=float(nodes[1][stub_open]) - y_centre,

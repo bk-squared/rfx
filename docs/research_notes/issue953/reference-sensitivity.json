@@ -1,0 +1,25 @@
+{
+  "record": "validation/crossval/_06b_msl_notch_results/cv06b_falsifier_stub_narrow.json",
+  "record_sha256": "a1220789f1f29315eedf14f438dc0d0335c12f1f2f83fd51596fa77ad1fbb675",
+  "retained_measured_notch_hz": 3915833568.804351,
+  "original_reported_error_pct": 6.438768666807615,
+  "diagnostic_comparisons": {
+    "shipped_trace_row_pitch_declared_length": {
+      "reference_hz": 3678954217.388916,
+      "arithmetic_error_pct_on_retained_notch": 6.438768666807615
+    },
+    "stub_row_pitch_declared_length": {
+      "reference_hz": 3774274846.149726,
+      "arithmetic_error_pct_on_retained_notch": 3.7506204085543504
+    },
+    "stub_node_span_declared_length": {
+      "reference_hz": 3801884816.8522897,
+      "arithmetic_error_pct_on_retained_notch": 2.9971647601466067
+    },
+    "stub_node_span_realized_length": {
+      "reference_hz": 3801409640.6472087,
+      "arithmetic_error_pct_on_retained_notch": 3.0100394057416273
+    }
+  },
+  "scope": "same retained pre729 notch with alternate analytic references; no new FDTD, no gate change, no electrical-width adjudication"
+}
