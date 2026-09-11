@@ -1,0 +1,38 @@
+{
+  "scope": "analytic single mode only; H interpolation is a proposed correction, not applied to production",
+  "matched_wave": [
+    {
+      "k_dx": 0.2,
+      "same_index_reflection": 0.050041708375538785,
+      "centred_reflection": 0.0025041725771424417
+    },
+    {
+      "k_dx": 0.1,
+      "same_index_reflection": 0.025005209635746147,
+      "centred_reflection": 0.0006252605089275938
+    },
+    {
+      "k_dx": 0.05,
+      "same_index_reflection": 0.012500651082359341,
+      "centred_reflection": 0.0001562662774828166
+    }
+  ],
+  "passivity_limitation": [
+    {
+      "modal_reflection_magnitude": 0.0,
+      "real_vi": 0.019900083305560517,
+      "same_index_reflection": 0.050041708375538785
+    },
+    {
+      "modal_reflection_magnitude": 0.4,
+      "real_vi": 0.016716069976670835,
+      "same_index_reflection": 0.4310588459940841
+    },
+    {
+      "modal_reflection_magnitude": 1.0,
+      "real_vi": 0.0,
+      "same_index_reflection": 0.9999999999999998
+    }
+  ],
+  "conclusion": "same-index sampling gives O(dx) false reflection for a matched wave; symmetric H averaging gives O(dx^2). This alone does not explain the observed RF power excess."
+}

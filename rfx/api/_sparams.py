@@ -3730,8 +3730,11 @@ class _SparamMixin:
         ``V_n = α e^{-jβx_n} + γ e^{+jβx_n}`` supplies only the reported
         beta/Z0 diagnostics. Those fitted values do not enter S. S is
         referenced to each first probe plane, without translation back to
-        the physical feed planes; comparing different observation offsets
-        requires accounting for the reference planes and impedances.
+        the physical feed planes. This is a nominal E-plane reference:
+        the current H samples retain their spatial half-cell stagger even
+        after the temporal correction. Comparing different observation
+        offsets requires accounting for these sample positions and the
+        reference impedances.
 
         Parameters
         ----------

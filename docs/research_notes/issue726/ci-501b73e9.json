@@ -1,0 +1,215 @@
+{
+  "headRefOid": "501b73e95892c56b411bc3822d8ca75cce843916",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T21:46:34Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962621/job/103432754449",
+      "name": "ruff",
+      "startedAt": "2026-09-11T21:46:21Z",
+      "status": "COMPLETED",
+      "workflowName": "lint"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T21:49:21Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962540/job/103432753874",
+      "name": "guards-and-preflight",
+      "startedAt": "2026-09-11T21:46:20Z",
+      "status": "COMPLETED",
+      "workflowName": "pr-tests"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T21:46:30Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962520/job/103432753820",
+      "name": "public-docs-source",
+      "startedAt": "2026-09-11T21:46:24Z",
+      "status": "COMPLETED",
+      "workflowName": "public-docs-source"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T21:50:52Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962525/job/103432753857",
+      "name": "quality-gates",
+      "startedAt": "2026-09-11T21:46:20Z",
+      "status": "COMPLETED",
+      "workflowName": "studio-packaging"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T21:46:30Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962621/job/103432754167",
+      "name": "agent-docs-hygiene",
+      "startedAt": "2026-09-11T21:46:25Z",
+      "status": "COMPLETED",
+      "workflowName": "lint"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T21:59:04Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962540/job/103432754263",
+      "name": "fast-suite (1)",
+      "startedAt": "2026-09-11T21:46:20Z",
+      "status": "COMPLETED",
+      "workflowName": "pr-tests"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T21:47:28Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962520/job/103432754057",
+      "name": "api-reference",
+      "startedAt": "2026-09-11T21:46:20Z",
+      "status": "COMPLETED",
+      "workflowName": "public-docs-source"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T21:47:33Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962525/job/103432754075",
+      "name": "clean-wheel-smoke (ubuntu-latest)",
+      "startedAt": "2026-09-11T21:46:20Z",
+      "status": "COMPLETED",
+      "workflowName": "studio-packaging"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T22:07:03Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962540/job/103432754530",
+      "name": "fast-suite (2)",
+      "startedAt": "2026-09-11T21:46:20Z",
+      "status": "COMPLETED",
+      "workflowName": "pr-tests"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T21:48:20Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962525/job/103432754228",
+      "name": "clean-wheel-smoke (macos-latest)",
+      "startedAt": "2026-09-11T21:46:27Z",
+      "status": "COMPLETED",
+      "workflowName": "studio-packaging"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T22:13:14Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962540/job/103432754053",
+      "name": "fast-suite (3)",
+      "startedAt": "2026-09-11T21:46:19Z",
+      "status": "COMPLETED",
+      "workflowName": "pr-tests"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T21:48:52Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962525/job/103432754077",
+      "name": "clean-wheel-smoke (windows-latest)",
+      "startedAt": "2026-09-11T21:46:20Z",
+      "status": "COMPLETED",
+      "workflowName": "studio-packaging"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T22:06:54Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962540/job/103432754116",
+      "name": "fast-suite (4)",
+      "startedAt": "2026-09-11T21:46:20Z",
+      "status": "COMPLETED",
+      "workflowName": "pr-tests"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T22:10:30Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962540/job/103432754450",
+      "name": "fast-suite (5)",
+      "startedAt": "2026-09-11T21:46:19Z",
+      "status": "COMPLETED",
+      "workflowName": "pr-tests"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T22:15:57Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962540/job/103432754453",
+      "name": "fast-suite (6)",
+      "startedAt": "2026-09-11T21:46:20Z",
+      "status": "COMPLETED",
+      "workflowName": "pr-tests"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T22:00:32Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962540/job/103432754168",
+      "name": "fast-suite-py3.11 (1)",
+      "startedAt": "2026-09-11T21:46:19Z",
+      "status": "COMPLETED",
+      "workflowName": "pr-tests"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T22:11:57Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962540/job/103432754085",
+      "name": "fast-suite-py3.11 (2)",
+      "startedAt": "2026-09-11T21:46:19Z",
+      "status": "COMPLETED",
+      "workflowName": "pr-tests"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T22:14:18Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962540/job/103432754174",
+      "name": "fast-suite-py3.11 (3)",
+      "startedAt": "2026-09-11T21:46:19Z",
+      "status": "COMPLETED",
+      "workflowName": "pr-tests"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T22:01:27Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962540/job/103432754143",
+      "name": "fast-suite-py3.11 (4)",
+      "startedAt": "2026-09-11T21:46:20Z",
+      "status": "COMPLETED",
+      "workflowName": "pr-tests"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T22:11:33Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962540/job/103432754198",
+      "name": "fast-suite-py3.11 (5)",
+      "startedAt": "2026-09-11T21:46:20Z",
+      "status": "COMPLETED",
+      "workflowName": "pr-tests"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-11T22:11:08Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/bk-squared/rfx/actions/runs/34650962540/job/103432754042",
+      "name": "fast-suite-py3.11 (6)",
+      "startedAt": "2026-09-11T21:46:19Z",
+      "status": "COMPLETED",
+      "workflowName": "pr-tests"
+    }
+  ]
+}

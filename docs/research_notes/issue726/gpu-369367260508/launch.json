@@ -1,0 +1,10 @@
+{
+  "source_sha": "130b9071e5e6aaa0efda0dd1d6a36fb7e8d519bd",
+  "source_archive": "/root/workspace/claude-workspace/rfx/runs/codex-i726-fixed-source-complete-m770ggjs/source.tar",
+  "archive_sha256": "f78ad7c25ed326e56d7922f8fc6033938dfe50bf5d5a3c8586880e97f53b8323",
+  "out_dir": "/root/workspace/claude-workspace/rfx/runs/codex-i726-fixed-source-complete-m770ggjs",
+  "num_periods": 100,
+  "sequential": true,
+  "purpose": "fixed-DUT/source p1 observation-offset sensitivity; no exact full-wave oracle claim",
+  "local_archive_check": "/tmp/rfx-i726-archive-check-5q4luepp"
+}

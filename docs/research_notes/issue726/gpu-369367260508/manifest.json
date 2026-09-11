@@ -1,0 +1,90 @@
+{
+  "run_id": 369367260508,
+  "provider_status": "failed",
+  "exit_code": 2,
+  "reason": "all four field solves completed; producer rejected automatic notch comparison by its existing low-signal screen",
+  "source_sha": "130b9071e5e6aaa0efda0dd1d6a36fb7e8d519bd",
+  "source_archive_sha256": "f78ad7c25ed326e56d7922f8fc6033938dfe50bf5d5a3c8586880e97f53b8323",
+  "files": [
+    {
+      "path": "docs/research_notes/vessl_logs/369367260508_failed.log.gz",
+      "bytes": 5801,
+      "sha256": "770a8121b6aabc7ccb9c8d28550a0ef387cbc3a52059f20fbcaf36a7bf80494d",
+      "raw_bytes": 30151,
+      "raw_sha256": "b124f5b28af7114261d8f1b7324099fa674837b5f7ae366805a56dbb9a6393d5"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/artifacts/clean-phasors.npz",
+      "bytes": 62148,
+      "sha256": "6d250514f557ffcd1b381128d7c19d48dfff05763793121ab6078ee6ea1cf021"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/artifacts/clean-quality.json",
+      "bytes": 102,
+      "sha256": "9346770bf1563b7e6095b62ff05e9495e9587355b7d84830127874628a2029f6"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/artifacts/clean-result.npz",
+      "bytes": 14498,
+      "sha256": "86f2b4699e881179001d9c9cd15fd58d7a989e718077e4019afbe1f7bd849458"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/artifacts/comparison.json",
+      "bytes": 76,
+      "sha256": "6cd61a7551c6170ab4f6c193614d455e68a13094ee8a11c4335072e7c67b829f"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/artifacts/inputs.json",
+      "bytes": 4808,
+      "sha256": "ac10f64897f015c7720030c669dd1e7d0c8a1e8456f4e1e63f3a350c91221894"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/artifacts/near-phasors.npz",
+      "bytes": 62152,
+      "sha256": "1ee9a29fd77eba933e25e2f247cc7c50153b8bd313c795860665e31f7cc1c4ed"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/artifacts/near-quality.json",
+      "bytes": 102,
+      "sha256": "9346770bf1563b7e6095b62ff05e9495e9587355b7d84830127874628a2029f6"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/artifacts/near-result.npz",
+      "bytes": 14498,
+      "sha256": "17dc8309caa6e27ea5de795f2abcdf61539f546819d7f044ba6f25988bab35f6"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/environment.json",
+      "bytes": 268,
+      "sha256": "517200c8b42c7b17e75de5a5ca49993e27c8a99621595ae1aed0122e5656967c"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/exit-code.txt",
+      "bytes": 2,
+      "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/launch.json",
+      "bytes": 578,
+      "sha256": "5b17a9b160063d48d0a52c1c7a2da9ed28a9c9b0a2c2d16ca10ff6bf36e31924"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/run.log.gz",
+      "bytes": 3862,
+      "sha256": "a77bb44c5a4903427c0e1f62e5fdce5234ced6d98d64bf97098d174049604aad",
+      "raw_bytes": 36270,
+      "raw_sha256": "7f2bbaa50abf97de212efda4dae98f7a10bfa0a788691de7b4e854c8c76dae21"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/run.yaml",
+      "bytes": 2058,
+      "sha256": "74b2fef9b225bb979c9e780ca487f88c628a84bfb1bb3bcc411c7cc0e3aa326a"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/paired-audit.json",
+      "bytes": 2504,
+      "sha256": "bc5c6d9bedd0c3b96ba3afb5e42de7cd1811f49e92782b0ef268d408fc9488b8"
+    }
+  ],
+  "deleted_after_verified_backup": true
+}

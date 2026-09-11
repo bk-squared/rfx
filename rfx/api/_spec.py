@@ -1514,8 +1514,11 @@ class MSLSMatrixResult:
     S : (n_ports, n_ports, n_freqs) complex
         Full S-matrix at each port's FIRST probe plane, formed from measured
         V/I with the analytic Hammerstad-Jensen reference impedance. There
-        is no translation back to the physical feed planes. The fitted
-        ``Z0`` below is a diagnostic, not the reference used to form S.
+        is no translation back to the physical feed planes. This is the
+        nominal E-probe reference: H is currently sampled at the same array
+        index and retains its spatial half-cell stagger; only its temporal
+        stagger is corrected. The fitted ``Z0`` below is a diagnostic, not
+        the reference used to form S.
     freqs : (n_freqs,) float
         Frequency grid in Hz.
     Z0 : (n_ports, n_freqs) complex

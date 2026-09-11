@@ -1,0 +1,59 @@
+name: rfx-i726-fixed-source-complete
+description: fixed-DUT/source p1 observation-offset sensitivity; no exact full-wave
+  oracle claim
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: '1'
+  OMP_NUM_THREADS: '1'
+  OPENBLAS_NUM_THREADS: '1'
+  XLA_PYTHON_CLIENT_PREALLOCATE: 'false'
+  JAX_ENABLE_X64: '0'
+  HDF5_USE_FILE_LOCKING: 'FALSE'
+  RFX_OUT: /root/workspace/claude-workspace/rfx/runs/codex-i726-fixed-source-complete-m770ggjs
+  RFX_ARCHIVE: /root/workspace/claude-workspace/rfx/runs/codex-i726-fixed-source-complete-m770ggjs/source.tar
+  RFX_ARCHIVE_SHA256: f78ad7c25ed326e56d7922f8fc6033938dfe50bf5d5a3c8586880e97f53b8323
+  RFX_SHA: 130b9071e5e6aaa0efda0dd1d6a36fb7e8d519bd
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: 'set -eu
+
+  RFX_WORK=$(mktemp -d /tmp/rfx-i726.XXXXXX)
+
+  export RFX_WORK
+
+  python -c ''import hashlib,os; from pathlib import Path; p=Path(os.environ["RFX_ARCHIVE"]);
+  assert hashlib.sha256(p.read_bytes()).hexdigest()==os.environ["RFX_ARCHIVE_SHA256"]''
+
+  tar -xf "$RFX_ARCHIVE" -C "$RFX_WORK"
+
+  cd "$RFX_WORK"
+
+  python -m pip install -q "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pyyaml
+  pytest
+
+  export PYTHONPATH="$RFX_WORK"
+
+  export MPLBACKEND=Agg
+
+  python -c ''import jax,numpy,scipy,rfx,json,os; from pathlib import Path; m=dict(source_sha=os.environ["RFX_SHA"],jax=jax.__version__,numpy=numpy.__version__,scipy=scipy.__version__,rfx_path=rfx.__file__,backend=jax.default_backend(),x64=bool(jax.config.jax_enable_x64),devices=[str(x)
+  for x in jax.devices()]); print(json.dumps(m)); assert m["backend"]=="gpu"; Path(os.environ["RFX_OUT"],"environment.json").write_text(json.dumps(m,indent=2))''
+
+  set +e
+
+  timeout --kill-after=30s 7200s python -u scripts/diagnostics/msl_probe_clearance_bias.py
+  --num-periods 100 --out-dir "$RFX_OUT/artifacts" > "$RFX_OUT/run.log" 2>&1
+
+  RFX_RC=$?
+
+  set -e
+
+  printf ''%s\n'' "$RFX_RC" > "$RFX_OUT/exit-code.txt"
+
+  tail -n 100 "$RFX_OUT/run.log"
+
+  exit "$RFX_RC"
+
+  '

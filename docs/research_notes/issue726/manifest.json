@@ -1,7 +1,8 @@
 {
   "base_sha": "0662c3b96d82ca65d7bd041b94c4ab984230e00d",
-  "gpu_run_pending": 369367260508,
-  "no_new_rf_measurement": true,
+  "gpu_run": 369367260508,
+  "field_solves_completed": true,
+  "producer_verdict": "not_read",
   "files": [
     {
       "path": "rfx/api/_preflight.py",
@@ -10,13 +11,13 @@
     },
     {
       "path": "rfx/api/_sparams.py",
-      "bytes": 443677,
-      "sha256": "a0d7c661fa1695c3e8a52b555376972530c504b3ad5f7c60d15c4af22719fb3f"
+      "bytes": 443851,
+      "sha256": "881d32df3c971b408c8716aae2269824e13dd9e2f59fa49b2bec70afdd82e84f"
     },
     {
       "path": "rfx/api/_spec.py",
-      "bytes": 96958,
-      "sha256": "153603d63bfc91632ce5522bb0292373e9a06032ac47297c8395915c646dab57"
+      "bytes": 97151,
+      "sha256": "d913b44d6ed15d83e2747586e4aae54f93f741bc5f86398f57a7731c0868fbd0"
     },
     {
       "path": "scripts/diagnostics/msl_probe_clearance_bias.py",
@@ -50,8 +51,8 @@
     },
     {
       "path": "docs/research_notes/issue726/README.md",
-      "bytes": 6002,
-      "sha256": "7596ce50a9bcc584d4b6814839d0d160621e997f2eacc26f4a3e4d8ddf9fcc19"
+      "bytes": 6221,
+      "sha256": "e840ee6e02d01df0c596029db7fb5f879a72a62e68a41a34323e17172c173ca3"
     },
     {
       "path": "docs/research_notes/issue726/audit_original_short.py",
@@ -59,9 +60,19 @@
       "sha256": "50ddda241b4fe5e8785abdfa2ad25833b599d409614c16d2273093281eac5774"
     },
     {
+      "path": "docs/research_notes/issue726/audit_paired_record.py",
+      "bytes": 5064,
+      "sha256": "eb89aefab3f281435e3d60f66bcb3dc2ad85e9038304a62f3b578f8078b29da1"
+    },
+    {
       "path": "docs/research_notes/issue726/build-v1/inputs.json",
       "bytes": 4808,
       "sha256": "7bcd10551c4e59e7c20100c764a65500ea146dd4ff031a7a66e610659f3af646"
+    },
+    {
+      "path": "docs/research_notes/issue726/ci-501b73e9.json",
+      "bytes": 7734,
+      "sha256": "2b70f7d1db17ef3a2401828590e4364e4f0fc63e08cbc36bcd72310663ec39d6"
     },
     {
       "path": "docs/research_notes/issue726/complete-archive-build/inputs.json",
@@ -108,6 +119,83 @@
       "sha256": "db1e8a12f79c3e68af3ce0df88b69b4176a47d1045808340255502c6d6435690"
     },
     {
+      "path": "docs/research_notes/issue726/gpu-369367260508/artifacts/clean-phasors.npz",
+      "bytes": 62148,
+      "sha256": "6d250514f557ffcd1b381128d7c19d48dfff05763793121ab6078ee6ea1cf021"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/artifacts/clean-quality.json",
+      "bytes": 102,
+      "sha256": "9346770bf1563b7e6095b62ff05e9495e9587355b7d84830127874628a2029f6"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/artifacts/clean-result.npz",
+      "bytes": 14498,
+      "sha256": "86f2b4699e881179001d9c9cd15fd58d7a989e718077e4019afbe1f7bd849458"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/artifacts/comparison.json",
+      "bytes": 76,
+      "sha256": "6cd61a7551c6170ab4f6c193614d455e68a13094ee8a11c4335072e7c67b829f"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/artifacts/inputs.json",
+      "bytes": 4808,
+      "sha256": "ac10f64897f015c7720030c669dd1e7d0c8a1e8456f4e1e63f3a350c91221894"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/artifacts/near-phasors.npz",
+      "bytes": 62152,
+      "sha256": "1ee9a29fd77eba933e25e2f247cc7c50153b8bd313c795860665e31f7cc1c4ed"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/artifacts/near-quality.json",
+      "bytes": 102,
+      "sha256": "9346770bf1563b7e6095b62ff05e9495e9587355b7d84830127874628a2029f6"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/artifacts/near-result.npz",
+      "bytes": 14498,
+      "sha256": "17dc8309caa6e27ea5de795f2abcdf61539f546819d7f044ba6f25988bab35f6"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/environment.json",
+      "bytes": 268,
+      "sha256": "517200c8b42c7b17e75de5a5ca49993e27c8a99621595ae1aed0122e5656967c"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/exit-code.txt",
+      "bytes": 2,
+      "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/launch.json",
+      "bytes": 578,
+      "sha256": "5b17a9b160063d48d0a52c1c7a2da9ed28a9c9b0a2c2d16ca10ff6bf36e31924"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/manifest.json",
+      "bytes": 3647,
+      "sha256": "7b238692eaa424e15d5de83fc0b4770d9445af7c139d3113345944ddd651661a"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/paired-audit.json",
+      "bytes": 2504,
+      "sha256": "bc5c6d9bedd0c3b96ba3afb5e42de7cd1811f49e92782b0ef268d408fc9488b8"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/run.log.gz",
+      "bytes": 3862,
+      "sha256": "a77bb44c5a4903427c0e1f62e5fdce5234ced6d98d64bf97098d174049604aad",
+      "raw_bytes": 36270,
+      "raw_sha256": "7f2bbaa50abf97de212efda4dae98f7a10bfa0a788691de7b4e854c8c76dae21"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260508/run.yaml",
+      "bytes": 2058,
+      "sha256": "74b2fef9b225bb979c9e780ca487f88c628a84bfb1bb3bcc411c7cc0e3aa326a"
+    },
+    {
       "path": "docs/research_notes/issue726/gpu-launch-369367260508.json",
       "bytes": 629,
       "sha256": "278d2226ca588b1142fcdf7a2721072206b6f415c0c1e125fc7960c49b0c8969"
@@ -152,6 +240,11 @@
       "raw_sha256": "c2b49ffb437904238446853fd63f3a57dee05092d211bd06dc172b48ce3cecf4"
     },
     {
+      "path": "docs/research_notes/issue726/spatial-alignment.md",
+      "bytes": 2846,
+      "sha256": "e6749053be93af56a64d0e55807dc49f6b83e35736c05b761bdd72c5b8967068"
+    },
+    {
       "path": "docs/research_notes/issue726/test-log.txt",
       "bytes": 99,
       "sha256": "37e2831a5a031bfa8ab55a2ca2136f2fe44028736d5569bb8fd4e1f03568f792"
@@ -162,6 +255,30 @@
       "sha256": "98a62279323bcec3053d3bf6adda15ab5cac17d22e1b61b9cfb8cf77a1f5e36c",
       "raw_bytes": 11609,
       "raw_sha256": "b4f2012e209dcc57a5e876d49e417889bf111a39ea55e6a33ae982df70f8f3b7"
+    },
+    {
+      "path": "docs/research_notes/issue726/yee_spatial_stagger.json",
+      "bytes": 1171,
+      "sha256": "9849dbcc2aa70e65efde17e6e9a8b121c00bfcd5fd129085a8ed7dc773f7930a"
+    },
+    {
+      "path": "docs/research_notes/issue726/yee_spatial_stagger.py",
+      "bytes": 2182,
+      "sha256": "60f509df65ad101e32601d6cafc5f5865b42bfe379eacef44b5d21fab295ae30"
+    },
+    {
+      "path": "docs/research_notes/vessl_logs/369367260507_failed.log.gz",
+      "bytes": 2264,
+      "sha256": "49b3aceef8dfb9d320cd28a99a294d1604fd5f5fbfc7ca44dbcee6c9b3b1ed78",
+      "raw_bytes": 6164,
+      "raw_sha256": "96a18c0382b6bc04f7972922d4170d77ab6f8e17a58918225f85e899659b45a1"
+    },
+    {
+      "path": "docs/research_notes/vessl_logs/369367260508_failed.log.gz",
+      "bytes": 5801,
+      "sha256": "770a8121b6aabc7ccb9c8d28550a0ef387cbc3a52059f20fbcaf36a7bf80494d",
+      "raw_bytes": 30151,
+      "raw_sha256": "b124f5b28af7114261d8f1b7324099fa674837b5f7ae366805a56dbb9a6393d5"
     }
   ]
 }

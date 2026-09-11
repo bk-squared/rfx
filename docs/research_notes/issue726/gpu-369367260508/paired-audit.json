@@ -1,0 +1,88 @@
+{
+  "clean": {
+    "quality": {
+      "assembly": "multi_drive_solve",
+      "readability_failure": null,
+      "passivity_projection": false
+    },
+    "settling_db": [
+      -122.15785574943226,
+      -120.00605473787154
+    ],
+    "at_control_notch": {
+      "frequency_hz": 3771250000.0,
+      "raw_s11_db": 0.026895256713032722,
+      "raw_s21_db": -47.73075485229492,
+      "reliable": [
+        false,
+        false
+      ],
+      "beta_railed": [
+        false,
+        false
+      ],
+      "cond_a": 1.0062871072363273
+    },
+    "max_column_power_all": 1.0065109729766846,
+    "max_column_power_band": 1.0065109729766846,
+    "max_cond_a_all": 1.6296810351541033,
+    "max_cond_a_band": 1.2965942211877781,
+    "unreliable_bins_band": 1,
+    "beta_railed_bins_band": [
+      0,
+      0
+    ],
+    "inferred_reference_impedances_ohm": [
+      47.89479996289313,
+      47.89479996289313
+    ],
+    "reference_provenance": "source130b9071: homogeneous EPS_R=3.66 sampled at float32; not a producer metadata field",
+    "max_abs_vi_replay_diff": 2.289080187398997e-07
+  },
+  "near": {
+    "quality": {
+      "assembly": "multi_drive_solve",
+      "readability_failure": null,
+      "passivity_projection": false
+    },
+    "settling_db": [
+      -119.58135698043966,
+      -118.40915974530424
+    ],
+    "at_control_notch": {
+      "frequency_hz": 3771250000.0,
+      "raw_s11_db": 0.018065137788653374,
+      "raw_s21_db": -47.72077941894531,
+      "reliable": [
+        false,
+        false
+      ],
+      "beta_railed": [
+        true,
+        false
+      ],
+      "cond_a": 1.0059924905719333
+    },
+    "max_column_power_all": 1.0078186988830566,
+    "max_column_power_band": 1.0078186988830566,
+    "max_cond_a_all": 1.6293356100357579,
+    "max_cond_a_band": 1.306987597242263,
+    "unreliable_bins_band": 1,
+    "beta_railed_bins_band": [
+      51,
+      0
+    ],
+    "inferred_reference_impedances_ohm": [
+      47.89479996289313,
+      47.89479996289313
+    ],
+    "reference_provenance": "source130b9071: homogeneous EPS_R=3.66 sampled at float32; not a producer metadata field",
+    "max_abs_vi_replay_diff": 2.1152993707033677e-07
+  },
+  "producer_verdict": {
+    "status": "not_read",
+    "reason": "clean: low-signal screen at notch"
+  },
+  "raw_delta_s11_db_at_control_notch": -0.008830118924379349,
+  "comparison_scope": "raw observation at the same frequency but different probe0 reference planes; no calibrated error, no passivity projection, no replacement of producer gates"
+}
