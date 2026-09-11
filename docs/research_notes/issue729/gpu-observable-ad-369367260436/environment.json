@@ -1,0 +1,13 @@
+{
+  "source_sha": "b4b0893e6a3ae135229e32fbea9033939ea674ac",
+  "source_dirty": false,
+  "jax": "0.4.33.dev20241023+e3c6d6430",
+  "numpy": "1.26.4",
+  "scipy": "1.14.1",
+  "devices": "[CudaDevice(id=0)]",
+  "cases": {
+    "ad": "tests/unit/autodiff/test_msl_ad_fd_converged.py::test_msl_ad_fd_converged_tight",
+    "nu": "tests/locks/test_msl_nu_sparam_gate.py::test_nu_msl_patch_s11_passive_and_edge_fed_match"
+  },
+  "driver_sha256": "c39afbe9d5511cd992bc344d805d9b8b6636ec72f48cca6afe07de6f04d188b8"
+}

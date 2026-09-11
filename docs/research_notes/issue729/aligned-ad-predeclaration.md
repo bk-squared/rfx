@@ -41,3 +41,12 @@ Pre-solve checks: six fast tests passed, including actual E/H dtype capture,
 realized trace plane agreement, and sampled source coverage. Live acceptance
 is pending at this checkpoint. Legacy geometry, weak-source and step-size
 records remain in the adjacent run archives; they do not qualify this rig.
+
+## Measurement after the predeclaration
+
+Run 369367260436 (source b4b0893e) passed with the original h=1e-3 and
+3% gate: AD–FD difference about 0.058%, all objective bins above the
+wave-split low-signal screen, and both drives settled. See
+[the measured diagnosis](ad-referee-diagnosis.md#repaired-fixture-measurement)
+and the retained run directory. The same run passed the existing NU patch
+gate afterward; no tolerance was widened.

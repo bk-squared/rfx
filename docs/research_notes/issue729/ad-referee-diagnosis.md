@@ -106,3 +106,25 @@ below -40 dB before computing a gradient; it does not adaptively discard
 bins. The original 3% gradient gate and h=1e-3 remain unchanged at this
 checkpoint. A new live measurement is required to qualify the repaired
 fixture; the legacy measurements above cannot qualify it.
+
+## Repaired fixture measurement
+
+Run 369367260436 on b4b0893e passed the repaired AD test without changing
+h=1e-3, the eight frequencies, 20 periods, or the 3% derivative limit:
+
+- g_ad32=1.122180e-3, g_fd64=1.121532e-3; relative difference about 0.058%.
+- Every fixed objective bin passed the wave-split low-signal screen.
+- Forward drive settling was -128.26 / -124.82 dB.
+- The incident-wave system's per-bin condition number ranged 1.031–1.052.
+
+Raw E-plane voltage/current records, incident/reflected waves, returned S,
+and actual field initialization dtypes are retained. The run then passed
+the unchanged NU patch gate (280 periods, 81 frequencies): max|S11|=0.9839,
+in-band minimum|S11|=0.9112, and the original edge-fed resonance/liveness
+checks passed with no truncation advisory. This NU case uses uniform-valued
+profiles to exercise the NU runner; it does not validate arbitrary grading.
+
+These results qualify the repaired AD comparison and existing consumer
+gates. They do not establish absolute RF calibration of every MSL port or
+close #726/#715. General production validation of declared versus actual
+port heights and the full CI checks still remain for #729.

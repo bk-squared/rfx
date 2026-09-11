@@ -1,0 +1,63 @@
+{
+  "run_id": "369367260436",
+  "status": "completed",
+  "full_provider_log": "docs/research_notes/vessl_logs/369367260436-issue729-observable-ad-nu-completed.log.gz",
+  "provider_log_raw_sha256": "1893ff3036835a640fd0cf07ac26f5ea527034e7f4ee6f544c80f11ae74fac53",
+  "provider_log_gzip_sha256": "85363769e325be64e43a7a596bd913dc26735578c5499d171c5c95abe9258da6",
+  "provider_log_raw_bytes": 54203,
+  "compressed_artifacts": {
+    "ad.log.gz": {
+      "original_path": "ad.log",
+      "raw_sha256": "b42d9ed661c898d942b741a1f49644fe8bbb810600ad6bbdc5d28d8515cc6a16",
+      "raw_bytes": 29758
+    },
+    "provider-status.txt.gz": {
+      "original_path": "provider-status.txt",
+      "raw_sha256": "b6d8dd8fc545c79976c58386589b9339426ec47a95c20bbd85f06d0a70c97bb3",
+      "raw_bytes": 2221
+    },
+    "nu.log.gz": {
+      "original_path": "nu.log",
+      "raw_sha256": "8511afc36c2aaca476da4fa41e3851199166d43150dafd6f4f45c996792cfef7",
+      "raw_bytes": 16311
+    },
+    "nu/junit.xml.gz": {
+      "original_path": "nu/junit.xml",
+      "raw_sha256": "d73e0317893fd1bcb57a9787a0299f5d1b513648c6abf50de2ba8954844af926",
+      "raw_bytes": 395
+    },
+    "ad/junit.xml.gz": {
+      "original_path": "ad/junit.xml",
+      "raw_sha256": "ccfae113cc2db6c3f0d8c008aa5a1d39ea12dc96d82d873b5ac7789f0fdb0bb2",
+      "raw_bytes": 388
+    }
+  },
+  "files": {
+    "environment.json": "d10b8b7ef2536745b10f4cda216b9943e3d14807a313b3c328ce2f0661f916d0",
+    "nu.log.gz": "4be2f3d80fb7313ce4ab9bb75bed0fcbda2a3c5207eb64f91b9e7c54b647f292",
+    "ad.log.gz": "cb36a23a3e21dd2ff922ec517e8f6542bcd08223b936f127163ac2b437be73a3",
+    "outcomes.json": "2b7a463b816a77d73cd31010c7dd7f4f9aa523da740c1f5c302bda968744562b",
+    "run.yaml": "a49de78144791fbc7ccde66ec80e2d12a0c733d78796070a8f3c4131a639f2b3",
+    "provider-status.txt.gz": "fdcfa9e22fb76e4be331505ddf0e0a5df7a3b57b3eee0b8fbf8a228888791094",
+    "driver.py": "c39afbe9d5511cd992bc344d805d9b8b6636ec72f48cca6afe07de6f04d188b8",
+    "nu/call-0-result.npz": "9b6c32db8be8b0ca42e164ae707e13f86215c57aeb45e7ad4a781ac04f53b951",
+    "nu/call-0-raw-vi.npz": "4737e5cb5bd77b73c71fe0a5d83ae57630613ad8dcc03d4215e1626d594bb407",
+    "nu/call-0-waves.npz": "333b98cd2cdc274592e17fba79b77dfccd7d02ef87aa6b9c6e2b24124947cbda",
+    "nu/junit.xml.gz": "731389237810a1209567f4df6ea58e2719abc45490f6c4eef597b8cd59b715cf",
+    "nu/outcome.json": "c5c69a9071237c1c8576787529059a1a7da535b8bf5960deb292ae0a7fd0eaf3",
+    "nu/calls.json": "6ab5737c13d73eba8904009ca7254641965ac25bfc0fb40a8b7edbe2f69e2d26",
+    "ad/call-0-result.npz": "89331a5114c58a034636646197733ad3f80b21c7c2366129a89d6bfcb812eac0",
+    "ad/call-2-waves.npz": "8981e061f7650e4580cfa5554460c2b37c64f075b34d3914ad11e6d237d17953",
+    "ad/call-0-raw-vi.npz": "ef01bb8ae01b0debeb1dbaa94473a35228713c0dbfa18639a67bf36bf5b5908e",
+    "ad/field-initializations.json": "bee44a907cba249582c9b28dde2318e8d6ef681ebd30e1a5c61163b34e2315fc",
+    "ad/call-0-waves.npz": "aa68e864fd44ee01317177623b9cfa39f819cba21b6002456e0e492c463dd67e",
+    "ad/call-3-raw-vi.npz": "5101c81101c93c5b4dde7b845445f475c47396feffcd1a9637926b9177ebf4d6",
+    "ad/call-2-raw-vi.npz": "59e37ab439e46abdd6596baf1d99f4546753aa1efc4712e6cc8f3cd1f1cd9dbe",
+    "ad/call-3-result.npz": "fa5e154a4e45712f132b68f8ef5513de79a8082499dd1abf308aa697aef14d4e",
+    "ad/junit.xml.gz": "e9c3df9b5ae515264e903dcd8f8cfc39c0ae43aed4efe36f3a782bbe6a7d256a",
+    "ad/outcome.json": "9b113dabcd562ff541f7ea51906aca3bec2ecf315c3fb4b33948649309e9e6f8",
+    "ad/calls.json": "a59204e06520126403a0bba2630cdf3043b4ac245a324f7eeef3b3d0f024ad7f",
+    "ad/call-2-result.npz": "f630e1d5202ce7eca9b12d6bd3d7a27a43e1805720238dd94c54a9be7d17f5eb",
+    "ad/call-3-waves.npz": "2392dca48e729dbd39b95d60f6f318e65179c0e92fb5699e671f2a4d88fc857e"
+  }
+}
