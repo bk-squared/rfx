@@ -316,7 +316,7 @@ def _axis_dual_size(grid, axis: str, idx: int) -> float:
 
 
 def _msl_yz_cells(grid, port: MSLPort) -> list[tuple[int, int, int]]:
-    """Return the (i, j, k) grid indices spanning the MSL cross-section.
+    """Return substrate-normal E-edge indices spanning the MSL cross-section.
 
     The cross-section is the plane normal to the PROPAGATION axis at the
     feed coordinate, spanning the trace WIDTH axis and the substrate
@@ -339,9 +339,17 @@ def _msl_yz_cells(grid, port: MSLPort) -> list[tuple[int, int, int]]:
     w_a, w_b = sorted((int(lo_idx[iw]), int(hi_idx[iw])))
     n_a, n_b = sorted((int(lo_idx[inr]), int(hi_idx[inr])))
 
+    if n_b <= n_a:
+        raise ValueError(
+            "MSL port has no substrate-normal edge between its ground and "
+            "trace planes; resolve the substrate on the mesh."
+        )
     cells = []
     for w in range(w_a, w_b + 1):
-        for n in range(n_a, n_b + 1):
+        # E_normal[n] lives on [node n, node n+1]. The trace-plane node
+        # is the EXCLUSIVE edge bound; including it injects/loads above
+        # the trace. Width coordinates of E_normal remain nodal/inclusive.
+        for n in range(n_a, n_b):
             cell = [0, 0, 0]
             cell[ip] = i_feed
             cell[iw] = int(w)
@@ -351,13 +359,17 @@ def _msl_yz_cells(grid, port: MSLPort) -> list[tuple[int, int, int]]:
 
 
 def msl_cross_section_span(grid, port: MSLPort) -> dict:
-    """Feed index plus the width / normal cell spans of the cross-section.
+    """Feed index, width nodes and normal bounding planes of the cross-section.
 
     Returns a dict with ``i_feed``, ``w_lo``/``w_hi``, ``w_centre``,
-    ``n_lo``/``n_hi`` (all ints, inclusive spans) and the resolved axis
+    ``n_lo``/``n_hi`` (all ints) and the resolved axis
     names/indices. Every consumer that used to unpack ``c[0]``/``c[1]``/
     ``c[2]`` from :func:`_msl_yz_cells` should read this instead, so the
     axis projection lives in one place.
+
+    Width nodes are inclusive. Normal E edges use ``n_lo <= k < n_hi``;
+    ``n_hi`` is the upper bounding NODE (trace plane), as extraction and
+    trace searches require. ``cells`` contains edges, not that upper node.
     """
     prop, width, normal, sign = msl_axis_roles(port.direction)
     ip = _MSL_AXIS_INDEX[prop]
@@ -372,7 +384,7 @@ def msl_cross_section_span(grid, port: MSLPort) -> dict:
         i_feed=int(cells[0][ip]),
         w_lo=int(ws[0]), w_hi=int(ws[-1]),
         w_centre=int((ws[0] + ws[-1]) // 2),
-        n_lo=int(ns[0]), n_hi=int(ns[-1]),
+        n_lo=int(ns[0]), n_hi=int(ns[-1]) + 1,
         cells=cells,
     )
 
@@ -610,7 +622,7 @@ def compute_msl_mode_profile(
     i_feed = span["i_feed"]
 
     n_y_trace = j_trace_hi - j_trace_lo + 1
-    n_z_sub = span["n_hi"] - k_sub_lo + 1
+    n_z_sub = span["n_hi"] - k_sub_lo
     dy = float(_axis_cell_size(grid, width_axis, j_trace_lo))
     dz = float(_axis_cell_size(grid, normal_axis, k_sub_lo))
 
@@ -836,7 +848,7 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
         if not cells:
             return materials
         n_y = span["w_hi"] - span["w_lo"] + 1
-        n_z = span["n_hi"] - span["n_lo"] + 1
+        n_z = span["n_hi"] - span["n_lo"]
         # Issue #661: these three cell sizes are the PROPAGATION, WIDTH
         # and NORMAL cell sizes -- not literally dx/dy/dz. sigma scales as
         # 1/d_prop (measured: halving the propagation-axis cell doubles
@@ -987,7 +999,7 @@ def make_msl_port_sources(grid, port: MSLPort, materials, n_steps,
         cells = span["cells"]
         if not cells:
             return []
-        n_z = span["n_hi"] - span["n_lo"] + 1
+        n_z = span["n_hi"] - span["n_lo"]
         ax_n = span["normal_axis"]
         inr = span["normal_idx"]
         specs = []

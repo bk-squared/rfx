@@ -40,7 +40,7 @@ def _board(direction, n_sub, ground_cells):
     centre = grid.position_to_index(msl_physical_point(direction, 4*dx, 12*dx, lo))
     planes = realized_wall_planes(edges, 2, ij=centre[:2])
     assert list(planes) == [ground_cells, ground_cells+n_sub]
-    return grid, port, materials, centre, tuple(map(int, planes))
+    return grid, port, materials, centre, tuple(map(int, planes)), sim
 
 
 @pytest.mark.parametrize("direction,n_sub,ground_cells", [
@@ -48,7 +48,7 @@ def _board(direction, n_sub, ground_cells):
     ("+y", 4, 8), ("-y", 4, 8),
 ])
 def test_laplace_source_uses_wall_span_for_voltage_and_load(direction, n_sub, ground_cells):
-    grid, port, materials, centre, (lower, upper) = _board(direction, n_sub, ground_cells)
+    grid, port, materials, centre, (lower, upper), _ = _board(direction, n_sub, ground_cells)
     profile = compute_msl_mode_profile(grid, port, 3.66)
     assert profile["n_z_sub"] == upper-lower
     assert {c[2] for c in profile["cell_indices"]} == set(range(lower, upper))
@@ -71,7 +71,7 @@ def test_laplace_source_uses_wall_span_for_voltage_and_load(direction, n_sub, gr
 
 
 def test_uniform_source_cells_and_span_metadata_distinguish_edges_from_nodes():
-    grid, port, materials, _, (lower, upper) = _board("+x", 4, 8)
+    grid, port, materials, _, (lower, upper), _ = _board("+x", 4, 8)
     cells = _msl_yz_cells(grid, port)
     assert {c[2] for c in cells} == set(range(lower, upper))
     span = msl_cross_section_span(grid, port)
@@ -80,3 +80,36 @@ def test_uniform_source_cells_and_span_metadata_distinguish_edges_from_nodes():
     loaded = setup_msl_port(grid, port, materials)
     sigma = np.asarray(loaded.sigma)-np.asarray(materials.sigma)
     assert not np.any(sigma[:, :, upper:])
+
+
+@pytest.mark.parametrize("direction", ["+x", "-x", "+y", "-y"])
+def test_run_and_forward_build_the_same_physical_port(direction, monkeypatch):
+    import rfx.sources.msl_port as source_module
+
+    grid, expected, _, _, _, sim = _board(direction, 4, 8)
+    pos = msl_physical_point(direction, expected.feed_x,
+                              (expected.y_lo+expected.y_hi)/2, expected.z_lo)
+    sim.add_msl_port(position=pos, width=expected.y_hi-expected.y_lo,
+                     height=expected.z_hi-expected.z_lo, direction=direction,
+                     mode="laplace", impedance=50.)
+    seen = []
+
+    class Captured(Exception):
+        pass
+
+    def capture(grid_arg, port, eps, **kwargs):
+        seen.append((port, eps))
+        raise Captured
+
+    monkeypatch.setattr(source_module, "compute_msl_mode_profile", capture)
+    # Stop at the real mode-setup boundary, before any solve or FDTD scan.
+    with pytest.raises(Captured):
+        sim.run(n_steps=1, compute_s_params=False, skip_preflight=True)
+    with pytest.raises(Captured):
+        sim.forward(n_steps=1, skip_preflight=True)
+    for port, eps in seen:
+        assert port.feed_x == pytest.approx(expected.feed_x)
+        assert (port.y_lo, port.y_hi) == pytest.approx((expected.y_lo, expected.y_hi))
+        assert (port.z_lo, port.z_hi) == pytest.approx((8*grid.dx, 12*grid.dx))
+        assert port.direction == direction
+        assert eps == pytest.approx(3.66, rel=1e-6)

@@ -1744,11 +1744,13 @@ class _ExecuteMixin:
         # DFT plane probes (no JIT accumulator wiring needed here).
         if self._msl_ports:
             from rfx.sources.msl_port import (
-                MSLPort,
                 _msl_yz_cells,
                 msl_normal_component as _msl_normal_component,
                 compute_msl_mode_profile,
                 make_msl_port_sources,
+                msl_cell,
+                msl_cross_section_span,
+                msl_port_from_entry,
                 setup_msl_port,
             )
             # Issue #483: static eps for the launch fixture, assembled ONCE
@@ -1766,17 +1768,9 @@ class _ExecuteMixin:
                 _static_eps_483 = self._assemble_materials(
                     grid, pec_sheets=[], pec_wires=[])[0].eps_r
             for pe in self._msl_ports:
-                x_feed, y_centre, z_lo = pe.position
-                mp = MSLPort(
-                    feed_x=float(x_feed),
-                    y_lo=float(y_centre - pe.width / 2),
-                    y_hi=float(y_centre + pe.width / 2),
-                    z_lo=float(z_lo),
-                    z_hi=float(z_lo + pe.height),
-                    direction=pe.direction,
-                    impedance=pe.impedance,
-                    excitation=pe.waveform,
-                )
+                # Use the same physical-to-port frame as run(). In a y-fed
+                # port feed_x names physical y, and y_lo/y_hi name width x.
+                mp = msl_port_from_entry(pe)
                 # Honour `pe.mode` so the source distribution matches
                 # the imperative `run_uniform_path` (Phase 3 of gap #2/#4
                 # closure, 2026-05-07).  ``laplace`` is the default for
@@ -1788,12 +1782,13 @@ class _ExecuteMixin:
                 port_mode = getattr(pe, "mode", "uniform")
                 mode_profile = None
                 if port_mode == "laplace":
-                    cells = _msl_yz_cells(grid, mp)
-                    j_set = sorted({c[1] for c in cells})
-                    k_set = sorted({c[2] for c in cells})
-                    j_centre = (j_set[0] + j_set[-1]) // 2
-                    k_mid = (k_set[0] + k_set[-1]) // 2
-                    i_feed = cells[0][0]
+                    span = msl_cross_section_span(grid, mp)
+                    # Keep the declared midpoint sample when the source edge
+                    # list becomes half-open (#729); it is not the midpoint
+                    # of the list's last E-edge index. Match run() on all axes.
+                    k_mid = (span["n_lo"] + span["n_hi"]) // 2
+                    eps_cell = msl_cell(pe.direction, span["i_feed"],
+                                        span["w_centre"], k_mid)
                     if pe.eps_r_sub is not None:
                         eps_r_sub = float(pe.eps_r_sub)
                     else:
@@ -1815,7 +1810,7 @@ class _ExecuteMixin:
                         # for every caller (forward, topology,
                         # sparam_driver) without threading a handle.
                         eps_r_sub = float(np.asarray(
-                            _static_eps_483[i_feed, j_centre, k_mid]
+                            _static_eps_483[eps_cell]
                         ))
                     mode_profile = compute_msl_mode_profile(grid, mp, eps_r_sub)
                 elif port_mode == "eigenmode":

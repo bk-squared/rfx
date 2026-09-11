@@ -65,12 +65,13 @@ def test_msl_yz_cells_covers_full_cross_section():
     assert j_set[-1] == j_hi_expected
     assert j_set == list(range(j_set[0], j_set[-1] + 1))
 
-    # k range covers z_lo..z_hi.
+    # Ez[k] occupies the edge from node k to k+1. The upper bounding
+    # plane is excluded: including its index would add an edge above it.
     k_set = sorted({c[2] for c in cells})
     k_lo_expected = grid.position_to_index((1e-3, 1e-3, 0.0))[2]
     k_hi_expected = grid.position_to_index((1e-3, 1e-3, 2.54e-4))[2]
     assert k_set[0] == k_lo_expected
-    assert k_set[-1] == k_hi_expected
+    assert k_set[-1] == k_hi_expected - 1
     # Total cell count = N_y * N_z.
     assert len(cells) == len(j_set) * len(k_set)
 

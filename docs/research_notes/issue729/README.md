@@ -79,3 +79,36 @@ once on matching current-main geometry, preserving the raw records.
 No claim is made here that a scalar-spacing Laplace box is an exact
 nonuniform-cross-section eigensolver, or that repairing this count closes the
 mixed-port calibration or all other MSL issues.
+
+## Core correction and a caller inconsistency exposed by its impact audit
+
+The corrected span retains n_hi as the bounding node, so the imperative
+runner's representative epsilon sample is unchanged. The forward path was
+instead rebuilding its port frame manually from physical x/y fields and
+unpacking the source edge list. A new setup-boundary capture reproduced a
+pre-existing error on +/-y: forward used feed coordinate 0.762 mm where run
+and the declared port use 0.254 mm. The +/-x controls pass. This is a source
+placement difference, not a naming-only refactor.
+
+Forward now uses the same existing msl_port_from_entry / cross-section axis
+mapping as run, and takes the epsilon midpoint from bounding nodes. All four
+setup captures pass without a solver or a new physical threshold. Together
+with the six independent wall/load checks and the existing primitive/metric/
+axis suite, the current selection is 116 passed, 2 deselected, 1 xfailed.
+
+After the root cause was committed in 525b8001, the two obsolete expectations
+were updated: normal source coverage is half-open, and the three moments
+track the corrected THREE-cell Laplace profile. The old moments remain in
+the test's historical note; the 1e-13 numerical regression tolerance is
+unchanged. This moment check is expressly a regression record, not a
+physical accuracy oracle. The independent wall/voltage/load tests provide
+the geometry contract that the old snapshot lacked.
+
+An actual current-WIP two-drive MSL thru run also passed its existing gates:
+raw mean|S11|=0.0203542, raw mean|S21|=1.0000964, meanRe(Z0)=46.2234 ohm;
+settling=-102.93/-100.60 dB, raw max column power=1.0006785. The output receipt
+records its uncommitted source state with exact source hashes and a diff;
+it is candidate evidence, not a pristine baseline. A clean f85ed767 baseline
+run is separate and is still being completed. These results do not close
+#729 until realized-plane validation and the remaining consumer checks are
+finished.
