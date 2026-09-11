@@ -19,6 +19,8 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
 - Automatic decimation preserves the pencil capacity requested by `max_modes`
   and `pencil_parameter`, preventing short multi-mode records from shrinking
   below the dimensions needed for their fit.
+- The discrete NU chain model balances its recurrence and boundary equations
+  before solving, preserving the existing replay tolerance across BLAS kernels.
 
 ### Fixed — public validation numbers follow the regenerated #931 artifacts
 

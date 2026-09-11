@@ -236,3 +236,21 @@ consumer/judge checks passed). Numeric-provenance classification now covers
 this note and its cited values. The combined estimator, retained-record,
 stage1 and cv02 selection passed 93 checks; the final 32 decimation checks
 also include the below-Nyquist synthetic falsifier.
+
+## Current-main CI dependency: chain-model row scaling
+
+The final CI merge included main `b7ad4e93`, which had added #960's E1 replay
+while this PR was in progress. That replay calls the frequency-domain chain
+solver, not Harminv. Its tiny N60/r1.2/32 reflection coefficient disagreed with
+the frozen value by about 1.5e-13 and failed the existing 1e-9 relative window.
+A clean main checkout without any #872 changes reproduces the exact CI value
+with the Haswell BLAS kernel; the local native kernel passes.
+
+The recurrence rows scale as inverse cell size squared; boundary rows are
+order one. Dividing every row and its RHS by its maximum coefficient preserves
+the exact scattering problem and reduces elimination's sensitivity to that
+scale disparity. Both existing chain-model/replay files pass (56 checks) under
+Haswell and the native kernel with this change. The existing failing replay
+is the regression guard. No tolerance, frozen prediction, FDTD data or verdict
+changed. `e1-ci-baseline/` retains source hashes, the failed CI and clean-main
+reproductions, passing checks and the reproduction command.

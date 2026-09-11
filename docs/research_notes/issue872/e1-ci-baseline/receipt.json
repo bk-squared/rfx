@@ -1,0 +1,20 @@
+{
+  "base_commit": "b7ad4e933000143dd69590cfa766a29310ef565a",
+  "candidate_harminv_commit": "f0efed295bd8f1de9dd4982cc8d949c26e91542f",
+  "tested_merge": "6fa249ee3e7573a68c5a338e60796e4b5bbf8231",
+  "ci_job": "https://github.com/bk-squared/rfx/actions/runs/34574416635/job/103183522207",
+  "original_source_sha256": "a9593b1f1bf91687bdaa3cfeb0f6de51689ba54ca3e09f4f8dfec20beaa5e4fd",
+  "corrected_source_sha256": "d7ed6e85c0db1c8b305e47543cf5de1d99b019f08d4a7b6ce5b9b1c05343ecbb",
+  "ci_and_baseline_haswell": 0.00011831862931777621,
+  "frozen": 0.00011831862916448015,
+  "baseline_native": 0.00011831862922922205,
+  "relative_window": 1e-09,
+  "original_case": "N60_r1.2 / n_b=32",
+  "original_implementation": "numpy.linalg.solve on unbalanced recurrence and boundary equations",
+  "correction": "divide each equation including RHS by row max magnitude; same exact R/T problem",
+  "validation": {
+    "Haswell": "56 passed",
+    "native": "56 passed"
+  },
+  "note": "No Harminv path is called by the failing chain calculation; reproduced without any #872 changes on current main. No FDTD, frozen artifact, verdict or tolerance change."
+}

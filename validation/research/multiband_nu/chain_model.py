@@ -162,7 +162,12 @@ def scattering(profile: np.ndarray, n_lead: int, n_tail: int,
         A[r, k] = 1.0
         A[r, iT] = -np.exp(1j * q2 * (k - (n - 1)))
         r += 1
-    sol = np.linalg.solve(A, rhs)
+    # Interior rows scale as 1/d^2, while Bloch boundary rows are O(1).
+    # Balance equations before elimination: the small reflected amplitude
+    # otherwise depends on the BLAS kernel (E1 N60/r1.2 failed its unchanged
+    # 1e-9 replay window on Haswell). This preserves the exact R/T problem.
+    row_scale = np.max(np.abs(A), axis=1)
+    sol = np.linalg.solve(A / row_scale[:, None], rhs / row_scale)
     return sol[iR], sol[iT]
 
 
