@@ -1,0 +1,83 @@
+/root/rfx-codex/scripts/diagnostics/msl_probe_clearance_shorted_line.py:124: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+  
+/root/rfx-codex/scripts/diagnostics/msl_probe_clearance_shorted_line.py:137: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+/root/rfx-codex/docs/research_notes/issue726/audit_original_short.py:45: UserWarning: PEC sheet thin_conductor realizes on node plane 8 of axis z, and the cells on BOTH sides of that plane carry the same dielectric (eps_r = 3.66) over 16640 of its footprint nodes. The sheet is therefore buried half a cell inside the dielectric instead of lying on its interface, so the realized cavity carries half a cell of the wrong medium in series (#931; the #702 measurement was 17 % on a 127 um stack). Draw the dielectric bodies up to the sheet plane, or move the sheet to the interface. Nothing is re-sampled.
+  assembled = sim._assemble_materials(grid, pec_sheets=sheets, pec_wires=wires)
+/root/rfx-codex/scripts/diagnostics/msl_probe_clearance_shorted_line.py:124: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+  
+/root/rfx-codex/scripts/diagnostics/msl_probe_clearance_shorted_line.py:137: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+/root/rfx-codex/docs/research_notes/issue726/audit_original_short.py:45: UserWarning: PEC sheet thin_conductor realizes on node plane 8 of axis z, and the cells on BOTH sides of that plane carry the same dielectric (eps_r = 3.66) over 16640 of its footprint nodes. The sheet is therefore buried half a cell inside the dielectric instead of lying on its interface, so the realized cavity carries half a cell of the wrong medium in series (#931; the #702 measurement was 17 % on a 127 um stack). Draw the dielectric bodies up to the sheet plane, or move the sheet to the interface. Nothing is re-sampled.
+  assembled = sim._assemble_materials(grid, pec_sheets=sheets, pec_wires=wires)
+  realized z wall planes: 0.0000, 0.2540 mm (declared ground 0.0000, trace 0.2540)  [#931 build-time gate, no solve]
+  realized z wall planes: 0.0000, 0.2540 mm (declared ground 0.0000, trace 0.2540)  [#931 build-time gate, no solve]
+{
+  "base_sha": "0662c3b96d82ca65d7bd041b94c4ab984230e00d",
+  "source_sha256": "e0b9195eeabbe423dc22ce3017e4f273749b4735ffeb6c0d5a2610d177dafbbd",
+  "no_field_solve": true,
+  "arms": [
+    {
+      "arm": "clean",
+      "actual_feed_x_m": 0.002032,
+      "probe_x_m": [
+        0.0028786666666666665,
+        0.003048,
+        0.003217333333333333,
+        0.0033866666666666663,
+        0.0035559999999999997
+      ],
+      "short_wall_x_m": [
+        0.019896666666666667,
+        0.01998133333333333
+      ],
+      "actual_deepest_gap_m": 0.016340666666666667,
+      "script_claimed_gap_m": 0.016476,
+      "source_offsets_cells": [
+        10,
+        12,
+        14,
+        16,
+        18
+      ],
+      "required_source_standoff_cells": 15,
+      "pec_substrate_edges_per_probe": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "arm": "near",
+      "actual_feed_x_m": 0.018372666666666666,
+      "probe_x_m": [
+        0.01921933333333333,
+        0.019388666666666665,
+        0.019558,
+        0.019727333333333333,
+        0.019896666666666667
+      ],
+      "short_wall_x_m": [
+        0.019896666666666667,
+        0.01998133333333333
+      ],
+      "actual_deepest_gap_m": 0.0,
+      "script_claimed_gap_m": 7.599999999999968e-05,
+      "source_offsets_cells": [
+        10,
+        12,
+        14,
+        16,
+        18
+      ],
+      "required_source_standoff_cells": 15,
+      "pec_substrate_edges_per_probe": [
+        0,
+        0,
+        0,
+        0,
+        3
+      ]
+    }
+  ]
+}

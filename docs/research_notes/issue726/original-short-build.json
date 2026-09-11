@@ -1,0 +1,71 @@
+{
+  "base_sha": "0662c3b96d82ca65d7bd041b94c4ab984230e00d",
+  "source_sha256": "e0b9195eeabbe423dc22ce3017e4f273749b4735ffeb6c0d5a2610d177dafbbd",
+  "no_field_solve": true,
+  "arms": [
+    {
+      "arm": "clean",
+      "actual_feed_x_m": 0.002032,
+      "probe_x_m": [
+        0.0028786666666666665,
+        0.003048,
+        0.003217333333333333,
+        0.0033866666666666663,
+        0.0035559999999999997
+      ],
+      "short_wall_x_m": [
+        0.019896666666666667,
+        0.01998133333333333
+      ],
+      "actual_deepest_gap_m": 0.016340666666666667,
+      "script_claimed_gap_m": 0.016476,
+      "source_offsets_cells": [
+        10,
+        12,
+        14,
+        16,
+        18
+      ],
+      "required_source_standoff_cells": 15,
+      "pec_substrate_edges_per_probe": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "arm": "near",
+      "actual_feed_x_m": 0.018372666666666666,
+      "probe_x_m": [
+        0.01921933333333333,
+        0.019388666666666665,
+        0.019558,
+        0.019727333333333333,
+        0.019896666666666667
+      ],
+      "short_wall_x_m": [
+        0.019896666666666667,
+        0.01998133333333333
+      ],
+      "actual_deepest_gap_m": 0.0,
+      "script_claimed_gap_m": 7.599999999999968e-05,
+      "source_offsets_cells": [
+        10,
+        12,
+        14,
+        16,
+        18
+      ],
+      "required_source_standoff_cells": 15,
+      "pec_substrate_edges_per_probe": [
+        0,
+        0,
+        0,
+        0,
+        3
+      ]
+    }
+  ]
+}

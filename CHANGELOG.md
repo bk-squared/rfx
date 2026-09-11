@@ -9,6 +9,14 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
+### Fixed — probe-clearance experiment inputs (#726)
+
+- The cv06b comparison holds source/DUT fixed, checks both realized probe
+  ladders before solving, preserves unprojected results, and refuses a numeric
+  comparison when settling fails. Retire the historical short experiment's
+  unsupported unit-reflection verdict; RF comparison and core diagnostics are
+  still being investigated.
+
 ### Fixed — experiment deadlines survive blocked native execution (#790, #978)
 
 - A supervisor enforces the submitted timeout independently of the computation
