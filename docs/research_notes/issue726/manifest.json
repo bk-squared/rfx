@@ -1,54 +1,167 @@
 {
   "base_sha": "0662c3b96d82ca65d7bd041b94c4ab984230e00d",
+  "gpu_run_pending": 369367260508,
   "no_new_rf_measurement": true,
   "files": [
     {
+      "path": "rfx/api/_preflight.py",
+      "bytes": 491682,
+      "sha256": "bebb5abdc5fee9177290c49181565a4ec73f7c088e70672019f5eedc0df767e2"
+    },
+    {
+      "path": "rfx/api/_sparams.py",
+      "bytes": 443677,
+      "sha256": "a0d7c661fa1695c3e8a52b555376972530c504b3ad5f7c60d15c4af22719fb3f"
+    },
+    {
+      "path": "rfx/api/_spec.py",
+      "bytes": 96958,
+      "sha256": "153603d63bfc91632ce5522bb0292373e9a06032ac47297c8395915c646dab57"
+    },
+    {
       "path": "scripts/diagnostics/msl_probe_clearance_bias.py",
-      "sha256": "7fda6d75f13e685ba458d9aa352e28c7f61d77dae92d840a98577142f6f8aed2",
-      "bytes": 11127
+      "bytes": 11306,
+      "sha256": "e76c193d1a5012afc388a3de010a60907e2d09cd89ef42f0581d7cf104fb5542"
     },
     {
       "path": "scripts/diagnostics/msl_probe_clearance_shorted_line.py",
-      "sha256": "e4336745367f5f03f3e0da31102c4fb374ecb2f419d6447a299ecf09b4610dbe",
-      "bytes": 6458
+      "bytes": 6458,
+      "sha256": "e4336745367f5f03f3e0da31102c4fb374ecb2f419d6447a299ecf09b4610dbe"
     },
     {
       "path": "tests/crossval/test_msl_probe_clearance_experiment.py",
-      "sha256": "5f023dfd6623242348442362f1c03b1de0e29541b32e651263585befe7ed9c08",
-      "bytes": 6926
+      "bytes": 6926,
+      "sha256": "5f023dfd6623242348442362f1c03b1de0e29541b32e651263585befe7ed9c08"
+    },
+    {
+      "path": "tests/unit/sparams/test_msl_modal_voltage_and_wave_solve.py",
+      "bytes": 51543,
+      "sha256": "4a133fc70a9c59917120a3fe512b4bad320291030bba238ffde24a727a3947ec"
+    },
+    {
+      "path": "tests/unit/sparams/test_msl_beta_scan_rail.py",
+      "bytes": 7142,
+      "sha256": "86bcf13cc9d5d0558d19f227e6e78fa513ccbe101b492b16f91dbed2aebe0730"
+    },
+    {
+      "path": "tests/unit/ports/test_msl_reflector_scan_conductors.py",
+      "bytes": 9568,
+      "sha256": "255d2b8f092da6a996bcaa3872079743e136635d8213d920c2a0453503853069"
     },
     {
       "path": "docs/research_notes/issue726/README.md",
-      "sha256": "a07706b9bcc9421aa13763c14bae77060c38c008d88053f763715992003d0bac",
-      "bytes": 4415
+      "bytes": 6002,
+      "sha256": "7596ce50a9bcc584d4b6814839d0d160621e997f2eacc26f4a3e4d8ddf9fcc19"
     },
     {
       "path": "docs/research_notes/issue726/audit_original_short.py",
-      "sha256": "50ddda241b4fe5e8785abdfa2ad25833b599d409614c16d2273093281eac5774",
-      "bytes": 3201
+      "bytes": 3201,
+      "sha256": "50ddda241b4fe5e8785abdfa2ad25833b599d409614c16d2273093281eac5774"
     },
     {
       "path": "docs/research_notes/issue726/build-v1/inputs.json",
-      "sha256": "7bcd10551c4e59e7c20100c764a65500ea146dd4ff031a7a66e610659f3af646",
-      "bytes": 4808
+      "bytes": 4808,
+      "sha256": "7bcd10551c4e59e7c20100c764a65500ea146dd4ff031a7a66e610659f3af646"
+    },
+    {
+      "path": "docs/research_notes/issue726/complete-archive-build/inputs.json",
+      "bytes": 4808,
+      "sha256": "ac10f64897f015c7720030c669dd1e7d0c8a1e8456f4e1e63f3a350c91221894"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260507/environment.json",
+      "bytes": 268,
+      "sha256": "d4f5b508d7e04a9eb80030ad2fa87db72f1215e49af4bc6623b136ec44fb38ce"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260507/exit-code.txt",
+      "bytes": 2,
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260507/launch.json",
+      "bytes": 495,
+      "sha256": "d7b02e2a637ad210f0bb3a30b77c34b91cf0e9f78385021314e1d8c74a94d623"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260507/manifest.json",
+      "bytes": 1299,
+      "sha256": "79ddb87f17d12884e635eccee5c596ed0999064a42139166ef4e28439d8c5c6e"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260507/provider.log.gz",
+      "bytes": 2264,
+      "sha256": "49b3aceef8dfb9d320cd28a99a294d1604fd5f5fbfc7ca44dbcee6c9b3b1ed78",
+      "raw_bytes": 6164,
+      "raw_sha256": "96a18c0382b6bc04f7972922d4170d77ab6f8e17a58918225f85e899659b45a1"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260507/run.log.gz",
+      "bytes": 455,
+      "sha256": "2da7cc4e583c3a26662c7e1107d3dcaa62b1f3732aa34a1c09bf53d7a0b348a1",
+      "raw_bytes": 1208,
+      "raw_sha256": "42cb1589ed5a08b8e442fbebae697f600464a64c8d87c8dc3490f4ab9bfaa770"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-369367260507/run.yaml",
+      "bytes": 2037,
+      "sha256": "db1e8a12f79c3e68af3ce0df88b69b4176a47d1045808340255502c6d6435690"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-launch-369367260508.json",
+      "bytes": 629,
+      "sha256": "278d2226ca588b1142fcdf7a2721072206b6f415c0c1e125fc7960c49b0c8969"
+    },
+    {
+      "path": "docs/research_notes/issue726/gpu-run-369367260508.yaml",
+      "bytes": 2058,
+      "sha256": "74b2fef9b225bb979c9e780ca487f88c628a84bfb1bb3bcc411c7cc0e3aa326a"
+    },
+    {
+      "path": "docs/research_notes/issue726/math-and-dataflow.md",
+      "bytes": 3269,
+      "sha256": "e211dc6ddb9109851a390e62532e041a8f6b97e47700e2bbe9eacd3e2c66d091"
     },
     {
       "path": "docs/research_notes/issue726/original-short-build.json",
-      "sha256": "a8193d300dcf26f1ddd643e0ba52562151b8e9ec2d4063fa57b1facd6fb5371d",
-      "bytes": 1537
+      "bytes": 1537,
+      "sha256": "a8193d300dcf26f1ddd643e0ba52562151b8e9ec2d4063fa57b1facd6fb5371d"
     },
     {
       "path": "docs/research_notes/issue726/original-short-build.log.gz",
-      "sha256": "af6d6d2267f535ab095274417240f2d45cd2ce1b304630aa6ff2ace4d874c02b",
       "bytes": 1216,
-      "raw_sha256": "a04276e5331e846c1495e81f8956efe29d99b742e3b76275dd4e9fd6bada905d",
-      "raw_bytes": 5055
+      "sha256": "af6d6d2267f535ab095274417240f2d45cd2ce1b304630aa6ff2ace4d874c02b",
+      "raw_bytes": 5055,
+      "raw_sha256": "a04276e5331e846c1495e81f8956efe29d99b742e3b76275dd4e9fd6bada905d"
+    },
+    {
+      "path": "docs/research_notes/issue726/phasor_counterexamples.json",
+      "bytes": 1143,
+      "sha256": "7098a85fb4efbf53ad0c784575df755d30bf71b569e270866834e2ade192e215"
+    },
+    {
+      "path": "docs/research_notes/issue726/phasor_counterexamples.py",
+      "bytes": 3709,
+      "sha256": "2164e2b7816e731148b945befac8ff55dd95e96cf316495ee673eab45fb36cf3"
+    },
+    {
+      "path": "docs/research_notes/issue726/reference-doc-tests.log.gz",
+      "bytes": 66,
+      "sha256": "40de68f520ac5c840a7335a983dc0d325a957d160489b5f49592822a760cbda0",
+      "raw_bytes": 114,
+      "raw_sha256": "c2b49ffb437904238446853fd63f3a57dee05092d211bd06dc172b48ce3cecf4"
     },
     {
       "path": "docs/research_notes/issue726/test-log.txt",
-      "sha256": "37e2831a5a031bfa8ab55a2ca2136f2fe44028736d5569bb8fd4e1f03568f792",
-      "bytes": 99
+      "bytes": 99,
+      "sha256": "37e2831a5a031bfa8ab55a2ca2136f2fe44028736d5569bb8fd4e1f03568f792"
+    },
+    {
+      "path": "docs/research_notes/issue726/warning-tests.log.gz",
+      "bytes": 3676,
+      "sha256": "98a62279323bcec3053d3bf6adda15ab5cac17d22e1b61b9cfb8cf77a1f5e36c",
+      "raw_bytes": 11609,
+      "raw_sha256": "b4f2012e209dcc57a5e876d49e417889bf111a39ea55e6a33ae982df70f8f3b7"
     }
-  ],
-  "gpu_run_pending": 369367260508
+  ]
 }

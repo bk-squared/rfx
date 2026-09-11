@@ -1038,3 +1038,74 @@ def test_mask_still_fires_on_an_own_drive_collapse(tmp_path):
     """Widening coverage must not lose the case that already worked."""
     rel = _reliable_for((1, 1), tmp_path)
     assert not rel[1, 1] and rel[1, 0]
+
+
+# --------------------------------------------------------------------------
+# #726 — fitted diagnostics and the measured V/I are different dependencies
+# --------------------------------------------------------------------------
+
+
+def test_fitted_impedance_and_beta_cannot_change_production_s(tmp_path, monkeypatch):
+    """Intervene on fit outputs while feeding identical DFT planes.
+
+    This tests dataflow through the public extractor, not RF accuracy.
+    It is the narrow statement the old 'S11/S21 are unaffected' warning
+    could support; contamination of the input fields is a different claim.
+    """
+    import rfx.probes.msl_wave_decomp as decomp
+
+    fit_value = {"z0": 50.0, "beta": 10.0}
+
+    def controlled_fit(v, x, i1, beta0, *, z0_hj=None):
+        del x, i1, beta0, z0_hj
+        return dict(
+            z0=jnp.full(v.shape[0], fit_value["z0"], dtype=jnp.complex64),
+            beta=jnp.full(v.shape[0], fit_value["beta"], dtype=jnp.complex64),
+            q=jnp.ones(v.shape[0], dtype=jnp.complex64),
+            beta_railed=jnp.zeros(v.shape[0], dtype=bool),
+        )
+
+    monkeypatch.setattr(decomp, "extract_msl_nprobe", controlled_fit)
+    plane_builder = _fake_run_drive_dependent(_MARKER, {0: 1.0, 1: 0.41 - 0.23j})
+
+    def planes(self, **kwargs):
+        result = plane_builder(self, **kwargs)
+        for name, plane in result.dft_planes.items():
+            result.dft_planes[name] = plane._replace(accumulator=jnp.broadcast_to(
+                plane.accumulator, (len(plane.freqs),) + plane.accumulator.shape[1:]))
+        return result
+
+    run_args = dict(freqs_hz=(1e9, 2e9, 3e9), enforce_passivity=False)
+    a, dump_a, _ = _run_with(planes, tmp_path, "fit_a", **run_args)
+    fit_value.update(z0=500.0, beta=900.0)
+    b, dump_b, warnings_b = _run_with(planes, tmp_path, "fit_b", **run_args)
+    assert any("Fitted Z0/beta are not used in S11/S21" in w
+               and "does not certify those inputs" in w for w in warnings_b)
+    assert not any("S11/S21 are unaffected" in w for w in warnings_b)
+    assert a.assembly == b.assembly == "multi_drive_solve"
+    assert np.max(a.cond_a) < 1e3 and np.max(b.cond_a) < 1e3
+    assert not np.array_equal(a.Z0, b.Z0)
+    assert not np.array_equal(a.beta, b.beta)
+    np.testing.assert_array_equal(a.S, b.S)
+    with np.load(dump_a) as da, np.load(dump_b) as db:
+        np.testing.assert_array_equal(da["raw_v"], db["raw_v"])
+        np.testing.assert_array_equal(da["raw_i1"], db["raw_i1"])
+
+    # Now leave that same fitted Z0/beta fixed and perturb only the measured
+    # magnetic field. Finite, non-collapsed V/I still does NOT imply accuracy.
+    def altered_current(self, **kwargs):
+        result = planes(self, **kwargs)
+        for name, plane in result.dft_planes.items():
+            if name.startswith("_msl_run0_p0_") and plane.component in ("hy", "hz"):
+                result.dft_planes[name] = plane._replace(accumulator=plane.accumulator * 1.2)
+        return result
+
+    c, dump_c, _ = _run_with(altered_current, tmp_path, "changed_i", **run_args)
+    assert c.assembly == "multi_drive_solve" and np.max(c.cond_a) < 1e3
+    np.testing.assert_array_equal(b.Z0, c.Z0)
+    np.testing.assert_array_equal(b.beta, c.beta)
+    with np.load(dump_b) as db, np.load(dump_c) as dc:
+        np.testing.assert_array_equal(db["raw_v"], dc["raw_v"])
+        assert not np.array_equal(db["raw_i1"], dc["raw_i1"])
+    assert np.max(abs(np.asarray(b.S) - np.asarray(c.S))) > 1e-2
+    assert np.all(b.reliable) and np.all(c.reliable)

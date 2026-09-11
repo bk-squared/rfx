@@ -305,8 +305,9 @@ def _warn_msl_beta_scan_railed(
         f"port(s) {ports} minimized the fit residual at the edge of the "
         "±35% scan around the analytic Hammerstad-Jensen guess — the "
         "reported Z0/beta at those bins are the scan limit, NOT a "
-        "measurement (issue #681). S11/S21 are unaffected (they use the "
-        "analytic Z0 anchor). Common causes: the real eps_eff is far from "
+        "measurement (issue #681). Fitted Z0/beta are not used in S11/S21, "
+        "which use measured V/I and the analytic Z0 anchor; this does not "
+        "certify those inputs. Common causes: the real eps_eff is far from "
         "the HJ estimate (wrong eps_r_sub / substrate not detected under "
         "the port), or a contaminated/under-settled record at those bins "
         "(check settling_db and the reliable mask). Check the result's "
@@ -3652,7 +3653,7 @@ class _SparamMixin:
         enforce_passivity: bool = True,
         report_every: int | None = None,
     ) -> "MSLSMatrixResult":
-        """Compute the MSL S-matrix using N-probe numerical de-embedding.
+        """Compute MSL S from probe-plane V/I with fitted line diagnostics.
 
         ``enforce_passivity=True`` (default) projects the assembled S(f) onto
         the passive set per frequency (singular values clipped to 1 — the
@@ -3722,14 +3723,15 @@ class _SparamMixin:
         per-column ratio ``b_j/a_d`` (issue #507; the ratio reported the far
         port's echo as the structure's own reflection).  At each port
         ``n_probes`` downstream DFT plane probes record Ez and the first
-        probe also records Hy; β, Z0 and the wave amplitudes are extracted
-        post-scan via the N-probe least-squares wave-decomposition
-        extractor (issue #80 Fix C — SVD lstsq fit of
-        ``V_n = α e^{-jβx_n} + γ e^{+jβx_n}`` anchored on the analytic
-        Hammerstad-Jensen β guess) and assembled into the full S-matrix.
-        The N-probe extractor removes the 3-probe quadratic's q→1
-        singularity that produced wrong S11 resonances on thin-substrate
-        patches.
+        probe also records the transverse H components for a closed
+        Ampere-loop current. Production S is formed from this first-plane
+        V/I and the analytic Hammerstad-Jensen reference impedance. The
+        N-probe least-squares fit of
+        ``V_n = α e^{-jβx_n} + γ e^{+jβx_n}`` supplies only the reported
+        beta/Z0 diagnostics. Those fitted values do not enter S. S is
+        referenced to each first probe plane, without translation back to
+        the physical feed planes; comparing different observation offsets
+        requires accounting for the reference planes and impedances.
 
         Parameters
         ----------
@@ -4638,7 +4640,8 @@ class _SparamMixin:
             # limit, not a measurement — used to be returned silently
             # pinned (repro: eps_eff 6.30 line reported as 4.60 at
             # 0.974·rail with zero warnings). S11/S21 never ride on the
-            # fitted β (analytic HJ anchor), so S is NOT condemned.
+            # fitted beta. That dataflow separation does not rule out
+            # contamination of the V/I shared with the fit.
             beta_railed = None
             try:
                 beta_railed = np.stack([
@@ -4670,7 +4673,8 @@ class _SparamMixin:
             # still ride on the retained N-probe fit, which can be noisy
             # per-frequency on coarse meshes, so a Z0 deviation from
             # analytic Hammerstad-Jensen is reported as a SEPARATE, softer
-            # caveat — it does not impugn S11/S21.
+            # caveat. The fitted numbers do not enter S, but the V/I
+            # records and analytic reference still need their own checks.
             import warnings as _w
 
             _S11_MAX = 1.0 + 0.05
@@ -4723,10 +4727,14 @@ class _SparamMixin:
                         "retained N-probe fit (S1 transitional); this can "
                         "reflect Yee-staircase bias, or that the rasterized "
                         "board (h_sub/W snapped to the lattice; see "
-                        "sim.fidelity_report()) genuinely differs from the "
+                        "sim.fidelity_report()) differs from the "
                         "declared one — not necessarily an extraction "
-                        "fault (issue #752). The V·I-split S11/S21 are "
-                        "unaffected.",
+                        "fault (issue #752). Fitted Z0/beta are not used in "
+                        "S11/S21, which use measured V/I and the analytic "
+                        "Z0 anchor; this does not certify those inputs. "
+                        "Check settling_db, the low-signal reliable mask, "
+                        "probe geometry and observation-plane sensitivity "
+                        "before interpreting S.",
                         stacklevel=2,
                     )
 
@@ -4775,7 +4783,9 @@ class _SparamMixin:
                         "gamma*exp(+j beta x_n) by SVD lstsq. The production "
                         "S-matrix does NOT come from that fit: it is solved "
                         "from the probe-0 wave amplitudes over all drives, "
-                        "S = B @ inv(A) (issue #507), with the modal voltage "
+                        "S = B @ inv(A) (issue #507), at the first probe "
+                        "planes without translation to the feed planes, "
+                        "with the modal voltage "
                         "spanning ground to the rasterized trace node (#511) "
                         "-- see production_smatrix_assembly for which rule "
                         "actually produced this dump's S"

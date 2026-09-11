@@ -1,7 +1,7 @@
 # Issue #726: invalid comparison inputs and contradictory accuracy claims
 
 Status: partial input/measurement repair based on main `0662c3b9`. No new RF
-measurement has been completed. The core warning and result-metadata policy
+measurement has been completed. The core warning wording is corrected; result-metadata policy
 is still pending; this checkpoint does not close #726.
 
 The 2026-08-27 notch diagnostic moved the physical source and termination
@@ -39,8 +39,10 @@ failed control skips the near run. It reports both arms at the SAME bin,
 selected by control S21's minimum inside the predeclared 3--5 GHz band, and
 checks the existing low-signal mask at that bin. It does not select separate
 arm peaks or assign a winner using the old arbitrary 2 dB threshold. A
-reported difference describes observation-offset sensitivity, with analytic
-reference-plane transport error still among the possible causes. Neither
+reported difference describes observation-offset sensitivity. Production S
+is assembled at each first probe plane without transport to the feed. Its
+fixed analytic reference impedance may differ from the realized line
+impedance, allowing magnitude changes even for purely propagating fields. Neither
 zero difference nor a large difference certifies full-wave accuracy or
 identifies evanescence. The ideal quarter-wave circuit remains a model.
 
@@ -69,3 +71,27 @@ is `complete-archive-build/inputs.json`. The source commit is
 `130b9071e5e6aaa0efda0dd1d6a36fb7e8d519bd`; source archive SHA-256 is
 `f78ad7c25ed326e56d7922f8fc6033938dfe50bf5d5a3c8586880e97f53b8323`.
 This is a staging validation, not an RF result.
+
+## Warning and reference-plane correction
+
+The two-wave fit includes both travelling directions. The unchanged
+lambda_g/4 layout proxy cannot predict a universal S error in dB or certify
+modal purity when its warning is absent. Core preflight now describes that
+limited scope and the full source/ladder/reflector space needed when its
+offset interval is empty. The Z0/beta guards state only that those fitted
+numbers do not enter S; they no longer certify the shared measured V/I.
+Result and extraction docs identify the first-probe reference planes and
+distinguish fitted Z0 from the analytic normalization impedance.
+
+`math-and-dataflow.md` gives the exact algebra, synthetic intervention and
+limitations. The focused suite passed 98 checks; after the final reference
+metadata wording and three-frequency intervention, both affected tests
+passed again. Logs are retained. Source review confirmed that thresholds,
+S/fit/mask algorithms and public result fields are unchanged.
+
+The existing low-signal mask's blanket whole-matrix-error wording remains a
+known unresolved item, documented by the exact transmission-zero
+counterexample. Its formula and the experiment's acceptance screen have not
+been relaxed. The separate clearance-result policy still awaits the user.
+The GPU experiment remains pinned to 130b9071; these subsequent production
+changes affect prose/metadata only, not the fields or extracted numbers.

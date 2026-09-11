@@ -1137,18 +1137,20 @@ class PreflightReport(list):
 # reuse the identical arithmetic for the issue-#469 interval solve).
 # --------------------------------------------------------------------------
 
-# Conservative ε_eff proxy → upper bound on β → lower bound on λ_g → most
-# stringent (smallest) recommended clearance. For air-only lines this is
-# overly conservative, but the cost of a false-positive advisory is low.
+# Existing layout proxy, not a bound on modal contamination or S error.
+# Larger epsilon and frequency give a SMALLER wavelength and clearance;
+# this is not a conservative quarter-wavelength rule for the whole band.
 MSL_EPS_EFF_PROXY = 5.0
 
 
 def msl_min_probe_clearance(freq_max: float) -> float:
-    """Minimum probe-to-reflector clearance: λ_g/4 at ``freq_max``.
+    """Existing layout recommendation: λ_g/4 at ``freq_max`` and epsilon=5.
 
-    At lower frequencies λ_g is larger and the same physical clearance
-    represents fewer cells of standing-wave-free zone — f_max is the
-    worst case.
+    The two-wave fit includes both forward and backward propagating waves;
+    standing waves alone do not invalidate it. This distance is a geometry
+    warning threshold, not a proof of modal purity or an accuracy bound.
+    Lower frequencies have longer wavelengths, so this is not the largest
+    quarter-wavelength clearance over the band. The threshold is unchanged.
     """
     c0 = 2.998e8
     lambda_g_min = c0 / (float(freq_max) * (MSL_EPS_EFF_PROXY ** 0.5))
@@ -7987,16 +7989,11 @@ class _PreflightMixin:
                     stacklevel=3,
                 )
 
-            # ---- 4. Probe-to-reflector distance — standing-wave bias ----
-            # The N-probe Z0 extractor in compute_msl_s_matrix assumes a
-            # CLEAN travelling-wave regime at the probe locations.
-            # When a strong reflector (PEC stub, open termination, mismatch)
-            # sits within ≲ λ_g/4 of the probes, V_i contains substantial
-            # standing-wave content and the recovered (α, γ, Z0) get
-            # biased — typically reading |S11| ≪ 1 even when physics
-            # demands full reflection.  Catches the cv06b-vs-Y2-demo
-            # divergence (cv06b's L_LINE=30mm passes; Y2's L_LINE=5mm
-            # fails by ~7 dB on |S11|@notch).
+            # ---- 4. Probe-to-reflector layout recommendation ----
+            # Both travelling directions belong to the two-wave model.
+            # Near a discontinuity, additional field content can affect
+            # the sampled V/I and the fitted diagnostics. Geometry alone
+            # establishes neither contamination nor a numerical S error.
             min_probe_clear = msl_min_probe_clearance(float(self._freq_max))
 
             # Deepest probe position. Pre-#469 this used the legacy
@@ -8139,17 +8136,22 @@ class _PreflightMixin:
                         f"MSL port '{pe.name}' (direction={pe.direction!r}): "
                         f"deepest probe at x={x_deep*1e3:.2f}mm sits "
                         f"{nearest_d*1e6:.0f}µm "
-                        f"from a strong reflector ({nearest_label}); recommended "
+                        f"from a strong reflector candidate ({nearest_label}; "
+                        f"distance estimated from registered conductor bounds); recommended "
                         f"≥ {min_probe_clear*1e6:.0f}µm "
                         f"(= λ_g/4 at f_max with ε_eff_proxy={MSL_EPS_EFF_PROXY:.1f}). "
-                        f"Standing-wave content at the probes will bias "
-                        f"`compute_msl_s_matrix`'s Z₀ extraction and |S11|@notch — "
-                        f"physical |S11|→1 at a quarter-wave open stub may read "
-                        f"as -5 to -10 dB instead of 0 dB.  Mitigation: "
-                        f"extend L_LINE so the line between port and reflector "
-                        f"is ≥ λ_g/2, OR set n_probe_offset inside the "
-                        f"{interval_txt} (do NOT simply increase it — that "
-                        f"moves the probes closer to the reflector).",
+                        f"The two-wave model includes standing waves, but "
+                        f"fields outside that model can affect both measured "
+                        f"V/I and fitted Z0/beta near a discontinuity. This "
+                        f"layout warning does not quantify the S-parameter "
+                        f"error or certify accuracy when absent. Available "
+                        f"layout: {interval_txt}. Choose an offset within a "
+                        f"nonempty interval; if it is empty, extend the uniform "
+                        f"feed region to fit the source standoff, full probe "
+                        f"ladder and reflector clearance. Increasing the "
+                        f"offset alone moves probes closer to the reflector. "
+                        f"Check settling and observation-plane sensitivity "
+                        f"before interpreting S.",
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),

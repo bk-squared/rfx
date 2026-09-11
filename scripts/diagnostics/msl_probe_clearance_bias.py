@@ -6,8 +6,11 @@ on the realized grid before either solve. Raw phasors and unprojected S are
 saved even if settling fails. Such a failure prevents a numerical verdict.
 
 This is a sensitivity experiment, not an exact |S11|=1 reference: an open
-microstrip may radiate, and analytic reference-plane transport has model
-error. A difference cannot by itself identify evanescent contamination.
+microstrip may radiate, and the fixed analytic reference impedance may
+differ from the realized line impedance. S is reported at each first probe,
+without translation to the feed plane. Even propagating fields can then
+show magnitude variation with position; a difference cannot by itself
+identify evanescent contamination.
 The ideal quarter-wave circuit is a model, not the full-wave fixture.
 
 Replaces the 2026-08-27 experiment, which moved the source as well as the

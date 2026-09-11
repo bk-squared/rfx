@@ -9,8 +9,10 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
-### Fixed — probe-clearance experiment inputs (#726)
+### Fixed — MSL clearance and accuracy claims (#726)
 
+- Qualify layout and fitted-Z0/beta warnings, and document the first-probe
+  reference planes and analytic S normalization separately from fitted Z0.
 - The cv06b comparison holds source/DUT fixed, checks both realized probe
   ladders before solving, preserves unprojected results, and refuses a numeric
   comparison when settling fails. Retire the historical short experiment's

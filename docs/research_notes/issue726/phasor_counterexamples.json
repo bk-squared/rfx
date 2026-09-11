@@ -1,0 +1,55 @@
+{
+  "scope": "single-mode analytic phasors; no fields evolved; no physical gate changed",
+  "reference_impedance": {
+    "zc_ohm": 60.0,
+    "zr_ohm": 50.0,
+    "beta_x_rad": [
+      0.0,
+      1.5707963267948966
+    ],
+    "modal_reflection_magnitude": [
+      0.6,
+      0.6
+    ],
+    "reported_reflection_magnitude": [
+      0.6551724137931033,
+      0.5384615384615384
+    ],
+    "reported_reflection_db": [
+      -3.6728879389225444,
+      -5.3769062458515995
+    ],
+    "full_reflection_magnitude": [
+      1.0,
+      1.0
+    ],
+    "limitation": "real positive impedance mismatch preserves unit magnitude for a perfect reflector"
+  },
+  "exact_transmission_zero": {
+    "freqs_hz": [
+      3000000000.0,
+      3700000000.0,
+      4400000000.0
+    ],
+    "current_reliable_mask": [
+      [
+        true,
+        false,
+        true
+      ],
+      [
+        true,
+        false,
+        true
+      ]
+    ],
+    "cond_a": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "max_s_error": 0.0,
+    "unitarity_error": 0.0,
+    "interpretation": "low signal alone does not establish matrix corruption; this does not certify noisy FDTD data"
+  }
+}

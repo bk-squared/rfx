@@ -1512,7 +1512,10 @@ class MSLSMatrixResult:
     Attributes
     ----------
     S : (n_ports, n_ports, n_freqs) complex
-        Full S-matrix.
+        Full S-matrix at each port's FIRST probe plane, formed from measured
+        V/I with the analytic Hammerstad-Jensen reference impedance. There
+        is no translation back to the physical feed planes. The fitted
+        ``Z0`` below is a diagnostic, not the reference used to form S.
     freqs : (n_freqs,) float
         Frequency grid in Hz.
     Z0 : (n_ports, n_freqs) complex
@@ -1625,8 +1628,10 @@ class MSLSMatrixResult:
         Hammerstad-Jensen guess, or the refined β landed within half a
         grid step of a window limit.  ``Z0[p, k]`` (and ``beta[k]`` for
         ``p = 0``) at such a bin is the scan-window limit, NOT a
-        measurement — do not quote it.  ``S`` is NOT condemned: S11/S21
-        ride on the analytic Z0 anchor, never on the fitted β.  The
+        measurement — do not quote it. Fitted Z0/beta do not enter S11/S21,
+        which use the analytic Z0 anchor and measured V/I. This separation
+        does not certify the V/I or reference impedance: shared record
+        contamination can affect both the fit and S. The
         own-drive diagonal is exactly the provenance of every fitted
         number this result carries (``Z0[i, :]`` comes from port *i*'s
         own driven run).  ``None`` while tracing.
