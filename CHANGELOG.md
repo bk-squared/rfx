@@ -9,6 +9,14 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
+### Fixed — MSL sources distinguish bounding nodes from driven edges (#729)
+
+- Microstrip source and load support now excludes the normal edge above
+  the substrate's upper bounding node. Mode normalization uses that cell
+  count, and port clearing preserves normal PEC edges inside a volume trace.
+- The uniform forward path uses the shared port-frame conversion for both
+  x- and y-directed feeds, matching the run path's physical source position.
+
 ### Fixed — GPU passivity projection honors its reconstruction precision (#729)
 
 - The concrete S-matrix projection now factors and reconstructs its small
