@@ -1,0 +1,23 @@
+{
+  "dx": 6.35e-05,
+  "ground_trace_planes": [
+    8,
+    12
+  ],
+  "expected_substrate_cells": 4,
+  "mode_n_z_sub": 4,
+  "mode_height": 0.000254,
+  "physical_height": 0.000254,
+  "z0_static": 53.013556906361565,
+  "eps_eff": 2.6990439574464387,
+  "source_k": [
+    8,
+    9,
+    10,
+    11
+  ],
+  "voltage_between_actual_walls": 1.0000000000000002,
+  "voltage_over_all_source_cells": 1.0000000000000002,
+  "joule_power_for_mode": 0.019999999754924547,
+  "physical_voltage_squared_over_power": 50.00000061268866
+}

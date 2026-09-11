@@ -1,0 +1,8 @@
+{
+  "baseline_commit": "f85ed76790f4b34bfa657622dc9b013351ebf3cb",
+  "baseline_source_sha256": "794700c2bb488a1e5f28058dc8a3b472e27cf3e545cbc982c6b566d02ba79129",
+  "prototype_source_sha256": "d82036b67c068608f765e126effb6b9a763070dd177bac343081ac478934621a",
+  "core_wip_source_sha256": "7ab3c8373850f9ee040f45ae3b978db86035a5d6d7c69437b8c0b46ae4e66fea",
+  "scope": "static mode and Joule-load consistency; no FDTD S-parameter result",
+  "pending": "realized-plane mismatch policy from PI; production wall anchoring, consumer/crossval verification and final historical-pin treatment remain"
+}
