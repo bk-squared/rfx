@@ -368,6 +368,11 @@ CLASSIFICATION: dict[str, Entry] = {
         "cv18/cv19's shared realized-geometry reader (#931 crossval-D): takes "
         "a built Simulation and reads realized_pec_edge_masks / "
         "realized_wall_planes -- constructs no Simulation"),
+    "validation/crossval/_patch_feed_contract.py": Entry(
+        "no_simulation",
+        "cv05/cv15's explicit galvanic-feed contract (#929): reads the "
+        "registered source span and realized conductor planes of a built "
+        "Simulation; constructs no Simulation and performs no solve"),
     "validation/crossval/comparators/realized_conductors.py": Entry(
         "no_simulation",
         "crossval-side build-time realized-conductor gate (#931): takes a "

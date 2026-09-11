@@ -130,6 +130,13 @@ def test_port_does_not_open_a_hole_in_either_sheet(realized):
                 f"the port changed {name}.{key}: {a[name][key]} -> {b[name][key]}")
 
 
+def test_registered_port_reaches_the_measured_sheets(realized):
+    stack, feed = realized["with_port"], realized["feed_check"]
+    assert feed["galvanic"]
+    assert feed["z0_node_k"] == stack["ground"]["k"]
+    assert feed["z1_node_k"] == stack["patch"]["k"]
+
+
 @pytest.mark.parametrize("leg", ["no_port", "with_port"])
 def test_ground_footprint_is_the_drawn_rectangle(realized, leg):
     """The 60 x 55 mm ground realizes 60 x 55 mm.
@@ -173,13 +180,16 @@ def test_sheet_plane_falsifier_moves_the_cavity(tmp_path):
     so the arm must MOVE the cavity, and the build assertion must still pass
     (the geometry is legal, just not the declared board).
     """
-    st = _run(tmp_path, delta=1)["no_port"]
+    record = _run(tmp_path, delta=1)
+    st = record["no_port"]
     assert st["substrate_cells_between"] == N_SUB + 2
     assert st["cavity_node_to_node_mm"] > H_SUB_MM + DZ_SUB_MM, (
         "the sheet-plane falsifier did not move the cavity; it cannot bound "
         "how much the post-contract resonance is allowed to move")
     assert st["cavity_eps_r"][0] == pytest.approx(1.0, abs=1e-5), (
         "the arm was supposed to put a vacuum cell inside the cavity")
+    assert record["feed_check"]["z0_node_k"] == st["ground"]["k"]
+    assert record["feed_check"]["z1_node_k"] == st["patch"]["k"]
 
 
 def test_the_old_cv05_declaration_is_refused_and_names_the_sheet_api():

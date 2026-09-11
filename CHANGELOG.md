@@ -9,6 +9,16 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
+### Fixed — wire-port gaps follow realized terminal geometry (#929)
+
+- Uniform-grid preflight finds the nearest in-column PEC contact beyond one
+  cell, including filament endpoints, and reports the measured distance.
+  A gap remains a warning; its coupling mechanism is not inferred.
+- cv05/cv15 require the registered feed's actual source span to meet their
+  identified ground and patch planes before field solves. Stale geometry
+  metadata, an intermediate conductor, or an entirely shorted source cannot
+  certify these explicitly galvanic validation cases.
+
 ### Removed — unused stage-6 voltage de-embedding prototype (#794)
 
 - Retired the standalone prototype and its duplicate inclusive-edge voltage

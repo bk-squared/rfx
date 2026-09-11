@@ -1,0 +1,14 @@
+[
+  {
+    "file": "validation/crossval/05_patch_antenna.py",
+    "base_diagnostics": 22,
+    "current_diagnostics": 22,
+    "new_diagnostics": 0
+  },
+  {
+    "file": "validation/crossval/15_patch_antenna_rt5880.py",
+    "base_diagnostics": 21,
+    "current_diagnostics": 21,
+    "new_diagnostics": 0
+  }
+]

@@ -1,0 +1,66 @@
+{
+  "base": "81467c81907548c49b126ffa4c0a457c2c5f2698",
+  "policy": "API warnings; explicitly galvanic cases require actual ground/patch contact and a live source before solves",
+  "artifacts": [
+    {
+      "file": "rfx929-gap-before.json",
+      "raw_sha256": "27ed7ef1f2b0249e5850fc074eeb39a8d3119ec93b4d0bea517ed341c4d3d93a",
+      "raw_bytes": 983
+    },
+    {
+      "file": "rfx929-baseline-case-probe.py",
+      "raw_sha256": "28bd1254fe8c0eae50826dfbead650e9c64c45ec1133d11e030996d0441dcc8b",
+      "raw_bytes": 2606
+    },
+    {
+      "file": "rfx929-baseline-case-probe.log.gz",
+      "raw_sha256": "e2c56cd2550f80103445acef6a8ab847a3a5907968e2734536616edda39fd44f",
+      "raw_bytes": 1365
+    },
+    {
+      "file": "rfx929-gap-distance-red.log.gz",
+      "raw_sha256": "74de32baaa622e4dd7786a1872cd87c525c922bb8a34d1810711961509823177",
+      "raw_bytes": 62288
+    },
+    {
+      "file": "rfx929-gap-api-regression.log.gz",
+      "raw_sha256": "a9f7f4a52f9d1e9b246f6c7611a0314d4813e16eb39861171e112198f28bf702",
+      "raw_bytes": 2246
+    },
+    {
+      "file": "rfx929-case-red.py",
+      "raw_sha256": "36c683ad1de564bd9230624209a399cdb8a6fa563a9e5628ea4e68f486c3ec61",
+      "raw_bytes": 1789
+    },
+    {
+      "file": "rfx929-case-red.log.gz",
+      "raw_sha256": "f9f0831c26f654c678a9004ab00293d8e1dddebd5ae175316717e491603c9dbf",
+      "raw_bytes": 4394
+    },
+    {
+      "file": "rfx929-case-green.log.gz",
+      "raw_sha256": "6e2e184a3cae55457f495479a94c1ac48bc8e508198e1c3dea669d2f7b9505ac",
+      "raw_bytes": 113
+    },
+    {
+      "file": "rfx929-example-fidelity-final.log.gz",
+      "raw_sha256": "6cb787ada5b69f9c27446698d19eb0b915e68960795210f0bcc63d467d9bc607",
+      "raw_bytes": 8040
+    },
+    {
+      "file": "rfx929-unavailable-wording.log.gz",
+      "raw_sha256": "66cb91a31a01a6b104e9d709dd6da4676dac47f667eef8987032163d7b195641",
+      "raw_bytes": 115
+    },
+    {
+      "file": "legacy-ruff-comparison.json",
+      "raw_sha256": "cf3d2d8e575dee8cc74f8e223092b6dc3926d4d7095142ee516f921663f6692b",
+      "raw_bytes": 306
+    }
+  ],
+  "mutation_source_verification": {
+    "helper_function_sha256": "f6a7544f3191d06d4d4d233679d90cb912b95ef8f4bb7cef6e0fcd1d911acc47",
+    "test_file_sha256": "69286c569890674a251bb6e11042ab9f239da4ed7bfc93ea4f228371f9c6c941",
+    "matches_current_sources": true
+  }
+}

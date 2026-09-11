@@ -5238,12 +5238,11 @@ class _PreflightMixin:
           are PEC and H is frozen, which is what a volume declaration
           means. The former ``<= 1.5 dx`` thickness exemption inferred
           sheet-ness from a bounding box — the #929 class — and is gone;
-        * the #556 end-gap advisory uses ONE definition of galvanic
-          contact: the wire's end node lies on a realized wall plane of
-          its own column (``realized_wall_planes(ij=)``). A port that
-          starts ON a ground (sheet plane, or a volume's face) is in
-          contact by that definition and draws no advisory; the remedy
-          text never tells a user to move a galvanic feed off its ground.
+        * the #556/#929 end-gap advisory measures the separation from
+          the actual source-end node to the nearest conductor on its own
+          column. A volume face, sheet plane, or axial PEC edge ending at
+          that node supplies contact. Contact is silent; a separation
+          is reported without guessing the intended coupling mechanism.
 
         Non-uniform lane: the wire-port primitive cannot index a
         ``NonUniformGrid`` (no ``position_to_index``), so the wire-port
@@ -5344,30 +5343,30 @@ class _PreflightMixin:
                 # Issue #556 (D5 follow-up, #488 arc): the OPPOSITE
                 # failure mode of the #314/#319 advisories above. There,
                 # a port extent cell lands ON PEC (dead cell). Here, the
-                # port terminates one cell SHORT of a conductor. On the
+                # port terminates SHORT of a conductor. On the
                 # D5 "end-fed trace" fixture (dx=80um, h_sub=254um) the
                 # trace's realization landed one full cell above the
-                # wire's top, so the feed never galvanically reached the
-                # conductor and coupled only capacitively (measured:
-                # |S21| RISING with frequency, docs/research_notes/
-                # 20260728_i488_falsifier_ledger.md, D5). No cell is dead
-                # in that geometry, so #314/#319 are correctly silent.
+                # wire's top. That historical D5 report described
+                # |S21| rising with frequency (docs/research_notes/
+                # 20260728_i488_falsifier_ledger.md). It motivated this
+                # check, but a geometric gap alone does not identify its
+                # electromagnetic coupling mechanism. No cell is dead in
+                # that fixture, so #314/#319 are correctly silent.
                 #
-                # ONE definition of contact (#931 §1.9, #929): the wire's
-                # END NODE lies on a realized wall plane of the wire's
-                # own column. The wire's last edge on the + side runs
+                # Contact (#931 §1.9, #929) is read from realized walls
+                # and PEC source-axis edges on the terminal's own column.
+                # The wire's last edge on the + side runs
                 # from node ``cells[-1]`` to ``cells[-1] + 1``, so its end
                 # node is ``cells[-1] + 1``; on the - side the end node
                 # is ``cells[0]``. "Fires" = the end edge is live, the
-                # end node carries NO wall, and the node one cell further
-                # along the axis DOES — the exact one-cell-short
-                # signature. A wire that starts on a ground plane (its
-                # start node IS a wall plane) is in contact and stays
-                # silent; a dipole ending in open vacuum stays silent.
+                # end node has no conductor contact but a further node
+                # on that column does. Search every realized candidate
+                # (#929), not only a one-cell neighbour. An axial PEC edge
+                # can supply contact without a tangential wall (filaments).
+                # A dipole ending in open vacuum stays silent. A measured
+                # separation alone does not determine the intended coupling.
                 if cells and live_flags:
                     axis_letter = "xyz"[axis]
-                    d_ax = (grid.dx, getattr(grid, "dy", grid.dx),
-                            getattr(grid, "dz", grid.dx))[axis]
                     for end_idx, step in ((0, -1), (len(cells) - 1, +1)):
                         if not live_flags[end_idx]:
                             continue
@@ -5380,15 +5379,25 @@ class _PreflightMixin:
                                    for t in range(3)):
                             continue
                         planes = set(realized.wall_planes(axis, ij=ij))
-                        if end_node[axis] in planes:
+                        line_index = tuple(slice(None) if a == axis else end_node[a]
+                                           for a in range(3))
+                        axial_edges = np.flatnonzero(
+                            np.asarray(realized.edges[axis])[line_index])
+                        # Looking downward, edge k ends at node k+1;
+                        # looking upward, it begins at node k.
+                        edge_nodes = {int(k)+(1 if step < 0 else 0)
+                                      for k in axial_edges}
+                        contacts = planes | edge_nodes
+                        if end_node[axis] in contacts:
                             continue            # galvanic contact
-                        beyond = end_node[axis] + step
-                        if not (0 <= beyond < shape[axis]):
+                        candidates = [k for k in contacts
+                                      if 0 <= k < shape[axis]
+                                      and (k-end_node[axis])*step > 0]
+                        if not candidates:
                             continue
-                        if beyond not in planes:
-                            continue
-                        node_beyond = list(end_node)
-                        node_beyond[axis] = beyond
+                        beyond = min(candidates, key=lambda k: abs(k-end_node[axis]))
+                        edge_index = list(end_node)
+                        edge_index[axis] = beyond-(1 if step < 0 else 0)
                         adj_names = []
                         for e in entries:
                             if not e.is_pec:
@@ -5399,9 +5408,16 @@ class _PreflightMixin:
                                     axis, beyond, ctx.periodic, shape)
                                 if bool(foot[ij]) and e.name not in adj_names:
                                     adj_names.append(e.name)
+                        if beyond in edge_nodes:
+                            for name in _owners(pe.component, tuple(edge_index)):
+                                if name not in adj_names:
+                                    adj_names.append(name)
                         adj_names = adj_names or ["unknown"]
                         side = ("+" if step > 0 else "-") + axis_letter
                         nodes_ax = ctx.nodes[axis]
+                        gap_cells = abs(beyond-end_node[axis])
+                        gap_m = abs(float(nodes_ax[beyond])-float(nodes_ax[end_node[axis]]))
+                        kind = "wall plane" if beyond in planes else f"{pe.component}-edge endpoint"
                         _w.warn(
                             PreflightWarning(
                                 f"Wire port at {pe.position} (extent "
@@ -5409,24 +5425,20 @@ class _PreflightMixin:
                                 f"its {side}-side end node "
                                 f"{tuple(end_node)} ({axis_letter} = "
                                 f"{_fmt_len(float(nodes_ax[end_node[axis]]))}) "
-                                f"carries no realized PEC wall, but the "
-                                f"node one cell further "
+                                f"carries no realized PEC contact, but the "
+                                f"nearest outward conductor node {beyond} "
                                 f"({axis_letter} = "
                                 f"{_fmt_len(float(nodes_ax[beyond]))}) is a "
-                                f"realized wall plane of {adj_names}. The "
-                                f"port terminates in vacuum/dielectric "
-                                f"one cell (gap = {d_ax:g} m) short of the "
-                                f"conductor, so the feed never "
-                                f"galvanically reaches it and coupling is "
-                                f"capacitive only (measured signature: "
-                                f"|S21| rising with frequency; issue #556, "
-                                f"the #488-lane D5 finding). Remedy: "
-                                f"extend the port extent by one cell so "
-                                f"its end node lands on that wall plane, "
-                                f"or draw the conductor so its face (a "
-                                f"volume) or its plane (a sheet) lands on "
-                                f"the wire's end node — e.g. dx = h/N for "
-                                f"an interface at height h.",
+                                f"realized {kind} of {adj_names}. The "
+                                f"port end is "
+                                f"{gap_cells} cell(s) (gap = {gap_m:g} m) short "
+                                f"of that conductor. This is a geometric "
+                                f"separation; it does not determine the "
+                                f"intended electromagnetic coupling. If "
+                                f"galvanic contact is intended, adjust the "
+                                f"position and extent together so its end node "
+                                f"lands on that wall plane or conductor endpoint, "
+                                f"or correct the conductor declaration.",
                                 code="wire_port_end_gap_to_conductor",
                                 source="_validate_cfg_port_inside_pec",
                             ),
@@ -5440,10 +5452,11 @@ class _PreflightMixin:
                         f"({classification_unavailable_reason}). The "
                         f"#314/#319 PEC-overlap advisories and the #556 "
                         f"end-gap-to-conductor advisory are skipped "
-                        f"for this port -- verify manually that its "
-                        f"rasterized extent does not land on PEC and "
-                        f"does not stop one cell short of a conductor "
-                        f"it is meant to contact.",
+                        f"for this port -- inspect the realized live/dead "
+                        f"source edges and the intended terminal contacts "
+                        f"on that mesh. Conductor overlap at an endpoint "
+                        f"can be intentional; do not infer contact from "
+                        f"the absence of this advisory.",
                         code="wire_port_dead_cell_classification_unavailable",
                         source="_validate_cfg_port_inside_pec",
                     ),

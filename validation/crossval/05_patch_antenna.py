@@ -288,6 +288,9 @@ import jax.numpy as jnp
 # self-confirming `argmin |f - f_analytic|` selector: see
 # docs/design_notes/20260901_patch_mode_identification_predeclaration.md.
 import sys as _sys_mid
+_sys_mid.path.insert(0, SCRIPT_DIR)
+from _patch_feed_contract import assert_galvanic_patch_feed as assert_galvanic_feed  # noqa: E402
+
 _sys_mid.path.insert(0, os.path.join(SCRIPT_DIR, "comparators"))
 from patch_mode_identification import (            # noqa: E402
     declared_cavity_spectrum, identify_patch_modes, members_in_band,
@@ -662,6 +665,16 @@ sim_h = build_patch(with_port=False)
 REALIZED = assert_realized_sheets(sim_h, sim_h._build_nonuniform_grid())
 print_realized_stack(REALIZED)
 
+# Validate the registered galvanic feed before ANY field/reference solve.
+# The stack check alone reads the patch centre and cannot detect a shortened
+# or laterally misplaced wire. Reuse this unchanged ported build in Part 3.
+sim = build_patch(with_port=True)
+_port_grid = sim._build_nonuniform_grid()
+REALIZED_PORT = assert_realized_sheets(sim, _port_grid)
+FEED_CHECK = assert_galvanic_feed(
+    sim, _port_grid, ground_node=REALIZED_PORT["ground"]["k"],
+    patch_node=REALIZED_PORT["patch"]["k"])
+
 # RFX_CV05_BUILD_ONLY=1 stops here: both builds, both realization assertions,
 # no FDTD. This is the case's cheap smoke — it exercises exactly the thing the
 # #931 migration changed (which node planes the two conductors land on and what
@@ -670,15 +683,14 @@ print_realized_stack(REALIZED)
 # so a gate reads numbers rather than parsing prose;
 # tests/crossval/test_cv05_realized_sheet_planes.py drives exactly this pair.
 if os.environ.get("RFX_CV05_BUILD_ONLY"):
-    _sim_p = build_patch(with_port=True)
-    _rp = assert_realized_sheets(_sim_p, _sim_p._build_nonuniform_grid())
-    print_realized_stack(_rp)
+    print_realized_stack(REALIZED_PORT)
     _rj = os.environ.get("RFX_CV05_REALIZED_JSON")
     if _rj:
         os.makedirs(os.path.dirname(os.path.abspath(_rj)), exist_ok=True)
         with open(_rj, "w", encoding="utf-8") as _f:
-            json.dump({"source": True, "with_port": _rp,
+            json.dump({"source": True, "with_port": REALIZED_PORT,
                        "no_port": REALIZED,
+                       "feed_check": FEED_CHECK,
                        "dz_sub_mm": dz_sub * 1e3, "dx_mm": dx * 1e3,
                        "n_sub": n_sub, "h_sub_mm": h_sub * 1e3}, _f, indent=2)
         print(f"  realized-stack JSON: {_rj}")
@@ -983,11 +995,8 @@ print(f"\n{'=' * 70}")
 print("PART 3: rfx — lumped port S11 (secondary check)")
 print("=" * 70)
 
-sim = build_patch(with_port=True)
-# Same check on the ported build: a port releases only the ONE component it
-# drives (#931 §1.9 amendment), so adding the feed must not remove a wall edge
-# from either sheet.
-REALIZED_PORT = assert_realized_sheets(sim, sim._build_nonuniform_grid())
+# This is the ported build whose stack and actual source endpoints were
+# checked before the first Harminv/OpenEMS computation above.
 print_realized_stack(REALIZED_PORT)
 print("Preflight:")
 sim.preflight(strict=False)

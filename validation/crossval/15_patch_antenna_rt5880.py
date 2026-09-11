@@ -221,6 +221,9 @@ from pathlib import Path
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SCRIPT_DIR)
+from _patch_feed_contract import assert_galvanic_patch_feed  # noqa: E402
+
 # Resolve `import rfx` from THIS checkout: a bare run would otherwise pick up
 # whatever rfx is installed or first on sys.path, which in a multi-worktree
 # setup is a DIFFERENT copy of the solver than the one under test.
@@ -559,7 +562,7 @@ def assert_realized_stack(sim, grid, patch_shape=None, *, allow_volume_patch=Fal
     )
 
 
-def assert_galvanic_feed(sim, grid, geom):
+def assert_galvanic_feed(sim, grid, geom, *, stack_check=None):
     """MANDATORY feed-fidelity self-check (issue #920, respelt for #931
     sheets): assert the probe post the solver actually builds runs from the
     ground conductor's realized plane to the patch conductor's -- rather
@@ -594,72 +597,31 @@ def assert_galvanic_feed(sim, grid, geom):
     feed's own (i, j) column, and checks the feed's two z endpoints against
     the realized wall-plane indices there.
 
-    Raises RuntimeError (refusing to quote f0) unless the port's declared z0
-    node lands on a realized wall plane at its own column, its declared z1
-    (= z0 + extent) node lands on a DIFFERENT realized wall plane there, and
-    ``assert_realized_stack`` has therefore already confirmed those planes
-    are real conductors, not an accident of index arithmetic. Returns a
-    dict of the measured classification for the result leg.
+    Raises RuntimeError (refusing to quote f0) unless the registered wire's
+    first source edge starts on a realized wall plane at its own column and
+    its last source edge ends on the patch plane. ``assert_realized_stack``
+    identifies these two planes independently; another metal plane cannot
+    replace either terminal. At least one source edge must be live. Returns
+    a dict of the measured classification for the result leg.
     """
-    from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
-
-    pec_sheets: list = []
-    pec_wires: list = []
-    _mats, _, _, pec_mask, *_ = sim._assemble_materials(
-        grid, pec_sheets=pec_sheets, pec_wires=pec_wires)
-    if pec_mask is None and not pec_sheets and not pec_wires:
-        raise RuntimeError(
-            "assert_galvanic_feed: no PEC volume, sheet or wire realized -- "
-            "a probe-fed patch with no conductor has no feed to classify")
-
-    periodic = sim._periodic_flags()
-    edges = tuple(np.asarray(m) for m in realized_pec_edge_masks(
-        pec_mask, sheets=pec_sheets, wires=pec_wires, periodic=periodic))
-
-    axis = {"ex": 0, "ey": 1, "ez": 2}[geom["port_component"]]
-    idx0 = grid.position_to_index(
-        (geom["feed_x"], geom["cy"], geom["port_z0"]))
-    idx1 = grid.position_to_index(
-        (geom["feed_x"], geom["cy"], geom["port_z0"] + geom["port_extent"]))
-    in_plane = [a for a in range(3) if a != axis]
-    ij = (int(idx0[in_plane[0]]), int(idx0[in_plane[1]]))
-    k0, k1 = int(idx0[axis]), int(idx1[axis])
-
-    planes = realized_wall_planes(edges, axis, ij=ij, periodic=periodic)
-    z0_on_plane = k0 in planes
-    z1_on_plane = k1 in planes
-    galvanic = bool(z0_on_plane and z1_on_plane and k0 != k1)
+    # geom is retained for caller compatibility and result provenance. It
+    # cannot certify the source: only the registered wire reaches the runner.
+    if stack_check is None:
+        stack_check = assert_realized_stack(sim, grid)
+    ground = grid.position_to_index((0., 0., stack_check["ground_wall_z"]))[2]
+    patch = grid.position_to_index((0., 0., stack_check["patch_wall_z"]))[2]
+    check = assert_galvanic_patch_feed(sim, grid, ground_node=ground, patch_node=patch)
+    k0, k1 = check["z0_node_k"], check["z1_node_k"]
 
     def _z_mm(k):
         return round((int(k) - int(grid.pad_z_lo)) * DX * 1e3, 4)
-
-    if not galvanic:
-        raise RuntimeError(
-            "assert_galvanic_feed: the declared feed span does not run "
-            f"between two realized conductor planes. Port axis "
-            f"{'xyz'[axis]}, column (i,j)={ij}: z0 node k={k0} "
-            f"(z={_z_mm(k0)} mm) {'IS' if z0_on_plane else 'is NOT'} a "
-            f"realized wall plane; z1 node k={k1} (z={_z_mm(k1)} mm) "
-            f"{'IS' if z1_on_plane else 'is NOT'}. Realized wall planes at "
-            f"this column = {sorted(planes)} "
-            f"(z~{[_z_mm(p) for p in sorted(planes)]} mm). Required: the "
-            "feed's two ends land EXACTLY on two DIFFERENT realized "
-            "conductor planes -- a sheet has no thickness to be 'inside', "
-            "so touching its plane IS the galvanic condition (issue #920, "
-            "respelt for #931 sheets).")
 
     print(f"[FEED CHECK #920/#931] galvanic post: z0 k={k0} "
           f"(z={_z_mm(k0)} mm) on a realized wall plane, z1 k={k1} "
           f"(z={_z_mm(k1)} mm) on a realized wall plane, "
           f"{k1 - k0} cells driven across the substrate")
 
-    return dict(
-        port_z0=geom["port_z0"], port_extent=geom["port_extent"],
-        z0_node_k=k0, z1_node_k=k1,
-        z0_on_realized_plane=bool(z0_on_plane),
-        z1_on_realized_plane=bool(z1_on_plane),
-        galvanic=galvanic,
-    )
+    return check
 
 
 def build_rfx_sim(*, do_gain: bool = False, ground_plane_z: float | None = None,
@@ -859,7 +821,7 @@ def run_rfx(num_periods, n_freqs, do_gain, *, ground_plane_z=None,
 
     stack_check = assert_realized_stack(sim, grid, patch_shape,
                                         allow_volume_patch=(patch_kind != "sheet"))
-    feed_check = assert_galvanic_feed(sim, grid, geom)
+    feed_check = assert_galvanic_feed(sim, grid, geom, stack_check=stack_check)
     dt_grid = float(grid.dt)
 
     # preflight verbatim (explicit NTFF check family, #303)
@@ -938,8 +900,8 @@ def run_rfx(num_periods, n_freqs, do_gain, *, ground_plane_z=None,
         f_analytic_hz=fr_an,
         gain_dbi=d_dbi, preflight=preflight_txt,
         stack_check=stack_check, feed_check=feed_check,
-        feed=geom["feed"], port_z0=geom["port_z0"],
-        port_extent=geom["port_extent"],
+        feed=geom["feed"], port_z0=feed_check["port_z0"],
+        port_extent=feed_check["port_extent"],
     )
     with open(os.path.join(RES_DIR, out_name), "w") as fp:
         json.dump(out, fp, indent=2)

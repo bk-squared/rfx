@@ -6414,14 +6414,14 @@
         {
           "code": "wire_port_dead_cell_classification_unavailable",
           "loc": null,
-          "message": "Wire port at (0.005, 0.006, 0.005) (extent 0.001): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared wire-port primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- verify manually that its rasterized extent does not land on PEC and does not stop one cell short of a conductor it is meant to contact.",
+          "message": "Wire port at (0.005, 0.006, 0.005) (extent 0.001): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared wire-port primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- inspect the realized live/dead source edges and the intended terminal contacts on that mesh. Conductor overlap at an endpoint can be intentional; do not infer contact from the absence of this advisory.",
           "severity": "warning",
           "source": "_validate_cfg_port_inside_pec"
         },
         {
           "code": "wire_port_dead_cell_classification_unavailable",
           "loc": null,
-          "message": "Wire port at (0.011, 0.006, 0.005) (extent 0.001): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared wire-port primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- verify manually that its rasterized extent does not land on PEC and does not stop one cell short of a conductor it is meant to contact.",
+          "message": "Wire port at (0.011, 0.006, 0.005) (extent 0.001): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared wire-port primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- inspect the realized live/dead source edges and the intended terminal contacts on that mesh. Conductor overlap at an endpoint can be intentional; do not infer contact from the absence of this advisory.",
           "severity": "warning",
           "source": "_validate_cfg_port_inside_pec"
         }
@@ -6991,7 +6991,7 @@
         {
           "code": "wire_port_dead_cell_classification_unavailable",
           "loc": null,
-          "message": "Wire port at (0.005, 0.005, 0.0035) (extent 0.0005): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared wire-port primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- verify manually that its rasterized extent does not land on PEC and does not stop one cell short of a conductor it is meant to contact.",
+          "message": "Wire port at (0.005, 0.005, 0.0035) (extent 0.0005): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared wire-port primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- inspect the realized live/dead source edges and the intended terminal contacts on that mesh. Conductor overlap at an endpoint can be intentional; do not infer contact from the absence of this advisory.",
           "severity": "warning",
           "source": "_validate_cfg_port_inside_pec"
         }
@@ -7150,14 +7150,14 @@
         {
           "code": "wire_port_dead_cell_classification_unavailable",
           "loc": null,
-          "message": "Wire port at (0.008, 0.01, 0.0) (extent 0.001): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared wire-port primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- verify manually that its rasterized extent does not land on PEC and does not stop one cell short of a conductor it is meant to contact.",
+          "message": "Wire port at (0.008, 0.01, 0.0) (extent 0.001): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared wire-port primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- inspect the realized live/dead source edges and the intended terminal contacts on that mesh. Conductor overlap at an endpoint can be intentional; do not infer contact from the absence of this advisory.",
           "severity": "warning",
           "source": "_validate_cfg_port_inside_pec"
         },
         {
           "code": "wire_port_dead_cell_classification_unavailable",
           "loc": null,
-          "message": "Wire port at (0.024, 0.01, 0.0) (extent 0.001): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared wire-port primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- verify manually that its rasterized extent does not land on PEC and does not stop one cell short of a conductor it is meant to contact.",
+          "message": "Wire port at (0.024, 0.01, 0.0) (extent 0.001): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared wire-port primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- inspect the realized live/dead source edges and the intended terminal contacts on that mesh. Conductor overlap at an endpoint can be intentional; do not infer contact from the absence of this advisory.",
           "severity": "warning",
           "source": "_validate_cfg_port_inside_pec"
         }

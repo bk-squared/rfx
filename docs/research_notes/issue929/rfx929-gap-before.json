@@ -1,0 +1,24 @@
+[
+  {
+    "gap_cells": 0,
+    "findings": 0,
+    "messages": []
+  },
+  {
+    "gap_cells": 1,
+    "findings": 1,
+    "messages": [
+      "Wire port at (0.006, 0.006, 0.004) (extent 0.005, component ez): its -z-side end node (6, 6, 4) (z = 4mm) carries no realized PEC wall, but the node one cell further (z = 3mm) is a realized wall plane of ['pec']. The port terminates in vacuum/dielectric one cell (gap = 0.001 m) short of the conductor, so the feed never galvanically reaches it and coupling is capacitive only (measured signature: |S21| rising with frequency; issue #556, the #488-lane D5 finding). Remedy: extend the port extent by one cell so its end node lands on that wall plane, or draw the conductor so its face (a volume) or its plane (a sheet) lands on the wire's end node \u2014 e.g. dx = h/N for an interface at height h."
+    ]
+  },
+  {
+    "gap_cells": 2,
+    "findings": 0,
+    "messages": []
+  },
+  {
+    "gap_cells": 3,
+    "findings": 0,
+    "messages": []
+  }
+]
