@@ -1,0 +1,57 @@
+{
+  "initial_ci_run": 34610578856,
+  "head": "c2dd484e39780a8ac376ae39491f0573650097cd",
+  "status": "15 checks passed, 6 shard jobs failed; retained failure inventory",
+  "logs": [
+    {
+      "file": "rfx729-ci-py310-3.log.gz",
+      "raw_bytes": 322462,
+      "raw_sha256": "115528ff7bd36ab09a3c8e0bca64edc9449342bf5d917e56d2c5ac47772d6f59"
+    },
+    {
+      "file": "rfx729-ci-py311-3.log.gz",
+      "raw_bytes": 323512,
+      "raw_sha256": "42723b570d456101b292f4f529dfbab7f6609acaa023e69d6173348b2da9dbd6"
+    },
+    {
+      "file": "rfx729-ci-py310-5.log.gz",
+      "raw_bytes": 396057,
+      "raw_sha256": "6e9c8db0f4a7c64f81732f3d8907639d59b43cf77637562d4f30be6fb48b4fea"
+    },
+    {
+      "file": "rfx729-ci-py311-5.log.gz",
+      "raw_bytes": 640495,
+      "raw_sha256": "65c4aa0629290d175a99d05c77eec71c084ca100c3b8452f3803ab871a3dd0b9"
+    },
+    {
+      "file": "rfx729-ci-py310-6.log.gz",
+      "raw_bytes": 213616,
+      "raw_sha256": "14e6ac65dbce75867d307060f1f381b10a593d8950d9eb7ed8bbce8b3ad3c1c6"
+    },
+    {
+      "file": "rfx729-ci-py311-6.log.gz",
+      "raw_bytes": 213295,
+      "raw_sha256": "01863a11caaea3ff1ce7fd56cd78da043a3ca9d9361bd941317bd2402a342542"
+    },
+    {
+      "file": "rfx729-settling-fixture-repair.log.gz",
+      "raw_bytes": 11282,
+      "raw_sha256": "6625f9c3e639e77e1e786a025502c36b145c388a9b21f10c08346611138cede4"
+    },
+    {
+      "file": "rfx729-ci-fixture-contract-repairs.log.gz",
+      "raw_bytes": 12857,
+      "raw_sha256": "666d69ef877cee2389e108d0f59999ae3bcd38f2f8a118c4862faec20afeff83"
+    },
+    {
+      "file": "rfx729-projection-jax010-final.log.gz",
+      "raw_bytes": 595,
+      "raw_sha256": "50cfeeda8e242a03cab17345e11db41ea8c7fb61396334093772ada230fcc623"
+    },
+    {
+      "file": "rfx729-projection-jax010-e2e.log.gz",
+      "raw_bytes": 114,
+      "raw_sha256": "596cd65d7e9bfef555a9bbf50bdcec0e42a3eeade5af5678fe0515e5b4aa5109"
+    }
+  ]
+}

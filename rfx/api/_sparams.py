@@ -19,6 +19,11 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+try:  # Public API on current JAX; the 0.4.x GPU image uses the old location.
+    from jax import enable_x64 as _enable_x64
+except ImportError:
+    from jax.experimental import enable_x64 as _enable_x64
+
 from rfx.core.jax_utils import is_tracer
 from rfx.sources.sources import GaussianPulse
 from rfx.sources.coaxial_port import CoaxialPort
@@ -838,7 +843,7 @@ def _project_passive(S):
     """
     # A complex128 array may outlive the caller's scoped x64 context.
     # Preserve its dtype during both canonicalization and device_put.
-    with jax.experimental.enable_x64():
+    with _enable_x64():
         S = jnp.asarray(S, dtype=jnp.result_type(S, 1.0))
     s_t = np.asarray(S).transpose(2, 0, 1)  # (n_freqs, n_ports, n_ports)
     real_dtype = s_t.real.dtype
@@ -861,7 +866,7 @@ def _project_passive(S):
         correction[finite] = np.maximum(sig[:, 0] - 1.0, 0.0)
         sig_c = np.minimum(sig, 1.0 - 64.0 * eps)
         s_pass[finite] = (u * sig_c[:, None, :]) @ vh
-    with jax.experimental.enable_x64():
+    with _enable_x64():
         return (jax.device_put(s_pass.transpose(1, 2, 0), S.sharding),
                 jax.device_put(correction, S[0, 0, :].sharding))
 

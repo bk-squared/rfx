@@ -157,6 +157,7 @@ def _msl_thru():
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, domain_y, 0.0008)), material="sub")
+    sim.add(Box((0, 0, 0), (0.012, domain_y, 0)), material="pec")
     sim.add_thin_conductor(Box((0.0, y_c - 0.0006, 0.0008),
                                (0.012, y_c + 0.0006, 0.0008)))
     sim.add_msl_port(position=(0.002, y_c, 0.0), width=0.0012, height=0.0008,
@@ -172,8 +173,8 @@ def test_msl_thru_realizes_the_trace_where_it_is_drawn():
     from tests._realized_geometry import (
         assert_sheet_planes, assert_wall_planes, realized)
     sim = _msl_thru()
-    assert_sheet_planes(sim, 2, [0.0008], what="thru-line trace")
-    assert_wall_planes(sim, 2, [0.0008], what="thru-line trace")
+    assert_sheet_planes(sim, 2, [0., 0.0008], what="thru-line ground and trace")
+    assert_wall_planes(sim, 2, [0., 0.0008], what="thru-line ground and trace")
     rz = realized(sim)
     assert rz.pec_mask is None or not bool(np.any(np.asarray(rz.pec_mask))), (
         "a sheet owns no cell")

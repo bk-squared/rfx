@@ -106,7 +106,6 @@ so there is no mechanism for this floor to move with parallelism.
 
 from __future__ import annotations
 
-import warnings
 
 import jax.numpy as jnp
 import numpy as np
@@ -1034,6 +1033,7 @@ class TestVmapPortFamilyEligibility:
                           boundary="cpml", cpml_layers=6, dx=0.001)
         sim.add_material("sub", eps_r=4.0)
         sim.add(Box((0, 0, 0), (0.02, 0.01, 0.002)), material="sub")
+        sim.add(Box((0, 0, 0), (0.02, 0.01, 0)), material="pec")
         # #931: foil trace on the substrate top node plane -> a sheet.
         sim.add(Box((0, 0.004, 0.002), (0.02, 0.006, 0.002)), material="pec")
         sim.add_msl_port(position=(0.003, 0.005, 0.0), width=0.002,

@@ -439,6 +439,9 @@ def test_guard_requires_pec_ground_for_flux_channel():
     )
     sim.add_material("sub", eps_r=_EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, _H_SUB)), material="sub")
+    # A physical MSL ground still exists when the domain's z_lo is CPML.
+    # Only the flux extractor requires that domain face itself to be PEC.
+    sim.add(Box((0.0, 0.0, 0.0), (lx, ly, 0.0)), material="pec")
     y_c = ly / 2.0
     sim.add(Box((0.0, y_c - _W_TRACE / 2, _H_SUB),
                 (lx, y_c + _W_TRACE / 2, _H_SUB + _DX)), material="pec")

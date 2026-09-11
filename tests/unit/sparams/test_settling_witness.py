@@ -45,8 +45,9 @@ each formerly its own file:
    ``test_waveguide_geometry_hygiene``, deliberately short records so the
    truncation warning path is exercised for real.
 
-Every assertion, tolerance, fixture value and marker of the original files
-is kept verbatim; only module-level helper names carry a section prefix.
+The consolidation preserved the original assertions and thresholds. The
+MSL fixture subsequently gained its missing explicit ground under #729;
+CPML padding does not supply a ground conductor.
 """
 
 from __future__ import annotations
@@ -74,6 +75,7 @@ def _msl_thru(domain_y=0.008, y_c=0.004):
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, domain_y, 0.0008)), material="sub")
+    sim.add(Box((0, 0, 0), (0.012, domain_y, 0)), material="pec")
     # 35 um foil: a SHEET (#931 §1.3), declared by a zero-thickness Box
     # on the laminate top. h_sub / dx = 0.8 mm / 0.2 mm = 4, so the substrate face is a
     # node line and the sheet lands on it exactly. Drawn one cell thick
@@ -1037,13 +1039,13 @@ def test_a_driver_internal_run_does_not_double_fire():
 def test_realized_conductor_planes_equal_the_declaration():
     """Build-time witness (no solve) for the #931 ownership contract.
 
-    The foil is declared as a SHEET, so the lattice must give it exactly
-    ONE wall plane, on the node line of the laminate face it was drawn on,
+    Ground and trace are SHEETS, each with exactly one wall plane on its
+    own laminate face,
     with the normal Ez edge through it left live. Drawn one cell thick it
     was a volume: two walls, and the Ez edge between them shorted. This
     assertion is what keeps the declaration and the realization the same
     statement.
     """
     sim = _msl_thru()
-    assert_sheet_planes(sim, 2, [0.0008], what="MSL thru foil")
-    assert_wall_planes(sim, 2, [0.0008], what="MSL thru foil")
+    assert_sheet_planes(sim, 2, [0., 0.0008], what="MSL thru ground and trace")
+    assert_wall_planes(sim, 2, [0., 0.0008], what="MSL thru ground and trace")

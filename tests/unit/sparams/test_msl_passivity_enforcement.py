@@ -22,6 +22,7 @@ import pytest
 from rfx import Box, Simulation
 from rfx.api._sparams import _project_passive
 from tests._realized_geometry import assert_sheet_planes, assert_wall_planes
+from tests._x64_compat import enable_x64
 
 
 def _sigma_max(S):
@@ -108,7 +109,7 @@ def test_near_passive_complex_projection_preserves_the_measured_matrix(backend, 
         references.append((u*np.minimum(singular, 1.-64.*eps)) @ v.conj().T)
     raw = np.stack(matrices, axis=-1).astype(dtype)
     expected = np.stack(references)
-    with (jax.experimental.enable_x64(), jax.default_device(jax.devices(backend)[0]),
+    with (enable_x64(), jax.default_device(jax.devices(backend)[0]),
           jax.default_matmul_precision("tensorfloat32")):
         device_raw = jnp.asarray(raw)
         projected, correction = _project_passive(device_raw)
@@ -144,9 +145,11 @@ def test_projection_preserves_nonfinite_bins_for_the_finiteness_audit(bad_value)
 
 
 def test_projection_preserves_f64_arrays_after_their_creation_context_exits():
-    with jax.experimental.enable_x64():
+    with enable_x64():
         raw = jnp.asarray([[[.2], [1.]], [[1.], [.2]]], dtype=jnp.complex128)
-    with jax.experimental.disable_x64():
+    disabled = (jax.enable_x64(False) if hasattr(jax, "enable_x64")
+                else jax.experimental.disable_x64())
+    with disabled:
         projected, correction = _project_passive(raw)
         assert not jax.config.x64_enabled
         assert projected.dtype == np.dtype(np.complex128)
