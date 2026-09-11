@@ -1,0 +1,144 @@
+{
+ "schema": "cv02-ring-resonator/v1",
+ "case_id": "02_ring_resonator",
+ "commit": "e3eb58ab80bb71dcfe54cc62c7e0a3288c3c41a8",
+ "date_utc": "2026-09-11T06:15:09Z",
+ "provenance": {
+  "rfx_version": "1.8.0",
+  "meep_version": "1.17.1",
+  "jax_enable_x64": "1",
+  "rfx_boundary": null,
+  "python": "3.10.12",
+  "platform": "Linux-5.15.0-187-generic-x86_64-with-glibc2.35"
+ },
+ "rig": {
+  "n_wg": 3.4,
+  "eps_wg": 11.559999999999999,
+  "ring_width_over_a": 1.0,
+  "ring_inner_radius_over_a": 1.0,
+  "pad_over_a": 4.0,
+  "dpml_over_a": 2.0,
+  "cell_over_a": 16.0,
+  "resolution_cells_per_a": 10,
+  "a_m": 1e-06,
+  "dx_m": 1e-07,
+  "cpml_layers": 20,
+  "interior_over_a": 12.0,
+  "domain_m": 1.2e-05,
+  "fcen_c_over_a": 0.15,
+  "df_c_over_a": 0.1,
+  "band_c_over_a": [
+   0.09999999999999999,
+   0.2
+  ],
+  "rfx_source_bandwidth_frac": 0.1500527193595177,
+  "rfx_dt_s": 2.3350677933821873e-16,
+  "rfx_n_steps": 6213,
+  "rfx_source_off_time_s": 3.33555703802535e-13,
+  "harminv_skip_samples": 2485,
+  "harminv_span_samples": 3728,
+  "harminv_analysis_duration_s": 7.54693910821123e-13,
+  "harminv_amp_floor": 1e-10,
+  "harminv_min_Q": 1.0,
+  "record_length_meep_units": 226.25723446417265,
+  "record_after_source_s": 8.702797665935412e-13,
+  "peak_offset_after_source_s": 2.4670864285293847e-13,
+  "meep_leg": {
+   "resolution": 10,
+   "cell_over_a": 16.0,
+   "dpml_over_a": 2.0,
+   "harminv_at": "source point"
+  }
+ },
+ "measured": {
+  "meep_modes": [
+   {
+    "freq_c_over_a": 0.14717180127745963,
+    "Q": 389.95969952893313,
+    "abs_amp": 0.030899128288122513
+   },
+   {
+    "freq_c_over_a": 0.1752670209600436,
+    "Q": -8484.453875722886,
+    "abs_amp": 0.006776120317325309
+   }
+  ],
+  "rfx_modes": [
+   {
+    "freq_hz": 44134421182538.33,
+    "freq_c_over_a": 0.1472128791945908,
+    "Q": 356.5742326404752,
+    "amplitude": 9.729811372433181e-08
+   },
+   {
+    "freq_hz": 52555572455629.875,
+    "freq_c_over_a": 0.17530210959182746,
+    "Q": 1740.5412097009134,
+    "amplitude": 2.348722476614846e-08
+   },
+   {
+    "freq_hz": 35394604137751.18,
+    "freq_c_over_a": 0.11806072093979712,
+    "Q": 83.73769372312438,
+    "amplitude": 1.2022994401523929e-08
+   },
+   {
+    "freq_hz": 60765534096474.8,
+    "freq_c_over_a": 0.2026869049248659,
+    "Q": 20967.062717400768,
+    "amplitude": 2.2991342131106268e-10
+   }
+  ],
+  "assignment": [
+   {
+    "ref_freq": 0.14717180127745963,
+    "ref_Q": 389.95969952893313,
+    "rfx_freq": 0.1472128791945908,
+    "rfx_Q": 356.5742326404752,
+    "freq_err_pct": 0.027911540644755567,
+    "t_over_tau": 0.26826080619447484,
+    "q_window": 3.727715629375441,
+    "q_log_ratio": 0.08950095486433769,
+    "q_gated": true,
+    "q_pass": true
+   }
+  ],
+  "surplus_rfx_modes": [
+   {
+    "freq": 0.17530210959182746,
+    "Q": 1740.5412097009134,
+    "amplitude": 2.348722476614846e-08
+   },
+   {
+    "freq": 0.11806072093979712,
+    "Q": 83.73769372312438,
+    "amplitude": 1.2022994401523929e-08
+   }
+  ],
+  "n_matched": 1,
+  "n_unmatched": 0,
+  "mean_freq_err_pct": 0.027911540644755567,
+  "max_freq_err_pct": 0.027911540644755567,
+  "signal_settling_db": -8.714256852623755
+ },
+ "gates": {
+  "unmatched": true,
+  "count": false,
+  "mean_err": true,
+  "max_err": true,
+  "q": true
+ },
+ "gate_limits": {
+  "freq_tol_pct": 5.0,
+  "min_matched_modes": 2,
+  "q_record_min_efolds": 0.25,
+  "note": "the Q window is tau_ref/T per mode, derived from the reference Q and THIS record length -- not a chosen number"
+ },
+ "verdict": {
+  "rfx_self_ok": true,
+  "meep_present": true,
+  "judge_passed": false,
+  "exit_code": 1,
+  "summary": "SOME CHECKS FAILED"
+ }
+}

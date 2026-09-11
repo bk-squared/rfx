@@ -1,0 +1,13 @@
+{
+  "run_id": 369367260360,
+  "status": "failed",
+  "sha256": "51b8765f94f69b50ba381f5756ffc20e1e366535aed782fe4ac1d68dda83d966",
+  "bytes": 2900,
+  "reason": "Shell bootstrap parse failure before test execution",
+  "deleted_after_verified_backup": true,
+  "log_file": "369367260360-failed.log.gz",
+  "compression": "gzip",
+  "raw_sha256": "51b8765f94f69b50ba381f5756ffc20e1e366535aed782fe4ac1d68dda83d966",
+  "stored_sha256": "f74d922b83cefe3ca3b435b566a5178ab08eb07fca513a5f10f3f54fa9eb1752",
+  "stored_bytes": 881
+}

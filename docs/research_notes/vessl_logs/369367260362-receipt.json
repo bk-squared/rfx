@@ -1,0 +1,14 @@
+{
+  "run_id": 369367260362,
+  "status": "completed",
+  "sha256": "b7aa783308cf5633f79da2c429ef6fbb5f4b7fba1bb49e73f18c695bd7567fce",
+  "bytes": 30360,
+  "source_sha": "e3eb58ab80bb71dcfe54cc62c7e0a3288c3c41a8",
+  "tests": "8 passed",
+  "deleted_after_verified_backup": true,
+  "log_file": "369367260362-completed.log.gz",
+  "compression": "gzip",
+  "raw_sha256": "b7aa783308cf5633f79da2c429ef6fbb5f4b7fba1bb49e73f18c695bd7567fce",
+  "stored_sha256": "ce8a48dbb71628755bf61c326a68e53ad6504bc7b66efd9ab604e7b8f126cf45",
+  "stored_bytes": 5094
+}

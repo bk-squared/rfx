@@ -118,9 +118,59 @@ Both automatic and explicitly undecimated paths were evaluated. No lattice,
 mode-count or stationarity gate was relaxed. These sub-ppm figures quantify
 agreement with the **discrete lattice**, not absolute continuum RF accuracy.
 
-## Remaining work
+## Integration and external checks
 
-- Recheck affected actual records and normal estimator consumers before
-  claiming #872 complete. cv24's explicit `decimate=False` remains a control.
-- Existing Q-gate policy questions (#907/#945) remain separate; this change
-  does not make a noisy, driven, or insufficiently resolved record trustworthy.
+- Core estimator, coefficient/phase and existing noise checks pass. The
+  existing consumer/contract selection reports 113 passed (14 slow tests
+  initially deselected); the separate CPU physics/convergence selection,
+  including those 14, reports **21 passed** in 60.50 s. This includes the
+  lossy-cavity Q oracle and live cv14 geometry/permittivity falsifiers.
+- The full two-arm patch integration reports **8 passed** in 70.23 s on
+  VESSL RTX 4090 run **369367260362**, source
+  `e3eb58ab80bb71dcfe54cc62c7e0a3288c3c41a8`. Geometry, 200-period records,
+  parity identification and all thresholds are unchanged. The CPU attempt
+  was deliberately interrupted after over 30 minutes before a patch verdict;
+  it is not counted as a completed CPU patch test. The GPU inputs, source
+  receipt, complete pytest log and both estimator replays are retained under
+  `patch-gpu-369367260362/`. The older GPU image uses JAX 0.4.33 / NumPy 1.26;
+  the CPU and Meep checks use JAX 0.6.2. This is checked compatibility, not
+  a same-runtime CPU/GPU bit-identity claim.
+- A local Meep 1.17.1 environment failed the reference count gate on **both**
+  baseline and candidate. Those refusals are retained in `cv02-meep117/`.
+  They were not used as successful external evidence.
+- A fresh isolated **Meep 1.34.0**, NumPy 1.26.4, SciPy 1.15.2, JAX 0.6.2
+  environment ran the entire cv02 script on baseline `013fc06a` and candidate
+  `e3eb58ab`. **Both processes returned 0**, and each newly written record's
+  commit matches its tested checkout. All three Meep modes are assigned;
+  maximum frequency error is **0.574989% -> 0.566633%**, within the unchanged
+  5% gate. The candidate reports an additional 0.202687 c/a pole outside the
+  judge's [0.1, 0.2] band; it is not presented as new validated mode coverage.
+
+Q interpretation remains deliberately narrow. Only **two of the three**
+reference modes pass the existing record-length admission rule. The first
+mode still differs substantially (Meep Q=150.884, candidate Q=83.738) and
+passes the existing loose Q window. This change does **not** resolve or
+endorse the uncertainty-policy questions tracked by #907/#945. The corrected
+usable record is 226.257 Meep units rather than the old raw-input 260.980;
+window formulas and constants are unchanged, while their duration input is
+now the actual fit span.
+
+Fresh Meep reports, input traces, full process logs, source commits and
+package receipts are under `cv02-meep134/`. The existing canonical crossval
+artifacts remain their dated historical records; these new measurements are
+retained as this change's before/after evidence.
+
+Reproduction helpers:
+
+- `harminv_record_capture.py`: one capture in a disposable pinned checkout.
+- `harminv_record_replay.py`: old/new auto and explicit-no-decimation replay;
+  optional baseline reuse is guarded by source and input hashes.
+- `harminv_cavity_adjudication.py`: the existing cv24 gates applied to a replay.
+- `cv02-meep134/driver.py`: execute the full case in each clean checkout and
+  retain its actual estimator inputs; use the recorded conda environment
+  plus `jax[cpu]==0.6.2` and a fresh output directory.
+
+All three VESSL runs (two bootstrap failures before any solve and the final
+successful test) were deleted only after their full provider logs were
+backed up and hashed under `docs/research_notes/vessl_logs/`. No running
+external experiment was terminated.

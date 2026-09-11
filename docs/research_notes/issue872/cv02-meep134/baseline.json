@@ -1,0 +1,155 @@
+{
+ "schema": "cv02-ring-resonator/v1",
+ "case_id": "02_ring_resonator",
+ "commit": "013fc06a2205a82d88712e19b79bad1f20e6cb29",
+ "date_utc": "2026-09-11T06:22:49Z",
+ "provenance": {
+  "rfx_version": "1.8.0",
+  "meep_version": "1.34.0",
+  "jax_enable_x64": "1",
+  "rfx_boundary": null,
+  "python": "3.10.21",
+  "platform": "Linux-5.15.0-187-generic-x86_64-with-glibc2.35"
+ },
+ "rig": {
+  "n_wg": 3.4,
+  "eps_wg": 11.559999999999999,
+  "ring_width_over_a": 1.0,
+  "ring_inner_radius_over_a": 1.0,
+  "pad_over_a": 4.0,
+  "dpml_over_a": 2.0,
+  "cell_over_a": 16.0,
+  "resolution_cells_per_a": 10,
+  "a_m": 1e-06,
+  "dx_m": 1e-07,
+  "cpml_layers": 20,
+  "interior_over_a": 12.0,
+  "domain_m": 1.2e-05,
+  "fcen_c_over_a": 0.15,
+  "df_c_over_a": 0.1,
+  "band_c_over_a": [
+   0.09999999999999999,
+   0.2
+  ],
+  "rfx_source_bandwidth_frac": 0.1500527193595177,
+  "rfx_dt_s": 2.3350677933821873e-16,
+  "rfx_n_steps": 6213,
+  "rfx_source_off_time_s": 3.33555703802535e-13,
+  "harminv_skip_samples": 2485,
+  "harminv_span_samples": 3728,
+  "harminv_amp_floor": 1e-10,
+  "harminv_min_Q": 1.0,
+  "record_length_meep_units": 260.9798793571893,
+  "record_after_source_s": 8.705132733728795e-13,
+  "peak_offset_after_source_s": 2.4670864285293847e-13,
+  "meep_leg": {
+   "resolution": 10,
+   "cell_over_a": 16.0,
+   "dpml_over_a": 2.0,
+   "harminv_at": "source point"
+  }
+ },
+ "measured": {
+  "meep_modes": [
+   {
+    "freq_c_over_a": 0.11739551949063769,
+    "Q": 150.88422789854096,
+    "abs_amp": 0.002912457935295113
+   },
+   {
+    "freq_c_over_a": 0.14716412023281392,
+    "Q": 347.17897598947144,
+    "abs_amp": 0.03205803847743801
+   },
+   {
+    "freq_c_over_a": 0.17524457217133252,
+    "Q": 1592.682081462247,
+    "abs_amp": 0.007490327582768575
+   }
+  ],
+  "rfx_modes": [
+   {
+    "freq_hz": 44134453763685.45,
+    "freq_c_over_a": 0.1472129878708654,
+    "Q": 358.1784967098669,
+    "amplitude": 9.674847436417668e-08
+   },
+   {
+    "freq_hz": 52557632316384.945,
+    "freq_c_over_a": 0.1753089803748664,
+    "Q": 1619.8602700718209,
+    "amplitude": 2.1740800405398517e-08
+   },
+   {
+    "freq_hz": 35397545107870.766,
+    "freq_c_over_a": 0.11807053071337814,
+    "Q": 81.8569243023258,
+    "amplitude": 1.6365021413134693e-08
+   }
+  ],
+  "assignment": [
+   {
+    "ref_freq": 0.11739551949063769,
+    "ref_Q": 150.88422789854096,
+    "rfx_freq": 0.11807053071337814,
+    "rfx_Q": 81.8569243023258,
+    "freq_err_pct": 0.5749889141163402,
+    "t_over_tau": 0.6379175874442082,
+    "q_window": 1.5676006112426852,
+    "q_log_ratio": 0.6115399423877275,
+    "q_gated": true,
+    "q_pass": true
+   },
+   {
+    "ref_freq": 0.14716412023281392,
+    "ref_Q": 347.17897598947144,
+    "rfx_freq": 0.1472129878708654,
+    "rfx_Q": 358.1784967098669,
+    "freq_err_pct": 0.03320621763930778,
+    "t_over_tau": 0.3475404982193544,
+    "q_window": 2.877362509185441,
+    "q_log_ratio": 0.03119102837850079,
+    "q_gated": true,
+    "q_pass": true
+   },
+   {
+    "ref_freq": 0.17524457217133252,
+    "ref_Q": 1592.682081462247,
+    "rfx_freq": 0.1753089803748664,
+    "rfx_Q": 1619.8602700718209,
+    "freq_err_pct": 0.03675332293367799,
+    "t_over_tau": 0.09021367610397849,
+    "q_window": 11.084793827129047,
+    "q_log_ratio": null,
+    "q_gated": false,
+    "q_pass": null
+   }
+  ],
+  "surplus_rfx_modes": [],
+  "n_matched": 3,
+  "n_unmatched": 0,
+  "mean_freq_err_pct": 0.2149828182297753,
+  "max_freq_err_pct": 0.5749889141163402,
+  "signal_settling_db": -8.714256852623755
+ },
+ "gates": {
+  "unmatched": true,
+  "count": true,
+  "mean_err": true,
+  "max_err": true,
+  "q": true
+ },
+ "gate_limits": {
+  "freq_tol_pct": 5.0,
+  "min_matched_modes": 2,
+  "q_record_min_efolds": 0.25,
+  "note": "the Q window is tau_ref/T per mode, derived from the reference Q and THIS record length -- not a chosen number"
+ },
+ "verdict": {
+  "rfx_self_ok": true,
+  "meep_present": true,
+  "judge_passed": true,
+  "exit_code": 0,
+  "summary": "ALL CHECKS PASSED"
+ }
+}

@@ -1,0 +1,162 @@
+{
+ "schema": "cv02-ring-resonator/v1",
+ "case_id": "02_ring_resonator",
+ "commit": "e3eb58ab80bb71dcfe54cc62c7e0a3288c3c41a8",
+ "date_utc": "2026-09-11T06:25:08Z",
+ "provenance": {
+  "rfx_version": "1.8.0",
+  "meep_version": "1.34.0",
+  "jax_enable_x64": "1",
+  "rfx_boundary": null,
+  "python": "3.10.21",
+  "platform": "Linux-5.15.0-187-generic-x86_64-with-glibc2.35"
+ },
+ "rig": {
+  "n_wg": 3.4,
+  "eps_wg": 11.559999999999999,
+  "ring_width_over_a": 1.0,
+  "ring_inner_radius_over_a": 1.0,
+  "pad_over_a": 4.0,
+  "dpml_over_a": 2.0,
+  "cell_over_a": 16.0,
+  "resolution_cells_per_a": 10,
+  "a_m": 1e-06,
+  "dx_m": 1e-07,
+  "cpml_layers": 20,
+  "interior_over_a": 12.0,
+  "domain_m": 1.2e-05,
+  "fcen_c_over_a": 0.15,
+  "df_c_over_a": 0.1,
+  "band_c_over_a": [
+   0.09999999999999999,
+   0.2
+  ],
+  "rfx_source_bandwidth_frac": 0.1500527193595177,
+  "rfx_dt_s": 2.3350677933821873e-16,
+  "rfx_n_steps": 6213,
+  "rfx_source_off_time_s": 3.33555703802535e-13,
+  "harminv_skip_samples": 2485,
+  "harminv_span_samples": 3728,
+  "harminv_analysis_duration_s": 7.54693910821123e-13,
+  "harminv_amp_floor": 1e-10,
+  "harminv_min_Q": 1.0,
+  "record_length_meep_units": 226.25723446417265,
+  "record_after_source_s": 8.702797665935412e-13,
+  "peak_offset_after_source_s": 2.4670864285293847e-13,
+  "meep_leg": {
+   "resolution": 10,
+   "cell_over_a": 16.0,
+   "dpml_over_a": 2.0,
+   "harminv_at": "source point"
+  }
+ },
+ "measured": {
+  "meep_modes": [
+   {
+    "freq_c_over_a": 0.11739551949063769,
+    "Q": 150.88422789854096,
+    "abs_amp": 0.002912457935295113
+   },
+   {
+    "freq_c_over_a": 0.14716412023281392,
+    "Q": 347.17897598947144,
+    "abs_amp": 0.03205803847743801
+   },
+   {
+    "freq_c_over_a": 0.17524457217133252,
+    "Q": 1592.682081462247,
+    "abs_amp": 0.007490327582768575
+   }
+  ],
+  "rfx_modes": [
+   {
+    "freq_hz": 44134421182538.33,
+    "freq_c_over_a": 0.1472128791945908,
+    "Q": 356.5742326405457,
+    "amplitude": 9.729811372432911e-08
+   },
+   {
+    "freq_hz": 52555572455629.875,
+    "freq_c_over_a": 0.17530210959182746,
+    "Q": 1740.5412096939244,
+    "amplitude": 2.348722476615225e-08
+   },
+   {
+    "freq_hz": 35394604137751.15,
+    "freq_c_over_a": 0.11806072093979703,
+    "Q": 83.73769372311446,
+    "amplitude": 1.2022994401524444e-08
+   },
+   {
+    "freq_hz": 60765534096474.58,
+    "freq_c_over_a": 0.20268690492486516,
+    "Q": 20967.062714759246,
+    "amplitude": 2.299134213112682e-10
+   }
+  ],
+  "assignment": [
+   {
+    "ref_freq": 0.11739551949063769,
+    "ref_Q": 150.88422789854096,
+    "rfx_freq": 0.11806072093979703,
+    "rfx_Q": 83.73769372311446,
+    "freq_err_pct": 0.5666327403682462,
+    "t_over_tau": 0.5530444320331761,
+    "q_window": 1.8081729822749788,
+    "q_log_ratio": 0.5888236208006378,
+    "q_gated": true,
+    "q_pass": true
+   },
+   {
+    "ref_freq": 0.14716412023281392,
+    "ref_Q": 347.17897598947144,
+    "rfx_freq": 0.1472128791945908,
+    "rfx_Q": 356.5742326405457,
+    "freq_err_pct": 0.0331323706483302,
+    "t_over_tau": 0.301301204464848,
+    "q_window": 3.3189379437634057,
+    "q_log_ratio": 0.02670201645190267,
+    "q_gated": true,
+    "q_pass": true
+   },
+   {
+    "ref_freq": 0.17524457217133252,
+    "ref_Q": 1592.682081462247,
+    "rfx_freq": 0.17530210959182746,
+    "rfx_Q": 1740.5412096939244,
+    "freq_err_pct": 0.03283264056742815,
+    "t_over_tau": 0.07821099816739764,
+    "q_window": 12.785925553074597,
+    "q_log_ratio": null,
+    "q_gated": false,
+    "q_pass": null
+   }
+  ],
+  "surplus_rfx_modes": [],
+  "n_matched": 3,
+  "n_unmatched": 0,
+  "mean_freq_err_pct": 0.21086591719466818,
+  "max_freq_err_pct": 0.5666327403682462,
+  "signal_settling_db": -8.714256852623755
+ },
+ "gates": {
+  "unmatched": true,
+  "count": true,
+  "mean_err": true,
+  "max_err": true,
+  "q": true
+ },
+ "gate_limits": {
+  "freq_tol_pct": 5.0,
+  "min_matched_modes": 2,
+  "q_record_min_efolds": 0.25,
+  "note": "the Q window is tau_ref/T per mode, derived from the reference Q and THIS record length -- not a chosen number"
+ },
+ "verdict": {
+  "rfx_self_ok": true,
+  "meep_present": true,
+  "judge_passed": true,
+  "exit_code": 0,
+  "summary": "ALL CHECKS PASSED"
+ }
+}

@@ -1,0 +1,49 @@
+{
+  "junit.xml": {
+    "bytes": 1409,
+    "sha256": "01548e64c3a636c57a465ca46daf1ecd9d80e26bff32a079f767f92c1f3325dd"
+  },
+  "environment.json": {
+    "bytes": 260,
+    "sha256": "74bdb2be035189ea246b552fd8c43df00d6360f2671720645c9003828496ed30"
+  },
+  "pytest.rc": {
+    "bytes": 2,
+    "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  "fed-input.npz": {
+    "bytes": 1046578,
+    "sha256": "e3a4de0e333fecbc94249db142d639818961ae7269abdd969f7b4081705cb919"
+  },
+  "sha.txt": {
+    "bytes": 41,
+    "sha256": "70dab8c5166d6afbaaf926460546e923ec3787a5d398662e10ccebf3ffaf1e81"
+  },
+  "run.yaml": {
+    "bytes": 1565,
+    "sha256": "fb08fd883aad937ae0f202520fe41b32d2aae53ea230d6b56a613515760e3166"
+  },
+  "unfed-input.npz": {
+    "bytes": 1045716,
+    "sha256": "aaca41a89cc52ca8699499c9c6bff3a8f5c3951157eace5107cec06cc0570056"
+  },
+  "run_id.txt": {
+    "bytes": 13,
+    "sha256": "8744520f0dc20da2cbe1932accc893bcb57e4f91b847add815c72dcc45338b56"
+  },
+  "census.json": {
+    "bytes": 3112,
+    "sha256": "29f0d5a8ae8199030710fb4e8f482f9af351fa9129902b3f1b46cc3babb1c20f"
+  },
+  "driver.py": {
+    "bytes": 1570,
+    "sha256": "f3f0c712705e73aa0046d1459512ff4d773f07bde482251ab9b2c13ca8def186"
+  },
+  "pytest.log.gz": {
+    "bytes": 3195,
+    "sha256": "0afd4c08b2da2778f50cbfab45595909530130f9d59cbfdf6f7c981d92e84b9a",
+    "raw_bytes": 23712,
+    "raw_sha256": "f78cb8c4e88f1843e8d2cd45995580219bac91bbfbcc5502ef131b42ce24783d",
+    "compression": "gzip"
+  }
+}

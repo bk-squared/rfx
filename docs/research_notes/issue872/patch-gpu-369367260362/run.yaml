@@ -1,0 +1,61 @@
+name: rfx-i872-patch-gpu
+description: 'Pinned #872 patch-mode consumer validation; same geometry and record,
+  GPU execution, save all estimator inputs. Waits for the local handoff before running.'
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: '1'
+  OMP_NUM_THREADS: '1'
+  OPENBLAS_NUM_THREADS: '1'
+  XLA_PYTHON_CLIENT_PREALLOCATE: 'false'
+  HDF5_USE_FILE_LOCKING: 'FALSE'
+  RFX_CHECKOUT: /root/workspace/claude-workspace/rfx/checkouts/codex-872-e3eb58ab
+  RFX_SHA: e3eb58ab80bb71dcfe54cc62c7e0a3288c3c41a8
+  RFX_OUT: /root/workspace/claude-workspace/rfx/runs/codex-i872-patch-o1lphyz7
+  RFX_DRIVER: /root/workspace/claude-workspace/rfx/runs/codex-i872-patch-o1lphyz7/driver.py
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: 'set -eu
+
+  WORK=/tmp/rfx-i872-patch-e3eb58ab
+
+  git config --global --add safe.directory "$RFX_CHECKOUT"
+
+  git config --global --add safe.directory "$RFX_CHECKOUT/.git"
+
+  git clone --quiet --no-checkout "$RFX_CHECKOUT" "$WORK"
+
+  git -C "$WORK" checkout --quiet --detach "$RFX_SHA"
+
+  cd "$WORK"
+
+  cp "$RFX_DRIVER" "$WORK/i872_driver.py"
+
+  python -m pip install -q "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pyyaml
+  pytest
+
+  export PYTHONPATH="$WORK"
+
+  export MPLBACKEND=Agg
+
+  python i872_driver.py ready
+
+  git rev-parse HEAD > "$RFX_OUT/sha.txt"
+
+  set +e
+
+  python -u i872_driver.py test > "$RFX_OUT/pytest.log" 2>&1
+
+  rc=$?
+
+  set -e
+
+  echo "$rc" > "$RFX_OUT/pytest.rc"
+
+  cat "$RFX_OUT/pytest.log"
+
+  exit "$rc"
+
+  '

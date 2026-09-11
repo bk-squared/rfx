@@ -1,0 +1,8 @@
+{
+  "sha": "e3eb58ab80bb71dcfe54cc62c7e0a3288c3c41a8",
+  "jax": "0.4.33.dev20241023+e3c6d6430",
+  "numpy": "1.26.4",
+  "scipy": "1.14.1",
+  "devices": "[CudaDevice(id=0)]",
+  "driver_sha256": "f3f0c712705e73aa0046d1459512ff4d773f07bde482251ab9b2c13ca8def186"
+}

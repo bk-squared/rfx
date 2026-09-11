@@ -1,0 +1,13 @@
+{
+  "run_id": 369367260361,
+  "status": "failed",
+  "sha256": "db933cef322b41cf64b8fffab874d129eed702e6f3c525c78ce2048310c2a67c",
+  "bytes": 3474,
+  "reason": "NFS Git upload-pack ownership check before test execution",
+  "deleted_after_verified_backup": true,
+  "log_file": "369367260361-failed.log.gz",
+  "compression": "gzip",
+  "raw_sha256": "db933cef322b41cf64b8fffab874d129eed702e6f3c525c78ce2048310c2a67c",
+  "stored_sha256": "74919f03cd57fe2d00259248b0e1a59968b9ebd1b2864dce2060d39903974919",
+  "stored_bytes": 1136
+}
