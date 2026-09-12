@@ -1,0 +1,118 @@
+{
+  "run_id": 369367260669,
+  "status": "completed",
+  "source_sha": "7011f78b1015987f323350347d630224fcd980ab",
+  "source_archive_retained": "/root/workspace/claude-workspace/rfx/runs/codex-i953-build-falsifiers-khte23q3/source.tar",
+  "source_archive_sha256": "a0cf36ca4cd9721ff751e740e81cecdf728b8579106dc2b8913f5daaa9c5b5c4",
+  "driver_sha256": "1f27b7ed9b258aefcb04588e5b85564a531bb97a42ca2948fed807233e7e7eb4",
+  "files": [
+    {
+      "path": "artifacts/baseline-raw-vi.npz",
+      "bytes": 52492,
+      "sha256": "6cb1b8c7d7c35aba2592e793134a5d7b4d7c1b67476ad35678733d2fba41aa3e"
+    },
+    {
+      "path": "artifacts/baseline-result.npz",
+      "bytes": 11732,
+      "sha256": "a5974370ce9546ca55d9bff48d4dafda8b7856478c4c313fffa312cb2432e567"
+    },
+    {
+      "path": "artifacts/cv06b_build_falsifiers_summary.json",
+      "bytes": 4196,
+      "sha256": "763cc0b2cdc2475fb720d9b9474f46c1ea56645899b79110a110c1f0fd709a08"
+    },
+    {
+      "path": "artifacts/cv06b_falsifier_baseline.json",
+      "bytes": 8644,
+      "sha256": "b90bbaad76d78cc790b5e31669b85510b8d739ad8605c34bb4817ea973c574de"
+    },
+    {
+      "path": "artifacts/cv06b_falsifier_stub_1cell.json",
+      "bytes": 9294,
+      "sha256": "be9a57959c1f28b737b36bce1d0eba65c83a408299440a1271a94c1dae4b3c12"
+    },
+    {
+      "path": "artifacts/cv06b_falsifier_stub_narrow.json",
+      "bytes": 9769,
+      "sha256": "55f991fc620444c8a9752a1950d8380e4d2f5cd14f17ed3686eef3163f2b377e"
+    },
+    {
+      "path": "artifacts/observations.json",
+      "bytes": 1153,
+      "sha256": "fcb6a07ae7db99121189991baa38e0329f6f75761752d54d28ab2e2a02f6efff"
+    },
+    {
+      "path": "artifacts/outcome.json",
+      "bytes": 116,
+      "sha256": "645b81689735d183df089a9fe0e1e0e608019b1a3baf3e17f93ae5eee54807fa"
+    },
+    {
+      "path": "artifacts/plan.json",
+      "bytes": 5120,
+      "sha256": "8d145ea65f2004dc592efe2cd3705d4a2147bb42fafd5a4482f8989403ca9518"
+    },
+    {
+      "path": "artifacts/stub_1cell-raw-vi.npz",
+      "bytes": 52492,
+      "sha256": "c60faf154bb180fac787dd579dddd569e0cd7616a6d584ecc3b5f86423542877"
+    },
+    {
+      "path": "artifacts/stub_1cell-result.npz",
+      "bytes": 11727,
+      "sha256": "9b67e0424cd7c3bf74fbaeeb77ad9a634540cfe6738723ea52ffb45968d60a2d"
+    },
+    {
+      "path": "artifacts/stub_narrow-raw-vi.npz",
+      "bytes": 52672,
+      "sha256": "34cddaf5344ca79f7a59873975a0101bf74de370063dd6ea054a3eb5999b07fc"
+    },
+    {
+      "path": "artifacts/stub_narrow-result.npz",
+      "bytes": 11732,
+      "sha256": "fd2fd1f34452582ea014577699bd692b042dbf338850106177bda7fb3c579e1d"
+    },
+    {
+      "path": "baseline-environment.json",
+      "bytes": 456,
+      "sha256": "9304532a874246190834e944b82d392333f6fd27fecd20bc6bbb37e49706c523"
+    },
+    {
+      "path": "environment.json",
+      "bytes": 461,
+      "sha256": "00f6a03bae7ac8099f9a1d75dc72661b5821b943ce442d1fd4fd5dc138c9cc33"
+    },
+    {
+      "path": "exit-code.txt",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "field_power.py",
+      "bytes": 5439,
+      "sha256": "1f27b7ed9b258aefcb04588e5b85564a531bb97a42ca2948fed807233e7e7eb4"
+    },
+    {
+      "path": "provider-state.txt.gz",
+      "bytes": 1477,
+      "sha256": "6d92f8b37356d00b54b32a42ed52061e2476ed0313379789540f554f4dc39ea0"
+    },
+    {
+      "path": "run.log",
+      "bytes": 48846,
+      "sha256": "99914af616cc782cf739b3f12f0f35308d7bfe311562f80f991ee97e70c1fa46"
+    },
+    {
+      "path": "run.yaml",
+      "bytes": 2861,
+      "sha256": "0385ed0f3f6240d35b73563f3e3de94d246c5b5decb0edc474aa3bae948d0f63"
+    }
+  ],
+  "full_provider_log": "docs/research_notes/vessl_logs/369367260669_completed.log.gz",
+  "provider_log_raw_sha256": "07e44dcfb001246d23ef1671670bcd2505570b45f3deb1a46f09312613c8e5ff",
+  "provider_log_gzip_sha256": "3d13ab133d355f47d01e83fbff1663b129e9d4b37ca3f57a7e982082b28399be",
+  "backup_verified": true,
+  "provider_deleted": true,
+  "physical_accuracy_verdict": null,
+  "scope": "Three approved arms; generator and settling screens pass; independent RF evaluation still pending. No MSL power-calibration claim.",
+  "provider_state_raw_sha256": "067a27bf43580450cdcdd964e57f008ff20633b37e5f8b672c8328099066206b"
+}

@@ -143,3 +143,44 @@ array bytes are retained, an exact -40 dB witness passes, absent witnesses
 are rejected, gains above one remain visible, and a nonfinite raw bin makes
 the aggregate gain unavailable rather than being filtered out. These checks
 do not measure the physical response of any of the three geometries.
+
+## Run669 result and the remaining comparison-control gap
+
+[Run369367260669](gpu-369367260669/manifest.json) completed all three arms
+on source7011f78b. Its complete provider log, 20 retained files and source
+archive were hash-verified before deleting the terminal provider run.
+No port algorithm changed, and no additional campaign ran in parallel.
+
+An [independent NumPy referee](independent-rf-669.py) reconstructs power-wave S
+directly from measured V/I and recorded references using an explicit 2x2
+inverse. It imports neither the production replay nor its spectral estimator.
+The [report](independent-rf-669.json) reproduces the producer's spectral metrics
+and matches saved raw S within 2.41e-7 maximum absolute difference. The raw
+dump and saved result's preprojection S are byte-identical. Both returned
+and reconstructed raw S retain the approved outcomes:
+
+| Quantity | Returned S | Reconstructed raw S |
+|---|---:|---:|
+| Baseline G1 reference deviation | 2.166151% | 2.167659% |
+| Narrow bandwidth ratio, lower gate limit 0.80 | 0.725836 | 0.723685 |
+| Narrow sampled notch depth, witness limit -10 dB | -40.3864 dB | -40.0414 dB |
+| One-cell refined frequency shift | 0.824843% | 0.822069% |
+
+The existing one-cell prediction is 0.531982%; both shifts exceed its
+unchanged half-prediction visibility threshold. All beta rail counts are
+zero. The worst settling witness is -92.6437 dB, within the canonical screen.
+Raw coherent power gain nevertheless remains 1.01126–1.01140: this is not
+a power-calibrated MSL result. Notch bins carry `reliable=False` at both ports;
+the bandwidth crossing brackets carry `True`. Retain those low-signal flags
+without interpreting them as either a global S failure or an error bound.
+
+The retained metadata exposes an additional control problem. The one-cell
+arm has ny=279 instead of the baseline's280 because the builder sizes its
+domain from stub length. The narrow arm automatically resolves probe0 to
+indices100/451 instead of99/452 (offset61 instead of60). Thus669 verifies
+the production builder's three outputs, but cannot attribute every difference
+solely to the intended metal perturbation. It also cannot uniquely explain
+the older frequency shift. The next repair must hold the baseline grid,
+materials and resolved port/probe plan fixed across the controlled arms,
+check that invariant before solving, and qualify that comparison before
+declaring #953 complete. The669 raw data remain unchanged.

@@ -1,0 +1,186 @@
+{
+  "scope": "Three approved geometries; source/field/extraction algorithms unchanged; G1 baseline only",
+  "source_sha": "7011f78b1015987f323350347d630224fcd980ab",
+  "producer_sha256": "a70d06f4771f026f1fa2e5d22e4df3f1ccea8e913bdbc9e6657877beb0ae8b51",
+  "case_sha256": "ee80255e96782b1460dc619f0f0dfb47b2ac629affa4ac1cbc709a51258fe08c",
+  "recorder_sha256": "1f27b7ed9b258aefcb04588e5b85564a531bb97a42ca2948fed807233e7e7eb4",
+  "n_freqs": 100,
+  "num_periods": 20.0,
+  "inputs": {
+    "baseline": {
+      "realized_metal": {
+        "plane_k": 4,
+        "plane_z": 0.000254,
+        "n_sheets": 2,
+        "n_volume_cells": 0,
+        "trace_j": [
+          24,
+          33
+        ],
+        "trace_w": 0.0005715,
+        "n_rows": 10,
+        "trace_y": [
+          0.001016,
+          0.0015875
+        ],
+        "stub_i": [
+          271,
+          280
+        ],
+        "stub_w": 0.0005714999999999991,
+        "n_cols": 10,
+        "stub_x": [
+          0.0167005,
+          0.017272
+        ],
+        "trace_w_elec": 0.0006349999999999999,
+        "stub_w_elec": 0.0006349999999999999,
+        "stub_len": 0.0120015,
+        "stub_open_j": 222,
+        "stub_len_centreline": 0.01228725,
+        "n_ex": 7051,
+        "n_ey": 6714,
+        "n_ez": 0
+      },
+      "frequency_reference": {
+        "frequency_hz": 3678954217.388916,
+        "role": "baseline_accuracy_reference",
+        "model": "quasistatic_quarter_wave_without_open_end_or_tee_correction",
+        "width_m": 0.0006349999999999999,
+        "width_convention": "main_line_row_pitch",
+        "length_m": 0.012,
+        "length_convention": "declared_stub_extension",
+        "substrate_height_m": 0.000254,
+        "substrate_eps_r": 3.66,
+        "eps_eff": 2.882252441027371,
+        "discrete_electrical_width_certified": false
+      },
+      "grid_shape": [
+        553,
+        280,
+        37
+      ],
+      "dx_m": 6.35e-05,
+      "dt_s": 1.2106750421521888e-13,
+      "n_steps": 23600
+    },
+    "stub_1cell": {
+      "realized_metal": {
+        "plane_k": 4,
+        "plane_z": 0.000254,
+        "n_sheets": 2,
+        "n_volume_cells": 0,
+        "trace_j": [
+          24,
+          33
+        ],
+        "trace_w": 0.0005715,
+        "n_rows": 10,
+        "trace_y": [
+          0.001016,
+          0.0015875
+        ],
+        "stub_i": [
+          271,
+          280
+        ],
+        "stub_w": 0.0005714999999999991,
+        "n_cols": 10,
+        "stub_x": [
+          0.0167005,
+          0.017272
+        ],
+        "trace_w_elec": 0.0006349999999999999,
+        "stub_w_elec": 0.0006349999999999999,
+        "stub_len": 0.011937999999999999,
+        "stub_open_j": 221,
+        "stub_len_centreline": 0.012223749999999999,
+        "n_ex": 7042,
+        "n_ey": 6704,
+        "n_ez": 0
+      },
+      "frequency_reference": {
+        "frequency_hz": 3698525581.9266105,
+        "role": "length_shift_prediction",
+        "model": "quasistatic_quarter_wave_without_open_end_or_tee_correction",
+        "width_m": 0.0006349999999999999,
+        "width_convention": "main_line_row_pitch",
+        "length_m": 0.011936500000000001,
+        "length_convention": "declared_stub_extension",
+        "substrate_height_m": 0.000254,
+        "substrate_eps_r": 3.66,
+        "eps_eff": 2.882252441027371,
+        "discrete_electrical_width_certified": false
+      },
+      "grid_shape": [
+        553,
+        279,
+        37
+      ],
+      "dx_m": 6.35e-05,
+      "dt_s": 1.2106750421521888e-13,
+      "n_steps": 23600
+    },
+    "stub_narrow": {
+      "realized_metal": {
+        "plane_k": 4,
+        "plane_z": 0.000254,
+        "n_sheets": 2,
+        "n_volume_cells": 0,
+        "trace_j": [
+          24,
+          33
+        ],
+        "trace_w": 0.0005715,
+        "n_rows": 10,
+        "trace_y": [
+          0.001016,
+          0.0015875
+        ],
+        "stub_i": [
+          273,
+          278
+        ],
+        "stub_w": 0.0003175000000000018,
+        "n_cols": 6,
+        "stub_x": [
+          0.0168275,
+          0.017145
+        ],
+        "trace_w_elec": 0.0006349999999999999,
+        "stub_w_elec": 0.000381,
+        "stub_len": 0.0120015,
+        "stub_open_j": 222,
+        "stub_len_centreline": 0.01228725,
+        "n_ex": 6295,
+        "n_ey": 5958,
+        "n_ez": 0
+      },
+      "frequency_reference": {
+        "frequency_hz": 3773803120.75963,
+        "role": "diagnostic_only",
+        "model": "quasistatic_quarter_wave_without_open_end_or_tee_correction",
+        "width_m": 0.0003175000000000018,
+        "width_convention": "stub_node_span",
+        "length_m": 0.0120015,
+        "length_convention": "stub_realized_extension",
+        "substrate_height_m": 0.000254,
+        "substrate_eps_r": 3.66,
+        "eps_eff": 2.7385062526945787,
+        "discrete_electrical_width_certified": false
+      },
+      "grid_shape": [
+        553,
+        280,
+        37
+      ],
+      "dx_m": 6.35e-05,
+      "dt_s": 1.2106750421521888e-13,
+      "n_steps": 23600
+    }
+  },
+  "limits": [
+    "No general MSL power calibration claim",
+    "No unique historical frequency-shift attribution"
+  ]
+}
