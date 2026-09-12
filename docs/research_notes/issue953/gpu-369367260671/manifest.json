@@ -1,0 +1,135 @@
+{
+  "run_id": 369367260671,
+  "status": "completed",
+  "source_sha": "6a6b32c58911a37b5ee7741ea6a69674295a275b",
+  "source_archive_retained": "/root/workspace/claude-workspace/rfx/runs/codex-i953-fixed-environment-1da6e9hd/source.tar",
+  "source_archive_sha256": "ed950794ca88ce6d455b884199b8b882cf4f28dd37b96c806006c601e3ebf7cd",
+  "driver_sha256": "64c77d9f0c080f8ba690dc758b05702275d9051cfdc7b36b1a47f872380e5e47",
+  "files": [
+    {
+      "path": "artifacts/baseline-raw-vi.npz",
+      "bytes": 52492,
+      "sha256": "6cb1b8c7d7c35aba2592e793134a5d7b4d7c1b67476ad35678733d2fba41aa3e"
+    },
+    {
+      "path": "artifacts/baseline-result.npz",
+      "bytes": 11732,
+      "sha256": "a5974370ce9546ca55d9bff48d4dafda8b7856478c4c313fffa312cb2432e567"
+    },
+    {
+      "path": "artifacts/consumed-run-plans.json",
+      "bytes": 300865,
+      "sha256": "8d02af1ef603f0a658163f1e8f34646f3b93b7880c02f9de43c39012ed22f7fc"
+    },
+    {
+      "path": "artifacts/cv06b_build_falsifiers_summary.json",
+      "bytes": 4197,
+      "sha256": "07f08d01995d19b74bce91a4b71313b8c49a0d5aaa003aab2ab6b863bdae618a"
+    },
+    {
+      "path": "artifacts/cv06b_falsifier_baseline.json",
+      "bytes": 14306,
+      "sha256": "337da988fd3925707e37f7c29d0775812a84d3606089053526c8cbcd3a777132"
+    },
+    {
+      "path": "artifacts/cv06b_falsifier_stub_1cell.json",
+      "bytes": 14931,
+      "sha256": "ae361ba273abcce720e878b19445ccbde8755401c203bd9c903702be2fc86335"
+    },
+    {
+      "path": "artifacts/cv06b_falsifier_stub_narrow.json",
+      "bytes": 15430,
+      "sha256": "72ea889322dfbc4fa2d03e8c4779f10c2c277733e5f2feda37f345b8990c28ca"
+    },
+    {
+      "path": "artifacts/observations.json",
+      "bytes": 1155,
+      "sha256": "1bffb06baa5d96b7dc947389b7cbbc75030f5e9a3cb531d0beebf6f28b6db405"
+    },
+    {
+      "path": "artifacts/outcome.json",
+      "bytes": 148,
+      "sha256": "ecef16bb295b7c2123803eda56d00808b5cbc9d412e694482abbad3679e3f2da"
+    },
+    {
+      "path": "artifacts/plan.json",
+      "bytes": 24955,
+      "sha256": "ae0ddba8676dad230a7765cce2784709e6cd4805159eb4025be43081f4e3f585"
+    },
+    {
+      "path": "artifacts/stub_1cell-raw-vi.npz",
+      "bytes": 52492,
+      "sha256": "acb33acc3c1d4b2b180d73dc68fd27ed88508dec3648ff8610c48b1d72756b12"
+    },
+    {
+      "path": "artifacts/stub_1cell-result.npz",
+      "bytes": 11741,
+      "sha256": "ee9a3e26caa915e71a6e5b766461992cd81e193f3356efeca8a2f84caa8d9817"
+    },
+    {
+      "path": "artifacts/stub_narrow-raw-vi.npz",
+      "bytes": 52492,
+      "sha256": "064f5ba369dcbf737bb4995ede628ab0be4904e27fb74968e539e3ede1561483"
+    },
+    {
+      "path": "artifacts/stub_narrow-result.npz",
+      "bytes": 11767,
+      "sha256": "a22164f5fc53382ee60a9460f107bbf63af6b0b9a18f6949d7f0013be1d7b5f5"
+    },
+    {
+      "path": "baseline-environment.json",
+      "bytes": 461,
+      "sha256": "00f6a03bae7ac8099f9a1d75dc72661b5821b943ce442d1fd4fd5dc138c9cc33"
+    },
+    {
+      "path": "environment.json",
+      "bytes": 456,
+      "sha256": "3ca5dae6fca8446fb2c4159345131d5f4fc2ce01c09a2d13454e8277c479ead9"
+    },
+    {
+      "path": "exit-code.txt",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "field_power.py",
+      "bytes": 6913,
+      "sha256": "64c77d9f0c080f8ba690dc758b05702275d9051cfdc7b36b1a47f872380e5e47"
+    },
+    {
+      "path": "provider-state.txt.gz",
+      "bytes": 1481,
+      "sha256": "6632b66c00c2a07103c9c7f7629754a087bfeb681b32c65c0c9233250f1cacf6"
+    },
+    {
+      "path": "run.log",
+      "bytes": 48791,
+      "sha256": "cc340627e80e2adcd4c91feb17106516454b88b7b20ec6571cfc087002d7ec8b"
+    },
+    {
+      "path": "run.yaml",
+      "bytes": 2876,
+      "sha256": "30ac7bd1ea819505a9df1087f25f63a3cbf8093dd4df1583a4882203265b1c09"
+    }
+  ],
+  "full_provider_log": "docs/research_notes/vessl_logs/369367260671_completed.log.gz",
+  "provider_log_raw_sha256": "3f6629c05657ba024a0c1b298e805a21ae582ad96cc46f370063e6c382f9d828",
+  "provider_log_gzip_sha256": "ed204548b29ee39a8be1ca137d1c99ed3f0f95d2aae0eb4174f2055d0438192f",
+  "provider_state_raw_sha256": "27b098f53ddf085d0e4a7591f9b0b0cb3bb5c937367dde8adf9df18a7c1b8696",
+  "backup_verified": true,
+  "provider_deleted": true,
+  "physical_accuracy_verdict": null,
+  "scope": "Fixed-environment three-arm qualification; all six actual input comparisons and existing generator/settling screens pass. Independent RF review retained separately; no calibrated MSL power claim.",
+  "qualified_predicates": [
+    "baseline G1/G2/G3/G4 and retained depth witness",
+    "one-cell frequency shift visible under original threshold",
+    "narrow G2 failure with depth witness pass",
+    "six fixed consumed plans outside declared stub variation"
+  ],
+  "independent_assessment": "../independent-rf-671.json",
+  "unchanged_limits": [
+    "no calibrated MSL power claim",
+    "notch low-signal flags remain false",
+    "unique historical causal partition not identifiable"
+  ]
+}

@@ -1,0 +1,124 @@
+{
+  "scope": "production build-only input certificate; not RF validation",
+  "producer_sha256": "eca5b90c7896033259b4eb219fe52cc8f6a66fd0630be5b8dc2c8bc50393ac06",
+  "case_sha256": "3d064b4b8beea42e70b1fd7935f28a56a51fc1b471c158540b731b34210adfa1",
+  "inputs": {
+    "baseline": {
+      "declared_dx_m": 6.35e-05,
+      "declared_stub_width_m": 0.0006,
+      "declared_stub_length_m": 0.012,
+      "realized_metal": {
+        "plane_k": 4,
+        "plane_z": 0.000254,
+        "n_sheets": 2,
+        "n_volume_cells": 0,
+        "trace_j": [
+          24,
+          33
+        ],
+        "trace_w": 0.0005715,
+        "n_rows": 10,
+        "trace_y": [
+          0.001016,
+          0.0015875
+        ],
+        "stub_i": [
+          271,
+          280
+        ],
+        "stub_w": 0.0005714999999999991,
+        "n_cols": 10,
+        "stub_x": [
+          0.0167005,
+          0.017272
+        ],
+        "trace_w_elec": 0.0006349999999999999,
+        "stub_w_elec": 0.0006349999999999999,
+        "stub_len": 0.0120015,
+        "stub_open_j": 222,
+        "stub_len_centreline": 0.01228725,
+        "n_ex": 7051,
+        "n_ey": 6714,
+        "n_ez": 0
+      }
+    },
+    "stub_1cell": {
+      "declared_dx_m": 6.35e-05,
+      "declared_stub_width_m": 0.0006,
+      "declared_stub_length_m": 0.011936500000000001,
+      "realized_metal": {
+        "plane_k": 4,
+        "plane_z": 0.000254,
+        "n_sheets": 2,
+        "n_volume_cells": 0,
+        "trace_j": [
+          24,
+          33
+        ],
+        "trace_w": 0.0005715,
+        "n_rows": 10,
+        "trace_y": [
+          0.001016,
+          0.0015875
+        ],
+        "stub_i": [
+          271,
+          280
+        ],
+        "stub_w": 0.0005714999999999991,
+        "n_cols": 10,
+        "stub_x": [
+          0.0167005,
+          0.017272
+        ],
+        "trace_w_elec": 0.0006349999999999999,
+        "stub_w_elec": 0.0006349999999999999,
+        "stub_len": 0.011937999999999999,
+        "stub_open_j": 221,
+        "stub_len_centreline": 0.012223749999999999,
+        "n_ex": 7042,
+        "n_ey": 6704,
+        "n_ez": 0
+      }
+    },
+    "stub_narrow": {
+      "declared_dx_m": 6.35e-05,
+      "declared_stub_width_m": 0.00031749999999999997,
+      "declared_stub_length_m": 0.012,
+      "realized_metal": {
+        "plane_k": 4,
+        "plane_z": 0.000254,
+        "n_sheets": 2,
+        "n_volume_cells": 0,
+        "trace_j": [
+          24,
+          33
+        ],
+        "trace_w": 0.0005715,
+        "n_rows": 10,
+        "trace_y": [
+          0.001016,
+          0.0015875
+        ],
+        "stub_i": [
+          273,
+          278
+        ],
+        "stub_w": 0.0003175000000000018,
+        "n_cols": 6,
+        "stub_x": [
+          0.0168275,
+          0.017145
+        ],
+        "trace_w_elec": 0.0006349999999999999,
+        "stub_w_elec": 0.000381,
+        "stub_len": 0.0120015,
+        "stub_open_j": 222,
+        "stub_len_centreline": 0.01228725,
+        "n_ex": 6295,
+        "n_ey": 5958,
+        "n_ez": 0
+      }
+    }
+  }
+}

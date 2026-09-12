@@ -1,0 +1,73 @@
+{
+  "label": "baseline",
+  "base_main": "9369e0aef78888c40e766be6ecf0f63beb7bb404",
+  "case_source_sha256": "a2c08892fe91e8131163327450bd40ff57ca03947e953a8a061e3449b15020ab",
+  "scope": "actual geometry build and diagnostic analytic models only; no FDTD or electrical-width adjudication",
+  "declared": {
+    "dx_m": 6.35e-05,
+    "trace_width_m": 0.0006,
+    "stub_width_m": 0.0006,
+    "stub_length_m": 0.012,
+    "substrate_height_m": 0.000254
+  },
+  "realized_metal": {
+    "plane_k": 4,
+    "plane_z": 0.000254,
+    "n_sheets": 2,
+    "n_volume_cells": 0,
+    "trace_j": [
+      24,
+      33
+    ],
+    "trace_w": 0.0005715,
+    "n_rows": 10,
+    "trace_y": [
+      0.001016,
+      0.0015875
+    ],
+    "stub_i": [
+      271,
+      280
+    ],
+    "stub_w": 0.0005714999999999991,
+    "n_cols": 10,
+    "trace_w_elec": 0.0006349999999999999,
+    "stub_w_elec": 0.0006349999999999999,
+    "stub_len": 0.0120015,
+    "stub_open_j": 222,
+    "stub_len_centreline": 0.01228725,
+    "n_ex": 7051,
+    "n_ey": 6714,
+    "n_ez": 0
+  },
+  "declared_stub_faces_in_dx": [
+    262.99212598425197,
+    272.44094488188983
+  ],
+  "diagnostic_anchors": {
+    "shipped_trace_row_pitch_declared_length": {
+      "width_m": 0.0006349999999999999,
+      "length_m": 0.012,
+      "eps_eff": 2.882252441027371,
+      "f_hz": 3678954217.388916
+    },
+    "stub_row_pitch_declared_length": {
+      "width_m": 0.0006349999999999999,
+      "length_m": 0.012,
+      "eps_eff": 2.882252441027371,
+      "f_hz": 3678954217.388916
+    },
+    "stub_node_span_declared_length": {
+      "width_m": 0.0005714999999999991,
+      "length_m": 0.012,
+      "eps_eff": 2.858488410468952,
+      "f_hz": 3694215050.0008616
+    },
+    "stub_node_span_realized_length": {
+      "width_m": 0.0005714999999999991,
+      "length_m": 0.0120015,
+      "eps_eff": 2.858488410468952,
+      "f_hz": 3693753330.8345075
+    }
+  }
+}

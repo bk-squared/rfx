@@ -1,0 +1,43 @@
+{
+  "scope": "Fixed-environment predeclaration; controlled RF pending",
+  "base_main": "7a83d42c97e044fd27b6338655fa8e9996844861",
+  "parent_commit": "4f48360512855378108b7125d7d3e934c29d035b",
+  "source_sha256": {
+    "scripts/diagnostics/cv06b_build_falsifiers.py": "fcdbd858224a84a427761b14feb0eab63f135e0db69b273fe9b276ce62d8da18",
+    "validation/crossval/06b_msl_notch_filter_uniform.py": "baa3c8bd399cc3d43f0cf9c671465f15e1f0ce8c31dc5d72e8ab7f948aec5b4f",
+    "docs/research_notes/issue953/consumed_plan.py": "aff887074ae39ace281d5a7abb824a92b6f8c3f52bfd0d4952b5947d6e6c425d",
+    "docs/research_notes/issue953/record_falsifiers.py": "64c77d9f0c080f8ba690dc758b05702275d9051cfdc7b36b1a47f872380e5e47",
+    "tests/crossval/test_cv06b_build_falsifier_plumbing.py": "0e1dddca418c046694526f3b7672d00a4d0a935884bde9ca959e804935ec67f6",
+    "tests/crossval/test_cv06b_consumed_plan.py": "29700fa79d63697dad16bf82f3c2229f477e40d720c0c392aaea6c73bdfa4c06"
+  },
+  "fixed": "baseline grid/domain and substrate carrier, background arrays, source/load declarations, resolved port/probe plan; runtime checker also compares actual load/source/DFT inputs and PEC outside stub per drive",
+  "allowed_variable": "canonical tangential PEC edges within baseline stub node box including junction edges; diagnostic quarter-wave reference follows approved arm convention",
+  "grid_shape": [
+    553,
+    280,
+    37
+  ],
+  "probe0_indices": [
+    99,
+    452
+  ],
+  "port_offsets": [
+    60,
+    60
+  ],
+  "port_spacings": [
+    16,
+    16
+  ],
+  "port_probe_counts": [
+    5,
+    5
+  ],
+  "duration_periods": 20.0,
+  "frequency_count": 100,
+  "tests_passed": 79,
+  "test_log_sha256": "c54c7598eb53fbf712779e93f3510af01bf3f4c7d51085d7a07fadc629b0b077",
+  "actual_engine_dry_check": "first drive of all three full-size arms reached the real uniform runner with identical invariants; no field advanced",
+  "not_verified": "RF response after fixing comparison controls; both drive runtime comparisons will be required in the campaign",
+  "prior_run": "669 retained as production-builder qualification with known domain/probe confounds; never overwritten"
+}

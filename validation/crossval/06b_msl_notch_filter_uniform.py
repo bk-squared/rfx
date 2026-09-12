@@ -425,8 +425,14 @@ the paragraphs it supersedes are marked below and stay as a pre-#931 record.
   The one-cell stub arm now moves the refined estimate 0.8228 % against
   the predicted 0.5320 % (bare argmin 1.6949 %), so the declared visibility
   criterion passes, with a 1.55x over-response that is not attributed.
-  The narrow-stub arm has BW ratio 0.6553 and notch error 6.4388 %: G2 and
-  G1 both fire while the retained depth witness still passes.
+  The historical narrow-stub arm has BW ratio 0.6553 and reported reference
+  deviation 6.4388 %. Its G1 flag was not consumed by the falsifier verdict.
+  That drawing was a four-interval, shifted input under #931, and the old
+  producer pair lacks controls needed to identify the unique frequency-shift
+  cause. Current #953 reporting uses G1 only for the baseline; narrow
+  frequency comparisons are diagnostics. See
+  docs/research_notes/issue953/history-assessment.md for the retained records
+  and the retired causal interpretations.
 
 Scope:
   - Uniform mesh dx=63.5µm = H_SUB/4 (issue #723; was dx=80µm, h_sub/dx=
@@ -514,13 +520,19 @@ DX = H_SUB / 4         # 63.5um — REALIZE-DECLARED on z (issue #723); see
                         # "Mesh convention" below.
 
 
-def _build_sim() -> Simulation:
+def _build_sim(*, stub_x_bounds: tuple[float, float] | None = None,
+               domain_y: float | None = None,
+               probe_settings: tuple[dict, dict] | None = None) -> Simulation:
     """Build the notch-filter simulation with msl_port at both ends."""
     LX = L_LINE + 2 * PORT_MARGIN
     # Lateral box: W + 2·(2·h_sub + 8·dx) on the MSL side, plus stub_length
     # on the +y side to fit the open-circuit stub.
     msl_clearance = 2 * (2 * H_SUB + 8 * DX)
     LY = W_TRACE + msl_clearance + STUB_LEN + 2 * (2 * H_SUB + 8 * DX)
+    if domain_y is not None:
+        # A controlled geometry perturbation keeps both the domain and its
+        # substrate carrier fixed; changing only Simulation.domain is not enough.
+        LY = float(domain_y)
     LZ = H_SUB + 1.5e-3
 
     sim = Simulation(
@@ -537,8 +549,9 @@ def _build_sim() -> Simulation:
     trace_y_lo = y_trace - W_TRACE / 2.0
     trace_y_hi = y_trace + W_TRACE / 2.0
 
-    # Main microstrip line (full LX so it goes through CPML — required for
-    # MSL port termination, see commit 8882ef1 on msl_port_integration test).
+    # Main microstrip spans the declared x-domain. PEC ends at these physical
+    # coordinates; material extension into CPML does not extend this metal.
+    # Keep this established geometry fixed in the falsifier comparison.
     #
     # SHEET, not a one-cell volume (#931 §1.5). The z corners are EQUAL, which
     # is how the lattice-ownership contract spells "a conductor on this node
@@ -558,6 +571,14 @@ def _build_sim() -> Simulation:
     stub_x_centre = LX / 2.0
     stub_x_lo = stub_x_centre - W_STUB / 2.0
     stub_x_hi = stub_x_centre + W_STUB / 2.0
+    if stub_x_bounds is not None:
+        # The build falsifier supplies physical coordinates from a completed
+        # baseline grid. A width in cells alone does not align both faces.
+        stub_x_lo, stub_x_hi = map(float, stub_x_bounds)
+        if (not np.isfinite([stub_x_lo, stub_x_hi]).all()
+                or stub_x_hi <= stub_x_lo
+                or abs(stub_x_hi - stub_x_lo - W_STUB) > 1e-12):
+            raise ValueError("stub_x_bounds must span the declared W_STUB")
     sim.add(
         Box((stub_x_lo, trace_y_hi, H_SUB),
             (stub_x_hi, trace_y_hi + STUB_LEN, H_SUB)),
@@ -568,11 +589,13 @@ def _build_sim() -> Simulation:
         position=(PORT_MARGIN, y_trace, 0.0),
         width=W_TRACE, height=H_SUB,
         direction="+x", impedance=50.0,
+        **(probe_settings[0] if probe_settings is not None else {}),
     )
     sim.add_msl_port(
         position=(PORT_MARGIN + L_LINE, y_trace, 0.0),
         width=W_TRACE, height=H_SUB,
         direction="-x", impedance=50.0,
+        **(probe_settings[1] if probe_settings is not None else {}),
     )
     return sim
 
@@ -683,6 +706,7 @@ def realized_metal(sim: Simulation) -> dict:
         trace_j=(j0, j1), trace_w=trace_w, n_rows=n_rows,
         trace_y=(float(nodes[1][j0]), float(nodes[1][j1])),
         stub_i=(i0, i1), stub_w=stub_w, n_cols=n_cols,
+        stub_x=(float(nodes[0][i0]), float(nodes[0][i1])),
         trace_w_elec=n_rows * DX, stub_w_elec=n_cols * DX,
         stub_len=stub_len, stub_open_j=stub_open,
         stub_len_centreline=float(nodes[1][stub_open]) - y_centre,
@@ -808,7 +832,7 @@ def worst_sampled_notch_db(bin_hz, f0, r=1.0):
     return float(20.0 * np.log10(2.0 / np.sqrt(4.0 + (r * np.tan(theta)) ** 2)))
 
 
-def evaluate(freqs, s21_mag, z0_real, f_notch_analytic):
+def evaluate(freqs, s21_mag, z0_real, f_notch_analytic, *, frequency_gate=True):
     """Every gated quantity, as a pure function of the sweep.
 
     Factored out of ``main()`` deliberately (#812): the judgement of this case
@@ -818,6 +842,9 @@ def evaluate(freqs, s21_mag, z0_real, f_notch_analytic):
     ``scripts/diagnostics/cv06b_estimator_falsifiers.py``.
 
     ``freqs`` in Hz, ``s21_mag`` linear magnitude, ``z0_real`` in ohm.
+    ``frequency_gate=False`` retains the frequency comparison in an explicit
+    diagnostic block without evaluating G1. The build falsifiers use this
+    for their perturbed arms; the baseline accuracy gate remains unchanged.
     """
     f = np.asarray(freqs, dtype=float)
     s21_mag = np.asarray(s21_mag, dtype=float)
@@ -845,14 +872,11 @@ def evaluate(freqs, s21_mag, z0_real, f_notch_analytic):
     lo_r, hi_r = STOPBAND_BW_RATIO_WINDOW
 
     m = {
-        "f_notch_analytic": float(f_notch_analytic),
         "f_notch_bin": float(f[i_notch]),
         "f_notch_refined": float(est["refined_f"]),
         "sub_bin_shift": float(est["sub_bin_shift"]),
         "bin_hz": float(est["bin_width"]),
         "notch_depth_db": float(s21_db[i_notch]),
-        "err_pct": abs(est["refined_f"] - f_notch_analytic) / f_notch_analytic * 100.0,
-        "err_pct_bin": abs(float(f[i_notch]) - f_notch_analytic) / f_notch_analytic * 100.0,
         "bw_lo": bw_lo, "bw_hi": bw_hi, "bw_bins": int(bw_bins),
         "bw_frac": bw_frac, "bw_ratio": bw_ratio,
         "witness_bins": float(wit["spread_bins"]),
@@ -862,8 +886,18 @@ def evaluate(freqs, s21_mag, z0_real, f_notch_analytic):
     m["worst_sampled_depth_db"] = worst_sampled_notch_db(
         m["bin_hz"], m["f_notch_refined"])
     m["depth_gate_blind_margin_db"] = m["worst_sampled_depth_db"] - (-10.0)
-    m["gates"] = {
-        "G1 notch freq vs analytic": m["err_pct"] < NOTCH_FREQ_TOL_PCT,
+    frequency = {
+        "f_notch_analytic": float(f_notch_analytic),
+        "err_pct": abs(est["refined_f"] - f_notch_analytic) / f_notch_analytic * 100.0,
+        "err_pct_bin": abs(float(f[i_notch]) - f_notch_analytic) / f_notch_analytic * 100.0,
+    }
+    gates = {}
+    if frequency_gate:
+        m.update(frequency)
+        gates["G1 notch freq vs analytic"] = m["err_pct"] < NOTCH_FREQ_TOL_PCT
+    else:
+        m["frequency_diagnostic"] = frequency
+    gates.update({
         "G2 -10 dB stopband width": lo_r < bw_ratio < hi_r,
         "G3 half-grid resolution witness": m["witness_bins"] < HALF_GRID_WITNESS_BINS,
         "G4 Z0 median": 40 < z0_median < 65,
@@ -873,7 +907,8 @@ def evaluate(freqs, s21_mag, z0_real, f_notch_analytic):
         # printed beside the verdict. It stays as a witness; G2 carries the
         # real depth requirement.
         "notch depth (witness only)": m["notch_depth_db"] < -10,
-    }
+    })
+    m["gates"] = gates
     return m
 
 
@@ -885,11 +920,16 @@ def report(m) -> bool:
     parsing.
     """
     lo_r, hi_r = STOPBAND_BW_RATIO_WINDOW
+    frequency = m.get("frequency_diagnostic", m)
     print()
     print("Result:")
     print(f"  Notch frequency (rfx)      = {m['f_notch_refined']/1e9:.3f} GHz")
-    print(f"  Notch frequency (analytic) = {m['f_notch_analytic']/1e9:.3f} GHz")
-    print(f"  Notch frequency error      = {m['err_pct']:.2f} %")
+    if "frequency_diagnostic" in m:
+        print(f"  Quarter-wave reference    = {frequency['f_notch_analytic']/1e9:.3f} GHz (diagnostic only)")
+        print(f"  Frequency deviation       = {frequency['err_pct']:.2f} % (not an accuracy verdict)")
+    else:
+        print(f"  Notch frequency (analytic) = {frequency['f_notch_analytic']/1e9:.3f} GHz")
+        print(f"  Notch frequency error      = {frequency['err_pct']:.2f} %")
     print(f"  Notch depth |S21|          = {m['notch_depth_db']:.1f} dB")
     print(f"  Re(Z0) median              = {m['z0_median']:.1f} Ω")
     print()
@@ -897,7 +937,7 @@ def report(m) -> bool:
     print(f"  sweep bin                  = {m['bin_hz']/1e6:.4f} MHz "
           f"= {m['bin_hz']/m['f_notch_refined']*100:.3f} % at the notch")
     print(f"  bin argmin                 = {m['f_notch_bin']/1e9:.4f} GHz "
-          f"(would report {m['err_pct_bin']:.2f} % vs analytic)")
+          f"(would report {frequency['err_pct_bin']:.2f} % vs reference)")
     print(f"  sub-bin refined vertex     = {m['f_notch_refined']/1e9:.4f} GHz "
           f"({m['sub_bin_shift']:+.3f} bin)")
     print(f"  half-grid witness spread   = {m['witness_bins']:.4f} bin "
@@ -910,9 +950,10 @@ def report(m) -> bool:
     g = m["gates"]
     print()
     print("Gates:")
-    print(f"  G1 Notch freq vs analytic (< {NOTCH_FREQ_TOL_PCT:.1f} %): "
-          f"{'PASS' if g['G1 notch freq vs analytic'] else 'FAIL'}  "
-          f"({m['err_pct']:.2f} %, sub-bin refined)")
+    if "G1 notch freq vs analytic" in g:
+        print(f"  G1 Notch freq vs analytic (< {NOTCH_FREQ_TOL_PCT:.1f} %): "
+              f"{'PASS' if g['G1 notch freq vs analytic'] else 'FAIL'}  "
+              f"({m['err_pct']:.2f} %, sub-bin refined)")
     print(f"  G2 -10 dB stopband width / ideal r=1 stub ∈ "
           f"({lo_r:.2f}, {hi_r:.2f}): "
           f"{'PASS' if g['G2 -10 dB stopband width'] else 'FAIL'}  "

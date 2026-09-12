@@ -1,0 +1,50 @@
+[
+  {
+    "label": "baseline",
+    "raw_max_coherent_power_gain": 1.0114020109176636,
+    "nonfinite_frequency_count": 0,
+    "settling_db": [
+      -97.11309329338212,
+      -97.31410411704974
+    ],
+    "settling_status_by_drive": [
+      "pass",
+      "pass"
+    ],
+    "settling_screen_pass": true,
+    "raw_vi": "baseline-raw-vi.npz",
+    "result": "baseline-result.npz"
+  },
+  {
+    "label": "stub_1cell",
+    "raw_max_coherent_power_gain": 1.0113351345062256,
+    "nonfinite_frequency_count": 0,
+    "settling_db": [
+      -96.94374602294856,
+      -97.31035092170112
+    ],
+    "settling_status_by_drive": [
+      "pass",
+      "pass"
+    ],
+    "settling_screen_pass": true,
+    "raw_vi": "stub_1cell-raw-vi.npz",
+    "result": "stub_1cell-result.npz"
+  },
+  {
+    "label": "stub_narrow",
+    "raw_max_coherent_power_gain": 1.0112656354904175,
+    "nonfinite_frequency_count": 0,
+    "settling_db": [
+      -92.54819109353801,
+      -92.46784188680996
+    ],
+    "settling_status_by_drive": [
+      "pass",
+      "pass"
+    ],
+    "settling_screen_pass": true,
+    "raw_vi": "stub_narrow-raw-vi.npz",
+    "result": "stub_narrow-result.npz"
+  }
+]

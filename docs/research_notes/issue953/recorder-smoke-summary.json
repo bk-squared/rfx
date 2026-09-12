@@ -1,0 +1,10 @@
+{
+  "scope": "SYNTHETIC FIELD BACKEND ONLY; no FDTD",
+  "calls": 3,
+  "result_array_bytes_identical": true,
+  "exact_minus40_passes": true,
+  "absent_witness_not_accepted": true,
+  "nonfinite_raw_bin_not_filtered": true,
+  "raw_gain_not_clipped": true,
+  "producer_return_code": 1
+}

@@ -44,7 +44,6 @@ helper is defined once).
 from __future__ import annotations
 
 import math
-import warnings as _w
 
 import numpy as np
 import pytest
@@ -625,16 +624,53 @@ class TestSheetCavityThickness:
 # ---------------------------------------------------------------------------
 
 class TestOffLatticeCensus:
-    def test_off_lattice_edge_fires_with_residual_and_detune(self):
+    def test_off_lattice_edge_fires_with_alignment_residual(self):
         """lo face 0.3 mm off-lattice on a 9 mm extent = 3.33%: one
-        aggregated advisory carrying the residual and df/f ~ dL/L."""
+        aggregated advisory carrying the measured alignment residual."""
         hits = _off_lattice_sim(False).preflight().by_code(OFF_LATTICE_CODE)
         assert len(hits) == 1
         msg = str(hits[0])
         assert "300µm" in msg
         assert "3.33%" in msg
-        assert "df/f" in msg
+        assert "df/f" not in msg
+        assert "frequency sensitivity depends on the mode" in msg
         assert "COVERAGE:" in msg and "STALE IF:" in msg
+
+    @pytest.mark.parametrize("kind,lo,hi,z_hi,realized_mm,residual_mm", [
+        ("sheet", 1.2, 6.2, 2.0, 4.0, 0.2),
+        ("volume", 1.3, 6.7, 4.0, 6.0, 0.3),
+    ])
+    def test_nearest_node_residual_is_not_an_extent_error_bound(
+        self, kind, lo, hi, z_hi, realized_mm, residual_mm,
+    ):
+        from rfx.boundaries.pec import realized_pec_edge_masks
+        from rfx.geometry.rasterize_grid import coords_from_uniform_grid
+
+        sim = Simulation(domain=(12 * MM, 8 * MM, 8 * MM), dx=MM,
+                         freq_max=10e9, boundary="cpml")
+        sim.add(Box((lo * MM, 2 * MM, 2 * MM),
+                    (hi * MM, 5 * MM, z_hi * MM)), material="pec")
+        hits = sim.preflight().by_code(OFF_LATTICE_CODE)
+        assert len(hits) == 1 and hits[0].severity == "warning"
+
+        grid = sim._build_grid()
+        sheets, wires = [], []
+        assembled = sim._assemble_materials(grid, pec_sheets=sheets, pec_wires=wires)
+        edges = realized_pec_edge_masks(assembled[3], sheets=tuple(sheets),
+                                       wires=tuple(wires), periodic=sim._periodic_flags())
+        nodes = np.asarray(coords_from_uniform_grid(grid).x)
+        # Ey lies on x nodes, so its occupied columns bound the physical span.
+        columns = np.flatnonzero(np.asarray(edges[1]).any(axis=(1, 2)))
+        actual = float(nodes[columns[-1]] - nodes[columns[0]])
+        residual = max(float(np.min(abs(nodes - face * MM))) for face in (lo, hi))
+        assert actual == pytest.approx(realized_mm * MM, rel=0, abs=1e-15)
+        assert residual == pytest.approx(residual_mm * MM, rel=0, abs=1e-15)
+        assert abs(actual - (hi - lo) * MM) > residual
+        message = str(hits[0])
+        assert f"({kind}) x:" in message
+        assert "declared-face alignment only" in message
+        assert "up to the printed residual" not in message
+        assert "df/f" not in message
 
     def test_on_lattice_edges_are_silent(self):
         rep = _off_lattice_sim(True).preflight()

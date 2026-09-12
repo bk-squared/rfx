@@ -1,0 +1,120 @@
+{
+  "meta": {
+    "issue": 812,
+    "case": "cv06b",
+    "report_schema_version": 2,
+    "frequency_g1_scope": "baseline_only",
+    "narrow_frequency_accuracy_claim": false,
+    "produced_by": "scripts/diagnostics/cv06b_build_falsifiers.py",
+    "board": "cv06b's own dx=63.5um, 5,729,080-cell mesh"
+  },
+  "criterion_A_baseline": {
+    "gates": {
+      "G1 notch freq vs analytic": true,
+      "G2 -10 dB stopband width": true,
+      "G3 half-grid resolution witness": true,
+      "G4 Z0 median": true,
+      "notch depth (witness only)": true
+    },
+    "all_pass": true,
+    "err_pct": 2.1661505209504868,
+    "bw_ratio": 0.9993821479204824,
+    "witness_bins": 0.4488871712684111,
+    "notch_depth_db": -39.37816651495516,
+    "f_notch_refined_hz": 3758645903.334416,
+    "f_notch_bin_hz": 3754545408.0,
+    "f_notch_analytic_hz": 3678954217.388916,
+    "sub_bin_shift_bins": 0.06443597821258522,
+    "z0_median_ohm": 48.1142463684082,
+    "solve_s": 274.2372145652771
+  },
+  "stub_1cell": {
+    "stub_len_m": 0.011936500000000001,
+    "true_shift_pct": 0.5319817366899701,
+    "true_shift_bins": 0.314210171819385,
+    "bin_argmin_delta_pct": 1.6949251929249807,
+    "refined_delta_pct": 0.8248433266538518,
+    "visible": true,
+    "gates": {
+      "G2 -10 dB stopband width": true,
+      "G3 half-grid resolution witness": true,
+      "G4 Z0 median": true,
+      "notch depth (witness only)": true
+    },
+    "frequency_diagnostic": {
+      "f_notch_analytic": 3698525581.9266105,
+      "err_pct": 2.463772638461526,
+      "err_pct_bin": 3.2352503564693165,
+      "reference": {
+        "frequency_hz": 3698525581.9266105,
+        "role": "length_shift_prediction",
+        "model": "quasistatic_quarter_wave_without_open_end_or_tee_correction",
+        "width_m": 0.0006349999999999999,
+        "width_convention": "main_line_row_pitch",
+        "length_m": 0.011936500000000001,
+        "length_convention": "declared_stub_extension",
+        "substrate_height_m": 0.000254,
+        "substrate_eps_r": 3.66,
+        "eps_eff": 2.882252441027371,
+        "discrete_electrical_width_certified": false
+      },
+      "f_notch_refined_hz": 3789648843.240618
+    },
+    "solve_s": 161.43105792999268
+  },
+  "stub_narrow": {
+    "w_stub_m": 0.00031749999999999997,
+    "bw_ratio": 0.7258363859005161,
+    "bw_frac": 0.15262452020884512,
+    "notch_depth_db": -40.386404154111645,
+    "frequency_diagnostic": {
+      "f_notch_analytic": 3773803120.75963,
+      "err_pct": 2.8060215348159985,
+      "err_pct_bin": 2.8622385371981824,
+      "reference": {
+        "frequency_hz": 3773803120.75963,
+        "role": "diagnostic_only",
+        "model": "quasistatic_quarter_wave_without_open_end_or_tee_correction",
+        "width_m": 0.0003175000000000018,
+        "width_convention": "stub_node_span",
+        "length_m": 0.0120015,
+        "length_convention": "stub_realized_extension",
+        "substrate_height_m": 0.000254,
+        "substrate_eps_r": 3.66,
+        "eps_eff": 2.7385062526945787,
+        "discrete_electrical_width_certified": false
+      },
+      "f_notch_refined_hz": 3879696849.0097036,
+      "legacy_main_line_reference": {
+        "frequency_hz": 3678954217.388916,
+        "role": "diagnostic_only",
+        "model": "quasistatic_quarter_wave_without_open_end_or_tee_correction",
+        "width_m": 0.0006349999999999999,
+        "width_convention": "main_line_row_pitch",
+        "length_m": 0.012,
+        "length_convention": "declared_stub_extension",
+        "substrate_height_m": 0.000254,
+        "substrate_eps_r": 3.66,
+        "eps_eff": 2.882252441027371,
+        "discrete_electrical_width_certified": false
+      },
+      "legacy_main_line_err_pct": 5.456513448086934
+    },
+    "gates": {
+      "G2 -10 dB stopband width": false,
+      "G3 half-grid resolution witness": true,
+      "G4 Z0 median": true,
+      "notch depth (witness only)": true
+    },
+    "G2_fired": true,
+    "depth_witness_still_passes": true,
+    "solve_s": 270.8922309875488
+  },
+  "verdict": {
+    "criterion_A": true,
+    "criterion_B_sub_bin_visible": true,
+    "criterion_B_G2_fires_on_narrow_stub": true,
+    "criterion_B_depth_gate_still_blind": true,
+    "all_ok": true
+  }
+}

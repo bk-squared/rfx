@@ -9427,8 +9427,10 @@ class _PreflightMixin:
         the nodes, so every off-node face is a real displacement of the
         realized conductor — there is no sub-cell exclusion (the former
         "node-thin snap" is gone with the rule that produced it). A
-        resonant dimension realized ``dL`` off its design length detunes
-        ``df/f ~ dL/L``. A sheet's NORMAL axis has no extent to compare
+        nearest-node residual measures alignment; the realized extent
+        depends on both faces and on the conductor's sampling rule.
+        Frequency sensitivity requires a model of the affected dimension
+        and mode. A sheet's NORMAL axis has no extent to compare
         against and is reported by ``sheet_plane_realized`` instead. One
         aggregated advisory above ``_OFF_LATTICE_EDGE_TOL``, worst
         offenders first.
@@ -9467,7 +9469,7 @@ class _PreflightMixin:
         lines = "; ".join(
             f"{e.label} '{e.name}' ({e.kind}) {'xyz'[a]}: extent "
             f"{_fmt_len(ext)}, worst face residual {_fmt_len(res)} "
-            f"({rel:.2%} of the extent, df/f ~ {rel:.2%})"
+            f"({rel:.2%} of the extent)"
             for rel, e, a, ext, res
             in offenders[:_CAMPAIGN_MAX_OFFENDERS])
         _w.warn(PreflightWarning(
@@ -9478,9 +9480,12 @@ class _PreflightMixin:
             "to its nearest E-node on this run's own node coordinates; a "
             "PEC volume's face realizes on the nearest node plane and a "
             "sheet footprint on the nodes it covers (lattice ownership "
-            "contract #931 §1.1/§1.3), so the realized extent can differ "
-            "from the design by up to the printed residual, and a "
-            "resonant dimension realized dL off detunes df/f ~ dL/L. "
+            "contract #931 §1.1/§1.3). Reported residuals describe "
+            "declared-face alignment only. A sheet's extent can change "
+            "by more than this nearest-node residual, and an extent "
+            "change involves both faces. Read the realized bounds from "
+            "fidelity_report(); frequency sensitivity depends on the "
+            "mode and the affected dimension. "
             "COST (measured, #703): a uniform-mesh sweep rounded ONE "
             "substrate thickness by 8-10% across three 'convergence' "
             "points — three different boards solved under one name; the "

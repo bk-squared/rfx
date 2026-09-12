@@ -17,16 +17,27 @@ not only on a replayed sweep. This runs cv06b's own solve three times:
               docs/design_notes/estimator_resolution_regate.md section 3 T1,
               so a one-cell error is made VISIBLE here, not fatal -- that
               distinction is stated, not gated away.
-  stub_narrow W_STUB reduced to 5 cells (on-lattice), so r = Z0_line/Z_stub
+  stub_narrow W_STUB reduced to 5 geometric cell intervals (6 nodes), with
+              node-aligned faces and the baseline's realized centre retained,
+              so r = Z0_line/Z_stub
               drops below 1 -- the coupling degradation whose CPU-side,
               geometry-built analogue is case C of
               scripts/diagnostics/cv06b_estimator_falsifiers.py.
               -> G2 must FAIL while the retained -10 dB depth gate still
               PASSES, which is the blindness #812 measured.
 
+G1 frequency accuracy applies to the baseline only. Perturbed-arm frequency
+comparisons are stored under frequency_diagnostic and do not produce a G1
+boolean. The baseline's 4% limit is unchanged (#953).
+Schema-2 reports require new output filenames; existing per-arm or summary
+records are refused before building or solving, preserving historical evidence.
+
 Each run writes its full metric dict as JSON, and the three are reduced to
 cv06b_build_falsifiers_summary.json, so every number the verdict rests on is
 re-derivable without re-solving and prose can cite it by key.
+All input geometries are checked before the first field solve. The retained
+2026-09-07 narrow-arm result belongs to the older four-interval, shifted input;
+it is historical evidence, not a measurement of the corrected five-cell arm.
 
 CRITERION (A) LIVES HERE TOO. The ``baseline`` leg is cv06b's own board,
 own mesh and own ``evaluate()`` -- so its ``gates`` block IS the criterion-(A)
@@ -39,6 +50,8 @@ Usage (GPU):
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import hashlib
 import importlib.util
 import json
 import time
@@ -76,15 +89,196 @@ def _load():
     return mod
 
 
-def solve(cv, label):
-    sim = cv._build_sim()
-    w_realized = cv._realized_trace_width(sim)
-    u = w_realized / cv.H_SUB
+def _centred_stub_bounds(sim, baseline, cells):
+    """Exact node endpoints around the baseline's physical stub centre.
+
+    The baseline is fully declared, including its ports and boundary padding.
+    Pass coordinates to a new builder, never its padding-dependent indices.
+    A parity mismatch is refused rather than moving the centre half a cell.
+    """
+    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
+
+    nodes = np.asarray(coords_from_uniform_grid(sim._build_grid()).x)
+    centre = sum(baseline["stub_x"]) / 2.0
+    candidates = np.flatnonzero(np.isclose(
+        0.5 * (nodes[:-cells] + nodes[cells:]), centre, rtol=0, atol=1e-12,
+    ))
+    if candidates.size != 1:
+        raise RuntimeError(
+            f"cannot place a {cells}-cell stub on nodes at the baseline centre"
+        )
+    lo = int(candidates[0])
+    return float(nodes[lo]), float(nodes[lo + cells])
+
+
+def _assert_arm_geometry(label, geometry, baseline, dx):
+    """Check the realized input before paying for any field solves."""
+    problems = []
+    for key in ("plane_z", "trace_w", "trace_y"):
+        if not np.allclose(geometry[key], baseline[key], rtol=0, atol=1e-12):
+            problems.append(f"{key} changed")
+    if geometry["n_sheets"] != 2 or geometry["n_volume_cells"] or geometry["n_ez"]:
+        problems.append("expected two PEC sheets with live normal edges")
+    if abs(sum(geometry["stub_x"]) - sum(baseline["stub_x"])) > 2e-12:
+        problems.append("stub centre changed")
+    width = 5 * dx if label == "stub_narrow" else baseline["stub_w"]
+    if abs(geometry["stub_w"] - width) > 1e-12:
+        problems.append(f"stub width is {geometry['stub_w']}, expected {width}")
+    length = baseline["stub_len"] - (dx if label == "stub_1cell" else 0)
+    if abs(geometry["stub_len"] - length) > 1e-12:
+        problems.append(f"stub length is {geometry['stub_len']}, expected {length}")
+    if problems:
+        raise RuntimeError(f"{label} input contract failed: " + "; ".join(problems))
+
+
+def _array_record(value):
+    array = np.ascontiguousarray(np.asarray(value))
+    return dict(shape=list(array.shape), dtype=str(array.dtype),
+                sha256=hashlib.sha256(array.tobytes()).hexdigest())
+
+
+def environment_signature(sim):
+    """Consumed grid/material/port inputs that must not follow the stub change.
+
+    Material arrays include CPML pad extension. The resolved port declaration,
+    grid and registered materials determine the existing launch profile/load
+    and source coefficients. PEC masks are deliberately not hashed as fixed:
+    the stub's metal is the intended independent variable.
+    """
+    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
+    from rfx.sources.msl_port import (
+        msl_h_plane_stencil, msl_port_from_entry, msl_probe_x_coords_n,
+        msl_sampled_node_coordinates,
+    )
+
+    grid = sim._build_grid()
+    coords = coords_from_uniform_grid(grid)
+    materials = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
+    entries = sim._resolve_msl_probe_entries(grid)
+    ports = []
+    for entry in entries:
+        port = msl_port_from_entry(entry)
+        requested = msl_probe_x_coords_n(
+            grid, port, n_probes=entry.n_probes,
+            n_offset_cells=entry.n_probe_offset, n_spacing_cells=entry.n_probe_spacing,
+        )
+        record = dataclasses.asdict(entry)
+        record["waveform_type"] = type(entry.waveform).__qualname__
+        record["sampled_voltage_nodes_m"] = msl_sampled_node_coordinates(grid, port, requested)
+        record["current_plane_stencil"] = msl_h_plane_stencil(grid, port, requested[0])
+        ports.append(record)
+    if len(sim._geometry) != 3:
+        raise RuntimeError("cv06b control expects substrate, trace and stub declarations")
+    return _plain(dict(
+        grid=dict(shape=list(grid.shape), dx=float(grid.dx), dt=float(grid.dt),
+                  coordinates={axis: _array_record(getattr(coords, axis)) for axis in "xyz"}),
+        materials={key: _array_record(getattr(materials, key)) for key in ("eps_r", "sigma", "mu_r")},
+        fixed_geometry=[dataclasses.asdict(entry) for entry in sim._geometry[:2]],
+        options=dict(freq_max=sim._freq_max, precision=sim._precision,
+                     solver=sim._solver, stencil_order=sim._stencil_order,
+                     cpml_layers=sim._cpml_layers, cpml_kappa_max=sim._cpml_kappa_max,
+                     boundary=dataclasses.asdict(sim._boundary_spec)),
+        ports=ports,
+    ))
+
+
+def _assert_environment(label, sim, baseline):
+    if sim._msl_auto_offset_min or getattr(sim, "_msl_auto_probe_spacing", {}):
+        raise RuntimeError(f"{label} comparison control changed: automatic probe placement still enabled")
+    actual = environment_signature(sim)
+    changed = [key for key in baseline if actual[key] != baseline[key]]
+    if changed:
+        raise RuntimeError(f"{label} comparison control changed: " + ", ".join(changed))
+    return actual
+
+
+def prepare_inputs():
+    """Build and validate all three geometries before the first field solve."""
+    baseline_cv = _load()
+    baseline_sim = baseline_cv._build_sim()
+    baseline = baseline_cv.assert_realized_metal(baseline_sim)
+    baseline_environment = environment_signature(baseline_sim)
+    # Resolve the ordinary baseline once, then register those same choices
+    # explicitly on every perturbed build. Replacing entries without disabling
+    # their automatic flags would let the extractor move them again.
+    keys = ("n_probe_offset", "n_probe_spacing", "n_probes")
+    probe_settings = tuple({key: entry[key] for key in keys}
+                           for entry in baseline_environment["ports"])
+    controls = dict(domain_y=baseline_sim._domain[1], probe_settings=probe_settings)
+    baseline["comparison_environment"] = baseline_environment
+    inputs = [("baseline", baseline_cv, baseline_sim, baseline)]
+    bounds = _centred_stub_bounds(baseline_sim, baseline, 5)
+    for label, mutate in (
+        ("stub_1cell", lambda cv: setattr(cv, "STUB_LEN", cv.STUB_LEN - cv.DX)),
+        ("stub_narrow", lambda cv: setattr(cv, "W_STUB", 5 * cv.DX)),
+    ):
+        cv = _load()
+        mutate(cv)
+        sim = cv._build_sim(stub_x_bounds=bounds if label == "stub_narrow" else None,
+                            **controls)
+        geometry = cv.realized_metal(sim)
+        _assert_arm_geometry(label, geometry, baseline, cv.DX)
+        geometry["comparison_environment"] = _assert_environment(label, sim, baseline_environment)
+        inputs.append((label, cv, sim, geometry))
+    return inputs
+
+
+def frequency_reference(cv, label, geometry):
+    """State the geometry convention of the approximate quarter-wave model.
+
+    Baseline qualification retains its existing row-pitch reference. The
+    narrow arm uses its own node-span geometry as a continuous-line diagnostic;
+    that choice is not a claim about its effective discrete electrical width.
+    Neither reference contains an open-end or tee-junction correction.
+    """
+    narrow = label == "stub_narrow"
+    width = geometry["stub_w"] if narrow else geometry["trace_w_elec"]
+    length = geometry["stub_len"] if narrow else cv.STUB_LEN
+    u = width / cv.H_SUB
     eps_eff = (cv.EPS_R + 1) / 2 + (cv.EPS_R - 1) / 2 * (1 + 12 / u) ** -0.5
-    f_an = cv.C0 / (4 * cv.STUB_LEN * np.sqrt(eps_eff))
+    role = ("baseline_accuracy_reference" if label == "baseline"
+            else "length_shift_prediction" if label == "stub_1cell"
+            else "diagnostic_only")
+    return {
+        "frequency_hz": float(cv.C0 / (4 * length * np.sqrt(eps_eff))),
+        "role": role,
+        "model": "quasistatic_quarter_wave_without_open_end_or_tee_correction",
+        "width_m": float(width),
+        "width_convention": "stub_node_span" if narrow else "main_line_row_pitch",
+        "length_m": float(length),
+        "length_convention": "stub_realized_extension" if narrow else "declared_stub_extension",
+        "substrate_height_m": float(cv.H_SUB),
+        "substrate_eps_r": float(cv.EPS_R), "eps_eff": float(eps_eff),
+        "discrete_electrical_width_certified": False,
+    }
+
+
+def evaluate_arm(cv, label, geometry, freqs, s21, z0):
+    reference = frequency_reference(cv, label, geometry)
+    m = cv.evaluate(freqs, s21, z0, reference["frequency_hz"],
+                    frequency_gate=(label == "baseline"))
+    m["frequency_reference"] = reference
+    if label != "baseline":
+        diagnostic = m["frequency_diagnostic"]
+        diagnostic["reference"] = reference
+        diagnostic["f_notch_refined_hz"] = m["f_notch_refined"]
+        if label == "stub_narrow":
+            # Retain the old main-line comparison as named arithmetic history,
+            # never as a gate or as evidence of the corrected arm's accuracy.
+            legacy = frequency_reference(cv, "legacy_narrow_reference", geometry)
+            diagnostic["legacy_main_line_reference"] = legacy
+            diagnostic["legacy_main_line_err_pct"] = (
+                abs(m["f_notch_refined"] - legacy["frequency_hz"])
+                / legacy["frequency_hz"] * 100)
+    return m
+
+
+def solve(cv, label, *, sim, geometry):
+    reference = frequency_reference(cv, label, geometry)
+    f_an = reference["frequency_hz"]
     print(f"\n=== {label}: STUB_LEN={cv.STUB_LEN*1e3:.4f} mm  "
-          f"W_STUB={cv.W_STUB*1e6:.1f} um  W_realized={w_realized*1e6:.1f} um  "
-          f"analytic {f_an/1e9:.4f} GHz ===", flush=True)
+          f"W_STUB={cv.W_STUB*1e6:.1f} um  W_reference={reference['width_m']*1e6:.1f} um  "
+          f"quarter-wave reference {f_an/1e9:.4f} GHz ({reference['role']}) ===", flush=True)
     sim.preflight(strict=False)
     t0 = time.time()
     res = sim.compute_msl_s_matrix(n_freqs=100, num_periods=20.0)
@@ -92,7 +286,7 @@ def solve(cv, label):
     f = np.asarray(res.freqs)
     s21 = np.abs(np.asarray(res.S[1, 0, :]))
     z0 = np.asarray(res.Z0[0, :]).real
-    m = cv.evaluate(f, s21, z0, f_an)
+    m = evaluate_arm(cv, label, geometry, f, s21, z0)
     m["label"] = label
     m["solve_s"] = dt
     m["stub_len_m"] = float(cv.STUB_LEN)
@@ -110,16 +304,20 @@ def main() -> int:
     args = ap.parse_args()
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
+    targets = [out / f"cv06b_falsifier_{label}.json"
+               for label in ("baseline", "stub_1cell", "stub_narrow")]
+    targets.append(out / "cv06b_build_falsifiers_summary.json")
+    existing = [str(path) for path in targets if path.exists()]
+    if existing:
+        raise FileExistsError(
+            "refusing to overwrite retained falsifier evidence; use a new "
+            "--out-dir: " + ", ".join(existing)
+        )
 
     results = {}
-    for label, mutate in (
-        ("baseline", lambda cv: None),
-        ("stub_1cell", lambda cv: setattr(cv, "STUB_LEN", cv.STUB_LEN - cv.DX)),
-        ("stub_narrow", lambda cv: setattr(cv, "W_STUB", 5 * cv.DX)),
-    ):
-        cv = _load()            # fresh module: mutations never leak between runs
-        mutate(cv)
-        m = solve(cv, label)
+    for label, cv, sim, geometry in prepare_inputs():
+        m = solve(cv, label, sim=sim, geometry=geometry)
+        m["realized_metal"] = geometry
         results[label] = m
         (out / f"cv06b_falsifier_{label}.json").write_text(
             json.dumps(_plain(m), indent=2) + "\n")
@@ -141,7 +339,7 @@ def main() -> int:
     # The true shift is DERIVED from the two builds' own analytic anchors, not
     # asserted: f_notch ~ 1/L_stub through the same eps_eff, so the anchor
     # ratio is the shift the solve should show.
-    true_shift = (c["f_notch_analytic"] - b["f_notch_analytic"]) \
+    true_shift = (c["frequency_diagnostic"]["f_notch_analytic"] - b["f_notch_analytic"]) \
         / b["f_notch_analytic"] * 100
     true_bins = abs(true_shift) / 100 * b["f_notch_refined"] / b["bin_hz"]
     # "visible" = the refined estimate responded to a defect smaller than a
@@ -161,6 +359,9 @@ def main() -> int:
 
     summary = {
         "meta": {"issue": 812, "case": "cv06b",
+                 "report_schema_version": 2,
+                 "frequency_g1_scope": "baseline_only",
+                 "narrow_frequency_accuracy_claim": False,
                  "produced_by": "scripts/diagnostics/cv06b_build_falsifiers.py",
                  "board": "cv06b's own dx=63.5um, 5,729,080-cell mesh"},
         "criterion_A_baseline": {
@@ -178,11 +379,12 @@ def main() -> int:
             "true_shift_bins": true_bins,
             "bin_argmin_delta_pct": d_bin, "refined_delta_pct": d_ref,
             "visible": bool(visible), "gates": c["gates"],
+            "frequency_diagnostic": c["frequency_diagnostic"],
             "solve_s": c["solve_s"]},
         "stub_narrow": {
             "w_stub_m": n["w_stub_m"], "bw_ratio": n["bw_ratio"],
             "bw_frac": n["bw_frac"], "notch_depth_db": n["notch_depth_db"],
-            "err_pct": n["err_pct"], "gates": n["gates"],
+            "frequency_diagnostic": n["frequency_diagnostic"], "gates": n["gates"],
             "G2_fired": bool(not g2), "depth_witness_still_passes": bool(dep),
             "solve_s": n["solve_s"]},
         "verdict": {"criterion_A": bool(ok),
