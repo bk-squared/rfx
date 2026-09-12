@@ -1,0 +1,1498 @@
+{
+  "scope": "Independent controlled-run V/I reconstruction, consumed-plan dictionary/hash verification and spectral predicates; no production replay/estimator helper imports, no field evolution.",
+  "complete_artifacts": true,
+  "available_arms": [
+    "baseline",
+    "stub_1cell",
+    "stub_narrow"
+  ],
+  "outcome": {
+    "complete": true,
+    "field_matrix_calls": 3,
+    "producer_return_code": 0,
+    "runner_plan_verified": true,
+    "all_settling_screens_pass": true
+  },
+  "consumed_plan_verification": [
+    {
+      "label": "baseline",
+      "drive": 0,
+      "recomputed_sha256": "a3f5bb03878917ff5ec6bbb4ad329bfca9801cb8d35d6be5e3ccb68112dc8e04",
+      "all_invariants_equal_to_same_baseline_drive": true,
+      "changed_full_pec_components": [],
+      "changed_sheet_payload_indices": [],
+      "grid_shape": [
+        553,
+        280,
+        37
+      ],
+      "n_steps": 23600,
+      "source_count": 72,
+      "dft_plane_count": 18,
+      "allowed_stub_box": [
+        [
+          271,
+          280
+        ],
+        [
+          33,
+          222
+        ],
+        [
+          4,
+          4
+        ]
+      ]
+    },
+    {
+      "label": "baseline",
+      "drive": 1,
+      "recomputed_sha256": "9dd19481daa879c3cc09ca1f66bd7db2140ff5fcd3f7ee3bcee798a68cd703a5",
+      "all_invariants_equal_to_same_baseline_drive": true,
+      "changed_full_pec_components": [],
+      "changed_sheet_payload_indices": [],
+      "grid_shape": [
+        553,
+        280,
+        37
+      ],
+      "n_steps": 23600,
+      "source_count": 72,
+      "dft_plane_count": 18,
+      "allowed_stub_box": [
+        [
+          271,
+          280
+        ],
+        [
+          33,
+          222
+        ],
+        [
+          4,
+          4
+        ]
+      ]
+    },
+    {
+      "label": "stub_1cell",
+      "drive": 0,
+      "recomputed_sha256": "a3f5bb03878917ff5ec6bbb4ad329bfca9801cb8d35d6be5e3ccb68112dc8e04",
+      "all_invariants_equal_to_same_baseline_drive": true,
+      "changed_full_pec_components": [
+        "ex",
+        "ey"
+      ],
+      "changed_sheet_payload_indices": [
+        1
+      ],
+      "grid_shape": [
+        553,
+        280,
+        37
+      ],
+      "n_steps": 23600,
+      "source_count": 72,
+      "dft_plane_count": 18,
+      "allowed_stub_box": [
+        [
+          271,
+          280
+        ],
+        [
+          33,
+          222
+        ],
+        [
+          4,
+          4
+        ]
+      ]
+    },
+    {
+      "label": "stub_1cell",
+      "drive": 1,
+      "recomputed_sha256": "9dd19481daa879c3cc09ca1f66bd7db2140ff5fcd3f7ee3bcee798a68cd703a5",
+      "all_invariants_equal_to_same_baseline_drive": true,
+      "changed_full_pec_components": [
+        "ex",
+        "ey"
+      ],
+      "changed_sheet_payload_indices": [
+        1
+      ],
+      "grid_shape": [
+        553,
+        280,
+        37
+      ],
+      "n_steps": 23600,
+      "source_count": 72,
+      "dft_plane_count": 18,
+      "allowed_stub_box": [
+        [
+          271,
+          280
+        ],
+        [
+          33,
+          222
+        ],
+        [
+          4,
+          4
+        ]
+      ]
+    },
+    {
+      "label": "stub_narrow",
+      "drive": 0,
+      "recomputed_sha256": "a3f5bb03878917ff5ec6bbb4ad329bfca9801cb8d35d6be5e3ccb68112dc8e04",
+      "all_invariants_equal_to_same_baseline_drive": true,
+      "changed_full_pec_components": [
+        "ex",
+        "ey"
+      ],
+      "changed_sheet_payload_indices": [
+        1
+      ],
+      "grid_shape": [
+        553,
+        280,
+        37
+      ],
+      "n_steps": 23600,
+      "source_count": 72,
+      "dft_plane_count": 18,
+      "allowed_stub_box": [
+        [
+          271,
+          280
+        ],
+        [
+          33,
+          222
+        ],
+        [
+          4,
+          4
+        ]
+      ]
+    },
+    {
+      "label": "stub_narrow",
+      "drive": 1,
+      "recomputed_sha256": "9dd19481daa879c3cc09ca1f66bd7db2140ff5fcd3f7ee3bcee798a68cd703a5",
+      "all_invariants_equal_to_same_baseline_drive": true,
+      "changed_full_pec_components": [
+        "ex",
+        "ey"
+      ],
+      "changed_sheet_payload_indices": [
+        1
+      ],
+      "grid_shape": [
+        553,
+        280,
+        37
+      ],
+      "n_steps": 23600,
+      "source_count": 72,
+      "dft_plane_count": 18,
+      "allowed_stub_box": [
+        [
+          271,
+          280
+        ],
+        [
+          33,
+          222
+        ],
+        [
+          4,
+          4
+        ]
+      ]
+    }
+  ],
+  "six_pre_step_signatures_verified": true,
+  "baseline_raw_byte_comparison_to_669": {
+    "freqs_hz": {
+      "same_shape": true,
+      "same_dtype": true,
+      "byte_identical": true
+    },
+    "raw_v": {
+      "same_shape": true,
+      "same_dtype": true,
+      "byte_identical": true
+    },
+    "raw_i1": {
+      "same_shape": true,
+      "same_dtype": true,
+      "byte_identical": true
+    },
+    "raw_i1_left": {
+      "same_shape": true,
+      "same_dtype": true,
+      "byte_identical": true
+    },
+    "raw_i1_same_index": {
+      "same_shape": true,
+      "same_dtype": true,
+      "byte_identical": true
+    },
+    "production_smatrix": {
+      "same_shape": true,
+      "same_dtype": true,
+      "byte_identical": true
+    }
+  },
+  "changes_vs_669": {
+    "baseline": {
+      "projected": {
+        "previous": {
+          "index": 48,
+          "bin_frequency_hz": 3754545408.0,
+          "frequency_hz": 3758645903.334416,
+          "shift_bins": 0.06443597821258522,
+          "local_bin_hz": 63636736.0,
+          "notch_depth_db": -39.37816651495516,
+          "reference_deviation_pct": 2.1661505209504868,
+          "bandwidth_lo_hz": 3372306354.092464,
+          "bandwidth_hi_hz": 4162163546.154131,
+          "bandwidth_fraction": 0.2101440817718315,
+          "bandwidth_ratio": 0.9993821479204824,
+          "crossing_bin_indices": {
+            "left": [
+              41,
+              42
+            ],
+            "right": [
+              54,
+              55
+            ]
+          },
+          "half_grid_witness_bins": 0.4488871712684111,
+          "G2": true,
+          "G3": true,
+          "depth_witness": true,
+          "G1": true
+        },
+        "current_minus_previous": {
+          "frequency_hz": 0.0,
+          "notch_depth_db": 0.0,
+          "bandwidth_ratio": 0.0,
+          "half_grid_witness_bins": 0.0
+        }
+      },
+      "raw_saved": {
+        "previous": {
+          "index": 48,
+          "bin_frequency_hz": 3754545408.0,
+          "frequency_hz": 3758701392.5395,
+          "shift_bins": 0.06530794633307443,
+          "local_bin_hz": 63636736.0,
+          "notch_depth_db": -39.11316160446871,
+          "reference_deviation_pct": 2.167658808409516,
+          "bandwidth_lo_hz": 3373634272.0867715,
+          "bandwidth_hi_hz": 4161015483.4986367,
+          "bandwidth_fraction": 0.20948224644147245,
+          "bandwidth_ratio": 0.9962346578344088,
+          "crossing_bin_indices": {
+            "left": [
+              42,
+              43
+            ],
+            "right": [
+              54,
+              55
+            ]
+          },
+          "half_grid_witness_bins": 0.4477845185792767,
+          "G2": true,
+          "G3": true,
+          "depth_witness": true,
+          "G1": true
+        },
+        "current_minus_previous": {
+          "frequency_hz": 0.0,
+          "notch_depth_db": 0.0,
+          "bandwidth_ratio": 0.0,
+          "half_grid_witness_bins": 0.0
+        }
+      }
+    },
+    "stub_1cell": {
+      "projected": {
+        "previous": {
+          "index": 49,
+          "bin_frequency_hz": 3818182144.0,
+          "frequency_hz": 3789648843.240618,
+          "shift_bins": -0.448381424381525,
+          "local_bin_hz": 63636224.0,
+          "notch_depth_db": -31.802712795531495,
+          "reference_deviation_pct": 2.463772638461526,
+          "bandwidth_lo_hz": 3389032477.6424413,
+          "bandwidth_hi_hz": 4183943497.6234684,
+          "bandwidth_fraction": 0.2097584902619315,
+          "bandwidth_ratio": 0.9975483904901772,
+          "crossing_bin_indices": {
+            "left": [
+              42,
+              43
+            ],
+            "right": [
+              54,
+              55
+            ]
+          },
+          "half_grid_witness_bins": 0.6244820510863115,
+          "G2": true,
+          "G3": true,
+          "depth_witness": true
+        },
+        "current_minus_previous": {
+          "frequency_hz": -8654.780113220215,
+          "notch_depth_db": 0.0007744008549366299,
+          "bandwidth_ratio": 1.7213490323131353e-06,
+          "half_grid_witness_bins": 1.0702461805678354e-06
+        }
+      },
+      "raw_saved": {
+        "previous": {
+          "index": 49,
+          "bin_frequency_hz": 3818182144.0,
+          "frequency_hz": 3789600524.3857512,
+          "shift_bins": -0.4491407223384063,
+          "local_bin_hz": 63636224.0,
+          "notch_depth_db": -31.72996136486779,
+          "reference_deviation_pct": 2.4624662028618074,
+          "bandwidth_lo_hz": 3390357915.825453,
+          "bandwidth_hi_hz": 4182869900.3939347,
+          "bandwidth_fraction": 0.2091281071629413,
+          "bandwidth_ratio": 0.9945504777715805,
+          "crossing_bin_indices": {
+            "left": [
+              42,
+              43
+            ],
+            "right": [
+              54,
+              55
+            ]
+          },
+          "half_grid_witness_bins": 0.6235181738583474,
+          "G2": true,
+          "G3": true,
+          "depth_witness": true
+        },
+        "current_minus_previous": {
+          "frequency_hz": -8406.217426776886,
+          "notch_depth_db": 0.0006618077078250906,
+          "bandwidth_ratio": 5.100277929215302e-06,
+          "half_grid_witness_bins": 2.615539062778005e-06
+        }
+      }
+    },
+    "stub_narrow": {
+      "projected": {
+        "previous": {
+          "index": 50,
+          "bin_frequency_hz": 3881818368.0,
+          "frequency_hz": 3879696849.0097036,
+          "shift_bins": -0.033338228715398384,
+          "local_bin_hz": 63636224.0,
+          "notch_depth_db": -40.386404154111645,
+          "reference_deviation_pct": 2.8060215348159985,
+          "bandwidth_lo_hz": 3577544448.6773376,
+          "bandwidth_hi_hz": 4169681318.813212,
+          "bandwidth_fraction": 0.15262452020884512,
+          "bandwidth_ratio": 0.7258363859005161,
+          "crossing_bin_indices": {
+            "left": [
+              45,
+              46
+            ],
+            "right": [
+              54,
+              55
+            ]
+          },
+          "half_grid_witness_bins": 0.3450930347818503,
+          "G2": false,
+          "G3": true,
+          "depth_witness": true
+        },
+        "current_minus_previous": {
+          "frequency_hz": -1131.5526413917542,
+          "notch_depth_db": 0.0030102972587258137,
+          "bandwidth_ratio": -1.4816522891591966e-05,
+          "half_grid_witness_bins": 8.84794874840833e-05
+        }
+      },
+      "raw_saved": {
+        "previous": {
+          "index": 50,
+          "bin_frequency_hz": 3881818368.0,
+          "frequency_hz": 3879660319.520413,
+          "shift_bins": -0.033912264806711674,
+          "local_bin_hz": 63636224.0,
+          "notch_depth_db": -40.04142170803718,
+          "reference_deviation_pct": 2.805053559324915,
+          "bandwidth_lo_hz": 3578473920.7033353,
+          "bandwidth_hi_hz": 4168849957.538231,
+          "bandwidth_fraction": 0.15217209451673733,
+          "bandwidth_ratio": 0.723684785169528,
+          "crossing_bin_indices": {
+            "left": [
+              45,
+              46
+            ],
+            "right": [
+              54,
+              55
+            ]
+          },
+          "half_grid_witness_bins": 0.3446289417319758,
+          "G2": false,
+          "G3": true,
+          "depth_witness": true
+        },
+        "current_minus_previous": {
+          "frequency_hz": -1246.8109488487244,
+          "notch_depth_db": 0.003513851134286483,
+          "bandwidth_ratio": -1.4888828936521215e-05,
+          "half_grid_witness_bins": 8.994713873727855e-05
+        }
+      }
+    }
+  },
+  "reference_c0_m_per_s": 299800000.0,
+  "bandwidth_reference_fraction": 0.210274,
+  "estimator_convention": "Natural-log three-point parabola in bin coordinates; right adjacent frequency spacing; +/-1 bin clamp; linear dB -10 crossings; sampled-bin depth.",
+  "float_rounding": "Saved projected/raw metrics use NumPy complex64 abs then float64, as producer; reconstruction uses complex128 V/I and magnitude.",
+  "rows": {
+    "baseline": {
+      "references_ohm": [
+        47.89479996289313,
+        47.89479996289313
+      ],
+      "driven_port_indices": [
+        0,
+        1
+      ],
+      "frequency_reference": {
+        "frequency_hz": 3678954217.388916,
+        "role": "baseline_accuracy_reference",
+        "model": "quasistatic_quarter_wave_without_open_end_or_tee_correction",
+        "width_m": 0.0006349999999999999,
+        "width_convention": "main_line_row_pitch",
+        "length_m": 0.012,
+        "length_convention": "declared_stub_extension",
+        "substrate_height_m": 0.000254,
+        "substrate_eps_r": 3.66,
+        "eps_eff": 2.882252441027371,
+        "discrete_electrical_width_certified": false
+      },
+      "raw_reconstruction_max_abs_difference": 2.2201919071568289e-07,
+      "raw_reconstruction_relative_peak_difference": 2.2134707055211065e-07,
+      "solve_relative_residual": 3.8293910511919524e-16,
+      "saved_raw_equals_raw_dump_bytes": true,
+      "cond_a_max": 1.6231217116426655,
+      "raw_power": {
+        "max_coherent_gain": 1.0114018818257877,
+        "max_entry": 1.003036563053136,
+        "reciprocity_max_abs": 0.0005434915514696423
+      },
+      "projected_power": {
+        "max_coherent_gain": 0.9999848239016644,
+        "max_entry": 0.9999346922846688,
+        "reciprocity_max_abs": 0.0005436472961099143
+      },
+      "variants": {
+        "projected": {
+          "index": 48,
+          "bin_frequency_hz": 3754545408.0,
+          "frequency_hz": 3758645903.334416,
+          "shift_bins": 0.06443597821258522,
+          "local_bin_hz": 63636736.0,
+          "notch_depth_db": -39.37816651495516,
+          "reference_deviation_pct": 2.1661505209504868,
+          "bandwidth_lo_hz": 3372306354.092464,
+          "bandwidth_hi_hz": 4162163546.154131,
+          "bandwidth_fraction": 0.2101440817718315,
+          "bandwidth_ratio": 0.9993821479204824,
+          "crossing_bin_indices": {
+            "left": [
+              41,
+              42
+            ],
+            "right": [
+              54,
+              55
+            ]
+          },
+          "half_grid_witness_bins": 0.4488871712684111,
+          "G2": true,
+          "G3": true,
+          "depth_witness": true,
+          "G1": true
+        },
+        "raw_saved": {
+          "index": 48,
+          "bin_frequency_hz": 3754545408.0,
+          "frequency_hz": 3758701392.5395,
+          "shift_bins": 0.06530794633307443,
+          "local_bin_hz": 63636736.0,
+          "notch_depth_db": -39.11316160446871,
+          "reference_deviation_pct": 2.167658808409516,
+          "bandwidth_lo_hz": 3373634272.0867715,
+          "bandwidth_hi_hz": 4161015483.4986367,
+          "bandwidth_fraction": 0.20948224644147245,
+          "bandwidth_ratio": 0.9962346578344088,
+          "crossing_bin_indices": {
+            "left": [
+              42,
+              43
+            ],
+            "right": [
+              54,
+              55
+            ]
+          },
+          "half_grid_witness_bins": 0.4477845185792767,
+          "G2": true,
+          "G3": true,
+          "depth_witness": true,
+          "G1": true
+        },
+        "raw_reconstructed": {
+          "index": 48,
+          "bin_frequency_hz": 3754545408.0,
+          "frequency_hz": 3758701394.9534287,
+          "shift_bins": 0.0653079842660177,
+          "local_bin_hz": 63636736.0,
+          "notch_depth_db": -39.1131602020494,
+          "reference_deviation_pct": 2.167658874024046,
+          "bandwidth_lo_hz": 3373634263.243208,
+          "bandwidth_hi_hz": 4161015500.287083,
+          "bandwidth_fraction": 0.20948225312631708,
+          "bandwidth_ratio": 0.9962346896255223,
+          "crossing_bin_indices": {
+            "left": [
+              42,
+              43
+            ],
+            "right": [
+              54,
+              55
+            ]
+          },
+          "half_grid_witness_bins": 0.4477847052392181,
+          "G2": true,
+          "G3": true,
+          "depth_witness": true,
+          "G1": true
+        }
+      },
+      "producer_projected_metric_differences": {
+        "f_notch_refined": 0.0,
+        "notch_depth_db": 0.0,
+        "bw_ratio": 0.0,
+        "witness_bins": 0.0
+      },
+      "z0_port0_median": 48.1142463684082,
+      "G4_port0": true,
+      "settling_db": [
+        -97.11309329338212,
+        -97.31410411704974
+      ],
+      "all_settling_pass": true,
+      "reliability_false_counts_by_port": [
+        9,
+        8
+      ],
+      "beta_railed_counts_by_port": [
+        0,
+        0
+      ],
+      "notch_and_crossing_flags": {
+        "41": {
+          "frequency_hz": 3309091072.0,
+          "reliable_by_port": [
+            true,
+            true
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        },
+        "42": {
+          "frequency_hz": 3372727296.0,
+          "reliable_by_port": [
+            true,
+            true
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        },
+        "47": {
+          "frequency_hz": 3690908928.0,
+          "reliable_by_port": [
+            true,
+            true
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        },
+        "48": {
+          "frequency_hz": 3754545408.0,
+          "reliable_by_port": [
+            false,
+            false
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        },
+        "49": {
+          "frequency_hz": 3818182144.0,
+          "reliable_by_port": [
+            true,
+            true
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        },
+        "54": {
+          "frequency_hz": 4136363776.0,
+          "reliable_by_port": [
+            true,
+            true
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        },
+        "55": {
+          "frequency_hz": 4200000000.0,
+          "reliable_by_port": [
+            true,
+            true
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        }
+      },
+      "projection_correction_max": 0.005684880074113607,
+      "grid": {
+        "dx_m": 6.35e-05,
+        "dt_s": 1.2106750421521888e-13,
+        "nx": 553,
+        "ny": 280,
+        "nz": 37
+      },
+      "port_definitions": [
+        {
+          "name": "msl_0",
+          "position_m": [
+            0.002,
+            0.001316,
+            0.0
+          ],
+          "width_m": 0.0006,
+          "height_m": 0.000254,
+          "direction": "+x",
+          "impedance_ohm": 50.0,
+          "n_probe_offset": 60,
+          "n_probe_spacing": 16,
+          "n_probes": 5,
+          "mode": "laplace"
+        },
+        {
+          "name": "msl_1",
+          "position_m": [
+            0.032,
+            0.001316,
+            0.0
+          ],
+          "width_m": 0.0006,
+          "height_m": 0.000254,
+          "direction": "-x",
+          "impedance_ohm": 50.0,
+          "n_probe_offset": 60,
+          "n_probe_spacing": 16,
+          "n_probes": 5,
+          "mode": "laplace"
+        }
+      ],
+      "current_plane_stencils": [
+        {
+          "axis": "x",
+          "e_index": 99,
+          "h_indices": [
+            98,
+            99
+          ],
+          "registration_coordinates": [
+            0.005715,
+            0.0057785
+          ],
+          "sample_coordinates": [
+            0.00574675,
+            0.0058102499999999994
+          ],
+          "voltage_coordinate": 0.0057785,
+          "weights": [
+            0.5,
+            0.5
+          ]
+        },
+        {
+          "axis": "x",
+          "e_index": 452,
+          "h_indices": [
+            451,
+            452
+          ],
+          "registration_coordinates": [
+            0.0281305,
+            0.028194
+          ],
+          "sample_coordinates": [
+            0.02816225,
+            0.02822575
+          ],
+          "voltage_coordinate": 0.028194,
+          "weights": [
+            0.5,
+            0.5
+          ]
+        }
+      ]
+    },
+    "stub_1cell": {
+      "references_ohm": [
+        47.89479996289313,
+        47.89479996289313
+      ],
+      "driven_port_indices": [
+        0,
+        1
+      ],
+      "frequency_reference": {
+        "frequency_hz": 3698525581.9266105,
+        "role": "length_shift_prediction",
+        "model": "quasistatic_quarter_wave_without_open_end_or_tee_correction",
+        "width_m": 0.0006349999999999999,
+        "width_convention": "main_line_row_pitch",
+        "length_m": 0.011936500000000001,
+        "length_convention": "declared_stub_extension",
+        "substrate_height_m": 0.000254,
+        "substrate_eps_r": 3.66,
+        "eps_eff": 2.882252441027371,
+        "discrete_electrical_width_certified": false
+      },
+      "raw_reconstruction_max_abs_difference": 3.1978533315926034e-07,
+      "raw_reconstruction_relative_peak_difference": 3.1892227523949443e-07,
+      "solve_relative_residual": 3.8472544405243687e-16,
+      "saved_raw_equals_raw_dump_bytes": true,
+      "cond_a_max": 1.6209062304854844,
+      "raw_power": {
+        "max_coherent_gain": 1.0113351739067806,
+        "max_entry": 1.0027062283650332,
+        "reciprocity_max_abs": 0.0005365754196048961
+      },
+      "projected_power": {
+        "max_coherent_gain": 0.999984800694941,
+        "max_entry": 0.9996621347421222,
+        "reciprocity_max_abs": 0.0005365734369315804
+      },
+      "variants": {
+        "projected": {
+          "index": 49,
+          "bin_frequency_hz": 3818182144.0,
+          "frequency_hz": 3789640188.460505,
+          "shift_bins": -0.4485174283674517,
+          "local_bin_hz": 63636224.0,
+          "notch_depth_db": -31.801938394676558,
+          "reference_deviation_pct": 2.4635386322360313,
+          "bandwidth_lo_hz": 3389030155.7123585,
+          "bandwidth_hi_hz": 4183940731.958787,
+          "bandwidth_fraction": 0.20975885221687793,
+          "bandwidth_ratio": 0.9975501118392095,
+          "crossing_bin_indices": {
+            "left": [
+              42,
+              43
+            ],
+            "right": [
+              54,
+              55
+            ]
+          },
+          "half_grid_witness_bins": 0.6244831213324921,
+          "G2": true,
+          "G3": true,
+          "depth_witness": true
+        },
+        "raw_saved": {
+          "index": 49,
+          "bin_frequency_hz": 3818182144.0,
+          "frequency_hz": 3789592118.1683245,
+          "shift_bins": -0.4492728203306896,
+          "local_bin_hz": 63636224.0,
+          "notch_depth_db": -31.729299557159965,
+          "reference_deviation_pct": 2.462238917224854,
+          "bandwidth_lo_hz": 3390353924.5577602,
+          "bandwidth_hi_hz": 4182868215.3201065,
+          "bandwidth_fraction": 0.20912917961878258,
+          "bandwidth_ratio": 0.9945555780495097,
+          "crossing_bin_indices": {
+            "left": [
+              42,
+              43
+            ],
+            "right": [
+              54,
+              55
+            ]
+          },
+          "half_grid_witness_bins": 0.6235207893974102,
+          "G2": true,
+          "G3": true,
+          "depth_witness": true
+        },
+        "raw_reconstructed": {
+          "index": 49,
+          "bin_frequency_hz": 3818182144.0,
+          "frequency_hz": 3789592113.962505,
+          "shift_bins": -0.4492728864222849,
+          "local_bin_hz": 63636224.0,
+          "notch_depth_db": -31.72929899184912,
+          "reference_deviation_pct": 2.462238803508739,
+          "bandwidth_lo_hz": 3390353963.2256627,
+          "bandwidth_hi_hz": 4182868184.022062,
+          "bandwidth_fraction": 0.20912916138822227,
+          "bandwidth_ratio": 0.9945554913504393,
+          "crossing_bin_indices": {
+            "left": [
+              42,
+              43
+            ],
+            "right": [
+              54,
+              55
+            ]
+          },
+          "half_grid_witness_bins": 0.6235207956683727,
+          "G2": true,
+          "G3": true,
+          "depth_witness": true
+        }
+      },
+      "producer_projected_metric_differences": {
+        "f_notch_refined": 0.0,
+        "notch_depth_db": 0.0,
+        "bw_ratio": 0.0,
+        "witness_bins": 0.0
+      },
+      "z0_port0_median": 48.11670684814453,
+      "G4_port0": true,
+      "settling_db": [
+        -96.94374602294856,
+        -97.31035092170112
+      ],
+      "all_settling_pass": true,
+      "reliability_false_counts_by_port": [
+        8,
+        8
+      ],
+      "beta_railed_counts_by_port": [
+        0,
+        0
+      ],
+      "notch_and_crossing_flags": {
+        "42": {
+          "frequency_hz": 3372727296.0,
+          "reliable_by_port": [
+            true,
+            true
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        },
+        "43": {
+          "frequency_hz": 3436363520.0,
+          "reliable_by_port": [
+            true,
+            true
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        },
+        "48": {
+          "frequency_hz": 3754545408.0,
+          "reliable_by_port": [
+            true,
+            true
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        },
+        "49": {
+          "frequency_hz": 3818182144.0,
+          "reliable_by_port": [
+            false,
+            false
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        },
+        "50": {
+          "frequency_hz": 3881818368.0,
+          "reliable_by_port": [
+            true,
+            true
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        },
+        "54": {
+          "frequency_hz": 4136363776.0,
+          "reliable_by_port": [
+            true,
+            true
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        },
+        "55": {
+          "frequency_hz": 4200000000.0,
+          "reliable_by_port": [
+            true,
+            true
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        }
+      },
+      "projection_correction_max": 0.005651633255183697,
+      "grid": {
+        "dx_m": 6.35e-05,
+        "dt_s": 1.2106750421521888e-13,
+        "nx": 553,
+        "ny": 280,
+        "nz": 37
+      },
+      "port_definitions": [
+        {
+          "name": "msl_0",
+          "position_m": [
+            0.002,
+            0.001316,
+            0.0
+          ],
+          "width_m": 0.0006,
+          "height_m": 0.000254,
+          "direction": "+x",
+          "impedance_ohm": 50.0,
+          "n_probe_offset": 60,
+          "n_probe_spacing": 16,
+          "n_probes": 5,
+          "mode": "laplace"
+        },
+        {
+          "name": "msl_1",
+          "position_m": [
+            0.032,
+            0.001316,
+            0.0
+          ],
+          "width_m": 0.0006,
+          "height_m": 0.000254,
+          "direction": "-x",
+          "impedance_ohm": 50.0,
+          "n_probe_offset": 60,
+          "n_probe_spacing": 16,
+          "n_probes": 5,
+          "mode": "laplace"
+        }
+      ],
+      "current_plane_stencils": [
+        {
+          "axis": "x",
+          "e_index": 99,
+          "h_indices": [
+            98,
+            99
+          ],
+          "registration_coordinates": [
+            0.005715,
+            0.0057785
+          ],
+          "sample_coordinates": [
+            0.00574675,
+            0.0058102499999999994
+          ],
+          "voltage_coordinate": 0.0057785,
+          "weights": [
+            0.5,
+            0.5
+          ]
+        },
+        {
+          "axis": "x",
+          "e_index": 452,
+          "h_indices": [
+            451,
+            452
+          ],
+          "registration_coordinates": [
+            0.0281305,
+            0.028194
+          ],
+          "sample_coordinates": [
+            0.02816225,
+            0.02822575
+          ],
+          "voltage_coordinate": 0.028194,
+          "weights": [
+            0.5,
+            0.5
+          ]
+        }
+      ]
+    },
+    "stub_narrow": {
+      "references_ohm": [
+        47.89479996289313,
+        47.89479996289313
+      ],
+      "driven_port_indices": [
+        0,
+        1
+      ],
+      "frequency_reference": {
+        "frequency_hz": 3773803120.75963,
+        "role": "diagnostic_only",
+        "model": "quasistatic_quarter_wave_without_open_end_or_tee_correction",
+        "width_m": 0.0003175000000000018,
+        "width_convention": "stub_node_span",
+        "length_m": 0.0120015,
+        "length_convention": "stub_realized_extension",
+        "substrate_height_m": 0.000254,
+        "substrate_eps_r": 3.66,
+        "eps_eff": 2.7385062526945787,
+        "discrete_electrical_width_certified": false
+      },
+      "raw_reconstruction_max_abs_difference": 2.134270990780454e-07,
+      "raw_reconstruction_relative_peak_difference": 2.1279988213266777e-07,
+      "solve_relative_residual": 2.712045141829744e-16,
+      "saved_raw_equals_raw_dump_bytes": true,
+      "cond_a_max": 1.6251255253271681,
+      "raw_power": {
+        "max_coherent_gain": 1.0112655779691124,
+        "max_entry": 1.002947299084323,
+        "reciprocity_max_abs": 0.0005177943062282514
+      },
+      "projected_power": {
+        "max_coherent_gain": 0.999984801736219,
+        "max_entry": 0.9999466130141041,
+        "reciprocity_max_abs": 0.000517842646263657
+      },
+      "variants": {
+        "projected": {
+          "index": 50,
+          "bin_frequency_hz": 3881818368.0,
+          "frequency_hz": 3879695717.4570622,
+          "shift_bins": -0.03335601029592514,
+          "local_bin_hz": 63636224.0,
+          "notch_depth_db": -40.38339385685292,
+          "reference_deviation_pct": 2.8059915504049107,
+          "bandwidth_lo_hz": 3577539308.9914804,
+          "bandwidth_hi_hz": 4169663919.118083,
+          "bandwidth_fraction": 0.15262140467931062,
+          "bandwidth_ratio": 0.7258215693776245,
+          "crossing_bin_indices": {
+            "left": [
+              45,
+              46
+            ],
+            "right": [
+              54,
+              55
+            ]
+          },
+          "half_grid_witness_bins": 0.3451815142693344,
+          "G2": false,
+          "G3": true,
+          "depth_witness": true
+        },
+        "raw_saved": {
+          "index": 50,
+          "bin_frequency_hz": 3881818368.0,
+          "frequency_hz": 3879659072.709464,
+          "shift_bins": -0.03393185759318385,
+          "local_bin_hz": 63636224.0,
+          "notch_depth_db": -40.03790785690289,
+          "reference_deviation_pct": 2.805020520745292,
+          "bandwidth_lo_hz": 3578468516.911689,
+          "bandwidth_hi_hz": 4168832217.837674,
+          "bandwidth_fraction": 0.15216896378312153,
+          "bandwidth_ratio": 0.7236698963405915,
+          "crossing_bin_indices": {
+            "left": [
+              45,
+              46
+            ],
+            "right": [
+              54,
+              55
+            ]
+          },
+          "half_grid_witness_bins": 0.34471888887071306,
+          "G2": false,
+          "G3": true,
+          "depth_witness": true
+        },
+        "raw_reconstructed": {
+          "index": 50,
+          "bin_frequency_hz": 3881818368.0,
+          "frequency_hz": 3879659073.799712,
+          "shift_bins": -0.033931840460676994,
+          "local_bin_hz": 63636224.0,
+          "notch_depth_db": -40.037908365747214,
+          "reference_deviation_pct": 2.8050205496351963,
+          "bandwidth_lo_hz": 3578468529.0778317,
+          "bandwidth_hi_hz": 4168832211.373093,
+          "bandwidth_fraction": 0.15216895893820462,
+          "bandwidth_ratio": 0.7236698732996216,
+          "crossing_bin_indices": {
+            "left": [
+              45,
+              46
+            ],
+            "right": [
+              54,
+              55
+            ]
+          },
+          "half_grid_witness_bins": 0.3447187345424934,
+          "G2": false,
+          "G3": true,
+          "depth_witness": true
+        }
+      },
+      "producer_projected_metric_differences": {
+        "f_notch_refined": 0.0,
+        "notch_depth_db": 0.0,
+        "bw_ratio": 0.0,
+        "witness_bins": 0.0
+      },
+      "z0_port0_median": 48.05891418457031,
+      "G4_port0": true,
+      "settling_db": [
+        -92.54819109353801,
+        -92.46784188680996
+      ],
+      "all_settling_pass": true,
+      "reliability_false_counts_by_port": [
+        9,
+        9
+      ],
+      "beta_railed_counts_by_port": [
+        0,
+        0
+      ],
+      "notch_and_crossing_flags": {
+        "45": {
+          "frequency_hz": 3563636480.0,
+          "reliable_by_port": [
+            true,
+            true
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        },
+        "46": {
+          "frequency_hz": 3627272704.0,
+          "reliable_by_port": [
+            true,
+            true
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        },
+        "49": {
+          "frequency_hz": 3818182144.0,
+          "reliable_by_port": [
+            true,
+            true
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        },
+        "50": {
+          "frequency_hz": 3881818368.0,
+          "reliable_by_port": [
+            false,
+            false
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        },
+        "51": {
+          "frequency_hz": 3945454592.0,
+          "reliable_by_port": [
+            true,
+            true
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        },
+        "54": {
+          "frequency_hz": 4136363776.0,
+          "reliable_by_port": [
+            true,
+            true
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        },
+        "55": {
+          "frequency_hz": 4200000000.0,
+          "reliable_by_port": [
+            true,
+            true
+          ],
+          "beta_railed_by_port": [
+            false,
+            false
+          ]
+        }
+      },
+      "projection_correction_max": 0.0056170690804719925,
+      "grid": {
+        "dx_m": 6.35e-05,
+        "dt_s": 1.2106750421521888e-13,
+        "nx": 553,
+        "ny": 280,
+        "nz": 37
+      },
+      "port_definitions": [
+        {
+          "name": "msl_0",
+          "position_m": [
+            0.002,
+            0.001316,
+            0.0
+          ],
+          "width_m": 0.0006,
+          "height_m": 0.000254,
+          "direction": "+x",
+          "impedance_ohm": 50.0,
+          "n_probe_offset": 60,
+          "n_probe_spacing": 16,
+          "n_probes": 5,
+          "mode": "laplace"
+        },
+        {
+          "name": "msl_1",
+          "position_m": [
+            0.032,
+            0.001316,
+            0.0
+          ],
+          "width_m": 0.0006,
+          "height_m": 0.000254,
+          "direction": "-x",
+          "impedance_ohm": 50.0,
+          "n_probe_offset": 60,
+          "n_probe_spacing": 16,
+          "n_probes": 5,
+          "mode": "laplace"
+        }
+      ],
+      "current_plane_stencils": [
+        {
+          "axis": "x",
+          "e_index": 99,
+          "h_indices": [
+            98,
+            99
+          ],
+          "registration_coordinates": [
+            0.005715,
+            0.0057785
+          ],
+          "sample_coordinates": [
+            0.00574675,
+            0.0058102499999999994
+          ],
+          "voltage_coordinate": 0.0057785,
+          "weights": [
+            0.5,
+            0.5
+          ]
+        },
+        {
+          "axis": "x",
+          "e_index": 452,
+          "h_indices": [
+            451,
+            452
+          ],
+          "registration_coordinates": [
+            0.0281305,
+            0.028194
+          ],
+          "sample_coordinates": [
+            0.02816225,
+            0.02822575
+          ],
+          "voltage_coordinate": 0.028194,
+          "weights": [
+            0.5,
+            0.5
+          ]
+        }
+      ]
+    }
+  },
+  "approved_conditions": {
+    "projected": {
+      "baseline_G1": true,
+      "baseline_all_existing_gates": true,
+      "length_prediction_pct": 0.5319817366899793,
+      "one_cell_refined_shift_pct": 0.8246130634065096,
+      "one_cell_binned_shift_pct": 1.6949251929249787,
+      "one_cell_visible": true,
+      "narrow_G2_fails": true,
+      "narrow_depth_pass": true
+    },
+    "raw_saved": {
+      "baseline_G1": true,
+      "baseline_all_existing_gates": true,
+      "length_prediction_pct": 0.5319817366899793,
+      "one_cell_refined_shift_pct": 0.8218456962326925,
+      "one_cell_binned_shift_pct": 1.6949251929249787,
+      "one_cell_visible": true,
+      "narrow_G2_fails": true,
+      "narrow_depth_pass": true
+    },
+    "raw_reconstructed": {
+      "baseline_G1": true,
+      "baseline_all_existing_gates": true,
+      "length_prediction_pct": 0.5319817366899793,
+      "one_cell_refined_shift_pct": 0.8218455195869279,
+      "one_cell_binned_shift_pct": 1.6949251929249787,
+      "one_cell_visible": true,
+      "narrow_G2_fails": true,
+      "narrow_depth_pass": true
+    }
+  },
+  "geometry_and_observation_state": {
+    "baseline": {
+      "grid": {
+        "dx_m": 6.35e-05,
+        "dt_s": 1.2106750421521888e-13,
+        "nx": 553,
+        "ny": 280,
+        "nz": 37
+      },
+      "probe0_indices": [
+        99,
+        452
+      ],
+      "offsets": [
+        60,
+        60
+      ]
+    },
+    "stub_1cell": {
+      "grid": {
+        "dx_m": 6.35e-05,
+        "dt_s": 1.2106750421521888e-13,
+        "nx": 553,
+        "ny": 280,
+        "nz": 37
+      },
+      "probe0_indices": [
+        99,
+        452
+      ],
+      "offsets": [
+        60,
+        60
+      ]
+    },
+    "stub_narrow": {
+      "grid": {
+        "dx_m": 6.35e-05,
+        "dt_s": 1.2106750421521888e-13,
+        "nx": 553,
+        "ny": 280,
+        "nz": 37
+      },
+      "probe0_indices": [
+        99,
+        452
+      ],
+      "offsets": [
+        60,
+        60
+      ]
+    }
+  },
+  "control_scope": "Saved pre-step records verify identical consumed inputs per drive outside the allowed baseline stub sheet box; field results may differ.",
+  "limitations": [
+    "No calibrated MSL power claim; raw coherent gains remain above1.",
+    "Existing reliability and beta-rail flags retained without filtering.",
+    "Settling is the recorded local witness, not a global finite-window error bound.",
+    "No narrow approximate-quarter-wave accuracy gate and no unique historical frequency-shift attribution."
+  ],
+  "raw_artifact_sha256": {
+    "baseline": "6cb1b8c7d7c35aba2592e793134a5d7b4d7c1b67476ad35678733d2fba41aa3e",
+    "stub_1cell": "acb33acc3c1d4b2b180d73dc68fd27ed88508dec3648ff8610c48b1d72756b12",
+    "stub_narrow": "064f5ba369dcbf737bb4995ede628ab0be4904e27fb74968e539e3ede1561483"
+  }
+}

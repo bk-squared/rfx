@@ -425,8 +425,14 @@ the paragraphs it supersedes are marked below and stay as a pre-#931 record.
   The one-cell stub arm now moves the refined estimate 0.8228 % against
   the predicted 0.5320 % (bare argmin 1.6949 %), so the declared visibility
   criterion passes, with a 1.55x over-response that is not attributed.
-  The narrow-stub arm has BW ratio 0.6553 and notch error 6.4388 %: G2 and
-  G1 both fire while the retained depth witness still passes.
+  The historical narrow-stub arm has BW ratio 0.6553 and reported reference
+  deviation 6.4388 %. Its G1 flag was not consumed by the falsifier verdict.
+  That drawing was a four-interval, shifted input under #931, and the old
+  producer pair lacks controls needed to identify the unique frequency-shift
+  cause. Current #953 reporting uses G1 only for the baseline; narrow
+  frequency comparisons are diagnostics. See
+  docs/research_notes/issue953/history-assessment.md for the retained records
+  and the retired causal interpretations.
 
 Scope:
   - Uniform mesh dx=63.5µm = H_SUB/4 (issue #723; was dx=80µm, h_sub/dx=

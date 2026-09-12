@@ -1,0 +1,26 @@
+{
+  "scope": "Retained application logs and commit receipt for documented d990 reference path; not a complete original-producer source manifest",
+  "files": [
+    {
+      "source_path": "/root/workspace/claude-workspace/rfx/runs/issue931-baseline-cv06b-20260907T043516Z/commit.txt",
+      "retained": "commit.txt.gz",
+      "raw_bytes": 128,
+      "raw_sha256": "67a4ca73d5c53961575c47f60f432a413d8a66ecb80ff916e906e2d2bb4c7374",
+      "gzip_sha256": "ed81f7646429d848c938bc4b50064159b3043dc9c0b237d34ccc63b0fce21e68"
+    },
+    {
+      "source_path": "/root/workspace/claude-workspace/rfx/runs/issue931-baseline-cv06b-20260907T043516Z/cv06b_baseline_run.log",
+      "retained": "cv06b_baseline_run.log.gz",
+      "raw_bytes": 20626,
+      "raw_sha256": "92e90b2d4401cf6d979ba893c420f0c5312885ac727af4ab86f5107670321ae4",
+      "gzip_sha256": "4029962397895abb15efc1241106bbb94ebbdcaf4d7c880cb2def6993f9bcdaf"
+    },
+    {
+      "source_path": "/root/workspace/claude-workspace/rfx/runs/issue931-baseline-cv06b-20260907T043516Z/cv06b_build_falsifiers.log",
+      "retained": "cv06b_build_falsifiers.log.gz",
+      "raw_bytes": 61045,
+      "raw_sha256": "021e6e9286fe0f245670d7031f6bea20bcfc52b500f33b5f7462e9329d7b15e6",
+      "gzip_sha256": "0bfc250ef0f0278b966f89f2544ec7fb766d1481b3b206cebdd2a96b5e55e983"
+    }
+  ]
+}

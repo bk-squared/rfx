@@ -1,10 +1,11 @@
 # cv06b falsifier input and diagnostic checkpoint
 
 Base main: `0662c3b96d82ca65d7bd041b94c4ab984230e00d` (2026-09-11).
-**Issue #953 remains open.** The original checkpoint fixed input geometry and
-a misleading preflight interpretation. The subsequent reporting repair below
-implements the user's G1-scope decision. Fresh RF qualification remains
-unfinished; no field solve was run for either packet.
+**Current-main repair and controlled RF qualification are complete on this
+branch; integration is pending.** The initial checkpoint fixed input geometry
+and a misleading preflight interpretation. Later sections retain the reporting
+decision, the669 control defect and the671 qualification. The earlier build-only
+packets are historical and do not themselves claim an RF result.
 
 ## Observed input and correction
 
@@ -212,4 +213,44 @@ falsifiers catch domain/substrate divergence, retained auto flags, hidden
 material changes, waveform/crop/frequency changes, CPML changes and PEC changes
 outside the allowed stub. The combined79 tests pass. A first-drive dry build
 of all three full-size arms also passed the real runner-input comparison,
-with no field advancement. The controlled RF outcome is still pending.
+with no field advancement. These checks preceded the controlled671 result below.
+
+## Controlled qualification: run671
+
+[Run369367260671](gpu-369367260671/manifest.json) completed all three arms
+with the fixed environment. All six per-drive consumed input dictionaries and
+their recomputed hashes match the corresponding baseline drive. Full PEC
+changes are retained and restricted to the intended tangential stub edges.
+Baseline frequencies, raw V/I, both current-side records and preprojection S
+are byte-identical to669. This also checks that the added observation-only
+audit preserved the original baseline computation.
+
+The [independent reader](independent-rf-671.py) reconstructs S from V/I without
+the production replay or estimator. Its [report](independent-rf-671.json)
+preserves the approved predicates on returned, saved raw and reconstructed raw
+S. On reconstructed raw S, baseline G1 is2.167659% (<4%); narrow bandwidth
+ratio is0.723670 (<0.80, the intended failure), with sampled depth-40.0379dB
+(<-10dB, the intended pass). The one-cell refined shift is0.821846%, above
+the unchanged half-prediction visibility bar. The raw S reconstruction differs
+from the saved matrix by at most3.20e-7. The source and recorder were unchanged
+after staging; all21 files, the source archive and the complete provider log
+were hash-verified before deleting the terminal run.
+
+All beta rail counts are zero; the worst settling witness is-92.4678dB.
+Notch low-signal flags remain false and bandwidth crossing flags remain true.
+Raw coherent gain still reaches1.01140. These records qualify the stated
+falsifier behavior on this fixture, not a globally calibrated MSL port or an
+absolute error bound. The separate power problem remains tracked by#726.
+
+The [historical assessment](history-assessment.md) confirms the old recorded
+narrow feature moved by229.224MHz on the same stored frequency axis. Its
+unique cause cannot be identified from the retained, incompletely controlled
+producer pair. Claims that the unused G1 supplied additional accuracy coverage,
+that modern finite-thickness removal reproduced the old operator, or that a
+width convention uniquely explained the movement are retired. Original
+spectra, summaries and the migration's falsified predictions remain intact.
+No extra modern volume/sheet run can supply the missing historical provenance.
+
+The final controls passed79 focused tests on both local JAX0.6.2 and
+Python3.11/JAX0.10.2, with the full-size dry setup and recorder falsifiers
+retained above. The controlled671 result supplies the missing RF qualification.

@@ -1,0 +1,67 @@
+name: rfx-i953-fixed-environment-falsifiers
+description: Three sequential approved metal perturbations with baseline grid/material/probe
+  controls; actual engine inputs checked perdrive before fields;100freq20periods unchanged.
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: '1'
+  OMP_NUM_THREADS: '1'
+  OPENBLAS_NUM_THREADS: '1'
+  XLA_PYTHON_CLIENT_PREALLOCATE: 'false'
+  JAX_ENABLE_X64: '0'
+  HDF5_USE_FILE_LOCKING: 'FALSE'
+  RFX_OUT: /root/workspace/claude-workspace/rfx/runs/codex-i953-fixed-environment-1da6e9hd
+  RFX_SHA: 6a6b32c58911a37b5ee7741ea6a69674295a275b
+  RFX_ARCHIVE_SHA256: ed950794ca88ce6d455b884199b8b882cf4f28dd37b96c806006c601e3ebf7cd
+  RFX_DRIVER_SHA256: 64c77d9f0c080f8ba690dc758b05702275d9051cfdc7b36b1a47f872380e5e47
+  RFX_BASELINE_ENV_SHA256: 00f6a03bae7ac8099f9a1d75dc72661b5821b943ce442d1fd4fd5dc138c9cc33
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: 'set -eu
+
+  RFX_WORK=$(mktemp -d /tmp/rfx-i953-fixed.XXXXXX)
+
+  export RFX_WORK
+
+  python -c ''import os,hashlib; from pathlib import Path; p=Path(os.environ["RFX_OUT"]);
+  assert hashlib.sha256((p/"source.tar").read_bytes()).hexdigest()==os.environ["RFX_ARCHIVE_SHA256"];
+  assert hashlib.sha256((p/"field_power.py").read_bytes()).hexdigest()==os.environ["RFX_DRIVER_SHA256"]''
+
+  tar -xf "$RFX_OUT/source.tar" -C "$RFX_WORK"
+
+  cd "$RFX_WORK"
+
+  python -m pip install -q "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pyyaml
+  pytest
+
+  export PYTHONPATH="$RFX_WORK"
+
+  export MPLBACKEND=Agg
+
+  python -c ''import jax,numpy,scipy,rfx,json,os; from pathlib import Path; m=dict(source_sha=os.environ["RFX_SHA"],source_archive_sha256=os.environ["RFX_ARCHIVE_SHA256"],driver_sha256=os.environ["RFX_DRIVER_SHA256"],jax=jax.__version__,numpy=numpy.__version__,scipy=scipy.__version__,rfx_path=rfx.__file__,backend=jax.default_backend(),x64=bool(jax.config.jax_enable_x64),devices=[str(x)
+  for x in jax.devices()]); print(json.dumps(m)); assert m["backend"]=="gpu"; Path(os.environ["RFX_OUT"],"environment.json").write_text(json.dumps(m,indent=2))''
+
+  python -c ''import os,json,hashlib; from pathlib import Path; p=Path(os.environ["RFX_OUT"]);
+  b=(p/"baseline-environment.json").read_bytes(); assert hashlib.sha256(b).hexdigest()==os.environ["RFX_BASELINE_ENV_SHA256"];
+  old=json.loads(b); new=json.loads((p/"environment.json").read_text()); keys=("jax","numpy","scipy","backend","x64");
+  assert all(old[k]==new[k] for k in keys), (old,new); print("Software and precision
+  match verified; environment reference only")''
+
+  set +e
+
+  timeout --kill-after=30s 7200s python -u "$RFX_OUT/field_power.py" --out "$RFX_OUT/artifacts"
+  > "$RFX_OUT/run.log" 2>&1
+
+  RFX_RC=$?
+
+  set -e
+
+  printf ''%s\n'' "$RFX_RC" > "$RFX_OUT/exit-code.txt"
+
+  tail -n 80 "$RFX_OUT/run.log"
+
+  exit "$RFX_RC"
+
+  '

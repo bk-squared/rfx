@@ -386,11 +386,12 @@ def test_committed_gpu_summary_records_criterion_a_and_the_falsifier_lane():
                    False -> True.
       stub_narrow  G1 "notch freq vs analytic" True -> False (err_pct
                    0.208 -> 6.439). The deliberately-narrow stub is now caught
-                   by G1 as well as G2. The arm exists to show that G2 fires
-                   where the depth witness stays blind; a second gate also
-                   firing is extra coverage, so what is pinned is that G2
-                   fires, the depth witness stays blind, and at least one gate
-                   fires -- not that G1 in particular stays silent.
+                   by its stored G1 flag as well as G2. That unused historical
+                   G1 flag is not evidence of additional accuracy coverage:
+                   #953 now applies G1 only to baseline and treats perturbed
+                   frequency comparisons as diagnostics. This test pins what
+                   the unchanged historical record says; current controlled
+                   qualification and provenance limits are retained separately.
 
     NO cv06b gate window moved. G1 is still < 4.0 %, G2 still (0.80, 1.20),
     G3 still < 1.0 bin, G4 still (40, 65) ohm. The measurement, its falsified

@@ -1,0 +1,13 @@
+{
+  "source_of_controlled_rf": "6a6b32c58911a37b5ee7741ea6a69674295a275b",
+  "run_id": 369367260671,
+  "test_counts": {
+    "focused_local_jax_0_6_2": 79,
+    "same_focused_tests_jax_0_10_2": 79,
+    "additional_preflight_and_example_contracts": 254,
+    "unique_focused_local_total": 333
+  },
+  "lint": "CI E/F/W selection and focused helper/builder lint passed",
+  "independent_rf": "raw V/I reconstruction, spectral predicates and six actual input-plan dictionaries/hashes verified; baseline669 byte identity",
+  "historical_scope": "recorded shift preserved; unsupported unique causal explanations retired; current-main input/reporting/controlled-comparison defect addressed"
+}

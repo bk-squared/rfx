@@ -9,6 +9,15 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
+### Fixed — cv06b falsifier inputs and scope (#953)
+
+- Realize the narrow stub on five geometric intervals with the baseline centre,
+  and hold grid, materials and resolved probes fixed across geometry controls.
+- Apply the unchanged G1 frequency gate only to baseline; report perturbed-arm
+  frequency diagnostics while preserving the narrow bandwidth/depth criterion.
+- Preserve historical outputs, qualify the controlled arms with retained raw
+  records, and clarify that nearest-node residuals are not extent-error bounds.
+
 ### Fixed — MSL clearance and accuracy claims (#726)
 
 - **BREAKING for unequal MSL reference impedances:** return standard power-wave
