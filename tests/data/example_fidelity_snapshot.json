@@ -8667,7 +8667,7 @@
         {
           "code": "settling_witness_will_be_absent",
           "loc": null,
-          "message": "this simulation requests NTFF far-field output but registers no point probe. run() scores its ring-down settling witness from the probe time series, so its Result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live. forward() attaches no settling witness at all yet, so a forward()-driven simulation stays unguarded whatever it registers (tracked separately).",
+          "message": "this simulation requests NTFF far-field output but registers no point probe. run() and forward() score their ring-down settling witness from the recorded probe time series, so the result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live and retain its time series. Inspect forward's diagnostic on the concrete result after JIT/AD evaluation.",
           "severity": "warning",
           "source": "_validate_cfg_settling_witness_present"
         }
@@ -9037,7 +9037,7 @@
         {
           "code": "settling_witness_will_be_absent",
           "loc": null,
-          "message": "this simulation requests field-DFT plane probe(s) but registers no point probe. run() scores its ring-down settling witness from the probe time series, so its Result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live. forward() attaches no settling witness at all yet, so a forward()-driven simulation stays unguarded whatever it registers (tracked separately).",
+          "message": "this simulation requests field-DFT plane probe(s) but registers no point probe. run() and forward() score their ring-down settling witness from the recorded probe time series, so the result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live and retain its time series. Inspect forward's diagnostic on the concrete result after JIT/AD evaluation.",
           "severity": "warning",
           "source": "_validate_cfg_settling_witness_present"
         }

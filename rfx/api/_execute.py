@@ -583,69 +583,23 @@ class _ExecuteMixin:
         whenever the status is ``"absent"`` -- never NaN, because a NaN
         reaching a ``> -40`` comparison is the entire failure this closes.
         """
-        from rfx.core.jax_utils import is_tracer
-        from rfx.sources.waveguide_port import settling_db_from_named_records
+        from rfx.probes.settling import probe_record_info, probe_record_settling_witness
 
-        def _absent(reason, skipped=()):
-            return None, {"status": "absent", "route": None,
-                          "worst_record": None, "per_record_db": {},
-                          "skipped_records": list(skipped), "reason": reason}
-
-        _ADD_A_PROBE = ("add a point probe (sim.add_probe(position, "
-                        "component)) so the run records a time series the "
-                        "witness can score, or drive the run with "
-                        "run(until_decay=...) so the stop criterion bounds "
-                        "the ring-down instead")
-
-        ts = getattr(result, "time_series", None)
-        if ts is None or is_tracer(ts):
-            return _absent("this run returned no concrete probe time series "
-                           "(none recorded, or the run is under tracing): "
-                           + _ADD_A_PROBE)
-        series = np.asarray(ts)
-        if series.ndim == 1:
-            series = series[:, None]
-        if series.ndim != 2 or series.size == 0:
-            return _absent("this run recorded no probe time series: "
-                           + _ADD_A_PROBE)
-        # Issue #470: library-internal witness probes (the MSL settling
-        # probes) are judged by the MSL driver's own settling_db and must not
-        # stand in for a user probe here -- the same exclusion
-        # ``_warn_postrun_energy_witness`` makes, for the same reason.
-        internal = getattr(self, "_internal_probe_indices", None) or set()
-        keep = [i for i in range(series.shape[1]) if i not in internal]
-        if not keep:
-            return _absent("this run recorded only library-internal witness "
-                           "probes, whose ring-down is judged by their own "
-                           "driver: " + _ADD_A_PROBE)
-        named = []
-        for col in keep:
-            entry = self._probes[col] if col < len(self._probes) else None
-            component = getattr(entry, "component", "?")
-            named.append((f"probe{col}({component})", series[:, col]))
-
-        worst, detail = settling_db_from_named_records(
-            named, record_noun="probe records", return_detail=True,
-            _warn_stacklevel=4)
-        skipped = list(detail["skipped_records"])
-        per_record = dict(detail["per_record_db"])
-        if not np.isfinite(worst):
-            reason = ("no probe record carries a witnessable ring-down "
-                      f"(records below the underflow floor, skipped rather "
-                      f"than scored: {', '.join(skipped) or 'none'}; records "
-                      "shorter than 10 samples and traced records are also "
-                      "unwitnessable): " + _ADD_A_PROBE)
-            return _absent(reason, skipped)
-        worst_record = max(per_record, key=lambda k: per_record[k])
-        return float(worst), {"status": "measured", "route": "probe_records",
-                              "worst_record": worst_record,
-                              "per_record_db": per_record,
-                              "skipped_records": skipped,
-                              "reason": ""}
+        series = getattr(result, "time_series", None)
+        info = probe_record_info(series, self._probes,
+                                 getattr(self, "_internal_probe_indices", ()))
+        return probe_record_settling_witness(series, info)
 
     def _attach_run_settling_witness(self, result, *, n_steps=None,
-                                     num_periods=None):
-        """Attach the #885 witness to a ``run()`` result and enforce the bar.
+                                     num_periods=None, context="run"):
+        """Expose the shared run/forward probe witness and enforce its bar.
+
+        A ForwardResult carries numeric probe selection metadata and derives
+        its host diagnostic lazily from the concrete record. This keeps
+        descriptive strings and host reductions out of JAX result trees and
+        permits inspection of concrete JIT-produced records. Other result
+        fields keep their existing JIT restrictions. The eager forward
+        entry point still evaluates the diagnostic here to emit its warning.
 
         The -40 dB comparison itself is NOT made here: it goes through
         ``settling_verdict``, the one helper every path shares, so no caller
@@ -675,11 +629,21 @@ class _ExecuteMixin:
         lecture a caller who never asked for this run. The witness is still
         attached to the intermediate result; only the warnings defer.
         """
-        if not hasattr(result, "_replace") or not hasattr(result, "settling_witness"):
+        forward_result = isinstance(result, ForwardResult)
+        if forward_result:
+            from rfx.probes.settling import probe_record_info
+            from rfx.core.jax_utils import is_tracer
+            result = result._replace(settling_probe_info=probe_record_info(
+                result.time_series, self._probes,
+                getattr(self, "_internal_probe_indices", ())))
+            if is_tracer(result.time_series):
+                return result
+        elif not hasattr(result, "_replace") or not hasattr(result, "settling_witness"):
             return result
         settling_db, witness = self._run_settling_witness(result)
-        result = result._replace(settling_db=settling_db,
-                                 settling_witness=witness)
+        if not forward_result:
+            result = result._replace(settling_db=settling_db,
+                                     settling_witness=witness)
         if getattr(self, "_internal_probe_indices", None):
             return result
 
@@ -691,6 +655,7 @@ class _ExecuteMixin:
         if self._ntff is None and not self._dft_planes:
             return result
 
+        operation = "forward() call" if context == "forward" else "run"
         verdict = settling_verdict(settling_db)
         if verdict == "fail":
             _warn_if_ringdown_truncated(
@@ -701,7 +666,7 @@ class _ExecuteMixin:
                 drive_labels=(
                     f"worst probe record {witness['worst_record']}",),
                 consequence=(
-                    "every DFT-derived quantity of this run — NTFF far "
+                    f"every DFT-derived quantity of this {operation} — NTFF far "
                     "fields, field-DFT planes, Harminv modes — integrates a "
                     "cut transient"),
                 quoted_thing="any of them",
@@ -709,8 +674,8 @@ class _ExecuteMixin:
         elif verdict == "absent":
             import warnings
             warnings.warn(
-                "no ring-down settling witness on this run: "
-                f"{witness['reason']}. This run requests NTFF and/or "
+                f"no ring-down settling witness on this {operation}: "
+                f"{witness['reason']}. This {operation} requests NTFF and/or "
                 "field-DFT output, so its truncation is unguarded (#885); "
                 "settling_db is None, which is not a pass.",
                 stacklevel=3,
@@ -3212,6 +3177,14 @@ class _ExecuteMixin:
         -------
         ForwardResult
             Minimal differentiable observables (time series and optional NTFF).
+            ``settling_db`` and ``settling_witness`` score retained user-probe
+            records on the concrete result using the run() diagnostic and
+            underflow floor. They are host diagnostics, unavailable during
+            tracing, and can be read on concrete records outside the jitted
+            objective. Other result fields keep their existing JIT
+            restrictions, including the host Grid object. Absent
+            records yield None rather than a passing value. Use
+            ``settling_verdict(result.settling_db)`` for the shared -40 dB bar.
         """
         if _removed_kwargs:
             _reject_removed_forward_kwargs(_removed_kwargs)
@@ -3324,7 +3297,7 @@ class _ExecuteMixin:
             from rfx.materials.thin_conductor import refuse_f0_sheets
             refuse_f0_sheets(self._thin_conductors,
                              "distributed non-uniform forward()")
-            return self._forward_distributed_nonuniform_from_materials(
+            result = self._forward_distributed_nonuniform_from_materials(
                 eps_override=eps_override,
                 sigma_override=sigma_override,
                 pec_mask_override=pec_mask_override,
@@ -3338,9 +3311,12 @@ class _ExecuteMixin:
                 exchange_interval=exchange_interval,
                 skip_preflight=skip_preflight,
             )
+            return self._attach_run_settling_witness(
+                result, n_steps=plan.n_steps, num_periods=num_periods,
+                context="forward")
 
         if plan.lane == "fwd_nonuniform":
-            return self._forward_nonuniform_from_materials(
+            result = self._forward_nonuniform_from_materials(
                 eps_override=eps_override,
                 sigma_override=sigma_override,
                 pec_mask_override=pec_mask_override,
@@ -3351,6 +3327,9 @@ class _ExecuteMixin:
                 checkpoint_every=checkpoint_every,
                 n_warmup=n_warmup,
             )
+            return self._attach_run_settling_witness(
+                result, n_steps=plan.n_steps, num_periods=num_periods,
+                context="forward")
 
         # ---- Uniform forward lane (plan.lane == "fwd_uniform") ----
         n_steps = plan.n_steps
@@ -3445,7 +3424,9 @@ class _ExecuteMixin:
             sheet_impedance=_fwd_sheet_ctx,
         )
         _warn_if_nonfinite_result(_res, context="forward")
-        return _res
+        return self._attach_run_settling_witness(
+            _res, n_steps=n_steps, num_periods=num_periods,
+            context="forward")
 
     # ---- run ----
 

@@ -5239,7 +5239,7 @@ class _PreflightMixin:
     def _validate_cfg_settling_witness_present(self, _w) -> None:
         """Warn when the declared inputs cannot produce a ring-down witness.
 
-        Input-side fact, not a result prediction: ``run()`` scores its
+        Input-side fact, not a result prediction: ``run()`` and ``forward()`` score their
         energy ring-down settling witness (#885) from the probe time series,
         so a simulation that registers NTFF or a field-DFT plane and NO
         point probe will come back with ``settling_db=None`` -- the
@@ -5250,9 +5250,11 @@ class _PreflightMixin:
         Silent when a probe exists, and silent when the run asks for neither
         NTFF nor a field DFT (the rule scopes to those).
 
-        Entry points: ``run()`` attaches the witness (probe route); ``forward()``
-        attaches none yet, so for a forward()-driven simulation this advisory
-        reports a gap a probe alone does not close.
+        Both entry points use the same recorded-probe arithmetic. Forward's
+        host diagnostic is available on concrete results, including after
+        an outer JIT returns; while records are traced it is unavailable.
+        A registered probe does not imply coverage if its recording is
+        disabled, too short, or below the storage-format underflow floor.
         """
         if self._ntff is None and not self._dft_planes:
             return
@@ -5265,13 +5267,12 @@ class _PreflightMixin:
             wants.append("field-DFT plane probe(s)")
         _w.warn(PreflightWarning(
             f"this simulation requests {' and '.join(wants)} but registers no "
-            "point probe. run() scores its ring-down settling witness from "
-            "the probe time series, so its Result will carry settling_db=None "
+            "point probe. run() and forward() score their ring-down settling witness from "
+            "the recorded probe time series, so the result will carry settling_db=None "
             "and those DFT numbers will have no truncation guard (#885); add "
-            "sim.add_probe(position, component) somewhere the field is live. "
-            "forward() attaches no settling witness at all yet, so a "
-            "forward()-driven simulation stays unguarded whatever it "
-            "registers (tracked separately).",
+            "sim.add_probe(position, component) somewhere the field is live "
+            "and retain its time series. Inspect forward's diagnostic on "
+            "the concrete result after JIT/AD evaluation.",
             code="settling_witness_will_be_absent",
             source="_validate_cfg_settling_witness_present",
         ))

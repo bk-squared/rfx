@@ -9,6 +9,20 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
+### Fixed — forward results expose recorded-probe settling (#919)
+
+- Expose `ForwardResult.settling_db` and `settling_witness` from retained
+  user-probe records, using the same decay ratio and coverage floor as
+  `run()`. Missing, short or underflowed records report absence. Automatic
+  source-position records and driver-internal probes do not supply coverage.
+- Keep the host diagnostic outside the differentiated solver, with numeric
+  probe provenance in the result and quiet lazy property reads. Eager
+  forward calls retain the existing NTFF/field-DFT warning scope.
+- Include both quadratures of complex records in the shared power ratio,
+  so a phase rotation cannot erase a settling witness. Normalize amplitude
+  before squaring to avoid overflow/underflow; any selected NaN/Inf record
+  makes the witness unavailable and is named separately from underflow skips.
+
 ### Fixed — cv06b falsifier inputs and scope (#953)
 
 - Realize the narrow stub on five geometric intervals with the baseline centre,
