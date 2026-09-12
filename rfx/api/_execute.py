@@ -1799,10 +1799,12 @@ class _ExecuteMixin:
                         eps_r_sub = float(pe.eps_r_sub)
                     else:
                         # Issue #483: the launch fixture (mode profile,
-                        # sigma loading, source amplitude) is a STATIC
-                        # quantity and must derive from the REGISTERED
+                        # added sigma, imposed force e*u) is STATIC
+                        # and must derive from the REGISTERED
                         # materials — never from `materials`, which may
-                        # carry a (traced or concrete) override. The old
+                        # carry a (traced or concrete) override. The actual
+                        # E increment Cb(eps, sigma_total)*e*u MUST retain
+                        # its material dependence on the AD tape. The old
                         # code sampled the override through stop_gradient:
                         # finite differences then re-derived the fixture at
                         # alpha±h while the AD tape saw it frozen at the

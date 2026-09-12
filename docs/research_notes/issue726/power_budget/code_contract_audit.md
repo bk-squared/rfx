@@ -6,7 +6,7 @@ the target observable; a source-model response is a separate diagnostic.
 
 | Contract | Code / direct check | Status and consequence |
 |---|---|---|
-| A declared source spans actual ground-to-trace edges | `msl_cross_section_span`, conductor anchor checks; PR981 | Fixed. The normal span excludes the upper bounding node's outgoing edge. Wrong conductor heights are rejected. |
+| The declared trace-width core spans actual ground-to-trace edges | `msl_cross_section_span`, conductor anchor checks; PR981 | Fixed. The normal span excludes the upper bounding node's outgoing edge. Wrong conductor heights are rejected. This does not require the Laplace profile's lateral fringe columns to contact the trace. |
 | V and I refer to the same plane and time | `msl_h_plane_stencil`, collocation and the retained temporal correction; PR986 | Spatial mismatch fixed. Actual periodic Yee traveling/standing waves verify the temporal sign in f32/f64. This is not a general finite-window error bound. |
 | S uses one power metric with known references | `_msl_power_wave_scales`, full A/B construction; PR987 | Fixed for positive real references. Fitted Z0 and load R are not substituted for the analytic S references. |
 | The electric source/load update respects work | `setup_msl_port` → `make_msl_port_sources` → `update_e` → source addition | Direct electric-substep test closes source work, storage change and ohmic loss to roundoff. No negative load or duplicate fold found in CV06b. |
@@ -76,3 +76,26 @@ agreement with an independent finite-difference referee. An RF-only result
 cannot justify detaching the tape, silently freezing a design-dependent
 quantity, or dropping existing AD support. Source-work observers here are
 analysis tools only and do not replace the production differentiable path.
+
+The existing MSL material derivative is of a fixed-launch function:
+`F(eps_override; registered_model)`. Grid/geometry, the registered waveform,
+Laplace profile, added port conductivity and analytic reference impedance
+stay fixed. The electric source increment is nevertheless
+`Cb(eps_override, sigma_total) * e * u`: **Cb must remain differentiable**.
+The source builder reads overridden material coefficients for that factor.
+Re-solving a material-dependent profile in finite differences while freezing
+it only under AD would compare different functions (the earlier #483 defect).
+Run/forward primal parity must compare the same raw observable; the default
+concrete run can apply passivity projection while the override path omits it.
+
+`tests/unit/ports/test_msl_source_work.py` now checks the actual source/load
+and electric substep for uniform and prescribed nonuniform profiles, four
+propagation directions and float32/float64. The independent midpoint equation
+checks electric storage, source work and all three components' positive load
+loss. JIT reverse AD with respect to permittivity is compared with float64
+finite differences of that independent equation. These 16 local checks do
+not replace the existing full-run AD–FD qualification or establish RF accuracy.
+The [in-memory falsifiers](source-work-gate-falsifiers.json), reproducible with
+`verify_source_work_gate.py --out <new-file>`, reject detaching Cb, an extra
+conductivity multiplier, a reversed force and a source outside the declared
+support. The production functions are never edited by this verifier.

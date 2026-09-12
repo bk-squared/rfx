@@ -84,18 +84,18 @@ The original fixture comment says its trace continues through CPML, but
 its realized trace has no longitudinal PEC edges in either x pad. An
 [explicit continuation build](explicit-lead-build.json) extends the trace
 from the first to last allocated x node while retaining the exact DUT-box
-PEC masks and source declarations. This is a build-only candidate for the
-next causal comparison; it has no measured power result yet. It does not
-authorize silently extending arbitrary user geometry.
+PEC masks and source declarations. This predeclared build candidate was
+subsequently measured in647, reported below. It does not authorize silently
+extending arbitrary user geometry.
 
 Reproduce from the repository root:
 
     python docs/research_notes/issue726/power_budget/audit-field-power.py --self-test
     python docs/research_notes/issue726/power_budget/audit-field-power.py --root docs/research_notes/issue726/power_budget/gpu-369367260633/artifacts --out /tmp/new-power-audit.json
 
-#726 remains open. This record identifies missing power channels in the
-measurement and a testable lead-continuation defect, not a completed port
-calibration or a broad support promotion.
+#726 remains open. This record identifies unrepresented power channels in
+the measurement. The continuation comparison below did not establish a
+complete power fix or a broader calibrated support range.
 
 An [independent raw-array referee](independent-field-budget.json) reproduces
 the flux budget by directly superposing complex fields and recovering the
@@ -153,13 +153,13 @@ for an impressed source. All 72 cells are interior, so direct source
 injection into CPML is refuted for this fixture. Every profile-norm term is
 included by actual source/load loops; there is no normalization truncation.
 
-Before any further field experiment, the next check must follow this
-source-work contract and distinguish a complete source-model power port
+The subsequent667 field observation follows this
+source-work contract and distinguishes a source-model power port
 from the first-probe-plane V/I observable. A passive source-model result
 must not be substituted for the intended MSL S or used as its calibration.
 
 
-The next [source-work recorder](record_source_work.py) adds only source-cell
+The [source-work recorder](record_source_work.py) adds only source-cell
 observers to the unchanged633 model:144 ordinary Ez point probes plus six
 cropped source E DFTs. A [real runner-entry interception](source-work-wiring.json)
 checks all point indices, actual added sigma and 72 active SourceSpecs before
@@ -206,3 +206,10 @@ falsifiers and timestep-scaling checks are [retained](yee-mode-residual.json).
 This is not an eigensolver or source change. CPML candidates are explicitly
 refused until harmonic auxiliary states are provided; zero memory would
 confuse startup transients with mode error. It does not change port AD.
+
+The [calculation contract audit](code_contract_audit.md) also distinguishes
+the fixed launch shape from the material-dependent electric source increment.
+Always-on source-work tests cover the actual load/source/electric substep and
+its JIT material gradient in both float32 and float64. Corrected source
+docstrings now state the implemented conductivity and forcing equations;
+no source amplitude, termination or production numerical operation changed.
