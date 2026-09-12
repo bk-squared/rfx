@@ -1,0 +1,105 @@
+{
+  "scope": "Independent retained-667 node DTFT plus exact endpoint midpoint reconstruction, Inet and ordinary power waves; no author helper imports or field evolution.",
+  "source_reference_ohm": [
+    49.99999987735014,
+    49.99999987735014
+  ],
+  "profile_norm_m": [
+    0.00018763301609496408,
+    0.00018763301609496408
+  ],
+  "source_response": {
+    "max_coherent_gain": 0.9051584041490821,
+    "frequency_hz": 3298749952.0,
+    "max_column_power": 0.891272204407735,
+    "max_entry_magnitude": 0.9200993189460177,
+    "reciprocity_max_abs": 3.274168268209965e-07
+  },
+  "first_plane_response": {
+    "max_coherent_gain": 1.0112928109720245,
+    "frequency_hz": 3653125120.0,
+    "max_column_power": 1.0064897822683858,
+    "max_entry_magnitude": 1.0031057586654113,
+    "reciprocity_max_abs": 0.0005132985734220492
+  },
+  "source_a_condition_max": 1.0000000000000004,
+  "full_solve_relative_residual": 5.457381591441782e-16,
+  "author_settling_metric": "10*log10(mean(midpoint_phi[last 10 percent]**2)/max(midpoint_phi**2)); RMS tail, not tail peak.",
+  "quality": [
+    {
+      "drive": 0,
+      "steps": 117998,
+      "source_point_checks": [
+        {
+          "port": 0,
+          "midpoint_last_10pct_rms_over_peak_db": -143.7878498151804,
+          "midpoint_final_over_peak_db": -147.85414698307375,
+          "midpoint_last_1pct_peak_over_peak_db": -141.50722756784674,
+          "midpoint_last_5pct_peak_over_peak_db": -137.17478041658143,
+          "midpoint_last_10pct_peak_over_peak_db": -137.17478041658143,
+          "post_final_over_peak_db": -148.23977736810127
+        },
+        {
+          "port": 1,
+          "midpoint_last_10pct_rms_over_peak_db": -140.1577064902861,
+          "midpoint_final_over_peak_db": -139.84740451410087,
+          "midpoint_last_1pct_peak_over_peak_db": -136.85588063771223,
+          "midpoint_last_5pct_peak_over_peak_db": -134.23573682344016,
+          "midpoint_last_10pct_peak_over_peak_db": -133.2979957830475,
+          "post_final_over_peak_db": -139.8973012440826
+        }
+      ],
+      "active_wave_min_relative_to_band_peak": 0.011252090577722664,
+      "max_end_correction_relative_to_voltage_peak": 1.4617918600018402e-11
+    },
+    {
+      "drive": 1,
+      "steps": 117998,
+      "source_point_checks": [
+        {
+          "port": 0,
+          "midpoint_last_10pct_rms_over_peak_db": -140.16026246230967,
+          "midpoint_final_over_peak_db": -139.74898456909727,
+          "midpoint_last_1pct_peak_over_peak_db": -136.7051799337894,
+          "midpoint_last_5pct_peak_over_peak_db": -134.23440509061254,
+          "midpoint_last_10pct_peak_over_peak_db": -133.2581068789658,
+          "post_final_over_peak_db": -139.78928796739865
+        },
+        {
+          "port": 1,
+          "midpoint_last_10pct_rms_over_peak_db": -148.14099021891482,
+          "midpoint_final_over_peak_db": -150.24158514791498,
+          "midpoint_last_1pct_peak_over_peak_db": -145.20934576144444,
+          "midpoint_last_5pct_peak_over_peak_db": -139.45974065489534,
+          "midpoint_last_10pct_peak_over_peak_db": -139.45974065489534,
+          "post_final_over_peak_db": -150.54592575214463
+        }
+      ],
+      "active_wave_min_relative_to_band_peak": 0.011252090577722664,
+      "max_end_correction_relative_to_voltage_peak": 1.483045458082578e-11
+    }
+  ],
+  "comparisons_to_author": {
+    "source_s_max_abs_difference": 4.435268901666116e-14,
+    "voltage_relative_peak_difference": 4.121823666617465e-15,
+    "source_current_relative_peak_difference": 9.839120150892007e-16,
+    "a_relative_peak_difference": 1.1063442369595133e-15,
+    "b_relative_peak_difference": 6.530027358857973e-15
+  },
+  "raw_msl_bit_identity_to_633": {
+    "raw_v": true,
+    "raw_i1": true,
+    "production_smatrix": true
+  },
+  "artifact_sha256": {
+    "drive-0-source-work.npz": "dea2d65c852776fa301f2a926a7315c0e3d978837e5b1c90256c5dc930e641c8",
+    "drive-1-source-work.npz": "5d7a97bd4aa2ee0afb0c85a010b5391af85c5310808b371df1dbf252d3a7d76a"
+  },
+  "finite_window_error_bound": null,
+  "limits": [
+    "Two fixed source-model channels only; no global CPML passivity theorem.",
+    "Not MSL first-plane calibration or a support promotion.",
+    "Does not uniquely locate side-inflow origin.",
+    "Ideal profile/base-u reconstruction retains float32 source-shape rounding uncertainty."
+  ]
+}

@@ -53,6 +53,7 @@ def audit(root,out):
                 source_reference_ohm=records[0]['reference_impedances'].tolist(),
                 source_work_response=summary(s,f),first_plane_msl_response=summary(msl,f),
                 source_drive_condition_max=float(np.max(cond)),quality=quality,
+                source_projection_settling_definition='10*log10(mean(phi_mid[-floor(N/10):]**2)/max(phi_mid**2)); last10percent RMS over whole-record peak, not tail-peak decay',
                 actual_freqs_hz=f.tolist(),finite_window_error_bound=None,
                 source_shape_rounding_error='base u and ideal e recorded; source fl(Cb*e*u) equality is only to float32 precision',
                 verdict='diagnostic only; no MSL support promotion')

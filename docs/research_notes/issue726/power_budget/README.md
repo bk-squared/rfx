@@ -119,8 +119,8 @@ corrects inherited scope labels without modifying the raw producer plan.
 The [comparison](continued-lead-comparison.json) is not grounds to adopt
 continuation as the power fix. At the original worst-notch coherent drive,
 apparent excess decreases from0.01129285 to0.00389477 in the same original
-input basis. Across the full161-bin S sweep, however, maximum coherent gain
-increases from1.01129281 to1.01953449 near6.803125GHz. The existing settling
+input basis. Across the full 161-bin S sweep, however, maximum coherent gain
+increases from 1.01129281 to 1.01953449 near 6.803125GHz. The existing settling
 screen passes(-65.28/-64.16dB versus its unchanged-40dB threshold), but is
 much weaker than633. The selected-bin closed-face Gram residual reaches
 0.00237806 in the continued run's own V/I input basis; there is no global
@@ -133,7 +133,7 @@ scalar-conductivity electric update and post-update source addition. It
 found no negative dissipation coefficient or duplicate load in this case.
 The [electric-substep audit](source-work-audit.json) calls real loading,
 source construction and update_e with prescribed fields; midpoint source
-work equals electric storage change plus full ohmic loss to2.9e-16 relative.
+work equals electric storage change plus full ohmic loss to 2.9e-16 relative.
 This is a local algebra check, not a Maxwell eigenmode or RF benchmark.
 
 For a supplied Ez profile e and N=sum(volume*e^2), the code chooses
@@ -145,11 +145,11 @@ For fields beyond the supplied Ez profile, load loss includes additional
 nonnegative terms and is not generally V_centre^2/R. These facts alone do
 not explain S gain; drive-column scaling cancels from B A^-1.
 
-[Actual support inspection](source-support-audit.json) finds72 Laplace
+[Actual support inspection](source-support-audit.json) finds 72 Laplace
 source/load cells per port.32 cells in8 lateral fringe columns do not end
 on the trace; they carry11.58988% of the supplied profile's weighted e^2
 norm. This is not an RF power fraction or an automatic invalidity verdict
-for an impressed source. All72 cells are interior, so direct source
+for an impressed source. All 72 cells are interior, so direct source
 injection into CPML is refuted for this fixture. Every profile-norm term is
 included by actual source/load loops; there is no normalization truncation.
 
@@ -162,9 +162,9 @@ must not be substituted for the intended MSL S or used as its calibration.
 The next [source-work recorder](record_source_work.py) adds only source-cell
 observers to the unchanged633 model:144 ordinary Ez point probes plus six
 cropped source E DFTs. A [real runner-entry interception](source-work-wiring.json)
-checks all point indices, actual added sigma and72 active SourceSpecs before
+checks all point indices, actual added sigma and 72 active SourceSpecs before
 any field step. Actual source increments agree with independently reconstructed
-Cb*e*u within2.22e-7 relative peak error; no exact-float32 claim is made.
+Cb*e*u within 2.22e-7 relative peak error; no exact-float32 claim is made.
 The [midpoint diagnostic](source_work_observable.py) passes independent
 prescribed passive and active response tests with unequal references and
 orthogonal field components. A separate review verified time levels, shunt
@@ -172,3 +172,37 @@ power decomposition and absence of a fitted normalization or passivity clip.
 Its response remains a distinct source-model observable, not a replacement
 for the intended MSL S. Streaming E DFTs are not silently equated to the
 independent midpoint clock.
+
+
+## Source-work observation result
+
+Run [369367260667](gpu-369367260667/manifest.json) completed both unchanged
+model drives. The [impact check](source-observer-impact.json) finds all
+existing MSL raw V/I/S shape, dtype and bytes identical to633. The
+[readout](source-work-readout.json) and [independent reconstruction](independent-source-work.json)
+agree on the source-work S to 4.44e-14 maximum absolute difference.
+
+| Sampled 161-bin response | Maximum coherent gain | Maximum complex reciprocity difference |
+|---|---:|---:|
+| Source-work network |0.9051584041|3.2742e-7|
+| Existing first-plane MSL |1.0112928110|5.1330e-4|
+
+The source-work matrix therefore lies within the passive bound for these
+two fixed channels and sampled frequencies. It is a different observable,
+with more than the intended first-plane DUT in its network, and cannot be
+substituted for that MSL matrix. It does not exonerate every CPML mode or
+identify a unique origin of the lateral inflow. See the [method note](source-work-method.md)
+for settling, clocks, reference construction and remaining uncertainty.
+The full provider log and all artifacts were hash-checked before deleting
+the completed run. The next design-scope choice is with the user; public
+port behavior and existing autodiff remain unchanged.
+
+
+A [same-Yee mode residual evaluator](yee-mode-residual.py) supplies a common
+read-only check for future mode candidates. It takes one actual real Yee
+update of the real/imaginary quadratures on three propagation slices and
+checks only the central slice. Known vacuum/PEC plate modes, wrong-stagger
+falsifiers and timestep-scaling checks are [retained](yee-mode-residual.json).
+This is not an eigensolver or source change. CPML candidates are explicitly
+refused until harmonic auxiliary states are provided; zero memory would
+confuse startup transients with mode error. It does not change port AD.

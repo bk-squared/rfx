@@ -1,0 +1,22 @@
+{
+  "raw_v": {
+    "shape_equal": true,
+    "dtype_equal": true,
+    "bytes_equal": true
+  },
+  "raw_i1": {
+    "shape_equal": true,
+    "dtype_equal": true,
+    "bytes_equal": true
+  },
+  "production_smatrix": {
+    "shape_equal": true,
+    "dtype_equal": true,
+    "bytes_equal": true
+  },
+  "freqs_hz": {
+    "shape_equal": true,
+    "dtype_equal": true,
+    "bytes_equal": true
+  }
+}

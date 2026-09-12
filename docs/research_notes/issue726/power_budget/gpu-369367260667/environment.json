@@ -1,0 +1,14 @@
+{
+  "source_sha": "87927064131a1df44133117304c746a0e9e9f4bc",
+  "source_archive_sha256": "fe826065cdff23172a23d78889ac784c7aad5667480edfefeea9a8672f94de73",
+  "driver_sha256": "63dbb2f2c472c952b507729df4766c5a346076619d4818229b058313157273a2",
+  "jax": "0.4.33.dev20241023+e3c6d6430",
+  "numpy": "1.26.4",
+  "scipy": "1.14.1",
+  "rfx_path": "/tmp/rfx-i726-power.QWXUS1/rfx/__init__.py",
+  "backend": "gpu",
+  "x64": false,
+  "devices": [
+    "cuda:0"
+  ]
+}

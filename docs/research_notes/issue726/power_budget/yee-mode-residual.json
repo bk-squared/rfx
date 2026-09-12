@@ -1,0 +1,447 @@
+{
+  "scope": "Bounded independent one-step checks only: vacuum TEM and PEC parallel-plate TEM/TE1. No eigenmode solver, transient, CPML claim, production change or AD change.",
+  "rfx_yee_path": "/root/rfx-codex/rfx/core/yee.py",
+  "yee_sha256": "94b4e0bddef64493e815f406a1e29abac52333748319a87fb3f22c8d6c24f98a",
+  "jax_version": "0.6.2",
+  "records": [
+    {
+      "case": "vacuum_direction_1",
+      "arithmetic": "real_quadratures",
+      "native_storage": null,
+      "native_complex_core_field_cast": "complex64 regardless of requested complex storage",
+      "beta_per_m": [
+        402.1238596594935,
+        0.0
+      ],
+      "frequency_hz": 19094032211.43917,
+      "omega_dt": 0.19540103691078603,
+      "omega_discrete_per_s": 119780571482.57869,
+      "timestep_relative_energy_norm_residual": 6.558077740207516e-17,
+      "omega_dt_scaled_step_residual": 3.3562144008487163e-16,
+      "exact_phase_increment_scaled_step_residual": 3.3615597495735103e-16,
+      "pec_input_relative_mismatch": 0.0,
+      "max_absolute_component_residuals": {
+        "ex": 0.0,
+        "ey": 0.0,
+        "ez": 8.326672684688674e-17,
+        "hx": 0.0,
+        "hy": 1.0842021724855044e-19,
+        "hz": 0.0
+      },
+      "scored_x_node": 0.0,
+      "slab_x_nodes_m": [
+        -0.0009765625,
+        0.0,
+        0.0009765625
+      ],
+      "transverse_shape": [
+        4,
+        6
+      ],
+      "cpml_supported": false
+    },
+    {
+      "case": "vacuum_direction_-1",
+      "arithmetic": "real_quadratures",
+      "native_storage": null,
+      "native_complex_core_field_cast": "complex64 regardless of requested complex storage",
+      "beta_per_m": [
+        -402.1238596594935,
+        0.0
+      ],
+      "frequency_hz": 19094032211.43917,
+      "omega_dt": 0.19540103691078603,
+      "omega_discrete_per_s": 119780571482.57869,
+      "timestep_relative_energy_norm_residual": 5.887846720064157e-17,
+      "omega_dt_scaled_step_residual": 3.0132116047840437e-16,
+      "exact_phase_increment_scaled_step_residual": 3.0180106625573176e-16,
+      "pec_input_relative_mismatch": 0.0,
+      "max_absolute_component_residuals": {
+        "ex": 0.0,
+        "ey": 0.0,
+        "ez": 8.326672684688674e-17,
+        "hx": 0.0,
+        "hy": 0.0,
+        "hz": 0.0
+      },
+      "scored_x_node": 0.0,
+      "slab_x_nodes_m": [
+        -0.0009765625,
+        0.0,
+        0.0009765625
+      ],
+      "transverse_shape": [
+        4,
+        6
+      ],
+      "cpml_supported": false
+    },
+    {
+      "case": "parallel_plate_direction_1",
+      "arithmetic": "real_quadratures",
+      "native_storage": null,
+      "native_complex_core_field_cast": "complex64 regardless of requested complex storage",
+      "beta_per_m": [
+        402.1238596594935,
+        0.0
+      ],
+      "frequency_hz": 19094032211.43917,
+      "omega_dt": 0.19540103691078603,
+      "omega_discrete_per_s": 119780571482.57869,
+      "timestep_relative_energy_norm_residual": 6.558077740207516e-17,
+      "omega_dt_scaled_step_residual": 3.3562144008487163e-16,
+      "exact_phase_increment_scaled_step_residual": 3.3615597495735103e-16,
+      "pec_input_relative_mismatch": 0.0,
+      "max_absolute_component_residuals": {
+        "ex": 0.0,
+        "ey": 0.0,
+        "ez": 8.326672684688674e-17,
+        "hx": 0.0,
+        "hy": 1.0842021724855044e-19,
+        "hz": 0.0
+      },
+      "scored_x_node": 0.0,
+      "slab_x_nodes_m": [
+        -0.0009765625,
+        0.0,
+        0.0009765625
+      ],
+      "transverse_shape": [
+        4,
+        6
+      ],
+      "cpml_supported": false
+    },
+    {
+      "case": "parallel_plate_direction_-1",
+      "arithmetic": "real_quadratures",
+      "native_storage": null,
+      "native_complex_core_field_cast": "complex64 regardless of requested complex storage",
+      "beta_per_m": [
+        -402.1238596594935,
+        0.0
+      ],
+      "frequency_hz": 19094032211.43917,
+      "omega_dt": 0.19540103691078603,
+      "omega_discrete_per_s": 119780571482.57869,
+      "timestep_relative_energy_norm_residual": 5.887846720064157e-17,
+      "omega_dt_scaled_step_residual": 3.0132116047840437e-16,
+      "exact_phase_increment_scaled_step_residual": 3.0180106625573176e-16,
+      "pec_input_relative_mismatch": 0.0,
+      "max_absolute_component_residuals": {
+        "ex": 0.0,
+        "ey": 0.0,
+        "ez": 8.326672684688674e-17,
+        "hx": 0.0,
+        "hy": 0.0,
+        "hz": 0.0
+      },
+      "scored_x_node": 0.0,
+      "slab_x_nodes_m": [
+        -0.0009765625,
+        0.0,
+        0.0009765625
+      ],
+      "transverse_shape": [
+        4,
+        6
+      ],
+      "cpml_supported": false
+    },
+    {
+      "case": "parallel_plate_TE1",
+      "arithmetic": "real_quadratures",
+      "native_storage": null,
+      "native_complex_core_field_cast": "complex64 regardless of requested complex storage",
+      "beta_per_m": [
+        402.1238596594935,
+        0.0
+      ],
+      "frequency_hz": 27046350358.243767,
+      "omega_dt": 0.27678202519670436,
+      "omega_discrete_per_s": 169395308699.46277,
+      "timestep_relative_energy_norm_residual": 1.1169105733831983e-16,
+      "omega_dt_scaled_step_residual": 4.035343597870666e-16,
+      "exact_phase_increment_scaled_step_residual": 4.048253302657029e-16,
+      "pec_input_relative_mismatch": 0.0,
+      "max_absolute_component_residuals": {
+        "ex": 0.0,
+        "ey": 1.2412670766236366e-16,
+        "ez": 0.0,
+        "hx": 3.2526065174565133e-19,
+        "hy": 0.0,
+        "hz": 2.4879132704032526e-19
+      },
+      "scored_x_node": 0.0,
+      "slab_x_nodes_m": [
+        -0.0009765625,
+        0.0,
+        0.0009765625
+      ],
+      "transverse_shape": [
+        4,
+        9
+      ],
+      "cpml_supported": false
+    },
+    {
+      "case": "TE1_wrong_Hx_transverse_z_nodes",
+      "arithmetic": "real_quadratures",
+      "native_storage": null,
+      "native_complex_core_field_cast": "complex64 regardless of requested complex storage",
+      "beta_per_m": [
+        402.1238596594935,
+        0.0
+      ],
+      "frequency_hz": 27046350358.243767,
+      "omega_dt": 0.27678202519670436,
+      "omega_discrete_per_s": 169395308699.46277,
+      "timestep_relative_energy_norm_residual": 0.03172441869815407,
+      "omega_dt_scaled_step_residual": 0.11461878232738579,
+      "exact_phase_increment_scaled_step_residual": 0.1149854660079526,
+      "pec_input_relative_mismatch": 0.0,
+      "max_absolute_component_residuals": {
+        "ex": 0.0,
+        "ey": 0.025878411351517562,
+        "ez": 0.0,
+        "hx": 0.00010102779724281195,
+        "hy": 0.0,
+        "hz": 2.4879132704032526e-19
+      },
+      "scored_x_node": 0.0,
+      "slab_x_nodes_m": [
+        -0.0009765625,
+        0.0,
+        0.0009765625
+      ],
+      "transverse_shape": [
+        4,
+        9
+      ],
+      "cpml_supported": false
+    },
+    {
+      "case": "native_complex64",
+      "arithmetic": "native_complex",
+      "native_storage": "complex64",
+      "native_complex_core_field_cast": "complex64 regardless of requested complex storage",
+      "beta_per_m": [
+        402.1238596594935,
+        0.0
+      ],
+      "frequency_hz": 19094032211.43917,
+      "omega_dt": 0.19540103691078603,
+      "omega_discrete_per_s": 119780571482.57869,
+      "timestep_relative_energy_norm_residual": 2.071725678592887e-08,
+      "omega_dt_scaled_step_residual": 1.0602429297950817e-07,
+      "exact_phase_increment_scaled_step_residual": 1.0619315490296929e-07,
+      "pec_input_relative_mismatch": 0.0,
+      "max_absolute_component_residuals": {
+        "ex": 0.0,
+        "ey": 0.0,
+        "ez": 2.27436825582087e-08,
+        "hx": 0.0,
+        "hy": 4.9026644038585984e-11,
+        "hz": 0.0
+      },
+      "scored_x_node": 0.0,
+      "slab_x_nodes_m": [
+        -0.0009765625,
+        0.0,
+        0.0009765625
+      ],
+      "transverse_shape": [
+        4,
+        6
+      ],
+      "cpml_supported": false
+    },
+    {
+      "case": "native_complex128",
+      "arithmetic": "native_complex",
+      "native_storage": "complex128",
+      "native_complex_core_field_cast": "complex64 regardless of requested complex storage",
+      "beta_per_m": [
+        402.1238596594935,
+        0.0
+      ],
+      "frequency_hz": 19094032211.43917,
+      "omega_dt": 0.19540103691078603,
+      "omega_discrete_per_s": 119780571482.57869,
+      "timestep_relative_energy_norm_residual": 6.955488603007054e-09,
+      "omega_dt_scaled_step_residual": 3.559596567638846e-08,
+      "exact_phase_increment_scaled_step_residual": 3.5652658374473536e-08,
+      "pec_input_relative_mismatch": 0.0,
+      "max_absolute_component_residuals": {
+        "ex": 0.0,
+        "ey": 0.0,
+        "ez": 7.4230564990874415e-09,
+        "hx": 0.0,
+        "hy": 1.7131980318223434e-11,
+        "hz": 0.0
+      },
+      "scored_x_node": 0.0,
+      "slab_x_nodes_m": [
+        -0.0009765625,
+        0.0,
+        0.0009765625
+      ],
+      "transverse_shape": [
+        4,
+        6
+      ],
+      "cpml_supported": false
+    },
+    {
+      "case": "missing_H_half_space",
+      "arithmetic": "real_quadratures",
+      "native_storage": null,
+      "native_complex_core_field_cast": "complex64 regardless of requested complex storage",
+      "beta_per_m": [
+        402.1238596594935,
+        0.0
+      ],
+      "frequency_hz": 19094032211.43917,
+      "omega_dt": 0.19540103691078603,
+      "omega_discrete_per_s": 119780571482.57869,
+      "timestep_relative_energy_norm_residual": 0.03824439093998802,
+      "omega_dt_scaled_step_residual": 0.1957225588186065,
+      "exact_phase_increment_scaled_step_residual": 0.1960342806591212,
+      "pec_input_relative_mismatch": 0.0,
+      "max_absolute_component_residuals": {
+        "ex": 0.0,
+        "ey": 0.0,
+        "ez": 0.03824439093998807,
+        "hx": 0.0,
+        "hy": 0.0001015166275517904,
+        "hz": 0.0
+      },
+      "scored_x_node": 0.0,
+      "slab_x_nodes_m": [
+        -0.0009765625,
+        0.0,
+        0.0009765625
+      ],
+      "transverse_shape": [
+        4,
+        6
+      ],
+      "cpml_supported": false
+    },
+    {
+      "case": "missing_H_half_time",
+      "arithmetic": "real_quadratures",
+      "native_storage": null,
+      "native_complex_core_field_cast": "complex64 regardless of requested complex storage",
+      "beta_per_m": [
+        402.1238596594935,
+        0.0
+      ],
+      "frequency_hz": 19094032211.43917,
+      "omega_dt": 0.19540103691078603,
+      "omega_discrete_per_s": 119780571482.57869,
+      "timestep_relative_energy_norm_residual": 0.01905284571020516,
+      "omega_dt_scaled_step_residual": 0.09750636952302404,
+      "exact_phase_increment_scaled_step_residual": 0.09766166518824058,
+      "pec_input_relative_mismatch": 0.0,
+      "max_absolute_component_residuals": {
+        "ex": 0.0,
+        "ey": 0.0,
+        "ez": 0.019052845710205137,
+        "hx": 0.0,
+        "hy": 5.0574230474729986e-05,
+        "hz": 0.0
+      },
+      "scored_x_node": 0.0,
+      "slab_x_nodes_m": [
+        -0.0009765625,
+        0.0,
+        0.0009765625
+      ],
+      "transverse_shape": [
+        4,
+        6
+      ],
+      "cpml_supported": false
+    },
+    {
+      "case": "detuned_frequency_dt_scale_1.0",
+      "arithmetic": "real_quadratures",
+      "native_storage": null,
+      "native_complex_core_field_cast": "complex64 regardless of requested complex storage",
+      "beta_per_m": [
+        402.1238596594935,
+        0.0
+      ],
+      "frequency_hz": 21003435432.583088,
+      "omega_dt": 0.21494114060186464,
+      "omega_discrete_per_s": 131714585940.69402,
+      "timestep_relative_energy_norm_residual": 0.01982181592264537,
+      "omega_dt_scaled_step_residual": 0.09221973916739051,
+      "exact_phase_increment_scaled_step_residual": 0.09239750048992675,
+      "pec_input_relative_mismatch": 0.0,
+      "max_absolute_component_residuals": {
+        "ex": 0.0,
+        "ey": 0.0,
+        "ez": 0.02019901481716884,
+        "hx": 0.0,
+        "hy": 5.159472918594886e-05,
+        "hz": 0.0
+      },
+      "scored_x_node": 0.0,
+      "slab_x_nodes_m": [
+        -0.0009765625,
+        0.0,
+        0.0009765625
+      ],
+      "transverse_shape": [
+        4,
+        6
+      ],
+      "cpml_supported": false
+    },
+    {
+      "case": "detuned_frequency_dt_scale_0.01",
+      "arithmetic": "real_quadratures",
+      "native_storage": null,
+      "native_complex_core_field_cast": "complex64 regardless of requested complex storage",
+      "beta_per_m": [
+        402.1238596594935,
+        0.0
+      ],
+      "frequency_hz": 21003435432.583088,
+      "omega_dt": 0.002149411406018646,
+      "omega_discrete_per_s": 131968451506.53912,
+      "timestep_relative_energy_norm_residual": 0.0001985081690796562,
+      "omega_dt_scaled_step_residual": 0.09235466440896617,
+      "exact_phase_increment_scaled_step_residual": 0.09235468218712367,
+      "pec_input_relative_mismatch": 0.0,
+      "max_absolute_component_residuals": {
+        "ex": 0.0,
+        "ey": 0.0,
+        "ez": 0.000198508566060064,
+        "hx": 0.0,
+        "hy": 5.269227479103066e-07,
+        "hz": 0.0
+      },
+      "scored_x_node": 0.0,
+      "slab_x_nodes_m": [
+        -0.0009765625,
+        0.0,
+        0.0009765625
+      ],
+      "transverse_shape": [
+        4,
+        6
+      ],
+      "cpml_supported": false
+    }
+  ],
+  "limits": [
+    "Physical input fields must use own transverse Yee positions and a common x-reference phasor convention.",
+    "Native complex update demotes fields to complex64 even for complex128 storage.",
+    "Real-quadrature path evaluates real float64 production update twice, once per quadrature.",
+    "Scaled step residual is not a direct continuous Maxwell curl residual.",
+    "CPML/ADE/conformal/anisotropic/source/load extensions require their full actual update state."
+  ]
+}

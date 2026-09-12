@@ -1,0 +1,28 @@
+[
+  {
+    "drive": 0,
+    "steps": 117998,
+    "wall_s": 678.2827650648542,
+    "active_ports": [
+      true,
+      false
+    ],
+    "field_dtype": "float32",
+    "source_u_dtype": "float32",
+    "raw_point_dtype": "float32",
+    "dfreq_dtype": "float32"
+  },
+  {
+    "drive": 1,
+    "steps": 117998,
+    "wall_s": 677.9930322016589,
+    "active_ports": [
+      false,
+      true
+    ],
+    "field_dtype": "float32",
+    "source_u_dtype": "float32",
+    "raw_point_dtype": "float32",
+    "dfreq_dtype": "float32"
+  }
+]
