@@ -1402,6 +1402,107 @@ def _msl_x_for_index(grid, target_i: int) -> float:
     return _msl_coord_for_index(grid, "x", target_i)
 
 
+def msl_sampled_node_coordinates(grid, port: MSLPort, coordinates) -> tuple[float, ...]:
+    """Physical E nodes selected by the DFT registration index lookup.
+
+    The registration's nominal coordinate can differ slightly from the
+    float64 geometry spine. Report the node actually sampled, without
+    changing the registration or the numerical fields.
+    """
+    from rfx.geometry.rasterize_grid import (
+        coords_from_nonuniform_grid, coords_from_uniform_grid,
+    )
+    from rfx.nonuniform import NonUniformGrid
+
+    axis, _, _, _ = msl_axis_roles(port.direction)
+    axes = (coords_from_nonuniform_grid(grid) if isinstance(grid, NonUniformGrid)
+            else coords_from_uniform_grid(grid))
+    nodes = np.asarray(getattr(axes, axis), dtype=float)
+    result = []
+    for coordinate in coordinates:
+        if not np.isfinite(float(coordinate)):
+            raise ValueError("MSL probe coordinate must be finite")
+        point = msl_physical_point(port.direction, coordinate, port.y_lo, port.z_lo)
+        index = _msl_position_to_index(grid, point)[_MSL_AXIS_INDEX[axis]]
+        result.append(float(nodes[index]))
+    return tuple(result)
+
+
+def msl_h_plane_stencil(grid, port: MSLPort, e_plane_coordinate: float) -> dict:
+    """Resolve the H samples bracketing the actual voltage E-node plane.
+
+    DFT registration uses E-node coordinates for every component. H with
+    index i is physically at the propagation-axis cell centre i, not at
+    E-node i. Return both registration coordinates and physical H locations
+    so the distinction is explicit. Direction changes the current sign,
+    not the underlying Yee placement of these samples.
+    """
+    from rfx.geometry.rasterize_grid import (
+        centres_from_nonuniform_grid,
+        centres_from_uniform_grid,
+        coords_from_nonuniform_grid,
+        coords_from_uniform_grid,
+    )
+    from rfx.nonuniform import NonUniformGrid
+
+    coordinate = float(e_plane_coordinate)
+    if not np.isfinite(coordinate):
+        raise ValueError("MSL voltage plane coordinate must be finite")
+    axis, _, _, _ = msl_axis_roles(port.direction)
+    axis_index = _MSL_AXIS_INDEX[axis]
+    if isinstance(grid, NonUniformGrid):
+        coords = coords_from_nonuniform_grid(grid)
+        centres = centres_from_nonuniform_grid(grid, coords)
+    else:
+        coords = coords_from_uniform_grid(grid)
+        centres = centres_from_uniform_grid(grid)
+    nodes = np.asarray(getattr(coords, axis), dtype=float)
+    h_coords = np.asarray(getattr(centres, axis), dtype=float)
+    if not nodes[0] <= coordinate <= nodes[-1]:
+        raise ValueError("MSL voltage plane must lie inside the grid")
+    point = msl_physical_point(port.direction, coordinate, port.y_lo, port.z_lo)
+    index = int(_msl_position_to_index(grid, point)[axis_index])
+    if not 0 < index < len(nodes) - 1:
+        raise ValueError(
+            "MSL current needs two H planes bracketing the voltage plane; "
+            "move the first probe inside the grid")
+    indices = (index - 1, index)
+    registration = tuple(float(nodes[i]) for i in indices)
+    samples = tuple(float(h_coords[i]) for i in indices)
+    target = float(nodes[index])
+    if not (np.isfinite(samples).all() and samples[0] < target < samples[1]):
+        raise ValueError("MSL H samples do not bracket the voltage E-node")
+    for expected, position in zip(indices, registration):
+        point = msl_physical_point(port.direction, position, port.y_lo, port.z_lo)
+        if int(_msl_position_to_index(grid, point)[axis_index]) != expected:
+            raise ValueError(
+                "MSL H-plane coordinate resolves to a different grid index; "
+                "the required current stencil is not addressable")
+    span = samples[1] - samples[0]
+    weights = ((samples[1] - target) / span, (target - samples[0]) / span)
+    return dict(axis=axis, e_index=index, h_indices=indices,
+                registration_coordinates=registration, sample_coordinates=samples,
+                voltage_coordinate=target, weights=weights)
+
+
+def msl_collocate_h_planes(left, right, weights):
+    """Interpolate equal-shaped H phasors while preserving dtype and AD.
+
+    Geometry supplies physical-coordinate weights. There is no beta/model
+    dependent phase correction: both travelling directions are retained.
+    """
+    left = jnp.asarray(left)
+    right = jnp.asarray(right)
+    if left.shape != right.shape:
+        raise ValueError("MSL bracketing H planes must have identical shapes")
+    if left.dtype != right.dtype:
+        raise ValueError("MSL bracketing H planes must have identical dtypes")
+    if not jnp.issubdtype(left.dtype, jnp.inexact):
+        raise ValueError("MSL bracketing H planes must use floating or complex data")
+    w_left, w_right = (jnp.asarray(w, dtype=left.dtype) for w in weights)
+    return w_left * left + w_right * right
+
+
 def msl_probe_x_coords(
     grid,
     port: MSLPort,

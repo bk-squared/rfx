@@ -6,16 +6,16 @@ least-squares wave decomposition (issue #80 Fix C) that removes the
 
 Plane-probe registration helpers:
 
-  * :func:`register_msl_plane_probes` — adds 5 plane DFT probes per
-    port (Ez planes at x=x₁/x₂/x₃ for V, Hy + Hz planes at x=x₁ for
-    the closed-loop I) via :meth:`Simulation.add_dft_plane_probe` and
+  * :func:`register_msl_plane_probes` — adds 7 plane DFT probes per
+    port (Ez planes at x=x₁/x₂/x₃ for V, bracketing Hy + Hz planes for
+    the closed-loop I at x=x₁) via :meth:`Simulation.add_dft_plane_probe` and
     returns the static integration metadata (trace-PEC-search-derived
     j/k spans, per-cell dz/dy profiles, the leapfrog half-step phase)
     that :func:`_v_from_plane` / :func:`_i_from_plane` feed straight
     into the PRODUCTION primitives (:func:`rfx.api._sparams.
     msl_modal_voltage`, :func:`rfx.sources.msl_port.msl_loop_current`)
-    -- issue #514: this path used to duplicate those integrals and
-    drifted; it now calls them, so it cannot drift again.
+    -- issue #514 shares the transverse integrals; issue #726 also shares
+    the H-to-E-plane interpolation with production.
 
 Point-probe registration helper:
 
@@ -185,6 +185,11 @@ class MSLPlaneProbeSet:
     direction: str            # port propagation direction ("+x" / "-x")
     hs_phase: jnp.ndarray      # (n_freqs,) leapfrog E/H half-step phase (#240)
     delta: float                # adjacent-probe spacing (for diagnostics)
+    # Append defaults so existing constructors remain valid. Extraction
+    # refuses legacy metadata instead of silently retaining staggered I.
+    hy_left_name: str | None = None
+    hz_left_name: str | None = None
+    h_weights: tuple[float, float] | None = None
 
 
 def register_msl_plane_probes(
@@ -194,7 +199,7 @@ def register_msl_plane_probes(
     freqs: jnp.ndarray,
     name_prefix: str | None = None,
 ) -> MSLPlaneProbeSet:
-    """Register 5 plane DFT probes for a registered MSL port + return metadata.
+    """Register 7 plane DFT probes for a registered MSL port + return metadata.
 
     Computes the SAME geometry ``compute_msl_s_matrix`` computes
     (``rfx/api/_sparams.py:2953-3072``) so :func:`_v_from_plane` /
@@ -211,7 +216,8 @@ def register_msl_plane_probes(
         ``frac(h_sub/dx) in (0, 0.5)`` (issue #511 / PR #516 finding F2;
         see ``msl_modal_voltage``'s docstring).
       * I at probe 1: the closed Ampere loop ``∮H·dl`` around the trace
-        conductor from the Hy + Hz planes at the same yz plane, via
+        conductor from Hy + Hz on the two bracketing Yee half-planes,
+        interpolated to the voltage plane before
         :func:`rfx.sources.msl_port.msl_loop_current`.
 
     Parameters
@@ -224,7 +230,7 @@ def register_msl_plane_probes(
     freqs : (n_freqs,) jnp.ndarray
         Target frequencies — same convention as ``add_dft_plane_probe``.
     name_prefix : str, optional
-        Prefix for the five registered DFT-plane names.  Default
+        Prefix for the seven registered DFT-plane names. Default
         ``f"msl_p{port_index}"``.
 
     Returns
@@ -233,7 +239,8 @@ def register_msl_plane_probes(
     """
     import numpy as np
     from rfx.sources.msl_port import (
-        msl_cross_section_span, msl_port_from_entry, msl_probe_x_coords,
+        msl_cross_section_span, msl_h_plane_stencil, msl_port_from_entry,
+        msl_probe_x_coords,
     )
 
     if name_prefix is None:
@@ -292,6 +299,7 @@ def register_msl_plane_probes(
         n_spacing_cells=pe.n_probe_spacing
             if pe.n_probe_spacing is not None else 3,
     )
+    h_stencil = msl_h_plane_stencil(grid, mp, pxs[0])
 
     # Cross-section index metadata, identical to compute_msl_s_matrix's
     # per-port meta (rfx/api/_sparams.py:2961-2980).
@@ -342,25 +350,31 @@ def register_msl_plane_probes(
         * (float(grid.dt) * 0.5)
     ).astype(jnp.complex64)
 
-    # Register the 5 plane DFT probes (3 Ez + Hy + Hz for the closed
-    # Ampere loop).  The accumulators are filled inside the JIT scan body
+    # Register 3 Ez planes and two bracketing planes for each H component.
+    # The accumulators are filled inside the JIT scan body
     # and surfaced through ``ForwardResult.dft_planes[name]``.
     ez_names = [f"{name_prefix}_ez{q+1}" for q in range(3)]
     hy_name = f"{name_prefix}_hy"
     hz_name = f"{name_prefix}_hz"
+    hy_left_name = f"{hy_name}_left"
+    hz_left_name = f"{hz_name}_left"
     for q in range(3):
         sim.add_dft_plane_probe(
             axis="x", coordinate=float(pxs[q]),
             component="ez", freqs=freqs, name=ez_names[q],
         )
-    sim.add_dft_plane_probe(
-        axis="x", coordinate=float(pxs[0]),
-        component="hy", freqs=freqs, name=hy_name,
-    )
-    sim.add_dft_plane_probe(
-        axis="x", coordinate=float(pxs[0]),
-        component="hz", freqs=freqs, name=hz_name,
-    )
+    # Preserve the original five names and their registration order;
+    # append the two new left H planes. Coordinates name array indices,
+    # while the stencil accounts for H's physical half-cell offset.
+    for coordinate, names in (
+        (h_stencil["registration_coordinates"][1], (hy_name, hz_name)),
+        (h_stencil["registration_coordinates"][0], (hy_left_name, hz_left_name)),
+    ):
+        for component, name in zip(("hy", "hz"), names):
+            sim.add_dft_plane_probe(
+                axis=h_stencil["axis"], coordinate=coordinate,
+                component=component, freqs=freqs, name=name,
+            )
 
     return MSLPlaneProbeSet(
         ez1_name=ez_names[0], ez2_name=ez_names[1], ez3_name=ez_names[2],
@@ -374,6 +388,9 @@ def register_msl_plane_probes(
         direction=mp.direction,
         hs_phase=hs_phase,
         delta=delta,
+        hy_left_name=hy_left_name,
+        hz_left_name=hz_left_name,
+        h_weights=h_stencil["weights"],
     )
 
 
@@ -444,9 +461,11 @@ def _v_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
 def _i_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
     """I_f = production ``msl_loop_current`` closed Ampere loop.
 
-    ``plane_name`` names the Hy plane; the Hz plane comes from
-    ``p.hz_name`` (both registered together by
-    :func:`register_msl_plane_probes`). Issue #514: this used to
+    ``plane_name`` names the retained right Hy plane; its left neighbour
+    and both Hz planes are registered by :func:`register_msl_plane_probes`.
+    Interpolate each H pair to the voltage E-node before the temporal
+    correction. Missing bracketing metadata or data is an error.
+    Issue #514: this used to
     integrate a single pre-#80 Hy slab (~1.5x undercount vs. the closed
     loop). It now applies the leapfrog E/H half-step phase (#240) and
     calls :func:`rfx.sources.msl_port.msl_loop_current` directly with the
@@ -454,9 +473,21 @@ def _i_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
     convention comes from ``msl_loop_current``/``msl_axis_roles`` alone —
     no extra direction multiply here (that would double-apply the sign).
     """
-    from rfx.sources.msl_port import msl_loop_current
-    hy_plane = jnp.asarray(fr.dft_planes[plane_name].accumulator)
-    hz_plane = jnp.asarray(fr.dft_planes[p.hz_name].accumulator)
+    from rfx.sources.msl_port import msl_collocate_h_planes, msl_loop_current
+
+    if p.hy_left_name is None or p.hz_left_name is None or p.h_weights is None:
+        raise ValueError(
+            "MSL current requires bracketing H-plane metadata; "
+            "re-register the plane probes and acquire both H samples")
+    planes = getattr(fr, "dft_planes", None) or {}
+    required = (p.hy_left_name, plane_name, p.hz_left_name, p.hz_name)
+    missing = [name for name in required if name not in planes]
+    if missing:
+        raise ValueError(f"MSL current requires bracketing H-plane data; missing {missing}")
+    hy_plane = msl_collocate_h_planes(
+        planes[p.hy_left_name].accumulator, planes[plane_name].accumulator, p.h_weights)
+    hz_plane = msl_collocate_h_planes(
+        planes[p.hz_left_name].accumulator, planes[p.hz_name].accumulator, p.h_weights)
     hy_plane = hy_plane * p.hs_phase[:, None, None].astype(hy_plane.dtype)
     hz_plane = hz_plane * p.hs_phase[:, None, None].astype(hz_plane.dtype)
     return msl_loop_current(

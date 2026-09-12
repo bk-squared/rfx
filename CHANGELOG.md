@@ -11,6 +11,12 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
 
 ### Fixed — MSL clearance and accuracy claims (#726)
 
+- Interpolate bracketing transverse H samples to the existing voltage E-node
+  plane using physical grid coordinates before forming MSL current and S.
+  Preserve the temporal correction, port signs and reference impedances.
+- Expose `probe_clearance` separately from the relative low-signal `reliable`
+  mask; report resolved probe positions and signed reflector gaps without
+  treating the layout recommendation as an accuracy certificate.
 - Qualify layout and fitted-Z0/beta warnings, and document the first-probe
   reference planes and analytic S normalization separately from fitted Z0.
 - The cv06b comparison holds source/DUT fixed, checks both realized probe

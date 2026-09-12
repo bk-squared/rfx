@@ -265,12 +265,13 @@ def _warn_msl_wave_split_unreliable(
     f1 = freqs_arr[int(affected_freqs[0])] / 1e9
     f2 = freqs_arr[int(affected_freqs[-1])] / 1e9
     warnings.warn(
-        "standing-wave null at the port plane: "
+        "low signal at an MSL port plane: "
         f"{affected_freqs.size} bins in [{f1:.4f}, {f2:.4f}] GHz "
-        "have |V|,|I| below 10% of band median — wave-split "
-        "S-parameters are unreliable there (blind spot of single-run "
-        "reflection measurements of strong reflectors); see "
-        "rfx-known-issues standing-wave-null entry",
+        "have both |V| and |I| below 10% of their record's band medians. "
+        "This flags relative signal strength, not proof of an incorrect "
+        "S-matrix; a true transmission zero can also trigger it. Check "
+        "signal uncertainty, settling, drive conditioning and probe "
+        "geometry before using these bins.",
         stacklevel=2,
     )
 
@@ -2633,8 +2634,41 @@ def _assemble_coax_msl_transition_from_voltages(
     )
 
 
+def _register_msl_h_planes(sim, prefix, stencil, components, freqs, region=None):
+    """Register the two bracketing samples of each transverse H component."""
+    pairs = []
+    for component in components:
+        right = f"{prefix}_{component}"
+        left = f"{right}_left"
+        for name, coordinate in zip((left, right), stencil["registration_coordinates"]):
+            sim.add_dft_plane_probe(
+                axis=stencil["axis"], coordinate=coordinate,
+                component=component, freqs=freqs, name=name,
+            )
+            if region is not None:
+                sim._dft_plane_regions[name] = region
+        pairs.append((left, right))
+    return tuple(pairs)
+
+
+def _collocated_msl_h(planes, names, weights):
+    """Read each H pair without leaving the field's JAX differentiation tape."""
+    from rfx.sources.msl_port import msl_collocate_h_planes
+
+    missing = [name for pair in names for name in pair if name not in planes]
+    if missing:
+        raise ValueError(f"MSL current requires bracketing H-plane data; missing {missing}")
+    return tuple(msl_collocate_h_planes(
+        planes[left].accumulator, planes[right].accumulator, weights,
+    ) for left, right in names)
+
+
 class _SparamMixin:
     """S-parameter extraction methods mixed into :class:`Simulation`."""
+
+    def _resolve_msl_probe_entries(self, grid):
+        """One resolved ladder for preflight and both MSL extraction lanes."""
+        return _resolve_msl_auto_offsets(self, list(self._msl_ports), grid)
 
     # Runtime-only; set by compute_msl_s_matrix for the duration of a run.
     _dft_plane_regions: dict[str, tuple[int, int, int, int]]
@@ -3730,11 +3764,12 @@ class _SparamMixin:
         ``V_n = α e^{-jβx_n} + γ e^{+jβx_n}`` supplies only the reported
         beta/Z0 diagnostics. Those fitted values do not enter S. S is
         referenced to each first probe plane, without translation back to
-        the physical feed planes. This is a nominal E-plane reference:
-        the current H samples retain their spatial half-cell stagger even
-        after the temporal correction. Comparing different observation
-        offsets requires accounting for these sample positions and the
-        reference impedances.
+        the physical feed planes. The two bracketing H planes are linearly
+        interpolated to the E-node using their physical coordinates, then
+        the leapfrog temporal offset is corrected. Comparing different
+        observation offsets still requires accounting for reference planes
+        and impedances. ``probe_clearance`` reports the separate downstream
+        layout recommendation; it is not a signal or accuracy score.
 
         Parameters
         ----------
@@ -3808,6 +3843,7 @@ class _SparamMixin:
             msl_axis_roles,
             msl_cell,
             msl_cross_section_span,
+            msl_h_plane_stencil,
             msl_loop_current,
             msl_physical_point,
             msl_port_from_entry,
@@ -3882,7 +3918,7 @@ class _SparamMixin:
         # Issue #469: solve the probe-offset interval for AUTO ports (the
         # downstream reflector term is only computable here, with the full
         # geometry registered — see _resolve_msl_auto_offsets).
-        entries = _resolve_msl_auto_offsets(self, entries, grid)
+        entries = self._resolve_msl_probe_entries(grid)
 
         # Build MSLPort descriptors and probe coords once (geometry shared).
         # Issue #661: msl_port_from_entry projects ``position`` onto the
@@ -3901,6 +3937,14 @@ class _SparamMixin:
             )
             for mp, pe, n_probes in zip(msl_ports, entries, n_probes_per_port)
         ]
+        # Resolve before registering internal observations or advancing fields.
+        # H[i] lies half a propagation cell beyond E[i], for either port sign.
+        h_stencils = [msl_h_plane_stencil(grid, mp, xs[0])
+                      for mp, xs in zip(msl_ports, probe_xs)]
+        from rfx.api._preflight import msl_probe_clearance_for_port
+        probe_clearance = tuple(msl_probe_clearance_for_port(
+            self, pe, grid, probe_coordinates=xs,
+        ) for pe, xs in zip(entries, probe_xs))
         # ``probe_xs`` are the N physical x-coordinates fed to the
         # N-probe extractor (issue #80 Fix C), which fits
         # V_n = alpha*exp(-j*beta*x_n) + gamma*exp(+j*beta*x_n). The
@@ -4081,6 +4125,11 @@ class _SparamMixin:
                 (n_ports, n_ports, n_probes_max, n_freqs_used), dtype=_complex_dtype
             )
             raw_i1 = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
+            # Optional evidence preserves both measured sides, so the old
+            # same-index current and the corrected one can be compared from
+            # ONE field record rather than another FDTD run.
+            raw_i1_left = jnp.zeros_like(raw_i1) if raw_3probe_dump_path is not None else None
+            raw_i1_same_index = jnp.zeros_like(raw_i1) if raw_3probe_dump_path is not None else None
             raw_z0 = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
             raw_q = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
             # β-scan rail flags per (driven, port) fit (issue #681).
@@ -4167,8 +4216,7 @@ class _SparamMixin:
                 self._dft_planes = list(saved_dft)
                 self._dft_plane_regions = dict(saved_dft_regions)
                 ez_probe_names: list[list[str]] = [[] for _ in range(n_ports)]
-                hy_probe_names: list[str] = [None] * n_ports  # type: ignore
-                hz_probe_names: list[str] = [None] * n_ports  # type: ignore
+                h_probe_names = []
                 for p_idx, (mp, pxs) in enumerate(zip(msl_ports, probe_xs)):
                     # Plane normal = this port's PROPAGATION axis; the two
                     # H components are the closed-Ampere-loop pair
@@ -4196,24 +4244,11 @@ class _SparamMixin:
                         _k_tr_lo - 1,
                         _k_tr_hi + 1,
                     )
-                    nm_hy = f"_msl_run{driven}_p{p_idx}_{_meta_p['h_a']}"
-                    self.add_dft_plane_probe(
-                        axis=_plane_axis, coordinate=float(pxs[0]),
-                        component=_meta_p["h_a"], freqs=jnp.asarray(freqs_arr),
-                        name=nm_hy,
-                    )
-                    self._dft_plane_regions[nm_hy] = _h_crop_region
-                    hy_probe_names[p_idx] = nm_hy
-                    # H_b plane probe at probe 0 — the other leg pair of the
-                    # closed Ampere-loop current (issue #80 stage S1).
-                    nm_hz = f"_msl_run{driven}_p{p_idx}_{_meta_p['h_b']}"
-                    self.add_dft_plane_probe(
-                        axis=_plane_axis, coordinate=float(pxs[0]),
-                        component=_meta_p["h_b"], freqs=jnp.asarray(freqs_arr),
-                        name=nm_hz,
-                    )
-                    self._dft_plane_regions[nm_hz] = _h_crop_region
-                    hz_probe_names[p_idx] = nm_hz
+                    h_probe_names.append(_register_msl_h_planes(
+                        self, f"_msl_run{driven}_p{p_idx}", h_stencils[p_idx],
+                        (_meta_p["h_a"], _meta_p["h_b"]), jnp.asarray(freqs_arr),
+                        _h_crop_region,
+                    ))
 
                 # G-AD-WIRE: when eps_override is provided use the
                 # differentiable forward() path so jax.grad can flow
@@ -4337,10 +4372,11 @@ class _SparamMixin:
                     # set. np.asarray() would concretise a JAX tracer and
                     # break jax.grad. jnp.asarray() is a no-op on a real
                     # jnp.ndarray and still works for numpy arrays.
-                    hy_plane = jnp.asarray(planes[hy_probe_names[p_idx]].accumulator)
-                    hz_plane = jnp.asarray(planes[hz_probe_names[p_idx]].accumulator)
+                    hy_plane, hz_plane = _collocated_msl_h(
+                        planes, h_probe_names[p_idx], h_stencils[p_idx]["weights"],
+                    )
                     _h_region = self._dft_plane_regions.get(
-                        hy_probe_names[p_idx]
+                        h_probe_names[p_idx][0][1]
                     )
                     _h_is_cropped = (
                         _h_region is not None
@@ -4419,6 +4455,25 @@ class _SparamMixin:
                         dy_arr=_a_arr, dz_arr=_b_arr,
                         direction=msl_ports[p_idx].direction,
                     )
+                    if raw_3probe_dump_path is not None:
+                        assert raw_i1_left is not None and raw_i1_same_index is not None
+                        side_currents = []
+                        for side in (0, 1):
+                            side_a = jnp.asarray(planes[h_probe_names[p_idx][0][side]].accumulator)
+                            side_b = jnp.asarray(planes[h_probe_names[p_idx][1][side]].accumulator)
+                            side_a = side_a * _hs_phase[:, None, None]
+                            side_b = side_b * _hs_phase[:, None, None]
+                            if not meta["a_is_width"]:
+                                side_a = jnp.transpose(side_a, (0, 2, 1))
+                                side_b = jnp.transpose(side_b, (0, 2, 1))
+                            side_currents.append(msl_loop_current(
+                                side_a, side_b, j_lo=_a_lo, j_hi=_a_hi,
+                                k_trace_lo=_b_lo, k_trace_hi=_b_hi,
+                                dy_arr=_a_arr, dz_arr=_b_arr,
+                                direction=msl_ports[p_idx].direction,
+                            ))
+                        raw_i1_left = raw_i1_left.at[driven, p_idx, :].set(side_currents[0])
+                        raw_i1_same_index = raw_i1_same_index.at[driven, p_idx, :].set(side_currents[1])
                     i_first_per_port.append(i_f)
                     # N-probe least-squares wave decomposition (issue #80
                     # Fix C). Stack the N voltage probes into (n_freqs, N),
@@ -4580,41 +4635,21 @@ class _SparamMixin:
                 )
                 msl_cond_a = cond_a
 
-            # A deep standing-wave node can collapse both phasors at the
-            # driven port plane.  The V·I ratio is then numerically ill
-            # conditioned even though the underlying reflector is passive.
-            # Preserve S exactly as computed and expose that blind spot as
-            # per-port metadata (issue #337 follow-up).
+            # Preserve the existing relative low-signal screen and S exactly.
+            # Small passive-port wave pairs may be a true transmission zero;
+            # this flag alone establishes neither matrix corruption nor an
+            # absolute error bound. It remains separate from layout/settling.
             reliable = None
             try:
-                # Cover EVERY (driven, port) record, not just the own-drive
-                # diagonal (issue #522). The solve consumes the wave pair at
-                # all n_drives x n_ports probe planes, so a collapse at a
-                # PASSIVE port's plane during someone else's drive corrupts
-                # the whole slice S[:, :, k] — and the diagonal-only mask
-                # never saw it. Measured on a synthetic witness: poisoning
-                # only the (drive 0, port 1) record moved |S21| by 0.92 at
-                # that bin with the mask all-True, cond(A) = 1.28, S finite
-                # and the honesty guard silent.
-                #
-                # Shape is unchanged, (n_ports, n_freqs), and so is the
-                # meaning of the index: reliable[p, k] is False when PORT
-                # p's plane collapsed at bin k in AT LEAST ONE drive. That
-                # makes np.all(reliable, axis=0) genuinely sufficient for
-                # "no plane the solve reads collapsed at this bin".
-                #
-                # The criterion is relative to each record's OWN band
-                # median (see _msl_wave_split_reliability), so a uniformly
-                # small passive record is not flagged wholesale — but deep
-                # individual bins ARE. Live extractor runs on the two filter
-                # geometries: 2/100 bins on msl_notch_e4 (and they are the
-                # notch centre, 3.6273 GHz, recorded at -30.66 dB in the
-                # committed fixture meta) and 12/120 on the Sheen LPF leg.
-                # The counts need a re-run to check — the committed fixtures
-                # store S magnitudes only, no V/I dump.
-                # Correct behaviour — the split really is low-signal at a
-                # -30 dB notch — but it costs a filter user their most
-                # interesting bin; see the reliable docstring.
+                # Cover every drive/port record (issue #522). An error in
+                # a passive record can affect the solve even when own-drive
+                # records are healthy: the planted corruption test changes
+                # S21 by0.92 with cond(A)=1.28. Small magnitude alone does
+                # not establish that such corruption occurred; exact
+                # transmission zeros can also trip this screen.
+                # Output shape and threshold remain unchanged: a port/bin
+                # is False if at least one drive has both relative phasors
+                # below the existing ten-percent floor.
                 v_all = np.stack([
                     np.asarray(jax.lax.stop_gradient(raw_v[d, p, 0, :]))
                     for d in range(n_ports) for p in range(n_ports)
@@ -4694,19 +4729,14 @@ class _SparamMixin:
                 # Primary — V·I-split S11 boundedness (extraction soundness).
                 if s11_max > _S11_MAX:
                     # Cross-reference the standing-wave-null reliability mask (computed above): if
-                    # the peak-|S11| bin is a flagged null, the correct root cause is the
-                    # ill-conditioned V·I ratio there (both phasors collapse), NOT a current
-                    # sign/scale error — attributing it to current mismeasurement misdiagnoses a
-                    # legitimate passive strong reflector (RF-audit 2026-07-23). The guard still
-                    # fires (the extracted value IS unreliable at that bin); only the cause differs.
+                    # the peak-|S11| bin is flagged, signal strength is an
+                    # additional concern, not a diagnosis of the root cause.
                     at_null = reliable is not None and not bool(np.asarray(reliable)[driven, k_s])
                     cause = (
-                        "that bin is flagged by the standing-wave-null reliability mask: a deep "
-                        "node collapses both the V and I phasors, so the V·I ratio is "
-                        "ill-conditioned (a numerical blind spot, not necessarily a current "
-                        "sign/scale error)"
+                        "the relative low-signal mask also flags this bin; "
+                        "check signal uncertainty and the drive system"
                         if at_null else
-                        "the closed Ampere-loop current is likely mismeasured (sign/scale)"
+                        "check current sign/scale, mode validity, settling and drive conditioning"
                     )
                     msg = (
                         f"compute_msl_s_matrix: V·I-split |S11| = "
@@ -4750,6 +4780,9 @@ class _SparamMixin:
                 metadata = {
                     "schema": "rfx.msl_nprobe_dump",
                     "schema_version": 3,
+                    "current_spatial_alignment": "linear_bracketing_H_to_E_node",
+                    "current_plane_stencils": h_stencils,
+                    "s_reference_impedances_ohm": z0_hj_per_port,
                     "production_smatrix_schema": "S[receiver_port, driven_port, frequency_index]",
                     "production_smatrix_stage": (
                         "PRE-passivity-projection raw extraction; "
@@ -4827,6 +4860,8 @@ class _SparamMixin:
                     freqs_hz=np.asarray(freqs_arr, dtype=np.float64),
                     raw_v=raw_v,
                     raw_i1=raw_i1,
+                    raw_i1_left=raw_i1_left,
+                    raw_i1_same_index=raw_i1_same_index,
                     raw_z0=raw_z0,
                     raw_q=raw_q,
                     production_smatrix=S,
@@ -4866,6 +4901,7 @@ class _SparamMixin:
                 assembly=msl_assembly,
                 cond_a=msl_cond_a,
                 beta_railed=beta_railed,
+                probe_clearance=probe_clearance,
             )
             _warn_if_ringdown_truncated(
                 settling_db_runs,
@@ -5038,6 +5074,7 @@ class _SparamMixin:
             MSLPort,
             _msl_yz_cells,
             msl_cross_section_span,
+            msl_h_plane_stencil,
             msl_loop_current,
             msl_probe_x_coords_n,
         )
@@ -5144,7 +5181,7 @@ class _SparamMixin:
 
         # ---- MSL geometry prep (mirrors compute_msl_s_matrix; uniform
         # lane only, so the NU grid/dz-profile machinery is not needed) ----
-        entries = _resolve_msl_auto_offsets(self, list(self._msl_ports), grid)
+        entries = self._resolve_msl_probe_entries(grid)
         n_msl = len(entries)
         msl_ports: list[MSLPort] = []
         for pe in entries:
@@ -5171,6 +5208,12 @@ class _SparamMixin:
             )
             for mp, pe in zip(msl_ports, entries)
         ]
+        h_stencils = [msl_h_plane_stencil(grid, mp, xs[0])
+                      for mp, xs in zip(msl_ports, probe_xs)]
+        from rfx.api._preflight import msl_probe_clearance_for_port
+        probe_clearance = tuple(msl_probe_clearance_for_port(
+            self, pe, grid, probe_coordinates=xs,
+        ) for pe, xs in zip(entries, probe_xs))
         # Probe-LADDER validation (issue #488 attempt-1 defect D3). The S1
         # V*I split records probe 0 only, but v1 must not silently accept
         # a ladder the validated MSL lane rejects: attempt 1 registered a
@@ -5215,9 +5258,10 @@ class _SparamMixin:
                     f"compute_mixed_s_matrix: MSL port {pe.name!r} probe-0 "
                     f"plane is {_edge_d * 1e3:.2f} mm from a domain x-edge "
                     f"(< lambda_g/4 = {_clear * 1e3:.2f} mm at freq_max). "
-                    "A boundary-touching trace has an OPEN end there; "
-                    "standing waves from that discontinuity can bias the "
-                    "V*I split (see the reliable mask).",
+                    "This is a layout recommendation near a possible "
+                    "trace discontinuity, not an accuracy bound. Check "
+                    "the realized termination and observation-plane "
+                    "sensitivity; reliable only screens relative low signal.",
                     stacklevel=2,
                 )
 
@@ -5488,6 +5532,7 @@ class _SparamMixin:
                 # Hy+Hz at probe 0 (closed Ampere-loop current legs).
                 self._dft_planes = list(saved_dft)
                 names = []
+                h_names = []
                 for p_idx, pxs in enumerate(probe_xs):
                     nm = f"_mixed_run{run_idx}_p{p_idx}"
                     # Full ez ladder: probe 0 feeds the V*I wave split;
@@ -5500,14 +5545,10 @@ class _SparamMixin:
                             freqs=jnp.asarray(freqs_arr),
                             name=nm + f"_ez{q_idx}",
                         )
-                    self.add_dft_plane_probe(
-                        axis="x", coordinate=float(pxs[0]), component="hy",
-                        freqs=jnp.asarray(freqs_arr), name=nm + "_hy",
-                    )
-                    self.add_dft_plane_probe(
-                        axis="x", coordinate=float(pxs[0]), component="hz",
-                        freqs=jnp.asarray(freqs_arr), name=nm + "_hz",
-                    )
+                    h_names.append(_register_msl_h_planes(
+                        self, nm, h_stencils[p_idx], ("hy", "hz"),
+                        jnp.asarray(freqs_arr),
+                    ))
                     names.append(nm)
 
                 raw = self._forward_from_materials(
@@ -5618,8 +5659,9 @@ class _SparamMixin:
                         )
                         v_lad[run_idx, p_idx, q_idx, :] = np.asarray(v_q)
                     v_f = jnp.asarray(v_lad[run_idx, p_idx, 0, :])
-                    hy_plane = jnp.asarray(planes[nm + "_hy"].accumulator)
-                    hz_plane = jnp.asarray(planes[nm + "_hz"].accumulator)
+                    hy_plane, hz_plane = _collocated_msl_h(
+                        planes, h_names[p_idx], h_stencils[p_idx]["weights"],
+                    )
                     hy_plane = hy_plane * _hs_phase[:, None, None].astype(hy_plane.dtype)
                     hz_plane = hz_plane * _hs_phase[:, None, None].astype(hz_plane.dtype)
                     k_tr_lo, k_tr_hi = trace_k_per_port[p_idx]
@@ -5731,11 +5773,11 @@ class _SparamMixin:
                         f"MSL port {entries[d].name!r} deviates up to "
                         f"{_dev * 100:.1f}% from analytic Hammerstad-Jensen "
                         f"{z0_hj_per_port[d]:.2f} ohm. The MSL diagonal "
-                        "here uses the ANALYTIC anchor, so this does not "
-                        "change the returned S — it is a diagnostic that "
-                        "the record may be under-settled (check "
-                        "settling_db) or the discretized line genuinely "
-                        "differs (Yee staircase on coarse meshes).",
+                        "uses the analytic anchor; this fitted value is "
+                        "not used in S. That does not certify the shared "
+                        "V/I inputs. Check settling_db, the relative "
+                        "low-signal mask, probe_clearance and observation-"
+                        "plane sensitivity before interpreting S.",
                         stacklevel=2,
                     )
             # β-scan rail flags for the diagnostic N-probe fit (issue
@@ -5840,6 +5882,7 @@ class _SparamMixin:
                 S_wave=s_wave_full,
                 magnitude_channel=magnitude_channel,
                 beta_railed=beta_railed_msl,
+                probe_clearance=probe_clearance,
             )
             _warn_if_ringdown_truncated(
                 settling_db_runs, port_names, num_periods=num_periods,

@@ -112,8 +112,10 @@ def test_unreliable_bins_emit_one_aggregate_warning():
         )
     assert len(recorded) == 1
     assert str(recorded[0].message) == (
-        "standing-wave null at the port plane: 2 bins in [8.4500, 8.5000] GHz "
-        "have |V|,|I| below 10% of band median — wave-split S-parameters are "
-        "unreliable there (blind spot of single-run reflection measurements "
-        "of strong reflectors); see rfx-known-issues standing-wave-null entry"
+        "low signal at an MSL port plane: 2 bins in [8.4500, 8.5000] GHz "
+        "have both |V| and |I| below 10% of their record's band medians. "
+        "This flags relative signal strength, not proof of an incorrect "
+        "S-matrix; a true transmission zero can also trigger it. Check "
+        "signal uncertainty, settling, drive conditioning and probe "
+        "geometry before using these bins."
     )

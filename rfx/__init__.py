@@ -8,7 +8,7 @@ from rfx.simulation import run, run_until_decay, make_source, make_probe, make_p
 from rfx.adi import ADIState2D, ADIState3D, thomas_solve, adi_step_2d, run_adi_2d, adi_step_3d, run_adi_3d
 from rfx.api import (
     Simulation, Result, WaveguideSParamResult, WaveguideSMatrixResult,
-    MSLSMatrixResult, MixedSMatrixResult, CoaxialSMatrixResult, MATERIAL_LIBRARY,
+    MSLProbeClearance, MSLSMatrixResult, MixedSMatrixResult, CoaxialSMatrixResult, MATERIAL_LIBRARY,
     AD_MemoryEstimate, ADMemoryPlan, ADMemoryComponent,
     ADMemoryActionHint, ADMemoryExplainabilityReport,
     ADMemoryPreflightReport, ADCompiledMemoryCertificate,
@@ -247,7 +247,7 @@ __all__ = [
     "SimResult", "SnapshotSpec",
     # result + S-matrix types
     "Result", "WaveguideSParamResult", "WaveguideSMatrixResult",
-    "MSLSMatrixResult", "MixedSMatrixResult", "CoaxialSMatrixResult",
+    "MSLProbeClearance", "MSLSMatrixResult", "MixedSMatrixResult", "CoaxialSMatrixResult",
     "AD_MemoryEstimate", "ADMemoryPlan", "ADMemoryComponent",
     "ADMemoryActionHint",
     "ADMemoryExplainabilityReport", "MeshIntelligenceReport",

@@ -715,7 +715,7 @@ def _fake_run_drive_dependent(nz_markers, scale_by_run):
     branch under test. ``scale_by_run[i]`` scales run i's ez plane.
     """
     import re
-    name_re = re.compile(r"_msl_run(?P<run>\d+)_p(?P<port>\d+)_(?P<kind>ez\d+|hy|hz)")
+    name_re = re.compile(r"_msl_run(?P<run>\d+)_p(?P<port>\d+)_(?P<kind>ez\d+|hy|hz)(?:_left)?")
 
     def fake_run(self, *, n_steps=None, num_periods=1.0, compute_s_params=False):
         del n_steps, num_periods, compute_s_params
@@ -955,7 +955,7 @@ def _fake_run_collapse(collapse):
     null the mask exists to catch.
     """
     import re
-    name_re = re.compile(r"_msl_run(?P<run>\d+)_p(?P<port>\d+)_(?P<kind>ez\d+|hy|hz)")
+    name_re = re.compile(r"_msl_run(?P<run>\d+)_p(?P<port>\d+)_(?P<kind>ez\d+|hy|hz)(?:_left)?")
 
     def fake_run(self, *, n_steps=None, num_periods=1.0, compute_s_params=False):
         del n_steps, num_periods, compute_s_params

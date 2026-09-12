@@ -314,7 +314,10 @@ def _enumerate_emission_sites():
 # #931 P1: one named error for unsupported interior PEC on both ADI lanes.
 # #729: two blocking sites under one new code -- assembly unavailable and
 # a concrete conductor-plane mismatch. Both remain input-side diagnostics.
-_FROZEN_TOTAL_SITES = 109
+# #726 adds three msl_port_geometry sites: resolved-placement warnings,
+# a failed placement resolution, and unavailable reflector assessment.
+# No new code slug or public compute entry point is introduced.
+_FROZEN_TOTAL_SITES = 112
 _FROZEN_LITERAL_CODE_COUNT = 74
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path

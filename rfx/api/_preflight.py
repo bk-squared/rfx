@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import math
+from typing import Literal
 
 import jax
 import jax.numpy as jnp
@@ -1408,6 +1409,18 @@ def msl_nearest_downstream_reflector(
         lo, hi = _bounds(shape, _what)
         if lo is None or hi is None:
             continue
+        try:
+            lo, hi = np.asarray(lo, dtype=float), np.asarray(hi, dtype=float)
+            valid_bounds = (lo.shape == hi.shape == (3,)
+                            and np.isfinite(lo).all() and np.isfinite(hi).all()
+                            and np.all(hi >= lo))
+        except (TypeError, ValueError):
+            valid_bounds = False
+        if not valid_bounds:
+            unevaluated.append(
+                f"{_what} ({type(shape).__name__}): bounds are not finite, "
+                "ordered three-dimensional coordinates")
+            continue
         # "x" = propagation axis, "y" = trace-width axis (issue #661).
         box_x_lo, box_x_hi = float(lo[_ip]), float(hi[_ip])
         box_y_lo, box_y_hi = float(lo[_iw]), float(hi[_iw])
@@ -1447,6 +1460,77 @@ def msl_nearest_downstream_reflector(
                 f"{_width_ax}∈[{box_y_lo*1e3:.2f},{box_y_hi*1e3:.2f}]mm"
             )
     return nearest_d, nearest_label, unevaluated
+
+
+def msl_probe_clearance_for_port(sim, pe, grid, *, probe_coordinates=None):
+    """Assess the existing reflector-layout rule on the sampled E nodes.
+
+    Scan from the feed, not from the last probe: otherwise a ladder which
+    has already passed a conductor can incorrectly appear clear. This
+    changes no placement threshold and does not infer S accuracy.
+    """
+    from rfx.api._spec import MSLProbeClearance
+    from rfx.sources.msl_port import (
+        _MSL_AXIS_INDEX, msl_axis_roles, msl_port_from_entry,
+        msl_probe_x_coords_n, msl_sampled_node_coordinates,
+    )
+
+    axis, width_axis, _, sign = msl_axis_roles(pe.direction)
+    frequency = float(sim._freq_max)
+    recommended = (msl_min_probe_clearance(frequency)
+                   if np.isfinite(frequency) and frequency > 0 else None)
+
+    def unavailable(note):
+        return MSLProbeClearance(
+            port_name=pe.name, axis=axis, status="unavailable",
+            rule_frequency_hz=frequency, recommended_gap_m=recommended, note=note,
+        )
+
+    if grid is None or recommended is None:
+        return unavailable("realized grid or positive design frequency is unavailable")
+    port = msl_port_from_entry(pe)
+    try:
+        if probe_coordinates is None:
+            probe_coordinates = msl_probe_x_coords_n(
+                grid, port, int(pe.n_probes), int(pe.n_probe_offset),
+                int(pe.n_probe_spacing),
+            )
+        coordinates = msl_sampled_node_coordinates(grid, port, probe_coordinates)
+        if not coordinates:
+            return unavailable("the realized probe ladder is empty")
+    except (TypeError, ValueError, AttributeError, OverflowError) as exc:
+        return unavailable(f"realized probe coordinates are unavailable: {type(exc).__name__}")
+    feed = float(pe.position[_MSL_AXIS_INDEX[axis]])
+    try:
+        distance, label, unevaluated = msl_nearest_downstream_reflector(
+            getattr(sim, "_geometry", ()), x_probe=feed, x_feed=feed,
+            y_feed=float(pe.position[_MSL_AXIS_INDEX[width_axis]]),
+            w_trace=float(pe.width), dx=float(grid.dx),
+            domain_y=float(sim._domain[_MSL_AXIS_INDEX[width_axis]]),
+            direction=pe.direction,
+            resolve_material=getattr(sim, "_resolve_material", None),
+            thin_conductors=getattr(sim, "_thin_conductors", ()),
+            pec_sigma_threshold=getattr(sim, "_PEC_SIGMA_THRESHOLD", 1e6),
+        )
+    except (TypeError, ValueError, AttributeError, OverflowError) as exc:
+        return unavailable(f"reflector geometry is unavailable: {type(exc).__name__}")
+    first, deepest = float(coordinates[0]), float(coordinates[-1])
+    first_gap = (float(distance - sign * (first - feed)) if label is not None else None)
+    deepest_gap = (float(distance - sign * (deepest - feed)) if label is not None else None)
+    status: Literal["satisfied", "insufficient", "unavailable"]
+    if deepest_gap is not None and deepest_gap < recommended:
+        status = "insufficient"
+    elif unevaluated:
+        status = "unavailable"
+    else:
+        status = "satisfied"
+    return MSLProbeClearance(
+        port_name=pe.name, axis=axis, status=status,
+        rule_frequency_hz=frequency, recommended_gap_m=recommended,
+        first_probe_m=first, deepest_probe_m=deepest,
+        first_gap_m=first_gap, deepest_gap_m=deepest_gap,
+        reflector=label, unevaluated_conductors=tuple(unevaluated),
+    )
 
 
 def msl_absorber_compliant_offset_max(
@@ -7468,6 +7552,7 @@ class _PreflightMixin:
             msl_axis_roles as _msl_axis_roles,
             msl_port_from_entry as _msl_port_from_entry,
             msl_probe_x_coords_n as _probe_x_coords_n,
+            msl_sampled_node_coordinates as _sampled_node_coordinates,
         )
         try:
             _msl_grid = self._build_realized_grid()
@@ -7477,7 +7562,24 @@ class _PreflightMixin:
         # Issue #752 / #766 review: one rasterization for all ports.
         _msl_assembled = self._msl_assemble_once()
 
-        for pe in self._msl_ports:
+        _probe_entries = list(self._msl_ports)
+        _resolver = getattr(self, "_resolve_msl_probe_entries", None)
+        if _msl_grid is not None and callable(_resolver):
+            try:
+                with _w.catch_warnings(record=True) as _placement_notes:
+                    _w.simplefilter("always")
+                    _probe_entries = _resolver(_msl_grid)
+                for _placement_note in _placement_notes:
+                    _w.warn(PreflightWarning(
+                        str(_placement_note.message), code="msl_port_geometry",
+                        source="_check_msl_port_geometry"), stacklevel=3)
+            except (TypeError, ValueError, AttributeError) as exc:
+                _w.warn(PreflightWarning(
+                    f"MSL probe placement could not be resolved: {exc}",
+                    code="msl_port_geometry", severity="error",
+                    source="_check_msl_port_geometry"), stacklevel=3)
+
+        for pe in _probe_entries:
             if _msl_assembled is None:
                 _w.warn(PreflightWarning(
                     f"MSL port {pe.name!r}: conductor attachment could not be "
@@ -8014,6 +8116,7 @@ class _PreflightMixin:
                         _msl_grid, _mp, n_probes=n_pr,
                         n_offset_cells=n_off, n_spacing_cells=n_sp,
                     )
+                    _probe_ladder = _sampled_node_coordinates(_msl_grid, _mp, _probe_ladder)
                 except Exception:
                     _probe_ladder = None
             if _probe_ladder is not None:
@@ -8057,24 +8160,18 @@ class _PreflightMixin:
                     stacklevel=3,
                 )
 
-            nearest_d, nearest_label, _unevaluated = \
-                msl_nearest_downstream_reflector(
-                    getattr(self, "_geometry", []),
-                    x_probe=x_deep,
-                    x_feed=x_feed,
-                    y_feed=y_centre,
-                    w_trace=w_trace,
-                    dx=dx,
-                    domain_y=float(domain[_iw]),
-                    direction=pe.direction,
-                    # Issue #685: decide conductor-ness by the SAME
-                    # sigma >= threshold rule the assembler uses, and
-                    # scan thin conductors, instead of matching the
-                    # literal material name "pec" on Box shapes only.
-                    resolve_material=self._resolve_material,
-                    thin_conductors=getattr(self, "_thin_conductors", ()),
-                    pec_sigma_threshold=self._PEC_SIGMA_THRESHOLD,
-                )
+            _clearance = msl_probe_clearance_for_port(
+                self, pe, _msl_grid, probe_coordinates=_probe_ladder,
+            )
+            nearest_d = (_clearance.deepest_gap_m
+                         if _clearance.deepest_gap_m is not None else float("inf"))
+            nearest_label = _clearance.reflector
+            _unevaluated = _clearance.unevaluated_conductors
+            if _clearance.note is not None:
+                _w.warn(PreflightWarning(
+                    f"MSL port {pe.name!r}: reflector clearance could not be "
+                    f"evaluated: {_clearance.note}.", code="msl_port_geometry",
+                    source="_check_msl_port_geometry"), stacklevel=3)
 
             if _unevaluated:
                 # Issue #685: this scan could not distinguish "nothing is
