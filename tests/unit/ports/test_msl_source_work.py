@@ -17,7 +17,10 @@ from rfx.sources.msl_port import (
     make_msl_port_sources,
     setup_msl_port,
 )
-from tests._x64_compat import enable_x64
+try:
+    from jax import enable_x64
+except ImportError:
+    from jax.experimental import enable_x64
 
 
 @pytest.mark.parametrize("direction", ["+x", "-x", "+y", "-y"])

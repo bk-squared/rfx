@@ -213,3 +213,11 @@ Always-on source-work tests cover the actual load/source/electric substep and
 its JIT material gradient in both float32 and float64. Corrected source
 docstrings now state the implemented conductivity and forcing equations;
 no source amplitude, termination or production numerical operation changed.
+
+The first PR988 CI run exposed a test-only context-manager incompatibility:
+the repository's newer-JAX fallback did not accept the Boolean precision
+argument. The test now uses the same public-JAX/experimental fallback import
+as the existing power-normalization tests. All 16 cases pass with local
+JAX0.6.2 and with Python3.11/JAX0.10.2, the JAX version resolved by the failing
+CI job. The [compatibility record](jax-compatibility.json) retains the failure
+and validation scope; no numerical assertion or production operation changed.

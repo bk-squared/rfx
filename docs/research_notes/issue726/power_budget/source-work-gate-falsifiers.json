@@ -1,33 +1,33 @@
 {
   "scope": "In-memory source-function mutations; no production file changed. Local electric-substep checks only.",
-  "test_sha256": "9639e6e0fe2edc421d94687b3a4fbf37e2b7e68085f584f5aa1c50f45881c1b0",
+  "test_sha256": "fdb50dca3f160f5613625e1a9a95140c138d80958beb78cad918931095adf7d9",
   "cases": [
     {
       "defect": "detached_source_coefficient",
       "rejected": true,
       "assertion": "\nNot equal to tolerance rtol=1e-07, atol=0\n\nMismatched elements: 1 / 1 (100%)\nMax absolute difference among violations: 25.86701584\nMax relative difference among violations: 1.04711468\n ACTUAL: array(1.16388)\n DESIRED: array(-24.703136)",
-      "gate_line": 124,
+      "gate_line": 127,
       "gate_expression": "np.testing.assert_allclose(gradient, g_fd, rtol=2e-5 if not x64 else 1e-7)"
     },
     {
       "defect": "extra_sigma_source_factor",
       "rejected": true,
       "assertion": "",
-      "gate_line": 96,
+      "gate_line": 99,
       "gate_expression": "assert abs(storage_rate + loss - source_work) < 64 * np.finfo(dtype).eps * scale"
     },
     {
       "defect": "negative_source_force",
       "rejected": true,
       "assertion": "",
-      "gate_line": 96,
+      "gate_line": 99,
       "gate_expression": "assert abs(storage_rate + loss - source_work) < 64 * np.finfo(dtype).eps * scale"
     },
     {
       "defect": "extra_source_outside_support",
       "rejected": true,
       "assertion": "",
-      "gate_line": 78,
+      "gate_line": 81,
       "gate_expression": "assert len(sources) == len(cells)"
     }
   ]
