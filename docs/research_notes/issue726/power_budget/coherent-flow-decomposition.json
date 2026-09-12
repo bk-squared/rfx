@@ -1,0 +1,45 @@
+{
+  "scope": "worst VI coherent direction at each selected frequency; amplitudes normalized in original native VI A basis, not independent power calibration",
+  "rows": [
+    {
+      "frequency_hz": 1999374976.0,
+      "apparent_vi_out_minus_in": 0.0019023575918335738,
+      "x_face_outward": 0.0010890334785414297,
+      "side_face_outward": -0.0010743641233200566,
+      "closed_outward": 1.4669355221373288e-05,
+      "vi_vs_x_difference": 0.000813324113292144
+    },
+    {
+      "frequency_hz": 3653125120.0,
+      "apparent_vi_out_minus_in": 0.011292854603009354,
+      "x_face_outward": 0.012211278144643107,
+      "side_face_outward": -0.012229596666368152,
+      "closed_outward": -1.8318521725044602e-05,
+      "vi_vs_x_difference": -0.0009184235416337513
+    },
+    {
+      "frequency_hz": 3771249920.0,
+      "apparent_vi_out_minus_in": 0.011291439540988383,
+      "x_face_outward": 0.01237902258671174,
+      "side_face_outward": -0.012350800222599578,
+      "closed_outward": 2.8222364112162223e-05,
+      "vi_vs_x_difference": -0.001087583045723355
+    },
+    {
+      "frequency_hz": 3968124928.0,
+      "apparent_vi_out_minus_in": 0.010872308963297023,
+      "x_face_outward": 0.01215093781004367,
+      "side_face_outward": -0.012150661851569409,
+      "closed_outward": 2.7595847426214104e-07,
+      "vi_vs_x_difference": -0.001278628846746647
+    },
+    {
+      "frequency_hz": 4991875072.0,
+      "apparent_vi_out_minus_in": 0.00433242391067387,
+      "x_face_outward": 0.00471419369856199,
+      "side_face_outward": -0.0047158110423514785,
+      "closed_outward": -1.6173437894905027e-06,
+      "vi_vs_x_difference": -0.0003817697878881202
+    }
+  ]
+}

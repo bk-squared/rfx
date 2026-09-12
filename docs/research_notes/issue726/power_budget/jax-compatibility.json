@@ -1,0 +1,22 @@
+{
+  "failed_ci_job": "https://github.com/bk-squared/rfx/actions/runs/34711339994/job/103600564337",
+  "failed_head": "a4cc6eaea9c67d0e16a95460b9846c7ea19d147c",
+  "failure": "TypeError: enable_x64() takes 0 positional arguments but 1 was given; all16 new cases stopped before a field update",
+  "cause": "New test passed a Boolean to tests._x64_compat fallback; unlike the upstream context manager that fallback accepts no argument",
+  "repair": "Prefer public jax.enable_x64, falling back to jax.experimental.enable_x64, as existing power normalization tests already do",
+  "local": {
+    "python": "3.10.12",
+    "jax": "0.6.2",
+    "numpy": "2.2.6",
+    "new_tests_passed": 16,
+    "mutations_rejected": 4
+  },
+  "ci_jax_version_referee": {
+    "python": "3.11.9",
+    "jax": "0.10.2",
+    "new_tests_passed": 16,
+    "log": "jax0102-source-work-tests.log"
+  },
+  "test_sha256": "fdb50dca3f160f5613625e1a9a95140c138d80958beb78cad918931095adf7d9",
+  "production_numerics_changed": false
+}

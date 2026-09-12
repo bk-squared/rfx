@@ -1,0 +1,32 @@
+{
+  "scope": "final instantaneous fields only; no bound on the finite-window power residual",
+  "initial_fields_zero": true,
+  "start_step": 0,
+  "end_step": 117998,
+  "fields": {
+    "ex": {
+      "max_abs": 0.010851060040295124,
+      "sum_squared": 0.08451379437434643
+    },
+    "ey": {
+      "max_abs": 0.010870997793972492,
+      "sum_squared": 0.13646657779827448
+    },
+    "ez": {
+      "max_abs": 0.00888889841735363,
+      "sum_squared": 0.6083929076546273
+    },
+    "hx": {
+      "max_abs": 4.630765397450887e-05,
+      "sum_squared": 1.0180150788354748e-07
+    },
+    "hy": {
+      "max_abs": 7.96437161625363e-05,
+      "sum_squared": 5.157024089137055e-05
+    },
+    "hz": {
+      "max_abs": 0.00011558573896763846,
+      "sum_squared": 1.3149580724859804e-05
+    }
+  }
+}

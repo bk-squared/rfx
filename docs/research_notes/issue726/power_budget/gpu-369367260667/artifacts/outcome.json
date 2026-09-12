@@ -1,0 +1,10 @@
+{
+  "status": "recorded",
+  "assembly": "multi_drive_solve",
+  "settling_db": [
+    -122.15785574943226,
+    -120.00605473787154
+  ],
+  "source_work_s_is_distinct": true,
+  "physical_accuracy_verdict": null
+}

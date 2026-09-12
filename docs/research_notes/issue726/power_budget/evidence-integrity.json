@@ -1,0 +1,27 @@
+{
+  "retained_run_integrity": [
+    {
+      "run_id": 369367260633,
+      "verified_files": 13,
+      "archive_hash_verified": true,
+      "provider_log_raw_and_gzip_hashes_verified": true
+    },
+    {
+      "run_id": 369367260647,
+      "verified_files": 16,
+      "archive_hash_verified": true,
+      "provider_log_raw_and_gzip_hashes_verified": true
+    },
+    {
+      "run_id": 369367260667,
+      "verified_files": 14,
+      "archive_hash_verified": true,
+      "provider_log_raw_and_gzip_hashes_verified": true
+    }
+  ],
+  "production_executable_ast_identical_to_main_87927064": [
+    "rfx/api/_execute.py",
+    "rfx/api/_sparams.py",
+    "rfx/sources/msl_port.py"
+  ]
+}

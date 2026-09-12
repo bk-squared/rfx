@@ -1,0 +1,80 @@
+{
+  "run_id": 369367260633,
+  "status": "completed",
+  "source_sha": "d3f049d806ebea58778ee774cbf8794dd8ca39d7",
+  "source_archive_sha256": "8d539a673fbb182e34932981afb473813df729889ab5c2e534ee1993a5754b08",
+  "source_archive_retained": "/root/workspace/claude-workspace/rfx/runs/codex-i726-field-power-041o6tyr/source.tar",
+  "files": [
+    {
+      "path": "artifacts/drive-0-fields.npz",
+      "bytes": 31019066,
+      "sha256": "9f9931e8c507b3db8768fe3cb7a674bd69721b760289ffeca772f29744010225"
+    },
+    {
+      "path": "artifacts/drive-1-fields.npz",
+      "bytes": 31017834,
+      "sha256": "00fa3dd823a08eef3652d1a42c92865595d07c872041376fc1d440786dc6b8e1"
+    },
+    {
+      "path": "artifacts/drives.json",
+      "bytes": 329,
+      "sha256": "f15a6bd3012815093d60b17b30648ade73d22d0e4e2c3830b706d45a62beec30"
+    },
+    {
+      "path": "artifacts/outcome.json",
+      "bytes": 172,
+      "sha256": "3bb5beeea9c1bc1e51c92f84790d27cf900eb3ec22a9db4d3d546937233b4a84"
+    },
+    {
+      "path": "artifacts/plan.json",
+      "bytes": 32865,
+      "sha256": "0509426676c08537cb421608bcee03fe429ce3c3c1a03d1e4463ad6da12ed636"
+    },
+    {
+      "path": "artifacts/raw-vi.npz",
+      "bytes": 76084,
+      "sha256": "cfef4d6d3b8adc94b888c66e9b28f77df0b4dcbb2518e37e6259704ebbf17bd1"
+    },
+    {
+      "path": "artifacts/result.npz",
+      "bytes": 11549,
+      "sha256": "b293b984a66404eb26e65439937aa66a39f9093bb5bf2c000d595525dcb8259e"
+    },
+    {
+      "path": "build-plan.json",
+      "bytes": 32865,
+      "sha256": "0509426676c08537cb421608bcee03fe429ce3c3c1a03d1e4463ad6da12ed636"
+    },
+    {
+      "path": "environment.json",
+      "bytes": 456,
+      "sha256": "fec67e6d18e38cc90687457d87a0afdcdea0e1fa8f2ab07c31f9683995cf1553"
+    },
+    {
+      "path": "exit-code.txt",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "field_power.py",
+      "bytes": 8783,
+      "sha256": "50ebdbc30156c1bf8ca6926718ef513a753b434d83906d714608eb1589681076"
+    },
+    {
+      "path": "run.log",
+      "bytes": 15533,
+      "sha256": "61dcd9060d934fd8f696abfe5b226bc7cc21ff1b1d4f1f0227a76ec540f5d3f8"
+    },
+    {
+      "path": "run.yaml",
+      "bytes": 2261,
+      "sha256": "35a804b07fa10104053b87477926c8a9ea5a3258a0e1553db7bd50987fcc8032"
+    }
+  ],
+  "full_provider_log": "docs/research_notes/vessl_logs/369367260633_completed.log.gz",
+  "provider_log_raw_sha256": "121a0be137d1156146eca40beadb16ae0b056ed5933b38a6d3c865dd77983eaf",
+  "provider_log_gzip_sha256": "8e635b35c71dabafd0f258ec90410991781f8435190aff136bdaa69ddb00b65e",
+  "backup_verified": true,
+  "provider_deleted": true,
+  "physical_accuracy_verdict": null
+}

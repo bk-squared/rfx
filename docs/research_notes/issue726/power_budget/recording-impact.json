@@ -1,0 +1,21 @@
+{
+  "scope": "same source/DUT and equal references; additional passive DFT observers only",
+  "comparison": {
+    "freqs_hz": {
+      "equal": true,
+      "max_abs": 0.0
+    },
+    "raw_v": {
+      "equal": true,
+      "max_abs": 0.0
+    },
+    "raw_i1": {
+      "equal": true,
+      "max_abs": 0.0
+    },
+    "production_smatrix": {
+      "equal": true,
+      "max_abs": 0.0
+    }
+  }
+}

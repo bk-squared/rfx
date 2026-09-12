@@ -1,0 +1,96 @@
+{
+  "run_id": 369367260647,
+  "status": "completed",
+  "source_sha": "87927064131a1df44133117304c746a0e9e9f4bc",
+  "source_archive_sha256": "fe826065cdff23172a23d78889ac784c7aad5667480edfefeea9a8672f94de73",
+  "source_archive_retained": "/root/workspace/claude-workspace/rfx/runs/codex-i726-continued-lead-9hac_q0t/source.tar",
+  "files": [
+    {
+      "path": "artifacts/drive-0-endpoint.json",
+      "bytes": 790,
+      "sha256": "7e038d8d1b566eb897586591b0b89b8855a9d45876cf633697c198e1cd160dc3"
+    },
+    {
+      "path": "artifacts/drive-0-fields.npz",
+      "bytes": 31008001,
+      "sha256": "c1eff9014b016c3163b4cec0af41264039a1d9389c81c6455ddcc7dcfc131c81"
+    },
+    {
+      "path": "artifacts/drive-1-endpoint.json",
+      "bytes": 788,
+      "sha256": "0706f4ecba6e833d7e1da99c38857af6388a6da2bc37501c9f86a95a96973c02"
+    },
+    {
+      "path": "artifacts/drive-1-fields.npz",
+      "bytes": 31013074,
+      "sha256": "33b33469b768f855744ffb48bed838c1343257d0d2449d7cf3ca99591fca6328"
+    },
+    {
+      "path": "artifacts/drives.json",
+      "bytes": 329,
+      "sha256": "9338297759b51dfeaf8cf040cab5a3d8b8781957b41b5c7c0c3782341b7291db"
+    },
+    {
+      "path": "artifacts/outcome.json",
+      "bytes": 169,
+      "sha256": "d835b18c067561330a0d6aaa4b94de0f313cc4c4a4eb52675dcb731e1460f41f"
+    },
+    {
+      "path": "artifacts/plan.json",
+      "bytes": 34279,
+      "sha256": "628ed88ab39b63dbe6da2cd3101314dd0640bf7e87f64549d8b5627408deb3e6"
+    },
+    {
+      "path": "artifacts/raw-vi.npz",
+      "bytes": 76084,
+      "sha256": "efbcad04087a1e6047826fbdfb77ec2fa9a3e7510d98e8970838af2e278fc77f"
+    },
+    {
+      "path": "artifacts/result.npz",
+      "bytes": 11612,
+      "sha256": "b8df401537118af28f35e465509768890374fa8d318620e6998c92023956682b"
+    },
+    {
+      "path": "baseline-environment.json",
+      "bytes": 456,
+      "sha256": "fec67e6d18e38cc90687457d87a0afdcdea0e1fa8f2ab07c31f9683995cf1553"
+    },
+    {
+      "path": "build-plan.json",
+      "bytes": 34279,
+      "sha256": "628ed88ab39b63dbe6da2cd3101314dd0640bf7e87f64549d8b5627408deb3e6"
+    },
+    {
+      "path": "environment.json",
+      "bytes": 456,
+      "sha256": "b76a5e1ab92547112eefbe305301020a0776aa618dec3019f298ebaf1cb613e4"
+    },
+    {
+      "path": "exit-code.txt",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "field_power.py",
+      "bytes": 12232,
+      "sha256": "65e0406ed1e6abb2e44f2f9a9af56ac32c47e0ba2ae35483747533a8b024e6fa"
+    },
+    {
+      "path": "run.log",
+      "bytes": 19079,
+      "sha256": "9c7ba7f70eeed603fdb1bbc472b60c7b8d28fb31e47c72e89dcbff4ea86d563f"
+    },
+    {
+      "path": "run.yaml",
+      "bytes": 2904,
+      "sha256": "a1955fdb402e9e866b9dfd605cee89f0fa3389269041af64b9c9cb907c9231d9"
+    }
+  ],
+  "full_provider_log": "docs/research_notes/vessl_logs/369367260647_completed.log.gz",
+  "provider_log_raw_sha256": "b13ae3523e412683848fadd9274c0bf1ae16d7097de01da049835b373aab05fd",
+  "provider_log_gzip_sha256": "e9a3d3af862c5612498855272634351f9496e8070302e72c1d8dda21603e1c3d",
+  "backup_verified": true,
+  "provider_deleted": true,
+  "physical_accuracy_verdict": null,
+  "provenance_note": "../continued-lead-provenance-note.json"
+}

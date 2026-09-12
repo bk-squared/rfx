@@ -1,0 +1,30 @@
+{
+  "run_id": 369367260647,
+  "scope": "causal comparison to633: only the exterior main-trace continuation through x CPML changes; source/DUT/observer recipe fixed",
+  "unchanged": [
+    "all eps_r/mu_r/sigma carrier arrays",
+    "source/load definitions",
+    "source-to-source PEC edge masks",
+    "grid/dt/steps/frequencies",
+    "DFT stations and regions"
+  ],
+  "changed_trace_x_bounds_m": {
+    "old": [
+      0,
+      0.034
+    ],
+    "new": [
+      -0.000508,
+      0.034544
+    ]
+  },
+  "original_metadata_corrections": {
+    "plan.scope": "Inherited633 wording says no geometry change; this is incorrect for647. See lead_change and registered_geometry in the same unmodified plan.",
+    "plan.inputs.comparison": "Inherited original fixture builder receipt describes a clean/near observation pair;647 executes only the clean arm with the explicit exterior trace extension."
+  },
+  "raw_record_modified": false,
+  "rerun_needed": false,
+  "source_tree_sha": "42a71e86ad9c0a211f13e42af28accc163770fa5",
+  "source_tree_identity": "633 d3f049d8 and647 87927064 have identical complete Git trees; source SHA differs only through squash integration",
+  "interpretation": "diagnostic only; no accuracy PASS or automatic extension of arbitrary user geometry"
+}

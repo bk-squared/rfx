@@ -1,0 +1,75 @@
+ [32mID[0m 369367260633
+ [32mName[0m rfx-i726-field-power-contract
+ [32mDescription[0m Fixed CV06b sources/DUT; sequential two-drive raw E and both H face records for VI/Poynting power Gram; no calibration or accuracy PASS.
+ [32mStatus[0m completed
+ [32mStatus reason[0m workload completed
+ [32mCreated[0m 2026-09-12 14:12:05+00:00
+ [32mCluster[0m remilab-c0
+ [32mResource[0m
+   [32mName[0m gpu-rtx4090
+   [32mCPU Type[0m 
+   [32mCPU Limit[0m 14.0
+   [32mMemory Limit[0m 48Gi
+   [32mGPU Type[0m NVIDIA-GeForce-RTX-4090
+   [32mGPU Limit[0m 1
+ [32mImage[0m
+   [32mName[0m nvcr.io/nvidia/jax:24.10-py3
+   [32mURL[0m nvcr.io/nvidia/jax:24.10-py3
+ [32mStart commands[0m
+ - [32mworkdir[0m /root
+   [32mcommand[0m set -eu
+RFX_WORK=$(mktemp -d /tmp/rfx-i726-power.XXXXXX)
+export RFX_WORK
+python -c 'import os,hashlib; from pathlib import Path; p=Path(os.environ["RFX_OUT"]); assert hashlib.sha256((p/"source.tar").read_bytes()).hexdigest()==os.environ["RFX_ARCHIVE_SHA256"]; assert hashlib.sha256((p/"field_power.py").read_bytes()).hexdigest()==os.environ["RFX_DRIVER_SHA256"]'
+tar -xf "$RFX_OUT/source.tar" -C "$RFX_WORK"
+cd "$RFX_WORK"
+python -m pip install -q "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pyyaml pytest
+export PYTHONPATH="$RFX_WORK"
+export MPLBACKEND=Agg
+python -c 'import jax,numpy,scipy,rfx,json,os; from pathlib import Path; m=dict(source_sha=os.environ["RFX_SHA"],source_archive_sha256=os.environ["RFX_ARCHIVE_SHA256"],driver_sha256=os.environ["RFX_DRIVER_SHA256"],jax=jax.__version__,numpy=numpy.__version__,scipy=scipy.__version__,rfx_path=rfx.__file__,backend=jax.default_backend(),x64=bool(jax.config.jax_enable_x64),devices=[str(x) for x in jax.devices()]); print(json.dumps(m)); assert m["backend"]=="gpu"; Path(os.environ["RFX_OUT"],"environment.json").write_text(json.dumps(m,indent=2))'
+set +e
+timeout --kill-after=30s 7200s python -u "$RFX_OUT/field_power.py" --out "$RFX_OUT/artifacts" > "$RFX_OUT/run.log" 2>&1
+RFX_RC=$?
+set -e
+printf '%s\n' "$RFX_RC" > "$RFX_OUT/exit-code.txt"
+tail -n 80 "$RFX_OUT/run.log"
+exit "$RFX_RC"
+
+ [32mInteractive[0m False
+ [32mEnvironment variables[0m
+ - [32mkey[0m RFX_SHA
+   [32mvalue[0m None
+   [32msecret[0m None
+ - [32mkey[0m RFX_ARCHIVE_SHA256
+   [32mvalue[0m None
+   [32msecret[0m None
+ - [32mkey[0m RFX_DRIVER_SHA256
+   [32mvalue[0m None
+   [32msecret[0m None
+ - [32mkey[0m PYTHONUNBUFFERED
+   [32mvalue[0m None
+   [32msecret[0m None
+ - [32mkey[0m XLA_PYTHON_CLIENT_PREALLOCATE
+   [32mvalue[0m None
+   [32msecret[0m None
+ - [32mkey[0m HDF5_USE_FILE_LOCKING
+   [32mvalue[0m None
+   [32msecret[0m None
+ - [32mkey[0m RFX_OUT
+   [32mvalue[0m None
+   [32msecret[0m None
+ - [32mkey[0m JAX_ENABLE_X64
+   [32mvalue[0m None
+   [32msecret[0m None
+ - [32mkey[0m OMP_NUM_THREADS
+   [32mvalue[0m None
+   [32msecret[0m None
+ - [32mkey[0m OPENBLAS_NUM_THREADS
+   [32mvalue[0m None
+   [32msecret[0m None
+ [32mPorts[0m
+ - [32mname[0m ssh
+   [32mnumber[0m 0
+   [32mprotocol[0m tcp
+ [32mService account[0m None
+ [32mTermination protection[0m False

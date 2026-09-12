@@ -975,10 +975,16 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
 
           σ_cell = (N_z · dz_cell) / (Z0 · N_y · dx_cell · dy_cell)
 
-    - **Eigenmode** (``mode_profile`` from
-      :func:`compute_msl_mode_profile`): σ ∝ |Ez(y,z)|² with the
-      proportionality chosen so the total (y,z)-integrated admittance
-      ``Y = ∫∫ σ·dy·dz / dx_feed = 1/Z0``.
+    - **Laplace profile** (``mode_profile`` from
+      :func:`compute_msl_mode_profile`): constant added scalar conductivity
+      ``sigma_port = 1 / (Z0 * N)`` on the nonzero source support, where
+      ``N = sum(volume * ez_profile**2)`` uses the Ez control volumes.
+      For ``Ez = ez_profile * V`` this dissipates ``V**2 / Z0``.
+
+    The scalar conductivity also damps Ex and Ey. The stated resistance
+    describes the supplied Ez profile; other field components add loss.
+    It does not establish a matched termination for an arbitrary field or
+    certify that the Laplace profile is a propagating Maxwell mode.
 
     Returns the updated ``materials`` NamedTuple.
     """
@@ -1022,9 +1028,11 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
             sigma = sigma.at[i, j, k].add(sigma_cell)
         return materials._replace(sigma=sigma)
 
-    # Eigenmode termination: uniform σ across the (extended) port
-    # cross-section, magnitude chosen so that the time-averaged power
-    # dissipated equals V²/Z0 when V is the TEM voltage.
+    # Laplace-profile termination: uniform σ across the (extended) port
+    # cross-section. For real Ez = ez_w * V on this support, its added
+    # instantaneous Joule loss is V²/Z0. At an electric substep use the
+    # midpoint field. A peak-phasor time average has a factor 1/2 on both
+    # sides; this identity does not qualify an arbitrary TEM field.
     #
     #     P_diss  = σ · dual_prop · ∫∫ |Ez(y,z)|² dual_w dy · d_norm dz
     #     V²/Z0   = matched-load power
@@ -1038,8 +1046,9 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
     # a mesh graded across the cross-section — the sum below is per-cell.
     #
     # ez_w is the normalised mode shape (∫ez_w·dz = 1V at trace centre),
-    # so V_TEM = V_src and the integral is taken over the full fringing
-    # footprint that compute_msl_mode_profile returned.
+    # so its coefficient V is the centre-line voltage for a field exactly
+    # proportional to that profile. It is not the excitation waveform's
+    # amplitude. The integral covers the returned fringing footprint.
     ez_profile = np.asarray(mode_profile["ez_profile"], dtype=np.float64)
     cell_indices = mode_profile["cell_indices"]
     j_box_lo = int(mode_profile["j_grid_lo"])
@@ -1082,9 +1091,8 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
             continue
         if not (0 <= j_loc < ez_profile.shape[0]):
             continue
-        # Only load cells where the mode actually carries energy. Cells
-        # with |Ez|·dz ≪ V_src contribute nothing physical and adding σ
-        # there would just damp evanescent fringing.
+        # Match the source's exact nonzero profile support. This is not
+        # an amplitude threshold or a propagating/evanescent-mode filter.
         if float(ez_profile[j_loc, k_loc]) == 0.0:
             continue
         sigma = sigma.at[i, j, k].add(sigma_uniform)
@@ -1113,16 +1121,21 @@ def make_msl_port_sources(grid, port: MSLPort, materials, n_steps,
 
     Two modes:
 
-    - **Uniform** (``mode_profile is None``, legacy): every cell in the
-      port cross-section gets an Ez source with amplitude
-      ``V_src / N_z`` (voltage division along z).
+    - **Uniform** (``mode_profile is None``, legacy): each cell gets the
+      electric-field increment ``Cb * u / (N_z * d_normal)``.
 
-    - **Eigenmode** (``mode_profile`` from
-      :func:`compute_msl_mode_profile`): each cell gets an Ez source
-      proportional to the static-Laplace ``Ez(y,z)`` profile. The
-      profile is normalised so ``∫Ez·dz`` at the trace centre equals
-      ``V_src``, matching the legacy convention. Sources extend
-      laterally beyond the trace footprint to inject the fringing field.
+    - **Laplace profile** (``mode_profile`` from
+      :func:`compute_msl_mode_profile`): each cell gets the increment
+      ``Cb * ez_profile * u``. The profile has unit centre-line integral
+      and extends laterally beyond the trace footprint.
+
+    Here ``u`` is the sampled excitation and
+    ``Cb = dt / (epsilon + sigma_total * dt / 2)``. Thus the imposed term
+    in the electric update equation is ``ez_profile * u``. The waveform
+    amplitude is not a prescribed terminal voltage. For the shaped load
+    with ``N = sum(volume * ez_profile**2)``, the source-conjugate current
+    is ``N * u`` and its equivalent Thevenin voltage is ``Z0 * N * u``.
+    These work variables do not define the downstream MSL probe voltage.
 
     The port impedance must already be folded into ``materials`` via
     :func:`setup_msl_port` (with the same ``mode_profile``).
@@ -1156,9 +1169,8 @@ def make_msl_port_sources(grid, port: MSLPort, materials, n_steps,
             specs.append(SourceSpec(i=i, j=j, k=k, component="ez", waveform=waveform))
         return specs
 
-    # Eigenmode-shaped Ez source. Profile is normalised so that
-    # ∫ Ez·dz at the trace centre = 1 V; multiply by the desired V_src
-    # delivered by base_wave (the excitation already carries amplitude).
+    # Laplace-shaped force in the electric update. The profile has unit
+    # centre-line integral; base_wave supplies u, not a terminal voltage.
     ez_profile = np.asarray(mode_profile["ez_profile"], dtype=np.float64)
     cell_indices = mode_profile["cell_indices"]
     j_box_lo = int(mode_profile["j_grid_lo"])
@@ -1183,11 +1195,9 @@ def make_msl_port_sources(grid, port: MSLPort, materials, n_steps,
         sigma = materials.sigma[i, j, k]
         loss = sigma * grid.dt / (2.0 * eps)
         cb = (grid.dt / eps) / (1.0 + loss)
-        # ez_w has units V/m (∂φ/∂z with φ ∈ [0,1]V then renormalised so
-        # ∫Ez dz = 1V). The legacy uniform path used (cb/d_par)*base/n_z;
-        # here we use cb·ez_w·base — the d_par cancels because we
-        # injected ε·∂E/∂t = J = -σ_src*Ez_inc with Ez_inc = ez_w·V_src.
-        # Equivalent to legacy when ez_w = 1/H_sub and dz uniform.
+        # Add Cb * ez_w * u after the electric update. There is no extra
+        # sigma_port factor or negative sign in this force. This equals
+        # the uniform branch when ez_w = 1/H_sub and dz is uniform.
         waveform = cb * ez_w * base_wave
         specs.append(SourceSpec(i=int(i), j=int(j), k=int(k),
                                 component="ez", waveform=waveform))

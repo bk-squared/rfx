@@ -1,0 +1,75 @@
+{
+  "scope": "periodic uniform vacuum TEM; actual field steps and DFT; not MSL RF accuracy",
+  "jax": "0.6.2",
+  "records": [
+    {
+      "mode": "forward",
+      "shape": [
+        32,
+        4,
+        4
+      ],
+      "steps": 512,
+      "dt_s": 8.155932301033164e-13,
+      "omega_dt": 0.04908738521234052,
+      "state_dtype": "float32",
+      "expected_h_e": [
+        -0.002641636976291288,
+        0.0
+      ],
+      "corrected_h_e": [
+        -0.0026416357969851526,
+        4.0885960914636976e-10
+      ],
+      "relative_error": 4.724988060380288e-07,
+      "omitted_temporal_correction_error": 0.024543225860589452,
+      "reversed_temporal_correction_error": 0.049082600820424156
+    },
+    {
+      "mode": "backward",
+      "shape": [
+        32,
+        4,
+        4
+      ],
+      "steps": 512,
+      "dt_s": 8.155932301033164e-13,
+      "omega_dt": 0.04908738521234052,
+      "state_dtype": "float32",
+      "expected_h_e": [
+        0.002641636976291288,
+        0.0
+      ],
+      "corrected_h_e": [
+        0.0026416355394500695,
+        -1.646285793953828e-09
+      ],
+      "relative_error": 8.271858090494263e-07,
+      "omitted_temporal_correction_error": 0.024543693062639753,
+      "reversed_temporal_correction_error": 0.04908306671950023
+    },
+    {
+      "mode": "standing",
+      "shape": [
+        32,
+        4,
+        4
+      ],
+      "steps": 512,
+      "dt_s": 8.155932301033164e-13,
+      "omega_dt": 0.04908738521234052,
+      "state_dtype": "float32",
+      "expected_h_e": [
+        0.0,
+        0.003953489121587779
+      ],
+      "corrected_h_e": [
+        1.4477094631600018e-10,
+        0.003953491913999773
+      ],
+      "relative_error": 7.072644370585948e-07,
+      "omitted_temporal_correction_error": 0.024543121864939888,
+      "reversed_temporal_correction_error": 0.049082510992246864
+    }
+  ]
+}
