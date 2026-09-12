@@ -1,0 +1,78 @@
+{
+  "cv06b_control": {
+    "max_abs_s": 1.0031057586654113,
+    "max_abs_s_indices": [
+      0,
+      0,
+      78
+    ],
+    "max_abs_s_frequency_hz": 3771250000.0,
+    "max_abs_s_db": 0.026934472641007262,
+    "max_single_drive_power": 1.0064897822683858,
+    "max_coherent_power_gain": 1.0112928109720252,
+    "max_sigma": 1.0056305539173047,
+    "max_sigma_frequency_hz": 3653125000.0,
+    "max_singular_amplitude_db": 0.04876919960621475,
+    "equal_reference_impedances_ohm": [
+      47.89479996289313,
+      47.89479996289313
+    ]
+  },
+  "cv06b_near": {
+    "max_abs_s": 1.0029796870979126,
+    "max_abs_s_indices": [
+      1,
+      1,
+      78
+    ],
+    "max_abs_s_frequency_hz": 3771250000.0,
+    "max_abs_s_db": 0.025842750725028552,
+    "max_single_drive_power": 1.007856185126945,
+    "max_coherent_power_gain": 1.0130867991493533,
+    "max_sigma": 1.0065221304816667,
+    "max_sigma_frequency_hz": 3968125000.0,
+    "max_singular_amplitude_db": 0.05646656393526324,
+    "equal_reference_impedances_ohm": [
+      47.89479996289313,
+      47.89479996289313
+    ]
+  },
+  "thru_base": {
+    "max_abs_s": 1.0000277940414388,
+    "max_abs_s_indices": [
+      1,
+      0,
+      2
+    ],
+    "max_abs_s_frequency_hz": 1500000000.0,
+    "max_abs_s_db": 0.00024141262163275256,
+    "max_single_drive_power": 1.0000788523699369,
+    "max_coherent_power_gain": 1.0002521514252531,
+    "max_sigma": 1.0001260677660857,
+    "max_sigma_frequency_hz": 3000000000.0,
+    "max_singular_amplitude_db": 0.0010949416861616998,
+    "equal_reference_impedances_ohm": [
+      47.89479996289313,
+      47.89479996289313
+    ]
+  },
+  "thru_refined": {
+    "max_abs_s": 1.0000145452480425,
+    "max_abs_s_indices": [
+      1,
+      0,
+      1
+    ],
+    "max_abs_s_frequency_hz": 1000000000.0,
+    "max_abs_s_db": 0.00012633750045210973,
+    "max_single_drive_power": 1.0000319460613414,
+    "max_coherent_power_gain": 1.0001262529815316,
+    "max_sigma": 1.0000631244984146,
+    "max_sigma_frequency_hz": 3500000256.0,
+    "max_singular_amplitude_db": 0.0005482751220735553,
+    "equal_reference_impedances_ohm": [
+      47.89479996289313,
+      47.89479996289313
+    ]
+  }
+}

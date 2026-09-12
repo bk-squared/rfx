@@ -1,7 +1,8 @@
 # MSL current at the voltage reference plane
 
-Status: implementation and validation in progress. The parent directory's
-RF records and manifest describe earlier source revisions and remain unchanged.
+This record covers the current-plane correction and its bounded validation.
+The parent directory's RF records and manifest describe earlier source
+revisions and remain unchanged.
 
 The voltage reader integrates Ez at propagation-axis E node `i`. Both
 transverse H components at array index `i` live at the next cell centre.
@@ -68,8 +69,8 @@ Pinned GPU run [369367260604](gpu-369367260604/manifest.json), source
   difference `0.002851`. Same-field old-current reconstruction plus the same
   passivity projection returns within `1.784e-5` of that golden. Thus this is
   attributed to the authorized current-plane correction; the old tolerance
-  and golden have not been changed. Independent confirmation/refinement are
-  still required for the replacement.
+  remains the acceptance bound. The qualified replacement and retained
+  historical golden are described below.
 
 On the x-directed thru, changing only the current extraction on identical
 fields moves complex S by at most `0.005674`. Maximum raw column power moves
@@ -113,4 +114,34 @@ specific grading diagnostic, not broader in-plane grading qualification.
 Its NumPy-generated frequency vector differs by 1--2 float32 ULP from the
 JAX-generated base coupon; it is not a bitwise same-frequency mesh
 comparison. The separate confirmation/refinement freezes the actual base
-frequency vector and remains in progress.
+frequency vector.
+
+Run [369367260608](gpu-369367260608/manifest.json) completed independent
+confirmation and 2x refinement sequentially on the same pinned source.
+Both pass the existing physical screens. Confirmation is bit-identical
+to base604 in raw and projected S. The [offline adjudication](coupon-qualification.json)
+reads pre-projection S directly from the dumps, verifies unchanged actual
+voltage reference planes and frequencies, and measures a maximum raw-complex
+mesh difference of `0.007077362` against the unchanged `.02` budget.
+The fine-grid [independent wave solve](refinement-current-impact.json)
+matches the saved raw S within `1.4e-7`.
+
+The base604 projected S was transferred to the active coupon golden after
+these checks, with `rtol=.005 / atol=.002` retained. Its previous values and
+complete provenance remain in [pre-collocation-golden/](pre-collocation-golden/manifest.json).
+The active manifest records the new source, records, hashes, diagnostics and
+unchanged qualification criteria. Full provider logs and artifacts were
+checked before deleting terminal runs605/608. CI and final review remain
+separate merge requirements; these results do not certify arbitrary ports
+or fix the separately observed raw power excess.
+
+The residual [raw passivity readout](remaining-passivity.json) also checks
+the largest singular value, not only individual drive-column power. These
+two-port records share the same positive real reference impedance, so
+`sigma_max(S)^2` is the maximum power gain over coherent input combinations.
+CV06b gives `1.011293` at the control and `1.013087` near the reflector;
+the maximum individual coefficient is `1.003106`. These are consistency
+violations of the extracted S, not bounds on absolute RF error and not
+proof that the field update itself produces energy. The user requested
+continued investigation of the residual power/amplitude defect under #726.
+That issue remains open after the current-plane correction is integrated.

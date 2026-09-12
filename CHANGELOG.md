@@ -22,8 +22,8 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
 - The cv06b comparison holds source/DUT fixed, checks both realized probe
   ladders before solving, preserves unprojected results, and refuses a numeric
   comparison when settling fails. Retire the historical short experiment's
-  unsupported unit-reflection verdict; RF comparison and core diagnostics are
-  still being investigated.
+  unsupported unit-reflection verdict; report observation sensitivity without
+  an exact-unit-reflection or blanket accuracy claim.
 
 ### Fixed — experiment deadlines survive blocked native execution (#790, #978)
 

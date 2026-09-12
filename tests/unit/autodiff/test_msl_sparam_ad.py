@@ -46,7 +46,7 @@ REPLAY_GOLDEN_F64_PATH = (
 )
 
 # Slow end-to-end golden: a capture of the CURRENT pipeline (re-baselined
-# 2026-07-30, PR #516), regenerable ONLY with a written reason in
+# 2026-09-12, #726), regenerable ONLY with a written reason in
 # test_compute_msl_s_matrix_end_to_end_matches_historical_base's docstring
 # (scripts/capture_msl_e2e_golden.py). The original "pre-change S1 capture,
 # must NOT be regenerated" contract this comment used to state was retired
@@ -626,6 +626,23 @@ def test_compute_msl_s_matrix_ad_smoke_has_finite_gradient():
 def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
     """End-to-end drift lock: full FDTD + assembly vs the committed golden.
 
+    RE-PINNED 2026-09-12 (#726): the authorized H interpolation puts the
+    current on the existing voltage E-node plane. The board, source/load,
+    normalization, duration and physical/drift thresholds are unchanged.
+    Pinned source ec3bedfe2fc1a8c8be12ebd2b7054562a5fcf096, GPU base
+    369367260604, passes the existing raw physical checks but differs from
+    the old-algorithm golden by 0.002851. Reconstructing the old same-index
+    current on those same fields restores the old golden within 1.784e-5.
+    Independent confirmation 369367260608 is bit-identical in raw and
+    projected S. Its 2x refinement passes the same physical checks and
+    differs by at most 0.007077362 in raw complex S (unchanged budget .02).
+    The measured frequency vector is identical on all three records, and
+    actual sampled voltage planes remain 5 and 9 mm. Import the base S
+    after these checks; retain rtol=.005/atol=.002 below. Current provenance
+    is tests/fixtures/msl_s_matrix_golden.json; the prior golden and full
+    manifest are preserved under docs/research_notes/issue726/collocation/
+    pre-collocation-golden/. The earlier migration records below are history.
+
     FIXTURE REPAIRED 2026-09-08 (#931): retain the PI-authorized 254 um
     substrate, 600 um width and 10 mm launch-plane separation; align every declared face on
     dx=dy=50 um and dz=(50,50,38.5,38.5,38.5,38.5) um through the
@@ -682,12 +699,14 @@ def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
     be either root-caused or re-baselined with its reason written in this
     docstring — never silently.
 
-    Structural correctness (jnp == numpy on the SAME algorithm) is proven
-    separately by test_replay_float64_equivalence against the replay golden.
+    Structural assembly is checked separately by test_replay_float64_equivalence
+    using complete manufactured bracketing H records and an independent
+    planted two-port S matrix. One-sided historical captures cannot test
+    the current interpolated algorithm.
     Tolerance stays rtol=5e-3/atol=2e-3: it must absorb cross-machine float
-    noise on a CI runner (the PR #119 lesson: tolerances, not bit-equality),
-    and every deliberate algorithm change to date has exceeded it by >10x, so
-    the lock still discriminates.
+    noise on a CI runner (the PR #119 lesson: tolerances, not bit-equality).
+    The #726 correction exceeded that unchanged bound at reflection entries;
+    the lock distinguished the deliberate algorithm change from roundoff.
 
     MEASURED, NOT RE-BASELINED (2026-09-02, closing the #803 remainder).
     After the exact-coordinate rasterization fix (#802/#807, PR #834) this

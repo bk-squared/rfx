@@ -1,0 +1,48 @@
+{
+  "source_sha": "ec3bedfe2fc1a8c8be12ebd2b7054562a5fcf096",
+  "refinement": 2,
+  "driver_sha256": "17fb5b7fbd040e7550a51b5bb2719fff262a588db41ca1e334fcb7b37002010e",
+  "test_source_sha256": "96d7fad542de5c1eb2f43f5794190232852b543779ebaebb7b27b489be11da19",
+  "jax": "0.4.33.dev20241023+e3c6d6430",
+  "devices": "[CudaDevice(id=0)]",
+  "x64": false,
+  "grid_shape": [
+    625,
+    201,
+    125
+  ],
+  "dt_s": 4.2997184127886396e-14,
+  "num_periods": 12,
+  "preflight": [
+    {
+      "message": "all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+      "code": "lossless_q",
+      "severity": "warning",
+      "loc": null,
+      "source": "_validate_cfg_lossless_resonator_in_absorber"
+    }
+  ],
+  "frequencies_hz": [
+    500000000.0,
+    1000000000.0,
+    1500000000.0,
+    2000000000.0,
+    2500000256.0,
+    3000000000.0,
+    3500000256.0,
+    4000000256.0,
+    4500000256.0,
+    5000000000.0
+  ],
+  "reference_record_sha256": "b8b23b3426f7d31b48d62cbef4d8f46ca9c7d96b23c23f96dae91398aaf09dcf",
+  "drawing": {
+    "substrate_height_m": 0.000254,
+    "trace_width_m": 0.0006,
+    "launch_separation_m": 0.01,
+    "domain_m": [
+      0.014,
+      0.0034,
+      0.001978
+    ]
+  }
+}

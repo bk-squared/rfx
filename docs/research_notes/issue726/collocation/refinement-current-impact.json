@@ -1,0 +1,36 @@
+{
+  "dump": "docs/research_notes/issue726/collocation/gpu-369367260608/refinement/raw-vi.npz",
+  "sha256": "17595f25766f302710ddc4c2be60eb284e79d1433ce68d456e7a03fec41eae71",
+  "production_assembly": "multi_drive_solve",
+  "scope": "same FDTD fields, same V plane and Zref; unprojected extraction comparison only",
+  "voltage_planes_m": [
+    0.005,
+    0.009000000000000001
+  ],
+  "current_weights": [
+    [
+      0.5000000000000173,
+      0.4999999999999826
+    ],
+    [
+      0.4999999999999653,
+      0.5000000000000347
+    ]
+  ],
+  "reference_impedances_ohm": [
+    47.89479996289313,
+    47.89479996289313
+  ],
+  "centered_vs_stored_s_max_abs": 1.3626373434754955e-07,
+  "current_interpolation_relative_residual": 1.4913944869137916e-07,
+  "current_change_relative_to_peak": 0.0012168926075942197,
+  "s_change_max_abs": 0.0014328159299368977,
+  "s_change_worst": {
+    "receiver": 0,
+    "drive": 0,
+    "frequency_hz": 5000000000.0
+  },
+  "centered_max_column_power": 1.0000317102771012,
+  "same_index_max_column_power": 1.0000326951223817,
+  "physical_accuracy_verdict": null
+}

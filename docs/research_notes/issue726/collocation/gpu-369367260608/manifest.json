@@ -1,0 +1,82 @@
+{
+  "run_id": 369367260608,
+  "status": "completed",
+  "source_sha": "ec3bedfe2fc1a8c8be12ebd2b7054562a5fcf096",
+  "files": [
+    {
+      "path": "confirmation/inputs.json",
+      "bytes": 1443,
+      "sha256": "e37fd7dc375245ce71b6564d334a6c5b7001a7484a4ffc299f5563a19d6bdabc",
+      "original_sha256": "e37fd7dc375245ce71b6564d334a6c5b7001a7484a4ffc299f5563a19d6bdabc"
+    },
+    {
+      "path": "confirmation/qualification.json",
+      "bytes": 1362,
+      "sha256": "c70808352e1f7ca3099f1a7708dd3bf12fe2ed80464572afb4a5762f179ba638",
+      "original_sha256": "c70808352e1f7ca3099f1a7708dd3bf12fe2ed80464572afb4a5762f179ba638"
+    },
+    {
+      "path": "confirmation/raw-vi.npz",
+      "bytes": 17688,
+      "sha256": "7a946f9a76cdfc152dc93fd4eb6fdcd06a76dd4c6a22d020fb8d5cb95e4fa45a",
+      "original_sha256": "7a946f9a76cdfc152dc93fd4eb6fdcd06a76dd4c6a22d020fb8d5cb95e4fa45a"
+    },
+    {
+      "path": "confirmation/result.npz",
+      "bytes": 2965,
+      "sha256": "8aa0b80074adb8afe0f69ed6aee1503b50b456e01efe7853ad9ef014f0f436e0",
+      "original_sha256": "8aa0b80074adb8afe0f69ed6aee1503b50b456e01efe7853ad9ef014f0f436e0"
+    },
+    {
+      "path": "confirmation.log.gz",
+      "bytes": 2053,
+      "sha256": "93b1e1d05d2b453e65c97617f75e2c681ea31b08ef9f46d21ddd006313bca8ac",
+      "original_sha256": "804e3bf842b3b72cb273bc6b246918041e534a04eab6bda0e9f67216a5560ee4"
+    },
+    {
+      "path": "driver.py",
+      "bytes": 3783,
+      "sha256": "17fb5b7fbd040e7550a51b5bb2719fff262a588db41ca1e334fcb7b37002010e",
+      "original_sha256": "17fb5b7fbd040e7550a51b5bb2719fff262a588db41ca1e334fcb7b37002010e"
+    },
+    {
+      "path": "refinement/inputs.json",
+      "bytes": 1445,
+      "sha256": "ec9fd36187ec992bdb84c51288892bc9f0ac4878f2ecde93ce47480d4f1e7049",
+      "original_sha256": "ec9fd36187ec992bdb84c51288892bc9f0ac4878f2ecde93ce47480d4f1e7049"
+    },
+    {
+      "path": "refinement/qualification.json",
+      "bytes": 1357,
+      "sha256": "1a81c41c4f210b415b80989a9f5e171587b170bfa87ea0f37658147523ae75b3",
+      "original_sha256": "1a81c41c4f210b415b80989a9f5e171587b170bfa87ea0f37658147523ae75b3"
+    },
+    {
+      "path": "refinement/raw-vi.npz",
+      "bytes": 17948,
+      "sha256": "17595f25766f302710ddc4c2be60eb284e79d1433ce68d456e7a03fec41eae71",
+      "original_sha256": "17595f25766f302710ddc4c2be60eb284e79d1433ce68d456e7a03fec41eae71"
+    },
+    {
+      "path": "refinement/result.npz",
+      "bytes": 2960,
+      "sha256": "e61025342db9bf31d0bc03fc6b3f8ab1f0f39496f6b92b86b30f9edf3289a6d5",
+      "original_sha256": "e61025342db9bf31d0bc03fc6b3f8ab1f0f39496f6b92b86b30f9edf3289a6d5"
+    },
+    {
+      "path": "refinement.log.gz",
+      "bytes": 2046,
+      "sha256": "80ed885228588ae449ddec0c565dc437a022f0154dc635af4ea420be5fa4b1d7",
+      "original_sha256": "8c0ee8ee4ac646b73ada9f56e70dee07f0747eab940bd586f0fcaa8c9d963e87"
+    },
+    {
+      "path": "run.yaml",
+      "bytes": 2168,
+      "sha256": "e30af4634b5ebadc801741c036442fb24fb8ee3dfe44014d8582d83a184e9e5d",
+      "original_sha256": "e30af4634b5ebadc801741c036442fb24fb8ee3dfe44014d8582d83a184e9e5d"
+    }
+  ],
+  "provider_log": "docs/research_notes/vessl_logs/369367260608_completed.log.gz",
+  "provider_log_sha256": "adf68fa6316eddac9cbac550fe8981ec717013c77ef9fef43245627d1b22e378",
+  "provider_uncompressed_sha256": "ecc4bd06b28a7b29f55f74b31d3e0b29439c9465edd6ba0a25dd3b2c1d643245"
+}

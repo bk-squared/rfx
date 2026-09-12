@@ -1,0 +1,15 @@
+{
+  "scope": "Original active coupon golden preserved before the authorized current-plane algorithm update; current tests/fixtures files remain unchanged at this checkpoint",
+  "files": [
+    {
+      "path": "msl_s_matrix_golden.npy",
+      "sha256": "4776a6fd73d725206339c2310ffe4983d0522d551668fc666b44ca4a422d4d88",
+      "bytes": 448
+    },
+    {
+      "path": "msl_s_matrix_golden.json",
+      "sha256": "671c4a3118f9d86e6e871b5f4bafd3dc1e13f4b275268eb6ad4ad359740a3b7a",
+      "bytes": 142526
+    }
+  ]
+}

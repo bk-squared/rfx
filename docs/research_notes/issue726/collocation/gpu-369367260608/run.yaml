@@ -1,0 +1,57 @@
+name: rfx-i726-coupon-requalification
+description: Sequential independent 1x confirmation and 2x mesh refinement of unchanged
+  aligned coupon; no golden writes or changed physical thresholds.
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: '1'
+  OMP_NUM_THREADS: '1'
+  OPENBLAS_NUM_THREADS: '1'
+  XLA_PYTHON_CLIENT_PREALLOCATE: 'false'
+  XLA_FLAGS: --xla_force_host_platform_device_count=2
+  HDF5_USE_FILE_LOCKING: 'FALSE'
+  RFX_CHECKOUT: /root/workspace/claude-workspace/rfx/checkouts/codex-726-ec3bedfe
+  RFX_SHA: ec3bedfe2fc1a8c8be12ebd2b7054562a5fcf096
+  RFX_OUT: /root/workspace/claude-workspace/rfx/runs/codex-i726-coupon-requalification-hdy45t3h
+  RFX_DRIVER: /root/workspace/claude-workspace/rfx/runs/codex-i726-coupon-requalification-hdy45t3h/driver.py
+  JAX_ENABLE_X64: '0'
+  RFX_DRIVER_SHA256: 17fb5b7fbd040e7550a51b5bb2719fff262a588db41ca1e334fcb7b37002010e
+  RFX_BASELINE_RESULT: /root/workspace/claude-workspace/rfx/runs/codex-i726-collocation-consumers-zbv0xvjb/coupon/call-0-result.npz
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: 'set -eu
+
+  RFX_WORK=/tmp/rfx-i726-coupon-requalification
+
+  git config --global --add safe.directory "$RFX_CHECKOUT"
+
+  git config --global --add safe.directory "$RFX_CHECKOUT/.git"
+
+  git clone --quiet --no-checkout "$RFX_CHECKOUT" "$RFX_WORK"
+
+  git -C "$RFX_WORK" checkout --quiet --detach "$RFX_SHA"
+
+  cd "$RFX_WORK"
+
+  python -m pip install -q "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pyyaml
+  pytest
+
+  export PYTHONPATH="$RFX_WORK"
+
+  export MPLBACKEND=Agg
+
+  python -c ''import hashlib,os; from pathlib import Path; assert hashlib.sha256(Path(os.environ["RFX_DRIVER"]).read_bytes()).hexdigest()==os.environ["RFX_DRIVER_SHA256"]''
+
+  python -u "$RFX_DRIVER" --refinement 1 --reference-record "$RFX_BASELINE_RESULT"
+  --out "$RFX_OUT/confirmation" > "$RFX_OUT/confirmation.log" 2>&1
+
+  cat "$RFX_OUT/confirmation.log"
+
+  python -u "$RFX_DRIVER" --refinement 2 --reference-record "$RFX_BASELINE_RESULT"
+  --out "$RFX_OUT/refinement" > "$RFX_OUT/refinement.log" 2>&1
+
+  cat "$RFX_OUT/refinement.log"
+
+  '
