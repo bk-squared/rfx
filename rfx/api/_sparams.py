@@ -97,7 +97,12 @@ def _msl_cell_profile(grid, axis: str, n: int) -> np.ndarray:
 
 def msl_modal_voltage(ez_plane, *, j_centre: int, k_lo: int, k_hi: int,
                       dz_arr, dtype=None):
-    """Modal voltage ``V = -∫E·dz`` from ground to the trace underside.
+    """Native MSL voltage ``V = +∫E·dz`` from ground to the trace underside.
+
+    This is opposite the trace-to-ground potential convention in the
+    quasi-TEM limit. The native positive-going MSL current is also opposite
+    the physical conductor current; the paired signs preserve V*conj(I)
+    and the wave ratios. Do not change only one of these signs.
 
     ``ez_plane`` is an ``(n_freqs, ny, nz)`` x-normal DFT accumulator.  The
     integral sums the z-edges ``k_lo .. k_hi-1`` — every Ez edge strictly

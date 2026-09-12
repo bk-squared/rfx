@@ -1,0 +1,60 @@
+name: rfx-i726-field-power-contract
+description: Fixed CV06b sources/DUT; sequential two-drive raw E and both H face records
+  for VI/Poynting power Gram; no calibration or accuracy PASS.
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: '1'
+  OMP_NUM_THREADS: '1'
+  OPENBLAS_NUM_THREADS: '1'
+  XLA_PYTHON_CLIENT_PREALLOCATE: 'false'
+  JAX_ENABLE_X64: '0'
+  HDF5_USE_FILE_LOCKING: 'FALSE'
+  RFX_OUT: /root/workspace/claude-workspace/rfx/runs/codex-i726-field-power-041o6tyr
+  RFX_SHA: d3f049d806ebea58778ee774cbf8794dd8ca39d7
+  RFX_ARCHIVE_SHA256: 8d539a673fbb182e34932981afb473813df729889ab5c2e534ee1993a5754b08
+  RFX_DRIVER_SHA256: 50ebdbc30156c1bf8ca6926718ef513a753b434d83906d714608eb1589681076
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: 'set -eu
+
+  RFX_WORK=$(mktemp -d /tmp/rfx-i726-power.XXXXXX)
+
+  export RFX_WORK
+
+  python -c ''import os,hashlib; from pathlib import Path; p=Path(os.environ["RFX_OUT"]);
+  assert hashlib.sha256((p/"source.tar").read_bytes()).hexdigest()==os.environ["RFX_ARCHIVE_SHA256"];
+  assert hashlib.sha256((p/"field_power.py").read_bytes()).hexdigest()==os.environ["RFX_DRIVER_SHA256"]''
+
+  tar -xf "$RFX_OUT/source.tar" -C "$RFX_WORK"
+
+  cd "$RFX_WORK"
+
+  python -m pip install -q "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pyyaml
+  pytest
+
+  export PYTHONPATH="$RFX_WORK"
+
+  export MPLBACKEND=Agg
+
+  python -c ''import jax,numpy,scipy,rfx,json,os; from pathlib import Path; m=dict(source_sha=os.environ["RFX_SHA"],source_archive_sha256=os.environ["RFX_ARCHIVE_SHA256"],driver_sha256=os.environ["RFX_DRIVER_SHA256"],jax=jax.__version__,numpy=numpy.__version__,scipy=scipy.__version__,rfx_path=rfx.__file__,backend=jax.default_backend(),x64=bool(jax.config.jax_enable_x64),devices=[str(x)
+  for x in jax.devices()]); print(json.dumps(m)); assert m["backend"]=="gpu"; Path(os.environ["RFX_OUT"],"environment.json").write_text(json.dumps(m,indent=2))''
+
+  set +e
+
+  timeout --kill-after=30s 7200s python -u "$RFX_OUT/field_power.py" --out "$RFX_OUT/artifacts"
+  > "$RFX_OUT/run.log" 2>&1
+
+  RFX_RC=$?
+
+  set -e
+
+  printf ''%s\n'' "$RFX_RC" > "$RFX_OUT/exit-code.txt"
+
+  tail -n 80 "$RFX_OUT/run.log"
+
+  exit "$RFX_RC"
+
+  '
