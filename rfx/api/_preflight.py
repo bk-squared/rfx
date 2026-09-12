@@ -1266,6 +1266,7 @@ def msl_nearest_downstream_reflector(
     resolve_material=None,
     thin_conductors=(),
     pec_sigma_threshold: float = 1e6,
+    signed_front_distance: bool = False,
 ):
     """Distance from ``x_probe`` to the nearest downstream conductor edge.
 
@@ -1276,6 +1277,11 @@ def msl_nearest_downstream_reflector(
     conductors this scan could NOT place (one string each); it is what
     lets the caller distinguish "nothing is nearby" from "I could not
     look" (issue #685).
+
+    By default a probe inside a candidate has zero distance, preserving
+    the auto-placement contract. ``signed_front_distance=True`` instead
+    returns its signed distance to the candidate's entering boundary;
+    this is needed when reporting how far an observation has passed it.
 
     What counts as a conductor (issue #685). This used to be
     ``isinstance(shape, Box) and str(material_name).lower() == "pec"``,
@@ -1443,14 +1449,14 @@ def msl_nearest_downstream_reflector(
             elif box_x_hi < x_probe:
                 continue  # behind the probe
             else:
-                d = 0.0
+                d = box_x_lo - x_probe if signed_front_distance else 0.0
         else:
             if box_x_hi < x_probe:
                 d = x_probe - box_x_hi
             elif box_x_lo > x_probe:
                 continue
             else:
-                d = 0.0
+                d = x_probe - box_x_hi if signed_front_distance else 0.0
         if d < nearest_d:
             nearest_d = d
             _how = " (bounding box)" if _from_bbox else ""
@@ -1511,6 +1517,7 @@ def msl_probe_clearance_for_port(sim, pe, grid, *, probe_coordinates=None):
             resolve_material=getattr(sim, "_resolve_material", None),
             thin_conductors=getattr(sim, "_thin_conductors", ()),
             pec_sigma_threshold=getattr(sim, "_PEC_SIGMA_THRESHOLD", 1e6),
+            signed_front_distance=True,
         )
     except (TypeError, ValueError, AttributeError, OverflowError) as exc:
         return unavailable(f"reflector geometry is unavailable: {type(exc).__name__}")

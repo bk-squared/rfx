@@ -103,6 +103,29 @@ def test_supplied_probe_coordinates_are_resolved_to_actual_e_nodes(direction):
     assert record.deepest_gap_m == 2 * U
 
 
+@pytest.mark.parametrize("direction", DIRECTIONS)
+def test_feed_inside_a_candidate_keeps_the_actual_entering_boundary(direction):
+    sim, pe, grid = _base(direction)
+    prop, width = (0, 1) if direction[-1] == "x" else (1, 0)
+    lo, hi = [0., 0., 2 * U], [0., 0., 2 * U]
+    lo[prop], hi[prop] = sorted((_coordinate(direction, U),
+                                _coordinate(direction, 20 * U)))
+    lo[width], hi[width] = 2 * U, 10 * U
+    sim.add(Box(tuple(lo), tuple(hi)), material="pec")
+    record = _assess(sim, pe, grid)
+    assert record.status == "insufficient"
+    assert record.first_gap_m == -11 * U
+    assert record.deepest_gap_m == -15 * U
+    # Existing placement callers still see zero distance when inside.
+    legacy_distance, _, _ = preflight.msl_nearest_downstream_reflector(
+        sim._geometry, x_probe=pe.position[prop], x_feed=pe.position[prop],
+        y_feed=pe.position[width], w_trace=pe.width, dx=grid.dx,
+        domain_y=sim._domain[width], direction=direction,
+        resolve_material=sim._resolve_material,
+    )
+    assert legacy_distance == 0.0
+
+
 class _UnknownBounds:
     pass
 
