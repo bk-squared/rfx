@@ -126,7 +126,7 @@
         "Simulation.compute_msl_s_matrix(...)"
       ],
       "result_type": [
-        "MSLSMatrixResult.S / freqs / Z0 / beta / port_names / reliable"
+        "MSLSMatrixResult.S / freqs / Z0 / beta / port_names / reliable / reference_impedances"
       ],
       "supported_configurations": [
         "uniform_yee_rf_specialized",
@@ -135,6 +135,7 @@
       "validation_status": "E5-narrow for the uniform laplace/quasi-TEM thru and notch configurations. The committed OpenEMS notch comparison is characterized rather than tight. Nonuniform laplace/uniform mode has internal regression coverage only. Eigenmode is unsupported.",
       "known_limits": [
         "nonuniform mode=laplace or mode=uniform has no external comparison",
+        "S uses positive real analytic power-wave references exposed in reference_impedances, separately from fitted Z0 and source/load resistance; unequal-reference transmission changes from legacy voltage ratios",
         "Result.s_params is not used; call compute_msl_s_matrix(...)",
         "outside JAX tracing, reliable[p,k]=false invalidates the whole slice S[:,:,k] (S is solved jointly across drives, #507); the mask covers every driven/port record the solve consumes (#522); true is not an accuracy guarantee",
         "mode=eigenmode, SBP-SAT subgridding, ADI, TFSF, and mixed port families are unsupported",

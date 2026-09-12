@@ -1544,12 +1544,18 @@ class MSLSMatrixResult:
     Attributes
     ----------
     S : (n_ports, n_ports, n_freqs) complex
-        Full S-matrix at each port's FIRST probe plane, formed from measured
-        V/I with the analytic Hammerstad-Jensen reference impedance. There
+        Power-wave S-matrix at each port's FIRST probe plane, formed from
+        a=(V+R*I)/(2*sqrt(R)), b=(V-R*I)/(2*sqrt(R)) with the positive real
+        analytic Hammerstad-Jensen reference R of each port. There
         is no translation back to the physical feed planes. Bracketing H
         samples are interpolated to this E-node plane using physical
         coordinates, with the temporal leapfrog offset corrected separately.
         The fitted ``Z0`` below is a diagnostic, not the reference used to form S.
+    reference_impedances : (n_ports,) float, optional
+        Actual positive real R values used to define S, in ohms and in
+        port_names order. These are distinct from fitted Z0 and the
+        source/load resistances. Present on generated results; None is
+        retained for manually constructed legacy result objects.
     freqs : (n_freqs,) float
         Frequency grid in Hz.
     Z0 : (n_ports, n_freqs) complex
@@ -1625,7 +1631,8 @@ class MSLSMatrixResult:
         disambiguates. ``None`` while tracing (the finiteness test cannot run
         on a tracer, so the solve result is taken as-is — see ``cond_a``).
     cond_a : (n_freqs,) float, optional
-        Per-frequency condition number of the drive matrix ``A``. Bounds
+        Per-frequency condition number of the power-wave drive matrix ``A``
+        (one common row scale cancels from this condition number). Bounds
         DEGENERACY of the drive system only — it is **not** a reliability
         or accuracy score, and a low value does not certify the result
         (same contract as the coax lane's
@@ -1661,13 +1668,14 @@ class MSLSMatrixResult:
     beta_railed: np.ndarray | None = None
     # Same order as port_names; independent of the frequency-wise signal mask.
     probe_clearance: tuple[MSLProbeClearance, ...] | None = None
+    reference_impedances: np.ndarray | None = None
 
 
 @dataclass
 class MixedSMatrixResult:
     """Mixed-family S-matrix result (issue #488, lumped/wire + MSL v1).
 
-    Unlike the per-family extractors, ``S`` here is in the **Kurokawa
+    ``S`` here is in the **Kurokawa
     power-wave convention** (every wave amplitude divided by
     ``sqrt(Re(Z0_port))``): with unequal reference impedances across
     families a pseudo-wave ``b/a`` ratio is off by ``sqrt(Z_j/Z_i)``

@@ -14,11 +14,15 @@ from pathlib import Path
 import numpy as np
 
 
-def solve(v, current, zref):
+def solve(v, current, zref, *, convention='voltage'):
     # Input axes: drive, port, frequency. Rows below are drive, so solving
     # A.T * S.T = B.T gives the usual receiver-by-drive S after transpose.
     a = (v + zref[None, :, None] * current) / 2
     b = (v - zref[None, :, None] * current) / 2
+    if convention == 'power':
+        a, b = a / np.sqrt(zref)[None, :, None], b / np.sqrt(zref)[None, :, None]
+    elif convention != 'voltage':
+        raise ValueError('unsupported S wave convention')
     return np.stack([np.linalg.solve(a[:, :, k], b[:, :, k]).T
                      for k in range(v.shape[-1])], axis=2)
 
@@ -36,6 +40,12 @@ def audit(path):
         stored = np.asarray(dump['production_smatrix'])
         freqs = np.asarray(dump['freqs_hz'])
     zref = np.asarray(meta['s_reference_impedances_ohm'], dtype=float)
+    version = meta.get('schema_version')
+    convention = meta.get('s_wave_convention', 'voltage' if version == 3 else None)
+    if (version, convention) not in ((3, 'voltage'), (4, 'power')):
+        raise ValueError('record needs an explicit supported wave convention')
+    if meta['production_smatrix_assembly'] != 'multi_drive_solve':
+        raise ValueError('this spatial comparison requires multi-drive assembly')
     stencils = meta['current_plane_stencils']
     if v.ndim != 3 or v.shape[0] != v.shape[1] or zref.shape != (v.shape[1],):
         raise ValueError('record is not a complete square multi-drive experiment')
@@ -48,14 +58,19 @@ def audit(path):
         raise ValueError('current stencil count does not match ports')
     reconstructed = (weights[None, :, 0, None] * currents['left']
                      + weights[None, :, 1, None] * currents['same_index'])
-    centered = solve(v, currents['centered'], zref)
-    old = solve(v, currents['same_index'], zref)
+    centered = solve(v, currents['centered'], zref, convention=convention)
+    old = solve(v, currents['same_index'], zref, convention=convention)
+    # Power diagnostics must use the power basis even for legacy voltage S.
+    power_scale = (np.sqrt(zref)[None, :, None] / np.sqrt(zref)[:, None, None]
+                   if convention == 'voltage' else 1)
+    centered_power, old_power = centered * power_scale, old * power_scale
     differences = np.abs(centered - old)
     worst = np.unravel_index(np.argmax(differences), differences.shape)
     current_scale = max(float(np.max(abs(currents['centered']))), 1e-300)
     result = dict(
         dump=str(path), sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
         production_assembly=meta['production_smatrix_assembly'],
+        s_wave_convention=convention, power_diagnostic_convention='power',
         scope='same FDTD fields, same V plane and Zref; unprojected extraction comparison only',
         voltage_planes_m=[s['voltage_coordinate'] for s in stencils],
         current_weights=weights.tolist(), reference_impedances_ohm=zref.tolist(),
@@ -67,8 +82,12 @@ def audit(path):
         s_change_max_abs=float(differences[worst]),
         s_change_worst=dict(receiver=int(worst[0]), drive=int(worst[1]),
                             frequency_hz=float(freqs[worst[2]])),
-        centered_max_column_power=float(np.max(np.sum(abs(centered)**2, axis=0))),
-        same_index_max_column_power=float(np.max(np.sum(abs(old)**2, axis=0))),
+        centered_max_column_power=float(np.max(np.sum(abs(centered_power)**2, axis=0))),
+        same_index_max_column_power=float(np.max(np.sum(abs(old_power)**2, axis=0))),
+        centered_max_coherent_power_gain=float(np.max(
+            np.linalg.svd(centered_power.transpose(2, 0, 1), compute_uv=False)**2)),
+        same_index_max_coherent_power_gain=float(np.max(
+            np.linalg.svd(old_power.transpose(2, 0, 1), compute_uv=False)**2)),
         physical_accuracy_verdict=None,
     )
     return result, dict(freqs_hz=freqs, centered_s=centered, same_index_s=old)

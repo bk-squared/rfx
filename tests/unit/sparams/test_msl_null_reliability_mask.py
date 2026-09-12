@@ -29,19 +29,21 @@ def _dump_path(name: str) -> Path:
 
 
 def _reliability_from_dump(name: str):
-    dump = load_port_vi_dump_npz(_dump_path(name))
-    reliable = _msl_wave_split_reliability(
-        dump.voltages[:, 0, :], dump.currents[:, 0, :], dump.freqs
-    )
-    return dump, reliable
+    # These historical v2 records lack actual S references. The low-signal
+    # test needs only measured V/I; do not invent references to replay S.
+    with np.load(_dump_path(name), allow_pickle=False) as dump:
+        reliable = _msl_wave_split_reliability(
+            dump['raw_v'][:, 0, 0, :], dump['raw_i1'][:, 0, :], dump['freqs_hz']
+        )
+        return dump['production_smatrix'], reliable
 
 
 def test_dx98_real_dump_flags_null_and_nonpassive_peak():
-    dump, reliable = _reliability_from_dump("vi_dump_dx98um.npz")
+    stored_s, reliable = _reliability_from_dump("vi_dump_dx98um.npz")
     unreliable = ~reliable[0]
     assert np.any(unreliable[57:60])
 
-    s11 = np.abs(dump.production_smatrix[0, 0])
+    s11 = np.abs(stored_s[0, 0])
     peak = int(np.argmax(s11))
     assert s11[peak] > 1.0
     assert unreliable[peak]
@@ -81,6 +83,9 @@ def test_loader_exposes_probe_zero_from_msl_raw_dump(tmp_path):
     np.savez(
         path,
         metadata_json=np.asarray(json.dumps({
+            "schema": "rfx.msl_nprobe_dump", "schema_version": 4,
+            "s_wave_convention": "power",
+            "s_reference_impedances_ohm": [50.0],
             "port_definitions": [{"impedance_ohm": 50.0}],
         })),
         freqs_hz=np.arange(4, dtype=float),

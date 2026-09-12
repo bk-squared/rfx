@@ -2,7 +2,7 @@
 """Replay an rfx raw V/I port dump into an S-matrix.
 
 This script is intentionally independent of the production port extractors: it
-loads raw V/I phasors, performs the power-wave split, and optionally compares
+loads raw V/I phasors, follows the recorded wave/assembly convention, and compares
 that replay against a production S-matrix stored in the same dump file.
 """
 
@@ -29,7 +29,7 @@ def _complex_to_jsonable(arr: np.ndarray) -> list:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("dump", type=Path, help=".npz dump created by save_port_vi_dump_npz")
+    parser.add_argument("dump", type=Path, help="generic V/I or explicit MSL v3/v4 .npz dump")
     parser.add_argument("--atol", type=float, default=1e-9)
     parser.add_argument("--rtol", type=float, default=1e-6)
     parser.add_argument("--write-json", type=Path, help="optional JSON output path")

@@ -2663,6 +2663,26 @@ def _collocated_msl_h(planes, names, weights):
     ) for left, right in names)
 
 
+def _msl_power_wave_scales(reference_impedances, dtype):
+    """Relative power-wave row scales for positive real references.
+
+    sqrt(R0)/sqrt(Rp) differs from canonical 1/sqrt(Rp) by one common
+    scalar, which cancels from S and cond(A). Equal-reference records keep
+    exactly unit scales, while unequal ports use the same power metric.
+    """
+    refs = np.asarray(reference_impedances)
+    if (refs.ndim != 1 or refs.size == 0 or np.iscomplexobj(refs)
+            or not np.all(np.isfinite(refs)) or not np.all(refs > 0)):
+        raise ValueError("MSL S reference impedances must be finite positive real values")
+    real_dtype = np.finfo(np.dtype(dtype)).dtype
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        roots = np.sqrt(refs.astype(np.float64))
+        scales = (roots[0] / roots).astype(real_dtype)
+    if not np.all(np.isfinite(scales) & (scales > 0)):
+        raise ValueError("MSL power-wave scaling is not representable at this precision")
+    return jnp.asarray(scales)
+
+
 class _SparamMixin:
     """S-parameter extraction methods mixed into :class:`Simulation`."""
 
@@ -3689,6 +3709,13 @@ class _SparamMixin:
     ) -> "MSLSMatrixResult":
         """Compute MSL S from probe-plane V/I with fitted line diagnostics.
 
+        Returned S uses power waves for the positive real per-port analytic
+        references: a=(V+R*I)/(2*sqrt(R)), b=(V-R*I)/(2*sqrt(R)).
+        ``reference_impedances`` records those R values separately from the
+        fitted ``Z0`` and source/load resistances. For unequal references,
+        transmission S differs from the legacy voltage ratio by
+        sqrt(R_input/R_output); equal-reference results are unchanged.
+
         ``enforce_passivity=True`` (default) projects the assembled S(f) onto
         the passive set per frequency (singular values clipped to 1 — the
         nearest matrix in spectral norm with ``||S||_2 <= 1``), so the
@@ -3786,16 +3813,16 @@ class _SparamMixin:
         raw_3probe_dump_path : str or None
             Optional ``.npz`` path. When provided, write the real
             simulation-derived N-probe voltage/current phasors used by the
-            extractor, together with the production S-matrix, so the
+            extractor, together with the production power-wave S-matrix, so the
             de-embedding can be independently checked without rerunning
-            FDTD. The dump schema is ``rfx.msl_nprobe_dump`` v3 (issue #80
-            Fix C; bumped 2->3 by issue #523 to add
-            ``production_smatrix_assembly``); ``raw_v`` has shape
+            FDTD. The dump schema is ``rfx.msl_nprobe_dump`` v4: it explicitly
+            records the power-wave convention and actual reference impedances.
+            Legacy v3 records use voltage waves. ``raw_v`` has shape
             ``(n_driven, n_ports, n_probes_max, n_freqs)``.
             ``scripts/diagnostics/replay_msl_3probe_dump.py`` is SUPERSEDED
-            for v3 dumps (it expects the retired 3-probe/single-ratio v1
-            schema); the current independent check is
-            ``scripts/diagnostics/msl_vi_flux_oracle.py``.
+            for modern dumps (it expects the retired 3-probe/single-ratio
+            v1 schema). Use ``rfx.validation.load_port_vi_dump_npz`` and
+            ``replay_smatrix_from_port_vi_dump`` for independent S replay.
         strict_extractor : bool
             Honesty guard for the de-embedding (issue #80 Fix A). After
             extraction, the per-frequency ``|q|`` and extracted ``Z0``
@@ -4114,6 +4141,7 @@ class _SparamMixin:
         saved_internal_probes = set(self._internal_probe_indices)
         try:
             _complex_dtype = jnp.complex128 if jax.config.x64_enabled else jnp.complex64
+            power_scales = _msl_power_wave_scales(z0_hj_per_port, _complex_dtype)
             S = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
             Z0_per_run = jnp.zeros((n_ports, n_freqs_used), dtype=_complex_dtype)
             beta_first = jnp.zeros(n_freqs_used, dtype=_complex_dtype)
@@ -4527,7 +4555,7 @@ class _SparamMixin:
                         b_ref_d = 0.5 * (v0_d - z0hj_d * i_f)
                         S = S.at[driven, driven, :].set(jnp.asarray(b_ref_d / (a_fwd_d + 1e-30), dtype=_complex_dtype))
                         Z0_per_run = Z0_per_run.at[driven, :].set(z0_fit)
-                        alpha_d = a_fwd_d
+                        alpha_d = a_fwd_d * power_scales[driven]
                         if driven == 0:
                             beta_first = jnp.asarray(res_p["beta"], dtype=_complex_dtype)
 
@@ -4554,20 +4582,22 @@ class _SparamMixin:
                     v0_p = v_per_port[j][0]
                     b_out_p = 0.5 * (
                         v0_p - z0_hj_per_port[j] * i_first_per_port[j]
-                    )
+                    ) * power_scales[j]
                     S = S.at[j, driven, :].set(jnp.asarray(b_out_p, dtype=_complex_dtype) / (jnp.asarray(alpha_d, dtype=_complex_dtype) + 1e-30))
 
                 # Record the FULL (a, b) pair at every port for this drive
                 # (issue #507). ``a`` at a passive port is what the
-                # single-ratio rule above assumes away.
+                # single-ratio rule above assumes away. Relative sqrt(R0/Rj)
+                # row scales give power waves up to one shared sqrt(R0),
+                # which cancels from both S and cond(A).
                 for j in range(n_ports):
                     v0_j = v_per_port[j][0]
                     z0_j = z0_hj_per_port[j]
                     i_j = i_first_per_port[j]
                     wave_a[driven][j] = jnp.asarray(
-                        0.5 * (v0_j + z0_j * i_j), dtype=_complex_dtype)
+                        0.5 * (v0_j + z0_j * i_j) * power_scales[j], dtype=_complex_dtype)
                     wave_b[driven][j] = jnp.asarray(
-                        0.5 * (v0_j - z0_j * i_j), dtype=_complex_dtype)
+                        0.5 * (v0_j - z0_j * i_j) * power_scales[j], dtype=_complex_dtype)
 
             # ---- Multi-drive S solve (issue #507) -----------------------
             # Every port was driven, so the full wave system is recorded:
@@ -4779,7 +4809,10 @@ class _SparamMixin:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 metadata = {
                     "schema": "rfx.msl_nprobe_dump",
-                    "schema_version": 3,
+                    "schema_version": 4,
+                    "s_wave_convention": "power",
+                    "wave_definition": "a=(V+R*I)/(2*sqrt(R)); b=(V-R*I)/(2*sqrt(R))",
+                    "solver_wave_common_scale": "sqrt(reference_impedances[0]); cancels from S and cond(A)",
                     "current_spatial_alignment": "linear_bracketing_H_to_E_node",
                     "current_plane_stencils": h_stencils,
                     "s_reference_impedances_ohm": z0_hj_per_port,
@@ -4806,11 +4839,7 @@ class _SparamMixin:
                     "raw_i1_shape": "(n_driven, n_ports, n_freqs)",
                     "n_probes_per_port": [int(n) for n in n_probes_per_port],
                     "phase_convention": "DFT accumulator convention from add_dft_plane_probe",
-                    "current_convention": (
-                        "line current sign normalized so +x and -x MSL ports "
-                        "produce positive characteristic impedance on the "
-                        "validated thru-line envelope"
-                    ),
+                    "current_convention": "native_msl_loop_current",
                     "deembedding": (
                         "N equally spaced voltage probes plus current at "
                         "probe 0. The reported Z0/beta come from the N-probe "
@@ -4902,6 +4931,7 @@ class _SparamMixin:
                 cond_a=msl_cond_a,
                 beta_railed=beta_railed,
                 probe_clearance=probe_clearance,
+                reference_impedances=np.asarray(z0_hj_per_port, dtype=np.float64),
             )
             _warn_if_ringdown_truncated(
                 settling_db_runs,

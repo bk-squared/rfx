@@ -11,6 +11,11 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
 
 ### Fixed — MSL clearance and accuracy claims (#726)
 
+- **BREAKING for unequal MSL reference impedances:** return standard power-wave
+  S and expose the actual per-port `reference_impedances`, separately from
+  fitted Z0 and load resistance. Equal-reference wave scaling is unchanged.
+  Raw dump v4 declares power waves; replay preserves v3 voltage-wave semantics
+  and refuses historical records lacking verified S references.
 - Interpolate bracketing transverse H samples to the existing voltage E-node
   plane using physical grid coordinates before forming MSL current and S.
   Preserve the temporal correction, port signs and reference impedances.

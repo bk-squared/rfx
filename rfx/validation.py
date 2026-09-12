@@ -785,15 +785,11 @@ def load_port_vi_dump_npz(path: str | Path) -> PortVIDump:
         # raw_v[driven, port, probe, frequency].  PortVIDump's canonical V/I
         # view is the wave-split plane at probe zero.
         if "raw_v" in data:
+            if metadata.get("schema") != "rfx.msl_nprobe_dump":
+                raise ValueError("raw_v requires an explicit MSL dump schema")
             voltages = data["raw_v"][:, :, 0, :]
             currents = data["raw_i1"]
-            port_defs = metadata.get("port_definitions", ())
-            impedances = np.asarray(
-                [port.get("impedance_ohm", 50.0) for port in port_defs],
-                dtype=np.complex128,
-            )
-            if not impedances.size:
-                impedances = np.full(voltages.shape[1], 50.0, dtype=np.complex128)
+            impedances = _msl_dump_reference_impedances(metadata, voltages.shape[1])
         else:
             voltages = data["voltages"]
             currents = data["currents"]
@@ -812,9 +808,87 @@ def load_port_vi_dump_npz(path: str | Path) -> PortVIDump:
         )
 
 
+def _msl_dump_reference_impedances(metadata, n_ports):
+    refs = metadata.get("s_reference_impedances_ohm")
+    if refs is None:
+        raise ValueError(
+            "MSL dump lacks actual S reference impedances; source/load resistances "
+            "and fitted Z0 cannot substitute for them. Legacy records require "
+            "a separately verified reconstruction.")
+    refs = np.asarray(refs, dtype=np.complex128)
+    if (refs.shape != (n_ports,) or not np.all(np.isfinite(refs))
+            or np.any(refs.imag != 0) or np.any(refs.real <= 0)):
+        raise ValueError("MSL dump references must be one finite positive real impedance per port")
+    return refs
+
+
+def _replay_msl_port_vi_dump(dump):
+    """Independent NumPy replay of the declared MSL wave/assembly contract."""
+    metadata = dump.metadata
+    version = metadata.get("schema_version")
+    if version not in (3, 4):
+        raise ValueError("MSL V/I replay supports explicit v3 voltage-wave and v4 power-wave records")
+    expected = "power" if version == 4 else "voltage"
+    if metadata.get("s_wave_convention", "voltage" if version == 3 else None) != expected:
+        raise ValueError("MSL dump wave convention conflicts with its schema version")
+    legacy_current = ("line current sign normalized so +x and -x MSL ports "
+                      "produce positive characteristic impedance on the validated thru-line envelope")
+    conventions = {"native_msl_loop_current"}
+    if version == 3:
+        conventions.add(legacy_current)
+    if metadata.get("current_convention") not in conventions:
+        raise ValueError("unsupported MSL dump current convention")
+    if dump.reference_plane_offsets_m is not None and np.any(dump.reference_plane_offsets_m):
+        raise ValueError("MSL dump replay is at the recorded first-probe planes; shifts are not defined")
+    v = _as_driven_port_array("voltages", dump.voltages)
+    i = _as_driven_port_array("currents", dump.currents)
+    n_driven, n_ports, n_freqs = v.shape
+    if i.shape != v.shape or n_driven != n_ports:
+        raise ValueError("MSL replay needs a complete square set of V/I drive records")
+    if sorted(dump.driven_port_indices) != list(range(n_ports)):
+        raise ValueError("MSL replay needs exactly one record for every driven port")
+    refs = _msl_dump_reference_impedances(metadata, n_ports)
+    if not np.array_equal(refs, dump.port_impedances):
+        raise ValueError("loaded impedances differ from the MSL dump's recorded references")
+    if np.asarray(dump.freqs).shape != (n_freqs,):
+        raise ValueError("MSL dump frequencies do not match the V/I records")
+    z = refs[None, :, None]
+    a_voltage, b_voltage = (v + z * i) / 2, (v - z * i) / 2
+    a, b = a_voltage, b_voltage
+    if expected == "power":
+        a, b = a / np.sqrt(z.real), b / np.sqrt(z.real)
+    assembly = metadata.get("production_smatrix_assembly")
+    if assembly == "multi_drive_solve":
+        # Stored axes are drive/port/frequency. Solve A.T S.T = B.T.
+        s = np.stack([np.linalg.solve(a[:, :, k], b[:, :, k]).T
+                      for k in range(n_freqs)], axis=-1)
+    elif assembly == "single_ratio_fallback":
+        # The production fallback retains a legacy 1e-30 denominator floor
+        # in its working wave units. Unlike B A^-1, that floor is not
+        # invariant under a common rescaling, so reproduce sqrt(R0) here.
+        if expected == "power":
+            scales = np.sqrt(refs.real[0]) / np.sqrt(refs.real)
+            a = a_voltage * scales[None, :, None]
+            b = b_voltage * scales[None, :, None]
+        s = np.empty((n_ports, n_ports, n_freqs), dtype=np.complex128)
+        for record, driven in enumerate(dump.driven_port_indices):
+            with np.errstate(divide="ignore", invalid="ignore"):
+                s[:, driven, :] = b[record] / (a[record, driven] + 1e-30)
+            # Preserve the producer's legacy diagonal floor, which is
+            # applied before power scaling.
+            s[driven, driven] = (b_voltage[record, driven]
+                                 / (a_voltage[record, driven] + 1e-30))
+    else:
+        raise ValueError("MSL dump needs an explicit supported production assembly")
+    return PortSMatrixObservable(s_params=s, freqs=np.asarray(dump.freqs),
+                                port_names=tuple(dump.port_names), source="msl_vi_dump_" + expected)
+
+
 def replay_smatrix_from_port_vi_dump(dump: PortVIDump) -> PortSMatrixObservable:
     """Replay an S-matrix from a loaded :class:`PortVIDump`."""
 
+    if dump.metadata.get("schema") == "rfx.msl_nprobe_dump":
+        return _replay_msl_port_vi_dump(dump)
     current_convention = str(dump.metadata.get("current_convention", "positive_into_dut"))
     return replay_smatrix_from_vi_dump(
         dump.voltages,
