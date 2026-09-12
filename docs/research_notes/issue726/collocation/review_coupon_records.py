@@ -57,8 +57,23 @@ def review(base_root, qualification_root):
     # These are the existing capture tolerances, not measured new bounds.
     if not np.all(repeat_delta <= repeat_limit):
         failures.append('same-mesh confirmation exceeds rtol=.005 / atol=.002')
-    base_raw = baseline.get('S_raw', baseline['S'])
-    fine_raw = fine.get('S_raw', fine['S'])
+    # The dump always retains the pre-projection S. Do not substitute the
+    # displayed S when a result omits its optional S_raw attribute.
+    with np.load(base_root / 'coupon/call-0-raw-vi.npz') as dump:
+        base_raw = dump['production_smatrix']
+        base_metadata = json.loads(str(dump['metadata_json']))
+    with np.load(qualification_root / 'refinement/raw-vi.npz') as dump:
+        fine_raw = dump['production_smatrix']
+        fine_metadata = json.loads(str(dump['metadata_json']))
+    base_planes = [s['voltage_coordinate'] for s in base_metadata['current_plane_stencils']]
+    fine_planes = [s['voltage_coordinate'] for s in fine_metadata['current_plane_stencils']]
+    # Refinement must retain the actual sampled reference planes, not just
+    # the declared drawing. Allow only float64 coordinate accumulation noise.
+    np.testing.assert_allclose(fine_planes, base_planes, rtol=1e-12, atol=0)
+    if 'S_raw' in baseline:
+        np.testing.assert_array_equal(base_raw, baseline['S_raw'])
+    if 'S_raw' in fine:
+        np.testing.assert_array_equal(fine_raw, fine['S_raw'])
     mesh_delta = abs(fine_raw - base_raw)
     if not np.all(mesh_delta <= .02):
         failures.append('raw-complex mesh difference exceeds existing .02 budget')
@@ -71,6 +86,8 @@ def review(base_root, qualification_root):
         refinement_raw_max_abs=float(mesh_delta.max()),
         repeat_absolute_tolerance=.002, repeat_relative_tolerance=.005,
         refinement_raw_absolute_tolerance=.02,
+        base_sampled_reference_planes_m=base_planes,
+        refined_sampled_reference_planes_m=fine_planes,
         baseline_result_sha256=baseline_hash,
     )
 
