@@ -121,3 +121,25 @@ The reporting checkpoint passed 58 focused tests. A fresh build certificate
 matches all three earlier approved input records exactly. Commands, source
 hashes and remaining limits are in [reporting-checkpoint.json](reporting-checkpoint.json),
 with the current geometry in [reporting-inputs.json](reporting-inputs.json).
+
+## Sequential RF measurement declaration
+
+`record_falsifiers.py` invokes the current producer on its three already
+validated simulation instances. It preserves 100 frequencies and 20 periods
+for every arm and returns each original MSL result unchanged. It adds the
+ordinary raw V/I dump request and copies complex S, preprojection S when
+present, references, fit/rail flags and settling metadata. No bins are removed
+and no new passivity clipping is applied.
+
+The [build declaration](rf-predeclaration.json) records dimensions and reference
+conventions before fields run. The canonical `settling_verdict` is used without
+changing its inclusive -40 dB limit; absent/nonfinite witnesses cannot qualify
+an RF result. The producer's own verdict and this settling screen are recorded
+separately. A successful producer exit alone is not an accuracy certificate.
+
+`recorder_smoke_test.py` checks observation-only behavior with a synthetic
+backend. Its [summary](recorder-smoke-summary.json) is explicitly synthetic:
+array bytes are retained, an exact -40 dB witness passes, absent witnesses
+are rejected, gains above one remain visible, and a nonfinite raw bin makes
+the aggregate gain unavailable rather than being filtered out. These checks
+do not measure the physical response of any of the three geometries.
