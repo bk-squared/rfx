@@ -1,0 +1,129 @@
+{
+  "scope": "same recorded physical inputs; observation-plane sensitivity, not an exact full-wave error",
+  "fixed_before_control_notch_hz": 3771250000.0,
+  "arms": {
+    "clean": {
+      "before_s11_db": 0.026895256713032722,
+      "after_s11_db": 0.026934480294585228,
+      "before_s21_db": -47.73075485229492,
+      "after_s21_db": -47.7345085144043,
+      "complex_s_change_max_abs": 0.00901571474969387,
+      "new_fields_old_current_vs_before_s_max_abs": 2.289080187398997e-07,
+      "same_field_current_impact": {
+        "dump": "docs/research_notes/issue726/collocation/gpu-369367260605/artifacts/clean-phasors.npz",
+        "sha256": "6253b6115027d51b121fea710e688d70df6a84c1646d9fbadb367639793ddd15",
+        "production_assembly": "multi_drive_solve",
+        "scope": "same FDTD fields, same V plane and Zref; unprojected extraction comparison only",
+        "voltage_planes_m": [
+          0.0073025,
+          0.02667
+        ],
+        "current_weights": [
+          [
+            0.49999999999999317,
+            0.5000000000000069
+          ],
+          [
+            0.5,
+            0.5
+          ]
+        ],
+        "reference_impedances_ohm": [
+          47.89479996289313,
+          47.89479996289313
+        ],
+        "centered_vs_stored_s_max_abs": 2.1415011434710535e-07,
+        "current_interpolation_relative_residual": 1.5147204496333165e-07,
+        "current_change_relative_to_peak": 0.0026281471960787166,
+        "s_change_max_abs": 0.009015817429321268,
+        "s_change_worst": {
+          "receiver": 0,
+          "drive": 0,
+          "frequency_hz": 4243750000.0
+        },
+        "centered_max_column_power": 1.0064900485759785,
+        "same_index_max_column_power": 1.006510874262867,
+        "physical_accuracy_verdict": null
+      },
+      "settling_db": [
+        -122.15785574943226,
+        -120.00605473787154
+      ],
+      "reliable_at_notch": [
+        false,
+        false
+      ],
+      "beta_railed_bins_3_to_5_ghz": [
+        0,
+        0
+      ],
+      "voltage_phasors_bit_identical": true,
+      "same_index_current_bit_identical": true
+    },
+    "near": {
+      "before_s11_db": 0.018065137788653374,
+      "after_s11_db": 0.018080636858940125,
+      "before_s21_db": -47.72077941894531,
+      "after_s21_db": -47.73094177246094,
+      "complex_s_change_max_abs": 0.008539417758584023,
+      "new_fields_old_current_vs_before_s_max_abs": 2.1152993707033677e-07,
+      "same_field_current_impact": {
+        "dump": "docs/research_notes/issue726/collocation/gpu-369367260605/artifacts/near-phasors.npz",
+        "sha256": "43b186221045d577c168442f554540dc9781a6662b3ddee840bdb7bcc9e92d63",
+        "production_assembly": "multi_drive_solve",
+        "scope": "same FDTD fields, same V plane and Zref; unprojected extraction comparison only",
+        "voltage_planes_m": [
+          0.016129,
+          0.02667
+        ],
+        "current_weights": [
+          [
+            0.4999999999999727,
+            0.5000000000000273
+          ],
+          [
+            0.5,
+            0.5
+          ]
+        ],
+        "reference_impedances_ohm": [
+          47.89479996289313,
+          47.89479996289313
+        ],
+        "centered_vs_stored_s_max_abs": 2.1769364987030135e-07,
+        "current_interpolation_relative_residual": 1.4579369061859907e-07,
+        "current_change_relative_to_peak": 0.002577561617929934,
+        "s_change_max_abs": 0.00853939182606719,
+        "s_change_worst": {
+          "receiver": 1,
+          "drive": 1,
+          "frequency_hz": 4125625000.0
+        },
+        "centered_max_column_power": 1.007856190173707,
+        "same_index_max_column_power": 1.0078187537277992,
+        "physical_accuracy_verdict": null
+      },
+      "settling_db": [
+        -119.58135698043966,
+        -118.40915974530424
+      ],
+      "reliable_at_notch": [
+        false,
+        false
+      ],
+      "beta_railed_bins_3_to_5_ghz": [
+        51,
+        0
+      ],
+      "voltage_phasors_bit_identical": true,
+      "same_index_current_bit_identical": true
+    }
+  },
+  "before_near_minus_clean_s11_db": -0.008830118924379349,
+  "after_near_minus_clean_s11_db": -0.008853843435645103,
+  "producer_verdict": {
+    "status": "not_read",
+    "reason": "clean: low-signal screen at notch"
+  },
+  "physical_accuracy_verdict": null
+}

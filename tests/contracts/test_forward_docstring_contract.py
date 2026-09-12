@@ -102,7 +102,11 @@ def test_all_is_curated_subset():
     # alternative is each caller re-deriving ramp lengths and seam
     # refinement. Its segment record (`_BandSeg`) and engine
     # (`_build_band_profile`) stay private. Ratio 215/335 = 0.64, unchanged.
-    assert len(names) < 216, f"rfx.__all__ too large to be curated: {len(names)}"
+    # #726 deliberately adds one result record, MSLProbeClearance, next to
+    # MSLSMatrixResult/MixedSMatrixResult so callers can type their separate
+    # layout diagnosis. H-sampling helpers stay off this star-import surface.
+    assert "MSLProbeClearance" in names
+    assert len(names) < 217, f"rfx.__all__ too large to be curated: {len(names)}"
     missing = [n for n in names if not hasattr(rfx, n)]
     assert not missing, f"rfx.__all__ lists names not on the package: {missing}"
 

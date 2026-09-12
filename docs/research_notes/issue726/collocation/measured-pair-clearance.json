@@ -1,0 +1,66 @@
+{
+  "scope": "build-only reconstruction of the public clearance record for the unchanged measured inputs; not an extra RF solve",
+  "source_sha": "935a605d12a700e235e0d54b0271fc0cf4dfe2bd",
+  "ports": {
+    "clean": [
+      {
+        "port_name": "msl_0",
+        "axis": "x",
+        "status": "satisfied",
+        "rule_frequency_hz": 7000000000.0,
+        "recommended_gap_m": 0.004788379854674549,
+        "first_probe_m": 0.0073025,
+        "deepest_probe_m": 0.0078105,
+        "first_gap_m": 0.0093975,
+        "deepest_gap_m": 0.0088895,
+        "reflector": "conductor 'pec' at x\u2208[16.70,17.30]mm y\u2208[1.62,13.62]mm",
+        "unevaluated_conductors": [],
+        "note": null
+      },
+      {
+        "port_name": "msl_1",
+        "axis": "x",
+        "status": "satisfied",
+        "rule_frequency_hz": 7000000000.0,
+        "recommended_gap_m": 0.004788379854674549,
+        "first_probe_m": 0.02667,
+        "deepest_probe_m": 0.026161999999999998,
+        "first_gap_m": 0.009369999999999996,
+        "deepest_gap_m": 0.008861999999999995,
+        "reflector": "conductor 'pec' at x\u2208[16.70,17.30]mm y\u2208[1.62,13.62]mm",
+        "unevaluated_conductors": [],
+        "note": null
+      }
+    ],
+    "near": [
+      {
+        "port_name": "msl_0",
+        "axis": "x",
+        "status": "insufficient",
+        "rule_frequency_hz": 7000000000.0,
+        "recommended_gap_m": 0.004788379854674549,
+        "first_probe_m": 0.016129,
+        "deepest_probe_m": 0.016637,
+        "first_gap_m": 0.0005709999999999986,
+        "deepest_gap_m": 6.300000000000056e-05,
+        "reflector": "conductor 'pec' at x\u2208[16.70,17.30]mm y\u2208[1.62,13.62]mm",
+        "unevaluated_conductors": [],
+        "note": null
+      },
+      {
+        "port_name": "msl_1",
+        "axis": "x",
+        "status": "satisfied",
+        "rule_frequency_hz": 7000000000.0,
+        "recommended_gap_m": 0.004788379854674549,
+        "first_probe_m": 0.02667,
+        "deepest_probe_m": 0.026161999999999998,
+        "first_gap_m": 0.009369999999999996,
+        "deepest_gap_m": 0.008861999999999995,
+        "reflector": "conductor 'pec' at x\u2208[16.70,17.30]mm y\u2208[1.62,13.62]mm",
+        "unevaluated_conductors": [],
+        "note": null
+      }
+    ]
+  }
+}

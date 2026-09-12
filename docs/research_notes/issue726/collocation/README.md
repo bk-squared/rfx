@@ -76,5 +76,41 @@ fields moves complex S by at most `0.005674`. Maximum raw column power moves
 from `1.000690` to `1.000682`; spatial interpolation alone does not resolve
 that excess. The report preserves raw values and makes no calibration claim.
 The full provider log and all records were backed up and checked before
-the terminal run was deleted. CV06b and one explicit graded-propagation
-diagnostic are in progress sequentially.
+the terminal run was deleted.
+
+Run [369367260605](gpu-369367260605/manifest.json) completed the fixed-source
+CV06b pair and one explicit graded-propagation diagnostic sequentially.
+The [pair comparison](cv06b-current-impact.json) fixes the original control's
+`3.77125 GHz` notch bin:
+
+| Observation | Old current S11 (dB) | Centered current S11 (dB) |
+|---|---:|---:|
+| Control | +0.026895 | +0.026934 |
+| Near reflector | +0.018065 | +0.018081 |
+
+The near-minus-control difference is `-0.008854 dB` after interpolation
+(`-0.008830 dB` before). For both arms all saved voltage phasors and the
+same-index side current are bit-identical to the earlier record. An
+independent old-current wave solve reproduces the old S within `2.3e-7`.
+This isolates the extraction change; it does not identify an absolute
+full-wave error. Both records settle below `-118 dB`, while their existing
+relative low-signal mask still flags the notch. The producer retains
+`not_read`, and the raw power excess persists: maxima `1.006490` (control)
+and `1.007856` (near). No passivity projection was used.
+
+[Build-only clearance reconstruction](measured-pair-clearance.json) reports
+control `(satisfied, satisfied)` and near `(insufficient, satisfied)` on
+these same inputs. Distances use registered conductor bounds, as the
+diagnosis documents, and are distinct from the fixture's realized PEC
+front certificate. Neither status changes the low-signal mask.
+
+The [graded case](graded-current-impact.json) changes four x cells around
+each first voltage plane to `55/45/55/45 um`, keeping the board drawing and
+voltage planes fixed. Actual H weights are `.55/.45`; all existing coupon
+physical screens pass and both drives settle below `-102 dB`. Its
+unprojected current-plane S change is at most `0.003122`. This is one
+specific grading diagnostic, not broader in-plane grading qualification.
+Its NumPy-generated frequency vector differs by 1--2 float32 ULP from the
+JAX-generated base coupon; it is not a bitwise same-frequency mesh
+comparison. The separate confirmation/refinement freezes the actual base
+frequency vector and remains in progress.
