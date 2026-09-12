@@ -39,7 +39,9 @@ def main(out):
     recorder.rfx.Simulation.compute_msl_s_matrix = fake_compute
     recorder.rfx.Simulation.preflight = lambda *a, **k: None
     try:
-        rc = recorder.main(out)
+        # This backend replaces compute_msl_s_matrix itself and never enters
+        # engine.run. Actual runner fingerprints have their own tests.
+        rc = recorder.main(out, audit_runner=False)
     finally:
         recorder.rfx.Simulation.compute_msl_s_matrix = original_compute
         recorder.rfx.Simulation.preflight = original_preflight
@@ -61,6 +63,7 @@ def main(out):
     assert observations[2]["raw_max_coherent_power_gain"] is None
     outcome = json.loads((out / "outcome.json").read_text())
     assert outcome["complete"] and not outcome["all_settling_screens_pass"]
+    assert not outcome["runner_plan_verified"]
     summary = dict(scope="SYNTHETIC FIELD BACKEND ONLY; no FDTD", calls=3,
                    result_array_bytes_identical=True, exact_minus40_passes=True,
                    absent_witness_not_accepted=True, nonfinite_raw_bin_not_filtered=True,

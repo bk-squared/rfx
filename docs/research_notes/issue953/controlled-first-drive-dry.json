@@ -1,0 +1,6026 @@
+{
+  "scope": "Actual runner setup stopped before any field update; first drive of all three arms",
+  "records": [
+    {
+      "schema_version": 1,
+      "invariant_sha256": "cb122d16797749d9a3148d7a9d9ee839d54f418152cfc00a9185bd9057ff3a9f",
+      "invariants": {
+        "allowed_stub_box": [
+          [
+            271,
+            280
+          ],
+          [
+            33,
+            222
+          ],
+          [
+            4,
+            4
+          ]
+        ],
+        "n_steps": 23600,
+        "grid": {
+          "axis_pads": [
+            8,
+            8,
+            0
+          ],
+          "conformal_faces": [],
+          "cpml_axes": "xyz",
+          "cpml_layers": 8,
+          "domain": [
+            0.034,
+            0.016663999999999998,
+            0.001754
+          ],
+          "dt": 1.2106750421521888e-13,
+          "dx": 6.35e-05,
+          "face_layers": {
+            "x_hi": 8,
+            "x_lo": 8,
+            "y_hi": 8,
+            "y_lo": 8,
+            "z_hi": 8,
+            "z_lo": 8
+          },
+          "face_pads": [
+            8,
+            8,
+            8,
+            8,
+            0,
+            8
+          ],
+          "freq_max": 7000000000.0,
+          "interior": [
+            [
+              8,
+              545,
+              null
+            ],
+            [
+              8,
+              272,
+              null
+            ],
+            [
+              0,
+              29,
+              null
+            ]
+          ],
+          "is_2d": false,
+          "kappa_max": 1.0,
+          "mode": "3d",
+          "nx": 553,
+          "ny": 280,
+          "nz": 37,
+          "pad_x": 8,
+          "pad_x_hi": 8,
+          "pad_x_lo": 8,
+          "pad_y": 8,
+          "pad_y_hi": 8,
+          "pad_y_lo": 8,
+          "pad_z": 8,
+          "pad_z_hi": 8,
+          "pad_z_lo": 0,
+          "pec_faces": [
+            "z_lo"
+          ],
+          "pmc_faces": [],
+          "shape": [
+            553,
+            280,
+            37
+          ]
+        },
+        "nodes": {
+          "x": {
+            "shape": [
+              553
+            ],
+            "dtype": "<f8",
+            "sha256": "94962c6daf46225aba2cceb775ff80fbfcc7275eccccad08547956f4dc583362"
+          },
+          "y": {
+            "shape": [
+              280
+            ],
+            "dtype": "<f8",
+            "sha256": "0b06c9d01b7f3e37630bf4ea0f14760f7a47cfff9f0d1780db503faaff34c541"
+          },
+          "z": {
+            "shape": [
+              37
+            ],
+            "dtype": "<f8",
+            "sha256": "872155bea1bbe4c1cb3e6e2467e5ef544ed34c0e893fe611f29cf55a8113fccd"
+          }
+        },
+        "options": {
+          "boundary": "cpml",
+          "cpml_axes": "xyz",
+          "pec_axes": null,
+          "periodic": null,
+          "checkpoint": false,
+          "checkpoint_segments": null,
+          "aniso_inv_eps_smooth": false,
+          "return_state": true,
+          "stencil_order": 2,
+          "report_every": null
+        },
+        "field_dtype": "<f4",
+        "execution": {
+          "jax_version": "0.6.2",
+          "backend": "cpu",
+          "x64_enabled": false,
+          "matmul_precision": null
+        },
+        "unsupported_channels": {
+          "debye": "absent",
+          "lorentz": "absent",
+          "tfsf": "absent",
+          "flux_monitors": "absent",
+          "waveguide_ports": "absent",
+          "ntff": "absent",
+          "snapshot": "absent",
+          "aniso_eps": "absent",
+          "aniso_inv_eps": "absent",
+          "pec_mask": "absent",
+          "pec_wires": "absent",
+          "pec_occupancy": "absent",
+          "conformal_weights": "absent",
+          "wire_port_sparams": "absent",
+          "lumped_port_sparams": "absent",
+          "wire_refplane_sparams": "absent",
+          "lumped_rlc": "absent",
+          "kerr_chi3": "absent",
+          "mag_sources": "absent",
+          "sheet_impedance": "absent"
+        },
+        "materials_after_load": {
+          "eps_r": {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "<f4",
+            "sha256": "9e32a6723fb0dc6f156d3a592e6d639f2cd20807590ff34fafd9ed1f36422914"
+          },
+          "sigma": {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "<f4",
+            "sha256": "ce1a82c8a9aef25612252ffc7608414a688b4378be96575a2772c4e67d1cfb88"
+          },
+          "mu_r": {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "<f4",
+            "sha256": "b53e61799b80f0d81ee6d473e91243d94640a20f911ba1183a0975c612dc0c72"
+          }
+        },
+        "sources": [
+          {
+            "cell": [
+              39,
+              20,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "a30de7dc94f4fa16d97a91c00b42e232a2cdd42c69d88ca134e6fa5364166686"
+            }
+          },
+          {
+            "cell": [
+              39,
+              20,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "824b620347f7ae64148318ef1eb75def6eb20a3529d6a34686a45d07829f3db1"
+            }
+          },
+          {
+            "cell": [
+              39,
+              20,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "9a9084fa24c90f39be26facc45e824671a86055fd8c5075d89d4fa330f54176f"
+            }
+          },
+          {
+            "cell": [
+              39,
+              20,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "7a9d1a1f2ba83d4af2c02472c45ae956c5bed8e7236c17c018ff0eb9c7e7586f"
+            }
+          },
+          {
+            "cell": [
+              39,
+              21,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "250a0702f1a9811be13dc8de24f94730c38b3542035d82ce8dfb139f87a4fa94"
+            }
+          },
+          {
+            "cell": [
+              39,
+              21,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "6d629b17a5ada5ede4e15152d8876af0912e391ac938dac0d29d7197eb605c4e"
+            }
+          },
+          {
+            "cell": [
+              39,
+              21,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "ea93c1ef89bd9125e47657b70dd126dbf3806acd004b2735a4aefef5416b9827"
+            }
+          },
+          {
+            "cell": [
+              39,
+              21,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "d2fe8d1425e5d22f1ec6891e053a3743881cc2e1b7ab666f9b3fd1f4ff1aa288"
+            }
+          },
+          {
+            "cell": [
+              39,
+              22,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "55b35545b3886434be58ab35fb075cdb2846fdd3b2a828c8a3af54bf7f3c7532"
+            }
+          },
+          {
+            "cell": [
+              39,
+              22,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "0ccf8f2d5dc7cf3f8156b02339229731eab047d6760a197adae4ac6e53f4f672"
+            }
+          },
+          {
+            "cell": [
+              39,
+              22,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "c72e1396f0909884438bd79307647f6ce3f111d5d5f52612403ffc37d7c3e074"
+            }
+          },
+          {
+            "cell": [
+              39,
+              22,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "589f1b151e15e35737e65ea680c0550f9f6af76d30c4b7b3dccaa11d5a8ce9e2"
+            }
+          },
+          {
+            "cell": [
+              39,
+              23,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "71b981aa03c0296e97f0f6febdc032839a14b4a1d176708a32edc5b76624ea29"
+            }
+          },
+          {
+            "cell": [
+              39,
+              23,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "c23c55de7019394934971fc60112c4dc5da121011859b423916161e2366f3611"
+            }
+          },
+          {
+            "cell": [
+              39,
+              23,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "01d4fb1def31ef4fefce23b1e3ec726e47964d572967e318819b6b1b5935a8aa"
+            }
+          },
+          {
+            "cell": [
+              39,
+              23,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "fe62d7d723464cf08f1be9dbf18935ef88e4e68eff95e1c2a7f35282be4cbf8d"
+            }
+          },
+          {
+            "cell": [
+              39,
+              24,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "1fbd24604d47a3150a06eb6f88002f7984e56f8b5c38d7cfff156acef84e5cd8"
+            }
+          },
+          {
+            "cell": [
+              39,
+              24,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "53bf5e260ef7848dbacdd59029c3aefdcbc5d029c09931e4bd338922ed23e55f"
+            }
+          },
+          {
+            "cell": [
+              39,
+              24,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "7ce62cad81f96b8bac23433f19e1472135efe3bdd38b08f49ebaa4592ae01ae8"
+            }
+          },
+          {
+            "cell": [
+              39,
+              24,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "101d17647ae5f27a462dec846b1564324fafbac5f4f89fd2441aa80c83337b7e"
+            }
+          },
+          {
+            "cell": [
+              39,
+              25,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "62ef2ced6d4880248dcf8196aff96a7ab0d7a5a0e185a976a4f0428540e8d3a4"
+            }
+          },
+          {
+            "cell": [
+              39,
+              25,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "da0e966c8de36fb525602d09277e16b6a09d09e4ff5400ea01d71ca1c8816b51"
+            }
+          },
+          {
+            "cell": [
+              39,
+              25,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "27af2248bfd6b31caaf363f3adef11fbdd1c5ff67c9f13d434f617e95228e6cb"
+            }
+          },
+          {
+            "cell": [
+              39,
+              25,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "214e9769811b29248db09af8ce0593d468e94f7fa2507d34beaba815fbfe567c"
+            }
+          },
+          {
+            "cell": [
+              39,
+              26,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "334c8e0993993ca8bd09de6b3ce3277929a20b55a78c0593365c442d79308f23"
+            }
+          },
+          {
+            "cell": [
+              39,
+              26,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "f9951d66a6df222264c559d55fa6144d6c91f6e01e24f65938861562d93f8bd2"
+            }
+          },
+          {
+            "cell": [
+              39,
+              26,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "fa8f5c10bfabf4da3919020e4e93c04020175d95f1f4a43ee39aa9ece6dd37fe"
+            }
+          },
+          {
+            "cell": [
+              39,
+              26,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "b0cab4a434ac16958143b95524cb5d140d3dcd4f372026d00ad98f7b70f2ceef"
+            }
+          },
+          {
+            "cell": [
+              39,
+              27,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "61951cc71bf56450c403fe938035249a070b8d420615798d402d3240dfba591e"
+            }
+          },
+          {
+            "cell": [
+              39,
+              27,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "17f2b3f3105e3eba95e592798332c520b254be293d2a1979f8b42dee5c6806f2"
+            }
+          },
+          {
+            "cell": [
+              39,
+              27,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "6773d75866cfe250b479a2204246f036f573934ed6c45a5b7be065cdf3dbc55f"
+            }
+          },
+          {
+            "cell": [
+              39,
+              27,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "8839ef6dbb57b35f073df1d6d11df5c379de279cffd26bbc1f1540b5a0d4573c"
+            }
+          },
+          {
+            "cell": [
+              39,
+              28,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "911cc025992dbc6ae2f2b88864efc627b2015bf4e4bb71cd4cba403e80c205d7"
+            }
+          },
+          {
+            "cell": [
+              39,
+              28,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "6dccc18eac36d247eab27a07cddcd94182031b580ba02315bac1726434218aa6"
+            }
+          },
+          {
+            "cell": [
+              39,
+              28,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "f7e7b0091401374fc3eeeb7aafe740312d1cbfb0dfc299519a8ab8f47455a867"
+            }
+          },
+          {
+            "cell": [
+              39,
+              28,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "c087e8d369e049a7494713ec698b950f89a9d86f5570c2f1cddf6596c59eb8a3"
+            }
+          },
+          {
+            "cell": [
+              39,
+              29,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "3e15c85387b0ac6684c25f72b2a2f80847413daa525ea8a4f4d4a563ec0955c4"
+            }
+          },
+          {
+            "cell": [
+              39,
+              29,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "d33ed588704c73dd9333ad95c1e693c91b28849d1397d3a7cb94bc9b888d098c"
+            }
+          },
+          {
+            "cell": [
+              39,
+              29,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "142a8c2e8b764cf3cd8caaaff1bda6b6be960b7273a9b9f38d90dca2a9368c9d"
+            }
+          },
+          {
+            "cell": [
+              39,
+              29,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "8381df1fe68b0fcd717e1ac5eb48f62cf864e814251974b6f0a575321e50ba85"
+            }
+          },
+          {
+            "cell": [
+              39,
+              30,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "b2a79a1c8b38b8c87061f773e41292cecfb7bfdeebe33f41341ef210c1191758"
+            }
+          },
+          {
+            "cell": [
+              39,
+              30,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "6883f12947396526c3f80ac5345b86b4b4e63a8f65cc80375c30337ad9775072"
+            }
+          },
+          {
+            "cell": [
+              39,
+              30,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "1ac7cb4c2cca02e5e6df9c2f949253d6d03852b4562533dfaef1c824f0a57ecc"
+            }
+          },
+          {
+            "cell": [
+              39,
+              30,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "9fc29b24254cd3b8070244a5753aba86d1768e42ac4694d3b945214e43c4132e"
+            }
+          },
+          {
+            "cell": [
+              39,
+              31,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "c071d1bc32eb543c5833561f690ca5a4a8aa8b365b11f2d0f8193c3342c7970a"
+            }
+          },
+          {
+            "cell": [
+              39,
+              31,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "5d49edb6759062005333f4d8394eed0f4d9e2f9494f38a38a25dd210174a8fa5"
+            }
+          },
+          {
+            "cell": [
+              39,
+              31,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "9d4cfbd5c624acf6704e1aa32d9b552be0fa08b77d53102f7df936608e272943"
+            }
+          },
+          {
+            "cell": [
+              39,
+              31,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "32c0db2519f3db98d87e39bb2e32f7f1a4b2765cdb5f71caf6e72b67e98697f8"
+            }
+          },
+          {
+            "cell": [
+              39,
+              32,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "6a06e0666bad09afdfbb3899533437955800c1af5b9a5a0440bcb48fd4cc6384"
+            }
+          },
+          {
+            "cell": [
+              39,
+              32,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "b2f304773e85d3a40386ff2c80c49717208691d977583cef9d2cb8c37140044e"
+            }
+          },
+          {
+            "cell": [
+              39,
+              32,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "b2556f198ecde1dfcc622f30eb03d68fd6ecb952dcc00eb960da9d7e213a0d24"
+            }
+          },
+          {
+            "cell": [
+              39,
+              32,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "3bef8dfe213bbcc963e62784f025fde261dab8fb326afb43b8855faf5c636d74"
+            }
+          },
+          {
+            "cell": [
+              39,
+              33,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "5e6d17263eb4756cb3ea7baad82d7b9d6f770d9e935e60bfae253e523ea9a373"
+            }
+          },
+          {
+            "cell": [
+              39,
+              33,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "a49f6c7f768a14949b9974ba11ff47b72f31848a8e5764ec62fcc84d2db7ca2c"
+            }
+          },
+          {
+            "cell": [
+              39,
+              33,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "c24d243146f0451d6575d2c7c74fa8ab2012ab15d3add42879f6bdf706a39610"
+            }
+          },
+          {
+            "cell": [
+              39,
+              33,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "9e2844687c40910ecc1b7d7abb1e955819e673ef96323b03f88b81ff8cdbf826"
+            }
+          },
+          {
+            "cell": [
+              39,
+              34,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "cdb5369c8bc155a270d9facd1c6cfecaa271fffea70e838cf221ae95464783d9"
+            }
+          },
+          {
+            "cell": [
+              39,
+              34,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "adb154ad50b638ddbc85d029b6c2732ee7b19c8fa265d88687afa345691ffaf9"
+            }
+          },
+          {
+            "cell": [
+              39,
+              34,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "0160d2269425b1c359720cd17c2630dff7da51058fddc259d26be6794ffd5ff7"
+            }
+          },
+          {
+            "cell": [
+              39,
+              34,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "4c92090695215010931d0f87d850f2f499c15f4ea2b93bf29024231f716ac135"
+            }
+          },
+          {
+            "cell": [
+              39,
+              35,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "0e161847a0d5cc1fe261d9cdfb61a2a55d8e913f52eac4d2d663d781310863a9"
+            }
+          },
+          {
+            "cell": [
+              39,
+              35,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "823191f3cda1d75929be73b2b0f41cbaaa7b42d0a1d13eebe59b2d196aefff3a"
+            }
+          },
+          {
+            "cell": [
+              39,
+              35,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "de70444c8acd31832ad01eb828829dc620e24f220585c0ffb0770a72d4950b82"
+            }
+          },
+          {
+            "cell": [
+              39,
+              35,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "82609b8afb3000e062525796ec09291550f06909a7621e2e51584619292c0439"
+            }
+          },
+          {
+            "cell": [
+              39,
+              36,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "7100d2bd652c5464f44fbb0053a9eadce09b82deaba9d4a70bfb719d441dbf7b"
+            }
+          },
+          {
+            "cell": [
+              39,
+              36,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "32fe6bfc47d80dafb8c772e9b49b0e3a969c3c4f475dd62c20ba53fd4d52ad4e"
+            }
+          },
+          {
+            "cell": [
+              39,
+              36,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "11498b18c408c96746586c66b0010d2495e331b2101749d0b036e615e4497c96"
+            }
+          },
+          {
+            "cell": [
+              39,
+              36,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "e404061c2013250e0aa754353aa6e6327415b79994c55efaaad1af5d8e929ab5"
+            }
+          },
+          {
+            "cell": [
+              39,
+              37,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "fdd05aa6d920c472de28a84b947d621cffc14447767458b86399fb6fcda72733"
+            }
+          },
+          {
+            "cell": [
+              39,
+              37,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "c79ed943ea9d30021a7211b0bed237c282874794d01f3a19807ac27b0bac86bb"
+            }
+          },
+          {
+            "cell": [
+              39,
+              37,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "ca1555f7d6dfc7ed8954fe409270a8271f188e399893beae6b26925dcb3f2f52"
+            }
+          },
+          {
+            "cell": [
+              39,
+              37,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "32a39447a630a16ad6ba26535c8a79efeab2d7ec241026e5dccbd63ceeeb8518"
+            }
+          }
+        ],
+        "point_probes": [
+          {
+            "cell": [
+              99,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              115,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              131,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              147,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              163,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              452,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              436,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              420,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              404,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              388,
+              29,
+              2
+            ],
+            "component": "ez"
+          }
+        ],
+        "dft_planes": [
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 99,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 115,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 131,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 147,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 163,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hy",
+            "axis": 0,
+            "index": 98,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hy",
+            "axis": 0,
+            "index": 99,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hz",
+            "axis": 0,
+            "index": 98,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hz",
+            "axis": 0,
+            "index": 99,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 452,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 436,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 420,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 404,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 388,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hy",
+            "axis": 0,
+            "index": 451,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hy",
+            "axis": 0,
+            "index": 452,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hz",
+            "axis": 0,
+            "index": 451,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hz",
+            "axis": 0,
+            "index": 452,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          }
+        ],
+        "pec_outside_stub": [
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "478c2abac237bb0b21e9af741843065312e072c5a38a507b8de4fc676c834c08"
+          },
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "84bd4f1a6c29200305b9f0da2ce5de405d0582563f0b7702a70981d5cb898ff7"
+          },
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "8ef4a4b86f4428aeb7c05de2c0c7fa2d631fed585bf79259a9b49e4ff0c5b0b0"
+          }
+        ],
+        "sheets_outside_stub": [
+          {
+            "normal_axis": 2,
+            "plane": 4,
+            "name": "pec",
+            "footprint": {
+              "shape": [
+                553,
+                280,
+                37
+              ],
+              "dtype": "|b1",
+              "sha256": "5af119a65749fd6d60fa10df7692b7d8a081d3d8a55b229e29e0250a2e3c637f"
+            }
+          },
+          {
+            "normal_axis": 2,
+            "plane": 4,
+            "name": "pec",
+            "footprint": {
+              "shape": [
+                553,
+                280,
+                37
+              ],
+              "dtype": "|b1",
+              "sha256": "8ef4a4b86f4428aeb7c05de2c0c7fa2d631fed585bf79259a9b49e4ff0c5b0b0"
+            }
+          }
+        ]
+      },
+      "observed": {
+        "pec_full": [
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "f8242c25ee13bc7de30a5aafb55276ca25524d400ec0e49b1ec210506b2ffdee"
+          },
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "98e1cee6ad66e33f353b42a00ce17e723e0868e98d3389326a5f356f93c1f106"
+          },
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "8ef4a4b86f4428aeb7c05de2c0c7fa2d631fed585bf79259a9b49e4ff0c5b0b0"
+          }
+        ],
+        "sheet_footprints_full": [
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "d24ec74d311eea51c8b06ce7a1f00fddff726483931622fa66f1252d5d2e6f27"
+          },
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "123960b153ba29e889757eb77648f599da4ca0c313e5c4a2896c3dd0b8afe95b"
+          }
+        ],
+        "report_every": null,
+        "report_label": ""
+      }
+    },
+    {
+      "schema_version": 1,
+      "invariant_sha256": "cb122d16797749d9a3148d7a9d9ee839d54f418152cfc00a9185bd9057ff3a9f",
+      "invariants": {
+        "allowed_stub_box": [
+          [
+            271,
+            280
+          ],
+          [
+            33,
+            222
+          ],
+          [
+            4,
+            4
+          ]
+        ],
+        "n_steps": 23600,
+        "grid": {
+          "axis_pads": [
+            8,
+            8,
+            0
+          ],
+          "conformal_faces": [],
+          "cpml_axes": "xyz",
+          "cpml_layers": 8,
+          "domain": [
+            0.034,
+            0.016663999999999998,
+            0.001754
+          ],
+          "dt": 1.2106750421521888e-13,
+          "dx": 6.35e-05,
+          "face_layers": {
+            "x_hi": 8,
+            "x_lo": 8,
+            "y_hi": 8,
+            "y_lo": 8,
+            "z_hi": 8,
+            "z_lo": 8
+          },
+          "face_pads": [
+            8,
+            8,
+            8,
+            8,
+            0,
+            8
+          ],
+          "freq_max": 7000000000.0,
+          "interior": [
+            [
+              8,
+              545,
+              null
+            ],
+            [
+              8,
+              272,
+              null
+            ],
+            [
+              0,
+              29,
+              null
+            ]
+          ],
+          "is_2d": false,
+          "kappa_max": 1.0,
+          "mode": "3d",
+          "nx": 553,
+          "ny": 280,
+          "nz": 37,
+          "pad_x": 8,
+          "pad_x_hi": 8,
+          "pad_x_lo": 8,
+          "pad_y": 8,
+          "pad_y_hi": 8,
+          "pad_y_lo": 8,
+          "pad_z": 8,
+          "pad_z_hi": 8,
+          "pad_z_lo": 0,
+          "pec_faces": [
+            "z_lo"
+          ],
+          "pmc_faces": [],
+          "shape": [
+            553,
+            280,
+            37
+          ]
+        },
+        "nodes": {
+          "x": {
+            "shape": [
+              553
+            ],
+            "dtype": "<f8",
+            "sha256": "94962c6daf46225aba2cceb775ff80fbfcc7275eccccad08547956f4dc583362"
+          },
+          "y": {
+            "shape": [
+              280
+            ],
+            "dtype": "<f8",
+            "sha256": "0b06c9d01b7f3e37630bf4ea0f14760f7a47cfff9f0d1780db503faaff34c541"
+          },
+          "z": {
+            "shape": [
+              37
+            ],
+            "dtype": "<f8",
+            "sha256": "872155bea1bbe4c1cb3e6e2467e5ef544ed34c0e893fe611f29cf55a8113fccd"
+          }
+        },
+        "options": {
+          "boundary": "cpml",
+          "cpml_axes": "xyz",
+          "pec_axes": null,
+          "periodic": null,
+          "checkpoint": false,
+          "checkpoint_segments": null,
+          "aniso_inv_eps_smooth": false,
+          "return_state": true,
+          "stencil_order": 2,
+          "report_every": null
+        },
+        "field_dtype": "<f4",
+        "execution": {
+          "jax_version": "0.6.2",
+          "backend": "cpu",
+          "x64_enabled": false,
+          "matmul_precision": null
+        },
+        "unsupported_channels": {
+          "debye": "absent",
+          "lorentz": "absent",
+          "tfsf": "absent",
+          "flux_monitors": "absent",
+          "waveguide_ports": "absent",
+          "ntff": "absent",
+          "snapshot": "absent",
+          "aniso_eps": "absent",
+          "aniso_inv_eps": "absent",
+          "pec_mask": "absent",
+          "pec_wires": "absent",
+          "pec_occupancy": "absent",
+          "conformal_weights": "absent",
+          "wire_port_sparams": "absent",
+          "lumped_port_sparams": "absent",
+          "wire_refplane_sparams": "absent",
+          "lumped_rlc": "absent",
+          "kerr_chi3": "absent",
+          "mag_sources": "absent",
+          "sheet_impedance": "absent"
+        },
+        "materials_after_load": {
+          "eps_r": {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "<f4",
+            "sha256": "9e32a6723fb0dc6f156d3a592e6d639f2cd20807590ff34fafd9ed1f36422914"
+          },
+          "sigma": {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "<f4",
+            "sha256": "ce1a82c8a9aef25612252ffc7608414a688b4378be96575a2772c4e67d1cfb88"
+          },
+          "mu_r": {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "<f4",
+            "sha256": "b53e61799b80f0d81ee6d473e91243d94640a20f911ba1183a0975c612dc0c72"
+          }
+        },
+        "sources": [
+          {
+            "cell": [
+              39,
+              20,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "a30de7dc94f4fa16d97a91c00b42e232a2cdd42c69d88ca134e6fa5364166686"
+            }
+          },
+          {
+            "cell": [
+              39,
+              20,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "824b620347f7ae64148318ef1eb75def6eb20a3529d6a34686a45d07829f3db1"
+            }
+          },
+          {
+            "cell": [
+              39,
+              20,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "9a9084fa24c90f39be26facc45e824671a86055fd8c5075d89d4fa330f54176f"
+            }
+          },
+          {
+            "cell": [
+              39,
+              20,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "7a9d1a1f2ba83d4af2c02472c45ae956c5bed8e7236c17c018ff0eb9c7e7586f"
+            }
+          },
+          {
+            "cell": [
+              39,
+              21,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "250a0702f1a9811be13dc8de24f94730c38b3542035d82ce8dfb139f87a4fa94"
+            }
+          },
+          {
+            "cell": [
+              39,
+              21,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "6d629b17a5ada5ede4e15152d8876af0912e391ac938dac0d29d7197eb605c4e"
+            }
+          },
+          {
+            "cell": [
+              39,
+              21,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "ea93c1ef89bd9125e47657b70dd126dbf3806acd004b2735a4aefef5416b9827"
+            }
+          },
+          {
+            "cell": [
+              39,
+              21,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "d2fe8d1425e5d22f1ec6891e053a3743881cc2e1b7ab666f9b3fd1f4ff1aa288"
+            }
+          },
+          {
+            "cell": [
+              39,
+              22,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "55b35545b3886434be58ab35fb075cdb2846fdd3b2a828c8a3af54bf7f3c7532"
+            }
+          },
+          {
+            "cell": [
+              39,
+              22,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "0ccf8f2d5dc7cf3f8156b02339229731eab047d6760a197adae4ac6e53f4f672"
+            }
+          },
+          {
+            "cell": [
+              39,
+              22,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "c72e1396f0909884438bd79307647f6ce3f111d5d5f52612403ffc37d7c3e074"
+            }
+          },
+          {
+            "cell": [
+              39,
+              22,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "589f1b151e15e35737e65ea680c0550f9f6af76d30c4b7b3dccaa11d5a8ce9e2"
+            }
+          },
+          {
+            "cell": [
+              39,
+              23,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "71b981aa03c0296e97f0f6febdc032839a14b4a1d176708a32edc5b76624ea29"
+            }
+          },
+          {
+            "cell": [
+              39,
+              23,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "c23c55de7019394934971fc60112c4dc5da121011859b423916161e2366f3611"
+            }
+          },
+          {
+            "cell": [
+              39,
+              23,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "01d4fb1def31ef4fefce23b1e3ec726e47964d572967e318819b6b1b5935a8aa"
+            }
+          },
+          {
+            "cell": [
+              39,
+              23,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "fe62d7d723464cf08f1be9dbf18935ef88e4e68eff95e1c2a7f35282be4cbf8d"
+            }
+          },
+          {
+            "cell": [
+              39,
+              24,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "1fbd24604d47a3150a06eb6f88002f7984e56f8b5c38d7cfff156acef84e5cd8"
+            }
+          },
+          {
+            "cell": [
+              39,
+              24,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "53bf5e260ef7848dbacdd59029c3aefdcbc5d029c09931e4bd338922ed23e55f"
+            }
+          },
+          {
+            "cell": [
+              39,
+              24,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "7ce62cad81f96b8bac23433f19e1472135efe3bdd38b08f49ebaa4592ae01ae8"
+            }
+          },
+          {
+            "cell": [
+              39,
+              24,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "101d17647ae5f27a462dec846b1564324fafbac5f4f89fd2441aa80c83337b7e"
+            }
+          },
+          {
+            "cell": [
+              39,
+              25,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "62ef2ced6d4880248dcf8196aff96a7ab0d7a5a0e185a976a4f0428540e8d3a4"
+            }
+          },
+          {
+            "cell": [
+              39,
+              25,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "da0e966c8de36fb525602d09277e16b6a09d09e4ff5400ea01d71ca1c8816b51"
+            }
+          },
+          {
+            "cell": [
+              39,
+              25,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "27af2248bfd6b31caaf363f3adef11fbdd1c5ff67c9f13d434f617e95228e6cb"
+            }
+          },
+          {
+            "cell": [
+              39,
+              25,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "214e9769811b29248db09af8ce0593d468e94f7fa2507d34beaba815fbfe567c"
+            }
+          },
+          {
+            "cell": [
+              39,
+              26,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "334c8e0993993ca8bd09de6b3ce3277929a20b55a78c0593365c442d79308f23"
+            }
+          },
+          {
+            "cell": [
+              39,
+              26,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "f9951d66a6df222264c559d55fa6144d6c91f6e01e24f65938861562d93f8bd2"
+            }
+          },
+          {
+            "cell": [
+              39,
+              26,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "fa8f5c10bfabf4da3919020e4e93c04020175d95f1f4a43ee39aa9ece6dd37fe"
+            }
+          },
+          {
+            "cell": [
+              39,
+              26,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "b0cab4a434ac16958143b95524cb5d140d3dcd4f372026d00ad98f7b70f2ceef"
+            }
+          },
+          {
+            "cell": [
+              39,
+              27,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "61951cc71bf56450c403fe938035249a070b8d420615798d402d3240dfba591e"
+            }
+          },
+          {
+            "cell": [
+              39,
+              27,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "17f2b3f3105e3eba95e592798332c520b254be293d2a1979f8b42dee5c6806f2"
+            }
+          },
+          {
+            "cell": [
+              39,
+              27,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "6773d75866cfe250b479a2204246f036f573934ed6c45a5b7be065cdf3dbc55f"
+            }
+          },
+          {
+            "cell": [
+              39,
+              27,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "8839ef6dbb57b35f073df1d6d11df5c379de279cffd26bbc1f1540b5a0d4573c"
+            }
+          },
+          {
+            "cell": [
+              39,
+              28,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "911cc025992dbc6ae2f2b88864efc627b2015bf4e4bb71cd4cba403e80c205d7"
+            }
+          },
+          {
+            "cell": [
+              39,
+              28,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "6dccc18eac36d247eab27a07cddcd94182031b580ba02315bac1726434218aa6"
+            }
+          },
+          {
+            "cell": [
+              39,
+              28,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "f7e7b0091401374fc3eeeb7aafe740312d1cbfb0dfc299519a8ab8f47455a867"
+            }
+          },
+          {
+            "cell": [
+              39,
+              28,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "c087e8d369e049a7494713ec698b950f89a9d86f5570c2f1cddf6596c59eb8a3"
+            }
+          },
+          {
+            "cell": [
+              39,
+              29,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "3e15c85387b0ac6684c25f72b2a2f80847413daa525ea8a4f4d4a563ec0955c4"
+            }
+          },
+          {
+            "cell": [
+              39,
+              29,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "d33ed588704c73dd9333ad95c1e693c91b28849d1397d3a7cb94bc9b888d098c"
+            }
+          },
+          {
+            "cell": [
+              39,
+              29,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "142a8c2e8b764cf3cd8caaaff1bda6b6be960b7273a9b9f38d90dca2a9368c9d"
+            }
+          },
+          {
+            "cell": [
+              39,
+              29,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "8381df1fe68b0fcd717e1ac5eb48f62cf864e814251974b6f0a575321e50ba85"
+            }
+          },
+          {
+            "cell": [
+              39,
+              30,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "b2a79a1c8b38b8c87061f773e41292cecfb7bfdeebe33f41341ef210c1191758"
+            }
+          },
+          {
+            "cell": [
+              39,
+              30,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "6883f12947396526c3f80ac5345b86b4b4e63a8f65cc80375c30337ad9775072"
+            }
+          },
+          {
+            "cell": [
+              39,
+              30,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "1ac7cb4c2cca02e5e6df9c2f949253d6d03852b4562533dfaef1c824f0a57ecc"
+            }
+          },
+          {
+            "cell": [
+              39,
+              30,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "9fc29b24254cd3b8070244a5753aba86d1768e42ac4694d3b945214e43c4132e"
+            }
+          },
+          {
+            "cell": [
+              39,
+              31,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "c071d1bc32eb543c5833561f690ca5a4a8aa8b365b11f2d0f8193c3342c7970a"
+            }
+          },
+          {
+            "cell": [
+              39,
+              31,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "5d49edb6759062005333f4d8394eed0f4d9e2f9494f38a38a25dd210174a8fa5"
+            }
+          },
+          {
+            "cell": [
+              39,
+              31,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "9d4cfbd5c624acf6704e1aa32d9b552be0fa08b77d53102f7df936608e272943"
+            }
+          },
+          {
+            "cell": [
+              39,
+              31,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "32c0db2519f3db98d87e39bb2e32f7f1a4b2765cdb5f71caf6e72b67e98697f8"
+            }
+          },
+          {
+            "cell": [
+              39,
+              32,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "6a06e0666bad09afdfbb3899533437955800c1af5b9a5a0440bcb48fd4cc6384"
+            }
+          },
+          {
+            "cell": [
+              39,
+              32,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "b2f304773e85d3a40386ff2c80c49717208691d977583cef9d2cb8c37140044e"
+            }
+          },
+          {
+            "cell": [
+              39,
+              32,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "b2556f198ecde1dfcc622f30eb03d68fd6ecb952dcc00eb960da9d7e213a0d24"
+            }
+          },
+          {
+            "cell": [
+              39,
+              32,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "3bef8dfe213bbcc963e62784f025fde261dab8fb326afb43b8855faf5c636d74"
+            }
+          },
+          {
+            "cell": [
+              39,
+              33,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "5e6d17263eb4756cb3ea7baad82d7b9d6f770d9e935e60bfae253e523ea9a373"
+            }
+          },
+          {
+            "cell": [
+              39,
+              33,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "a49f6c7f768a14949b9974ba11ff47b72f31848a8e5764ec62fcc84d2db7ca2c"
+            }
+          },
+          {
+            "cell": [
+              39,
+              33,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "c24d243146f0451d6575d2c7c74fa8ab2012ab15d3add42879f6bdf706a39610"
+            }
+          },
+          {
+            "cell": [
+              39,
+              33,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "9e2844687c40910ecc1b7d7abb1e955819e673ef96323b03f88b81ff8cdbf826"
+            }
+          },
+          {
+            "cell": [
+              39,
+              34,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "cdb5369c8bc155a270d9facd1c6cfecaa271fffea70e838cf221ae95464783d9"
+            }
+          },
+          {
+            "cell": [
+              39,
+              34,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "adb154ad50b638ddbc85d029b6c2732ee7b19c8fa265d88687afa345691ffaf9"
+            }
+          },
+          {
+            "cell": [
+              39,
+              34,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "0160d2269425b1c359720cd17c2630dff7da51058fddc259d26be6794ffd5ff7"
+            }
+          },
+          {
+            "cell": [
+              39,
+              34,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "4c92090695215010931d0f87d850f2f499c15f4ea2b93bf29024231f716ac135"
+            }
+          },
+          {
+            "cell": [
+              39,
+              35,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "0e161847a0d5cc1fe261d9cdfb61a2a55d8e913f52eac4d2d663d781310863a9"
+            }
+          },
+          {
+            "cell": [
+              39,
+              35,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "823191f3cda1d75929be73b2b0f41cbaaa7b42d0a1d13eebe59b2d196aefff3a"
+            }
+          },
+          {
+            "cell": [
+              39,
+              35,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "de70444c8acd31832ad01eb828829dc620e24f220585c0ffb0770a72d4950b82"
+            }
+          },
+          {
+            "cell": [
+              39,
+              35,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "82609b8afb3000e062525796ec09291550f06909a7621e2e51584619292c0439"
+            }
+          },
+          {
+            "cell": [
+              39,
+              36,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "7100d2bd652c5464f44fbb0053a9eadce09b82deaba9d4a70bfb719d441dbf7b"
+            }
+          },
+          {
+            "cell": [
+              39,
+              36,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "32fe6bfc47d80dafb8c772e9b49b0e3a969c3c4f475dd62c20ba53fd4d52ad4e"
+            }
+          },
+          {
+            "cell": [
+              39,
+              36,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "11498b18c408c96746586c66b0010d2495e331b2101749d0b036e615e4497c96"
+            }
+          },
+          {
+            "cell": [
+              39,
+              36,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "e404061c2013250e0aa754353aa6e6327415b79994c55efaaad1af5d8e929ab5"
+            }
+          },
+          {
+            "cell": [
+              39,
+              37,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "fdd05aa6d920c472de28a84b947d621cffc14447767458b86399fb6fcda72733"
+            }
+          },
+          {
+            "cell": [
+              39,
+              37,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "c79ed943ea9d30021a7211b0bed237c282874794d01f3a19807ac27b0bac86bb"
+            }
+          },
+          {
+            "cell": [
+              39,
+              37,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "ca1555f7d6dfc7ed8954fe409270a8271f188e399893beae6b26925dcb3f2f52"
+            }
+          },
+          {
+            "cell": [
+              39,
+              37,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "32a39447a630a16ad6ba26535c8a79efeab2d7ec241026e5dccbd63ceeeb8518"
+            }
+          }
+        ],
+        "point_probes": [
+          {
+            "cell": [
+              99,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              115,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              131,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              147,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              163,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              452,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              436,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              420,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              404,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              388,
+              29,
+              2
+            ],
+            "component": "ez"
+          }
+        ],
+        "dft_planes": [
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 99,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 115,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 131,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 147,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 163,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hy",
+            "axis": 0,
+            "index": 98,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hy",
+            "axis": 0,
+            "index": 99,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hz",
+            "axis": 0,
+            "index": 98,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hz",
+            "axis": 0,
+            "index": 99,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 452,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 436,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 420,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 404,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 388,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hy",
+            "axis": 0,
+            "index": 451,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hy",
+            "axis": 0,
+            "index": 452,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hz",
+            "axis": 0,
+            "index": 451,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hz",
+            "axis": 0,
+            "index": 452,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          }
+        ],
+        "pec_outside_stub": [
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "478c2abac237bb0b21e9af741843065312e072c5a38a507b8de4fc676c834c08"
+          },
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "84bd4f1a6c29200305b9f0da2ce5de405d0582563f0b7702a70981d5cb898ff7"
+          },
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "8ef4a4b86f4428aeb7c05de2c0c7fa2d631fed585bf79259a9b49e4ff0c5b0b0"
+          }
+        ],
+        "sheets_outside_stub": [
+          {
+            "normal_axis": 2,
+            "plane": 4,
+            "name": "pec",
+            "footprint": {
+              "shape": [
+                553,
+                280,
+                37
+              ],
+              "dtype": "|b1",
+              "sha256": "5af119a65749fd6d60fa10df7692b7d8a081d3d8a55b229e29e0250a2e3c637f"
+            }
+          },
+          {
+            "normal_axis": 2,
+            "plane": 4,
+            "name": "pec",
+            "footprint": {
+              "shape": [
+                553,
+                280,
+                37
+              ],
+              "dtype": "|b1",
+              "sha256": "8ef4a4b86f4428aeb7c05de2c0c7fa2d631fed585bf79259a9b49e4ff0c5b0b0"
+            }
+          }
+        ]
+      },
+      "observed": {
+        "pec_full": [
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "2b573836b76ca7afe9d31211812b7075dad2cc2becb7a47624fd75d6bd0ee8d2"
+          },
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "1753005f5e044e9cea895a8103a9a39d82069537ab1b36f961a74129c34a1798"
+          },
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "8ef4a4b86f4428aeb7c05de2c0c7fa2d631fed585bf79259a9b49e4ff0c5b0b0"
+          }
+        ],
+        "sheet_footprints_full": [
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "d24ec74d311eea51c8b06ce7a1f00fddff726483931622fa66f1252d5d2e6f27"
+          },
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "b56344b80e698535adb654154cb2ea28cff93f5ac807be22a3e907351a4ac700"
+          }
+        ],
+        "report_every": null,
+        "report_label": ""
+      }
+    },
+    {
+      "schema_version": 1,
+      "invariant_sha256": "cb122d16797749d9a3148d7a9d9ee839d54f418152cfc00a9185bd9057ff3a9f",
+      "invariants": {
+        "allowed_stub_box": [
+          [
+            271,
+            280
+          ],
+          [
+            33,
+            222
+          ],
+          [
+            4,
+            4
+          ]
+        ],
+        "n_steps": 23600,
+        "grid": {
+          "axis_pads": [
+            8,
+            8,
+            0
+          ],
+          "conformal_faces": [],
+          "cpml_axes": "xyz",
+          "cpml_layers": 8,
+          "domain": [
+            0.034,
+            0.016663999999999998,
+            0.001754
+          ],
+          "dt": 1.2106750421521888e-13,
+          "dx": 6.35e-05,
+          "face_layers": {
+            "x_hi": 8,
+            "x_lo": 8,
+            "y_hi": 8,
+            "y_lo": 8,
+            "z_hi": 8,
+            "z_lo": 8
+          },
+          "face_pads": [
+            8,
+            8,
+            8,
+            8,
+            0,
+            8
+          ],
+          "freq_max": 7000000000.0,
+          "interior": [
+            [
+              8,
+              545,
+              null
+            ],
+            [
+              8,
+              272,
+              null
+            ],
+            [
+              0,
+              29,
+              null
+            ]
+          ],
+          "is_2d": false,
+          "kappa_max": 1.0,
+          "mode": "3d",
+          "nx": 553,
+          "ny": 280,
+          "nz": 37,
+          "pad_x": 8,
+          "pad_x_hi": 8,
+          "pad_x_lo": 8,
+          "pad_y": 8,
+          "pad_y_hi": 8,
+          "pad_y_lo": 8,
+          "pad_z": 8,
+          "pad_z_hi": 8,
+          "pad_z_lo": 0,
+          "pec_faces": [
+            "z_lo"
+          ],
+          "pmc_faces": [],
+          "shape": [
+            553,
+            280,
+            37
+          ]
+        },
+        "nodes": {
+          "x": {
+            "shape": [
+              553
+            ],
+            "dtype": "<f8",
+            "sha256": "94962c6daf46225aba2cceb775ff80fbfcc7275eccccad08547956f4dc583362"
+          },
+          "y": {
+            "shape": [
+              280
+            ],
+            "dtype": "<f8",
+            "sha256": "0b06c9d01b7f3e37630bf4ea0f14760f7a47cfff9f0d1780db503faaff34c541"
+          },
+          "z": {
+            "shape": [
+              37
+            ],
+            "dtype": "<f8",
+            "sha256": "872155bea1bbe4c1cb3e6e2467e5ef544ed34c0e893fe611f29cf55a8113fccd"
+          }
+        },
+        "options": {
+          "boundary": "cpml",
+          "cpml_axes": "xyz",
+          "pec_axes": null,
+          "periodic": null,
+          "checkpoint": false,
+          "checkpoint_segments": null,
+          "aniso_inv_eps_smooth": false,
+          "return_state": true,
+          "stencil_order": 2,
+          "report_every": null
+        },
+        "field_dtype": "<f4",
+        "execution": {
+          "jax_version": "0.6.2",
+          "backend": "cpu",
+          "x64_enabled": false,
+          "matmul_precision": null
+        },
+        "unsupported_channels": {
+          "debye": "absent",
+          "lorentz": "absent",
+          "tfsf": "absent",
+          "flux_monitors": "absent",
+          "waveguide_ports": "absent",
+          "ntff": "absent",
+          "snapshot": "absent",
+          "aniso_eps": "absent",
+          "aniso_inv_eps": "absent",
+          "pec_mask": "absent",
+          "pec_wires": "absent",
+          "pec_occupancy": "absent",
+          "conformal_weights": "absent",
+          "wire_port_sparams": "absent",
+          "lumped_port_sparams": "absent",
+          "wire_refplane_sparams": "absent",
+          "lumped_rlc": "absent",
+          "kerr_chi3": "absent",
+          "mag_sources": "absent",
+          "sheet_impedance": "absent"
+        },
+        "materials_after_load": {
+          "eps_r": {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "<f4",
+            "sha256": "9e32a6723fb0dc6f156d3a592e6d639f2cd20807590ff34fafd9ed1f36422914"
+          },
+          "sigma": {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "<f4",
+            "sha256": "ce1a82c8a9aef25612252ffc7608414a688b4378be96575a2772c4e67d1cfb88"
+          },
+          "mu_r": {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "<f4",
+            "sha256": "b53e61799b80f0d81ee6d473e91243d94640a20f911ba1183a0975c612dc0c72"
+          }
+        },
+        "sources": [
+          {
+            "cell": [
+              39,
+              20,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "a30de7dc94f4fa16d97a91c00b42e232a2cdd42c69d88ca134e6fa5364166686"
+            }
+          },
+          {
+            "cell": [
+              39,
+              20,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "824b620347f7ae64148318ef1eb75def6eb20a3529d6a34686a45d07829f3db1"
+            }
+          },
+          {
+            "cell": [
+              39,
+              20,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "9a9084fa24c90f39be26facc45e824671a86055fd8c5075d89d4fa330f54176f"
+            }
+          },
+          {
+            "cell": [
+              39,
+              20,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "7a9d1a1f2ba83d4af2c02472c45ae956c5bed8e7236c17c018ff0eb9c7e7586f"
+            }
+          },
+          {
+            "cell": [
+              39,
+              21,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "250a0702f1a9811be13dc8de24f94730c38b3542035d82ce8dfb139f87a4fa94"
+            }
+          },
+          {
+            "cell": [
+              39,
+              21,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "6d629b17a5ada5ede4e15152d8876af0912e391ac938dac0d29d7197eb605c4e"
+            }
+          },
+          {
+            "cell": [
+              39,
+              21,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "ea93c1ef89bd9125e47657b70dd126dbf3806acd004b2735a4aefef5416b9827"
+            }
+          },
+          {
+            "cell": [
+              39,
+              21,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "d2fe8d1425e5d22f1ec6891e053a3743881cc2e1b7ab666f9b3fd1f4ff1aa288"
+            }
+          },
+          {
+            "cell": [
+              39,
+              22,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "55b35545b3886434be58ab35fb075cdb2846fdd3b2a828c8a3af54bf7f3c7532"
+            }
+          },
+          {
+            "cell": [
+              39,
+              22,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "0ccf8f2d5dc7cf3f8156b02339229731eab047d6760a197adae4ac6e53f4f672"
+            }
+          },
+          {
+            "cell": [
+              39,
+              22,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "c72e1396f0909884438bd79307647f6ce3f111d5d5f52612403ffc37d7c3e074"
+            }
+          },
+          {
+            "cell": [
+              39,
+              22,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "589f1b151e15e35737e65ea680c0550f9f6af76d30c4b7b3dccaa11d5a8ce9e2"
+            }
+          },
+          {
+            "cell": [
+              39,
+              23,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "71b981aa03c0296e97f0f6febdc032839a14b4a1d176708a32edc5b76624ea29"
+            }
+          },
+          {
+            "cell": [
+              39,
+              23,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "c23c55de7019394934971fc60112c4dc5da121011859b423916161e2366f3611"
+            }
+          },
+          {
+            "cell": [
+              39,
+              23,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "01d4fb1def31ef4fefce23b1e3ec726e47964d572967e318819b6b1b5935a8aa"
+            }
+          },
+          {
+            "cell": [
+              39,
+              23,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "fe62d7d723464cf08f1be9dbf18935ef88e4e68eff95e1c2a7f35282be4cbf8d"
+            }
+          },
+          {
+            "cell": [
+              39,
+              24,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "1fbd24604d47a3150a06eb6f88002f7984e56f8b5c38d7cfff156acef84e5cd8"
+            }
+          },
+          {
+            "cell": [
+              39,
+              24,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "53bf5e260ef7848dbacdd59029c3aefdcbc5d029c09931e4bd338922ed23e55f"
+            }
+          },
+          {
+            "cell": [
+              39,
+              24,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "7ce62cad81f96b8bac23433f19e1472135efe3bdd38b08f49ebaa4592ae01ae8"
+            }
+          },
+          {
+            "cell": [
+              39,
+              24,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "101d17647ae5f27a462dec846b1564324fafbac5f4f89fd2441aa80c83337b7e"
+            }
+          },
+          {
+            "cell": [
+              39,
+              25,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "62ef2ced6d4880248dcf8196aff96a7ab0d7a5a0e185a976a4f0428540e8d3a4"
+            }
+          },
+          {
+            "cell": [
+              39,
+              25,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "da0e966c8de36fb525602d09277e16b6a09d09e4ff5400ea01d71ca1c8816b51"
+            }
+          },
+          {
+            "cell": [
+              39,
+              25,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "27af2248bfd6b31caaf363f3adef11fbdd1c5ff67c9f13d434f617e95228e6cb"
+            }
+          },
+          {
+            "cell": [
+              39,
+              25,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "214e9769811b29248db09af8ce0593d468e94f7fa2507d34beaba815fbfe567c"
+            }
+          },
+          {
+            "cell": [
+              39,
+              26,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "334c8e0993993ca8bd09de6b3ce3277929a20b55a78c0593365c442d79308f23"
+            }
+          },
+          {
+            "cell": [
+              39,
+              26,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "f9951d66a6df222264c559d55fa6144d6c91f6e01e24f65938861562d93f8bd2"
+            }
+          },
+          {
+            "cell": [
+              39,
+              26,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "fa8f5c10bfabf4da3919020e4e93c04020175d95f1f4a43ee39aa9ece6dd37fe"
+            }
+          },
+          {
+            "cell": [
+              39,
+              26,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "b0cab4a434ac16958143b95524cb5d140d3dcd4f372026d00ad98f7b70f2ceef"
+            }
+          },
+          {
+            "cell": [
+              39,
+              27,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "61951cc71bf56450c403fe938035249a070b8d420615798d402d3240dfba591e"
+            }
+          },
+          {
+            "cell": [
+              39,
+              27,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "17f2b3f3105e3eba95e592798332c520b254be293d2a1979f8b42dee5c6806f2"
+            }
+          },
+          {
+            "cell": [
+              39,
+              27,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "6773d75866cfe250b479a2204246f036f573934ed6c45a5b7be065cdf3dbc55f"
+            }
+          },
+          {
+            "cell": [
+              39,
+              27,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "8839ef6dbb57b35f073df1d6d11df5c379de279cffd26bbc1f1540b5a0d4573c"
+            }
+          },
+          {
+            "cell": [
+              39,
+              28,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "911cc025992dbc6ae2f2b88864efc627b2015bf4e4bb71cd4cba403e80c205d7"
+            }
+          },
+          {
+            "cell": [
+              39,
+              28,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "6dccc18eac36d247eab27a07cddcd94182031b580ba02315bac1726434218aa6"
+            }
+          },
+          {
+            "cell": [
+              39,
+              28,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "f7e7b0091401374fc3eeeb7aafe740312d1cbfb0dfc299519a8ab8f47455a867"
+            }
+          },
+          {
+            "cell": [
+              39,
+              28,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "c087e8d369e049a7494713ec698b950f89a9d86f5570c2f1cddf6596c59eb8a3"
+            }
+          },
+          {
+            "cell": [
+              39,
+              29,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "3e15c85387b0ac6684c25f72b2a2f80847413daa525ea8a4f4d4a563ec0955c4"
+            }
+          },
+          {
+            "cell": [
+              39,
+              29,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "d33ed588704c73dd9333ad95c1e693c91b28849d1397d3a7cb94bc9b888d098c"
+            }
+          },
+          {
+            "cell": [
+              39,
+              29,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "142a8c2e8b764cf3cd8caaaff1bda6b6be960b7273a9b9f38d90dca2a9368c9d"
+            }
+          },
+          {
+            "cell": [
+              39,
+              29,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "8381df1fe68b0fcd717e1ac5eb48f62cf864e814251974b6f0a575321e50ba85"
+            }
+          },
+          {
+            "cell": [
+              39,
+              30,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "b2a79a1c8b38b8c87061f773e41292cecfb7bfdeebe33f41341ef210c1191758"
+            }
+          },
+          {
+            "cell": [
+              39,
+              30,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "6883f12947396526c3f80ac5345b86b4b4e63a8f65cc80375c30337ad9775072"
+            }
+          },
+          {
+            "cell": [
+              39,
+              30,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "1ac7cb4c2cca02e5e6df9c2f949253d6d03852b4562533dfaef1c824f0a57ecc"
+            }
+          },
+          {
+            "cell": [
+              39,
+              30,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "9fc29b24254cd3b8070244a5753aba86d1768e42ac4694d3b945214e43c4132e"
+            }
+          },
+          {
+            "cell": [
+              39,
+              31,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "c071d1bc32eb543c5833561f690ca5a4a8aa8b365b11f2d0f8193c3342c7970a"
+            }
+          },
+          {
+            "cell": [
+              39,
+              31,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "5d49edb6759062005333f4d8394eed0f4d9e2f9494f38a38a25dd210174a8fa5"
+            }
+          },
+          {
+            "cell": [
+              39,
+              31,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "9d4cfbd5c624acf6704e1aa32d9b552be0fa08b77d53102f7df936608e272943"
+            }
+          },
+          {
+            "cell": [
+              39,
+              31,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "32c0db2519f3db98d87e39bb2e32f7f1a4b2765cdb5f71caf6e72b67e98697f8"
+            }
+          },
+          {
+            "cell": [
+              39,
+              32,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "6a06e0666bad09afdfbb3899533437955800c1af5b9a5a0440bcb48fd4cc6384"
+            }
+          },
+          {
+            "cell": [
+              39,
+              32,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "b2f304773e85d3a40386ff2c80c49717208691d977583cef9d2cb8c37140044e"
+            }
+          },
+          {
+            "cell": [
+              39,
+              32,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "b2556f198ecde1dfcc622f30eb03d68fd6ecb952dcc00eb960da9d7e213a0d24"
+            }
+          },
+          {
+            "cell": [
+              39,
+              32,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "3bef8dfe213bbcc963e62784f025fde261dab8fb326afb43b8855faf5c636d74"
+            }
+          },
+          {
+            "cell": [
+              39,
+              33,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "5e6d17263eb4756cb3ea7baad82d7b9d6f770d9e935e60bfae253e523ea9a373"
+            }
+          },
+          {
+            "cell": [
+              39,
+              33,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "a49f6c7f768a14949b9974ba11ff47b72f31848a8e5764ec62fcc84d2db7ca2c"
+            }
+          },
+          {
+            "cell": [
+              39,
+              33,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "c24d243146f0451d6575d2c7c74fa8ab2012ab15d3add42879f6bdf706a39610"
+            }
+          },
+          {
+            "cell": [
+              39,
+              33,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "9e2844687c40910ecc1b7d7abb1e955819e673ef96323b03f88b81ff8cdbf826"
+            }
+          },
+          {
+            "cell": [
+              39,
+              34,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "cdb5369c8bc155a270d9facd1c6cfecaa271fffea70e838cf221ae95464783d9"
+            }
+          },
+          {
+            "cell": [
+              39,
+              34,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "adb154ad50b638ddbc85d029b6c2732ee7b19c8fa265d88687afa345691ffaf9"
+            }
+          },
+          {
+            "cell": [
+              39,
+              34,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "0160d2269425b1c359720cd17c2630dff7da51058fddc259d26be6794ffd5ff7"
+            }
+          },
+          {
+            "cell": [
+              39,
+              34,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "4c92090695215010931d0f87d850f2f499c15f4ea2b93bf29024231f716ac135"
+            }
+          },
+          {
+            "cell": [
+              39,
+              35,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "0e161847a0d5cc1fe261d9cdfb61a2a55d8e913f52eac4d2d663d781310863a9"
+            }
+          },
+          {
+            "cell": [
+              39,
+              35,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "823191f3cda1d75929be73b2b0f41cbaaa7b42d0a1d13eebe59b2d196aefff3a"
+            }
+          },
+          {
+            "cell": [
+              39,
+              35,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "de70444c8acd31832ad01eb828829dc620e24f220585c0ffb0770a72d4950b82"
+            }
+          },
+          {
+            "cell": [
+              39,
+              35,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "82609b8afb3000e062525796ec09291550f06909a7621e2e51584619292c0439"
+            }
+          },
+          {
+            "cell": [
+              39,
+              36,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "7100d2bd652c5464f44fbb0053a9eadce09b82deaba9d4a70bfb719d441dbf7b"
+            }
+          },
+          {
+            "cell": [
+              39,
+              36,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "32fe6bfc47d80dafb8c772e9b49b0e3a969c3c4f475dd62c20ba53fd4d52ad4e"
+            }
+          },
+          {
+            "cell": [
+              39,
+              36,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "11498b18c408c96746586c66b0010d2495e331b2101749d0b036e615e4497c96"
+            }
+          },
+          {
+            "cell": [
+              39,
+              36,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "e404061c2013250e0aa754353aa6e6327415b79994c55efaaad1af5d8e929ab5"
+            }
+          },
+          {
+            "cell": [
+              39,
+              37,
+              0
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "fdd05aa6d920c472de28a84b947d621cffc14447767458b86399fb6fcda72733"
+            }
+          },
+          {
+            "cell": [
+              39,
+              37,
+              1
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "c79ed943ea9d30021a7211b0bed237c282874794d01f3a19807ac27b0bac86bb"
+            }
+          },
+          {
+            "cell": [
+              39,
+              37,
+              2
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "ca1555f7d6dfc7ed8954fe409270a8271f188e399893beae6b26925dcb3f2f52"
+            }
+          },
+          {
+            "cell": [
+              39,
+              37,
+              3
+            ],
+            "component": "ez",
+            "waveform": {
+              "shape": [
+                23600
+              ],
+              "dtype": "<f4",
+              "sha256": "32a39447a630a16ad6ba26535c8a79efeab2d7ec241026e5dccbd63ceeeb8518"
+            }
+          }
+        ],
+        "point_probes": [
+          {
+            "cell": [
+              99,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              115,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              131,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              147,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              163,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              452,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              436,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              420,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              404,
+              29,
+              2
+            ],
+            "component": "ez"
+          },
+          {
+            "cell": [
+              388,
+              29,
+              2
+            ],
+            "component": "ez"
+          }
+        ],
+        "dft_planes": [
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 99,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 115,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 131,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 147,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 163,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hy",
+            "axis": 0,
+            "index": 98,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hy",
+            "axis": 0,
+            "index": 99,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hz",
+            "axis": 0,
+            "index": 98,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hz",
+            "axis": 0,
+            "index": 99,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 452,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 436,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 420,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 404,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "ez",
+            "axis": 0,
+            "index": 388,
+            "region": [
+              29,
+              30,
+              0,
+              4
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                1,
+                4
+              ],
+              "dtype": "<c8",
+              "sha256": "5a312281df4bd8dfbb4d4a94ad0bf44d01bb8cfced1206b90e21b4ca0568cdb1"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hy",
+            "axis": 0,
+            "index": 451,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hy",
+            "axis": 0,
+            "index": 452,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hz",
+            "axis": 0,
+            "index": 451,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          },
+          {
+            "component": "hz",
+            "axis": 0,
+            "index": 452,
+            "region": [
+              23,
+              34,
+              3,
+              5
+            ],
+            "freqs": {
+              "shape": [
+                100
+              ],
+              "dtype": "<f4",
+              "sha256": "cfbd7d8d39d993f9a2a634277dbc62658386444683ecced822a3b6195208fd7a"
+            },
+            "accumulator": {
+              "shape": [
+                100,
+                11,
+                2
+              ],
+              "dtype": "<c8",
+              "sha256": "3bec67ce4072baad19a44dd92341163c6711b95e6ce66d2bd1112dae77560b48"
+            },
+            "total_steps": 23600,
+            "window": "rect",
+            "window_alpha": 0.25
+          }
+        ],
+        "pec_outside_stub": [
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "478c2abac237bb0b21e9af741843065312e072c5a38a507b8de4fc676c834c08"
+          },
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "84bd4f1a6c29200305b9f0da2ce5de405d0582563f0b7702a70981d5cb898ff7"
+          },
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "8ef4a4b86f4428aeb7c05de2c0c7fa2d631fed585bf79259a9b49e4ff0c5b0b0"
+          }
+        ],
+        "sheets_outside_stub": [
+          {
+            "normal_axis": 2,
+            "plane": 4,
+            "name": "pec",
+            "footprint": {
+              "shape": [
+                553,
+                280,
+                37
+              ],
+              "dtype": "|b1",
+              "sha256": "5af119a65749fd6d60fa10df7692b7d8a081d3d8a55b229e29e0250a2e3c637f"
+            }
+          },
+          {
+            "normal_axis": 2,
+            "plane": 4,
+            "name": "pec",
+            "footprint": {
+              "shape": [
+                553,
+                280,
+                37
+              ],
+              "dtype": "|b1",
+              "sha256": "8ef4a4b86f4428aeb7c05de2c0c7fa2d631fed585bf79259a9b49e4ff0c5b0b0"
+            }
+          }
+        ]
+      },
+      "observed": {
+        "pec_full": [
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "e417add72192f5449b364bc209b30d090409f0f7ca74d719148c23da89fe847f"
+          },
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "f1886827be2db0b8d77e9efa9800970a1110e82b943465bcd2af705d5bb64c00"
+          },
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "8ef4a4b86f4428aeb7c05de2c0c7fa2d631fed585bf79259a9b49e4ff0c5b0b0"
+          }
+        ],
+        "sheet_footprints_full": [
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "d24ec74d311eea51c8b06ce7a1f00fddff726483931622fa66f1252d5d2e6f27"
+          },
+          {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dtype": "|b1",
+            "sha256": "e9a0443de5ec8596ecc4c7d04f56e9473b2227e44e2efb9e37a2b385d6112fb4"
+          }
+        ],
+        "report_every": null,
+        "report_label": ""
+      }
+    }
+  ]
+}

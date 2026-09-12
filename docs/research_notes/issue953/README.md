@@ -184,3 +184,32 @@ the older frequency shift. The next repair must hold the baseline grid,
 materials and resolved port/probe plan fixed across the controlled arms,
 check that invariant before solving, and qualify that comparison before
 declaring #953 complete. The669 raw data remain unchanged.
+
+## Fixed-environment comparison repair
+
+The [controlled input declaration](controlled-predeclaration.json) retains
+the669 metal shapes and baseline G1/reference policy. All three arms now use
+the baseline domain **and substrate carrier**, the same assembled background
+arrays, and the baseline's resolved probe choices registered explicitly.
+The common grid is553×280×37; offsets60, spacing16 and five probes give
+probe0 indices99/452. `eps_r_sub=None` remains unchanged so the source still
+infers the registered float32 substrate value. Auto placement is disabled on
+perturbed arms and the resolved physical E/H plan is compared again.
+
+The real engine entry receives an additional observation-only check during
+qualification. [consumed_plan.py](consumed_plan.py) fingerprints actual
+load-inclusive material arrays, SourceSpec waveform bytes, point/DFT indices,
+crops, frequencies and dtypes, grid/operator settings and PEC outside the
+baseline stub node box. It also records the full varying PEC hashes. Both
+endpoints of a permitted tangential edge must lie in that box; normal Ez
+changes are never admitted for the zero-thickness sheet. Each perturbed drive
+must match its baseline drive before the original runner advances fields.
+
+The scoped checker refuses unsupported physics rather than omitting it. It
+does not compare geometry-dependent reflector gaps or the narrow diagnostic
+reference as though they were fixed inputs. Nominal and consumed-plan
+falsifiers catch domain/substrate divergence, retained auto flags, hidden
+material changes, waveform/crop/frequency changes, CPML changes and PEC changes
+outside the allowed stub. The combined79 tests pass. A first-drive dry build
+of all three full-size arms also passed the real runner-input comparison,
+with no field advancement. The controlled RF outcome is still pending.

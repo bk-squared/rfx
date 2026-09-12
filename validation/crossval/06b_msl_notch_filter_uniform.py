@@ -514,13 +514,19 @@ DX = H_SUB / 4         # 63.5um — REALIZE-DECLARED on z (issue #723); see
                         # "Mesh convention" below.
 
 
-def _build_sim(*, stub_x_bounds: tuple[float, float] | None = None) -> Simulation:
+def _build_sim(*, stub_x_bounds: tuple[float, float] | None = None,
+               domain_y: float | None = None,
+               probe_settings: tuple[dict, dict] | None = None) -> Simulation:
     """Build the notch-filter simulation with msl_port at both ends."""
     LX = L_LINE + 2 * PORT_MARGIN
     # Lateral box: W + 2·(2·h_sub + 8·dx) on the MSL side, plus stub_length
     # on the +y side to fit the open-circuit stub.
     msl_clearance = 2 * (2 * H_SUB + 8 * DX)
     LY = W_TRACE + msl_clearance + STUB_LEN + 2 * (2 * H_SUB + 8 * DX)
+    if domain_y is not None:
+        # A controlled geometry perturbation keeps both the domain and its
+        # substrate carrier fixed; changing only Simulation.domain is not enough.
+        LY = float(domain_y)
     LZ = H_SUB + 1.5e-3
 
     sim = Simulation(
@@ -537,8 +543,9 @@ def _build_sim(*, stub_x_bounds: tuple[float, float] | None = None) -> Simulatio
     trace_y_lo = y_trace - W_TRACE / 2.0
     trace_y_hi = y_trace + W_TRACE / 2.0
 
-    # Main microstrip line (full LX so it goes through CPML — required for
-    # MSL port termination, see commit 8882ef1 on msl_port_integration test).
+    # Main microstrip spans the declared x-domain. PEC ends at these physical
+    # coordinates; material extension into CPML does not extend this metal.
+    # Keep this established geometry fixed in the falsifier comparison.
     #
     # SHEET, not a one-cell volume (#931 §1.5). The z corners are EQUAL, which
     # is how the lattice-ownership contract spells "a conductor on this node
@@ -576,11 +583,13 @@ def _build_sim(*, stub_x_bounds: tuple[float, float] | None = None) -> Simulatio
         position=(PORT_MARGIN, y_trace, 0.0),
         width=W_TRACE, height=H_SUB,
         direction="+x", impedance=50.0,
+        **(probe_settings[0] if probe_settings is not None else {}),
     )
     sim.add_msl_port(
         position=(PORT_MARGIN + L_LINE, y_trace, 0.0),
         width=W_TRACE, height=H_SUB,
         direction="-x", impedance=50.0,
+        **(probe_settings[1] if probe_settings is not None else {}),
     )
     return sim
 

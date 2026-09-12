@@ -1,0 +1,826 @@
+{
+  "scope": "production build-only input certificate; not RF validation",
+  "producer_sha256": "fcdbd858224a84a427761b14feb0eab63f135e0db69b273fe9b276ce62d8da18",
+  "case_sha256": "baa3c8bd399cc3d43f0cf9c671465f15e1f0ce8c31dc5d72e8ab7f948aec5b4f",
+  "inputs": {
+    "baseline": {
+      "declared_dx_m": 6.35e-05,
+      "declared_stub_width_m": 0.0006,
+      "declared_stub_length_m": 0.012,
+      "realized_metal": {
+        "plane_k": 4,
+        "plane_z": 0.000254,
+        "n_sheets": 2,
+        "n_volume_cells": 0,
+        "trace_j": [
+          24,
+          33
+        ],
+        "trace_w": 0.0005715,
+        "n_rows": 10,
+        "trace_y": [
+          0.001016,
+          0.0015875
+        ],
+        "stub_i": [
+          271,
+          280
+        ],
+        "stub_w": 0.0005714999999999991,
+        "n_cols": 10,
+        "stub_x": [
+          0.0167005,
+          0.017272
+        ],
+        "trace_w_elec": 0.0006349999999999999,
+        "stub_w_elec": 0.0006349999999999999,
+        "stub_len": 0.0120015,
+        "stub_open_j": 222,
+        "stub_len_centreline": 0.01228725,
+        "n_ex": 7051,
+        "n_ey": 6714,
+        "n_ez": 0,
+        "comparison_environment": {
+          "grid": {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dx": 6.35e-05,
+            "dt": 1.2106750421521888e-13,
+            "coordinates": {
+              "x": {
+                "shape": [
+                  553
+                ],
+                "dtype": "float64",
+                "sha256": "94962c6daf46225aba2cceb775ff80fbfcc7275eccccad08547956f4dc583362"
+              },
+              "y": {
+                "shape": [
+                  280
+                ],
+                "dtype": "float64",
+                "sha256": "0b06c9d01b7f3e37630bf4ea0f14760f7a47cfff9f0d1780db503faaff34c541"
+              },
+              "z": {
+                "shape": [
+                  37
+                ],
+                "dtype": "float64",
+                "sha256": "872155bea1bbe4c1cb3e6e2467e5ef544ed34c0e893fe611f29cf55a8113fccd"
+              }
+            }
+          },
+          "materials": {
+            "eps_r": {
+              "shape": [
+                553,
+                280,
+                37
+              ],
+              "dtype": "float32",
+              "sha256": "9e32a6723fb0dc6f156d3a592e6d639f2cd20807590ff34fafd9ed1f36422914"
+            },
+            "sigma": {
+              "shape": [
+                553,
+                280,
+                37
+              ],
+              "dtype": "float32",
+              "sha256": "68b4d367b465a678e62b2af2e742aa563c105cd423d2efdcdbe1f3bd0de1c4e0"
+            },
+            "mu_r": {
+              "shape": [
+                553,
+                280,
+                37
+              ],
+              "dtype": "float32",
+              "sha256": "b53e61799b80f0d81ee6d473e91243d94640a20f911ba1183a0975c612dc0c72"
+            }
+          },
+          "fixed_geometry": [
+            {
+              "shape": {
+                "corner_lo": [
+                  0,
+                  0,
+                  0
+                ],
+                "corner_hi": [
+                  0.034,
+                  0.016663999999999998,
+                  0.000254
+                ]
+              },
+              "material_name": "ro4350b"
+            },
+            {
+              "shape": {
+                "corner_lo": [
+                  0,
+                  0.001016,
+                  0.000254
+                ],
+                "corner_hi": [
+                  0.034,
+                  0.0016159999999999998,
+                  0.000254
+                ]
+              },
+              "material_name": "pec"
+            }
+          ],
+          "options": {
+            "freq_max": 7000000000.0,
+            "precision": "float32",
+            "solver": "yee",
+            "stencil_order": 2,
+            "cpml_layers": 8,
+            "cpml_kappa_max": 1.0,
+            "boundary": {
+              "x": {
+                "lo": "cpml",
+                "hi": "cpml",
+                "lo_thickness": null,
+                "hi_thickness": null,
+                "conformal": false
+              },
+              "y": {
+                "lo": "cpml",
+                "hi": "cpml",
+                "lo_thickness": null,
+                "hi_thickness": null,
+                "conformal": false
+              },
+              "z": {
+                "lo": "pec",
+                "hi": "cpml",
+                "lo_thickness": null,
+                "hi_thickness": null,
+                "conformal": false
+              }
+            }
+          },
+          "ports": [
+            {
+              "name": "msl_0",
+              "position": [
+                0.002,
+                0.001316,
+                0.0
+              ],
+              "width": 0.0006,
+              "height": 0.000254,
+              "direction": "+x",
+              "impedance": 50.0,
+              "waveform": {
+                "f0": 3500000000.0,
+                "bandwidth": 0.8,
+                "amplitude": 1.0,
+                "cutoff": 3.0
+              },
+              "excite": true,
+              "n_probe_offset": 60,
+              "n_probe_spacing": 16,
+              "n_probes": 5,
+              "mode": "laplace",
+              "eps_r_sub": null,
+              "waveform_type": "GaussianPulse",
+              "sampled_voltage_nodes_m": [
+                0.0057785,
+                0.0067945,
+                0.0078105,
+                0.0088265,
+                0.0098425
+              ],
+              "current_plane_stencil": {
+                "axis": "x",
+                "e_index": 99,
+                "h_indices": [
+                  98,
+                  99
+                ],
+                "registration_coordinates": [
+                  0.005715,
+                  0.0057785
+                ],
+                "sample_coordinates": [
+                  0.00574675,
+                  0.0058102499999999994
+                ],
+                "voltage_coordinate": 0.0057785,
+                "weights": [
+                  0.5,
+                  0.5
+                ]
+              }
+            },
+            {
+              "name": "msl_1",
+              "position": [
+                0.032,
+                0.001316,
+                0.0
+              ],
+              "width": 0.0006,
+              "height": 0.000254,
+              "direction": "-x",
+              "impedance": 50.0,
+              "waveform": {
+                "f0": 3500000000.0,
+                "bandwidth": 0.8,
+                "amplitude": 1.0,
+                "cutoff": 3.0
+              },
+              "excite": true,
+              "n_probe_offset": 60,
+              "n_probe_spacing": 16,
+              "n_probes": 5,
+              "mode": "laplace",
+              "eps_r_sub": null,
+              "waveform_type": "GaussianPulse",
+              "sampled_voltage_nodes_m": [
+                0.028194,
+                0.027178,
+                0.026161999999999998,
+                0.025145999999999998,
+                0.02413
+              ],
+              "current_plane_stencil": {
+                "axis": "x",
+                "e_index": 452,
+                "h_indices": [
+                  451,
+                  452
+                ],
+                "registration_coordinates": [
+                  0.0281305,
+                  0.028194
+                ],
+                "sample_coordinates": [
+                  0.02816225,
+                  0.02822575
+                ],
+                "voltage_coordinate": 0.028194,
+                "weights": [
+                  0.5,
+                  0.5
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "stub_1cell": {
+      "declared_dx_m": 6.35e-05,
+      "declared_stub_width_m": 0.0006,
+      "declared_stub_length_m": 0.011936500000000001,
+      "realized_metal": {
+        "plane_k": 4,
+        "plane_z": 0.000254,
+        "n_sheets": 2,
+        "n_volume_cells": 0,
+        "trace_j": [
+          24,
+          33
+        ],
+        "trace_w": 0.0005715,
+        "n_rows": 10,
+        "trace_y": [
+          0.001016,
+          0.0015875
+        ],
+        "stub_i": [
+          271,
+          280
+        ],
+        "stub_w": 0.0005714999999999991,
+        "n_cols": 10,
+        "stub_x": [
+          0.0167005,
+          0.017272
+        ],
+        "trace_w_elec": 0.0006349999999999999,
+        "stub_w_elec": 0.0006349999999999999,
+        "stub_len": 0.011937999999999999,
+        "stub_open_j": 221,
+        "stub_len_centreline": 0.012223749999999999,
+        "n_ex": 7042,
+        "n_ey": 6704,
+        "n_ez": 0,
+        "comparison_environment": {
+          "grid": {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dx": 6.35e-05,
+            "dt": 1.2106750421521888e-13,
+            "coordinates": {
+              "x": {
+                "shape": [
+                  553
+                ],
+                "dtype": "float64",
+                "sha256": "94962c6daf46225aba2cceb775ff80fbfcc7275eccccad08547956f4dc583362"
+              },
+              "y": {
+                "shape": [
+                  280
+                ],
+                "dtype": "float64",
+                "sha256": "0b06c9d01b7f3e37630bf4ea0f14760f7a47cfff9f0d1780db503faaff34c541"
+              },
+              "z": {
+                "shape": [
+                  37
+                ],
+                "dtype": "float64",
+                "sha256": "872155bea1bbe4c1cb3e6e2467e5ef544ed34c0e893fe611f29cf55a8113fccd"
+              }
+            }
+          },
+          "materials": {
+            "eps_r": {
+              "shape": [
+                553,
+                280,
+                37
+              ],
+              "dtype": "float32",
+              "sha256": "9e32a6723fb0dc6f156d3a592e6d639f2cd20807590ff34fafd9ed1f36422914"
+            },
+            "sigma": {
+              "shape": [
+                553,
+                280,
+                37
+              ],
+              "dtype": "float32",
+              "sha256": "68b4d367b465a678e62b2af2e742aa563c105cd423d2efdcdbe1f3bd0de1c4e0"
+            },
+            "mu_r": {
+              "shape": [
+                553,
+                280,
+                37
+              ],
+              "dtype": "float32",
+              "sha256": "b53e61799b80f0d81ee6d473e91243d94640a20f911ba1183a0975c612dc0c72"
+            }
+          },
+          "fixed_geometry": [
+            {
+              "shape": {
+                "corner_lo": [
+                  0,
+                  0,
+                  0
+                ],
+                "corner_hi": [
+                  0.034,
+                  0.016663999999999998,
+                  0.000254
+                ]
+              },
+              "material_name": "ro4350b"
+            },
+            {
+              "shape": {
+                "corner_lo": [
+                  0,
+                  0.001016,
+                  0.000254
+                ],
+                "corner_hi": [
+                  0.034,
+                  0.0016159999999999998,
+                  0.000254
+                ]
+              },
+              "material_name": "pec"
+            }
+          ],
+          "options": {
+            "freq_max": 7000000000.0,
+            "precision": "float32",
+            "solver": "yee",
+            "stencil_order": 2,
+            "cpml_layers": 8,
+            "cpml_kappa_max": 1.0,
+            "boundary": {
+              "x": {
+                "lo": "cpml",
+                "hi": "cpml",
+                "lo_thickness": null,
+                "hi_thickness": null,
+                "conformal": false
+              },
+              "y": {
+                "lo": "cpml",
+                "hi": "cpml",
+                "lo_thickness": null,
+                "hi_thickness": null,
+                "conformal": false
+              },
+              "z": {
+                "lo": "pec",
+                "hi": "cpml",
+                "lo_thickness": null,
+                "hi_thickness": null,
+                "conformal": false
+              }
+            }
+          },
+          "ports": [
+            {
+              "name": "msl_0",
+              "position": [
+                0.002,
+                0.001316,
+                0.0
+              ],
+              "width": 0.0006,
+              "height": 0.000254,
+              "direction": "+x",
+              "impedance": 50.0,
+              "waveform": {
+                "f0": 3500000000.0,
+                "bandwidth": 0.8,
+                "amplitude": 1.0,
+                "cutoff": 3.0
+              },
+              "excite": true,
+              "n_probe_offset": 60,
+              "n_probe_spacing": 16,
+              "n_probes": 5,
+              "mode": "laplace",
+              "eps_r_sub": null,
+              "waveform_type": "GaussianPulse",
+              "sampled_voltage_nodes_m": [
+                0.0057785,
+                0.0067945,
+                0.0078105,
+                0.0088265,
+                0.0098425
+              ],
+              "current_plane_stencil": {
+                "axis": "x",
+                "e_index": 99,
+                "h_indices": [
+                  98,
+                  99
+                ],
+                "registration_coordinates": [
+                  0.005715,
+                  0.0057785
+                ],
+                "sample_coordinates": [
+                  0.00574675,
+                  0.0058102499999999994
+                ],
+                "voltage_coordinate": 0.0057785,
+                "weights": [
+                  0.5,
+                  0.5
+                ]
+              }
+            },
+            {
+              "name": "msl_1",
+              "position": [
+                0.032,
+                0.001316,
+                0.0
+              ],
+              "width": 0.0006,
+              "height": 0.000254,
+              "direction": "-x",
+              "impedance": 50.0,
+              "waveform": {
+                "f0": 3500000000.0,
+                "bandwidth": 0.8,
+                "amplitude": 1.0,
+                "cutoff": 3.0
+              },
+              "excite": true,
+              "n_probe_offset": 60,
+              "n_probe_spacing": 16,
+              "n_probes": 5,
+              "mode": "laplace",
+              "eps_r_sub": null,
+              "waveform_type": "GaussianPulse",
+              "sampled_voltage_nodes_m": [
+                0.028194,
+                0.027178,
+                0.026161999999999998,
+                0.025145999999999998,
+                0.02413
+              ],
+              "current_plane_stencil": {
+                "axis": "x",
+                "e_index": 452,
+                "h_indices": [
+                  451,
+                  452
+                ],
+                "registration_coordinates": [
+                  0.0281305,
+                  0.028194
+                ],
+                "sample_coordinates": [
+                  0.02816225,
+                  0.02822575
+                ],
+                "voltage_coordinate": 0.028194,
+                "weights": [
+                  0.5,
+                  0.5
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "stub_narrow": {
+      "declared_dx_m": 6.35e-05,
+      "declared_stub_width_m": 0.00031749999999999997,
+      "declared_stub_length_m": 0.012,
+      "realized_metal": {
+        "plane_k": 4,
+        "plane_z": 0.000254,
+        "n_sheets": 2,
+        "n_volume_cells": 0,
+        "trace_j": [
+          24,
+          33
+        ],
+        "trace_w": 0.0005715,
+        "n_rows": 10,
+        "trace_y": [
+          0.001016,
+          0.0015875
+        ],
+        "stub_i": [
+          273,
+          278
+        ],
+        "stub_w": 0.0003175000000000018,
+        "n_cols": 6,
+        "stub_x": [
+          0.0168275,
+          0.017145
+        ],
+        "trace_w_elec": 0.0006349999999999999,
+        "stub_w_elec": 0.000381,
+        "stub_len": 0.0120015,
+        "stub_open_j": 222,
+        "stub_len_centreline": 0.01228725,
+        "n_ex": 6295,
+        "n_ey": 5958,
+        "n_ez": 0,
+        "comparison_environment": {
+          "grid": {
+            "shape": [
+              553,
+              280,
+              37
+            ],
+            "dx": 6.35e-05,
+            "dt": 1.2106750421521888e-13,
+            "coordinates": {
+              "x": {
+                "shape": [
+                  553
+                ],
+                "dtype": "float64",
+                "sha256": "94962c6daf46225aba2cceb775ff80fbfcc7275eccccad08547956f4dc583362"
+              },
+              "y": {
+                "shape": [
+                  280
+                ],
+                "dtype": "float64",
+                "sha256": "0b06c9d01b7f3e37630bf4ea0f14760f7a47cfff9f0d1780db503faaff34c541"
+              },
+              "z": {
+                "shape": [
+                  37
+                ],
+                "dtype": "float64",
+                "sha256": "872155bea1bbe4c1cb3e6e2467e5ef544ed34c0e893fe611f29cf55a8113fccd"
+              }
+            }
+          },
+          "materials": {
+            "eps_r": {
+              "shape": [
+                553,
+                280,
+                37
+              ],
+              "dtype": "float32",
+              "sha256": "9e32a6723fb0dc6f156d3a592e6d639f2cd20807590ff34fafd9ed1f36422914"
+            },
+            "sigma": {
+              "shape": [
+                553,
+                280,
+                37
+              ],
+              "dtype": "float32",
+              "sha256": "68b4d367b465a678e62b2af2e742aa563c105cd423d2efdcdbe1f3bd0de1c4e0"
+            },
+            "mu_r": {
+              "shape": [
+                553,
+                280,
+                37
+              ],
+              "dtype": "float32",
+              "sha256": "b53e61799b80f0d81ee6d473e91243d94640a20f911ba1183a0975c612dc0c72"
+            }
+          },
+          "fixed_geometry": [
+            {
+              "shape": {
+                "corner_lo": [
+                  0,
+                  0,
+                  0
+                ],
+                "corner_hi": [
+                  0.034,
+                  0.016663999999999998,
+                  0.000254
+                ]
+              },
+              "material_name": "ro4350b"
+            },
+            {
+              "shape": {
+                "corner_lo": [
+                  0,
+                  0.001016,
+                  0.000254
+                ],
+                "corner_hi": [
+                  0.034,
+                  0.0016159999999999998,
+                  0.000254
+                ]
+              },
+              "material_name": "pec"
+            }
+          ],
+          "options": {
+            "freq_max": 7000000000.0,
+            "precision": "float32",
+            "solver": "yee",
+            "stencil_order": 2,
+            "cpml_layers": 8,
+            "cpml_kappa_max": 1.0,
+            "boundary": {
+              "x": {
+                "lo": "cpml",
+                "hi": "cpml",
+                "lo_thickness": null,
+                "hi_thickness": null,
+                "conformal": false
+              },
+              "y": {
+                "lo": "cpml",
+                "hi": "cpml",
+                "lo_thickness": null,
+                "hi_thickness": null,
+                "conformal": false
+              },
+              "z": {
+                "lo": "pec",
+                "hi": "cpml",
+                "lo_thickness": null,
+                "hi_thickness": null,
+                "conformal": false
+              }
+            }
+          },
+          "ports": [
+            {
+              "name": "msl_0",
+              "position": [
+                0.002,
+                0.001316,
+                0.0
+              ],
+              "width": 0.0006,
+              "height": 0.000254,
+              "direction": "+x",
+              "impedance": 50.0,
+              "waveform": {
+                "f0": 3500000000.0,
+                "bandwidth": 0.8,
+                "amplitude": 1.0,
+                "cutoff": 3.0
+              },
+              "excite": true,
+              "n_probe_offset": 60,
+              "n_probe_spacing": 16,
+              "n_probes": 5,
+              "mode": "laplace",
+              "eps_r_sub": null,
+              "waveform_type": "GaussianPulse",
+              "sampled_voltage_nodes_m": [
+                0.0057785,
+                0.0067945,
+                0.0078105,
+                0.0088265,
+                0.0098425
+              ],
+              "current_plane_stencil": {
+                "axis": "x",
+                "e_index": 99,
+                "h_indices": [
+                  98,
+                  99
+                ],
+                "registration_coordinates": [
+                  0.005715,
+                  0.0057785
+                ],
+                "sample_coordinates": [
+                  0.00574675,
+                  0.0058102499999999994
+                ],
+                "voltage_coordinate": 0.0057785,
+                "weights": [
+                  0.5,
+                  0.5
+                ]
+              }
+            },
+            {
+              "name": "msl_1",
+              "position": [
+                0.032,
+                0.001316,
+                0.0
+              ],
+              "width": 0.0006,
+              "height": 0.000254,
+              "direction": "-x",
+              "impedance": 50.0,
+              "waveform": {
+                "f0": 3500000000.0,
+                "bandwidth": 0.8,
+                "amplitude": 1.0,
+                "cutoff": 3.0
+              },
+              "excite": true,
+              "n_probe_offset": 60,
+              "n_probe_spacing": 16,
+              "n_probes": 5,
+              "mode": "laplace",
+              "eps_r_sub": null,
+              "waveform_type": "GaussianPulse",
+              "sampled_voltage_nodes_m": [
+                0.028194,
+                0.027178,
+                0.026161999999999998,
+                0.025145999999999998,
+                0.02413
+              ],
+              "current_plane_stencil": {
+                "axis": "x",
+                "e_index": 452,
+                "h_indices": [
+                  451,
+                  452
+                ],
+                "registration_coordinates": [
+                  0.0281305,
+                  0.028194
+                ],
+                "sample_coordinates": [
+                  0.02816225,
+                  0.02822575
+                ],
+                "voltage_coordinate": 0.028194,
+                "weights": [
+                  0.5,
+                  0.5
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

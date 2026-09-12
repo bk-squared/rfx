@@ -216,10 +216,13 @@ def test_three_arms_preserve_realized_centre_and_the_unmodified_dimensions():
     baseline_cv, _, baseline = arms["baseline"]
     dx = baseline_cv.DX
     for label in ("stub_1cell", "stub_narrow"):
-        _, _, geometry = arms[label]
+        _, sim, geometry = arms[label]
         assert geometry["plane_z"] == baseline["plane_z"]
         assert geometry["trace_y"] == baseline["trace_y"]
         assert sum(geometry["stub_x"]) == pytest.approx(sum(baseline["stub_x"]), abs=1e-15)
+        assert geometry["comparison_environment"] == baseline["comparison_environment"]
+        assert not sim._msl_auto_offset_min
+        assert not sim._msl_auto_probe_spacing
     one = arms["stub_1cell"][2]
     narrow = arms["stub_narrow"][2]
     assert one["stub_w"] == pytest.approx(baseline["stub_w"], abs=1e-15)
@@ -227,6 +230,87 @@ def test_three_arms_preserve_realized_centre_and_the_unmodified_dimensions():
     assert narrow["stub_len"] == pytest.approx(baseline["stub_len"], abs=1e-15)
     assert narrow["stub_w"] == pytest.approx(5 * dx, abs=1e-15)
     assert narrow["n_cols"] == 6  # five intervals require six endpoint nodes
+
+
+def test_explicit_baseline_probe_settings_preserve_its_resolved_inputs():
+    mod = _load(BUILDER, "_cv06b_explicit_baseline")
+    cv = mod._load()
+    automatic = cv._build_sim()
+    before = mod.environment_signature(automatic)
+    settings = tuple({key: port[key] for key in ("n_probe_offset", "n_probe_spacing", "n_probes")}
+                     for port in before["ports"])
+    explicit = cv._build_sim(domain_y=automatic._domain[1], probe_settings=settings)
+    assert mod.environment_signature(explicit) == before
+    assert not explicit._msl_auto_offset_min and not explicit._msl_auto_probe_spacing
+    assert all(port.eps_r_sub is None for port in explicit._msl_ports)
+
+
+def test_fixed_environment_preserves_the_three_measured_metal_geometries():
+    mod = _load(BUILDER, "_cv06b_fixed_environment_metal")
+    previous = json.loads((REPO_ROOT / "docs/research_notes/issue953/gpu-369367260669/artifacts/plan.json").read_text())
+    for label, _, _, geometry in mod.prepare_inputs():
+        metal = {key: value for key, value in geometry.items() if key != "comparison_environment"}
+        assert mod._plain(metal) == previous["inputs"][label]["realized_metal"]
+
+
+@pytest.mark.parametrize("fault, expected", [
+    ("domain", "grid"), ("substrate", "materials"), ("auto_probes", "automatic probe"),
+    ("material_array", "materials"), ("waveform", "ports"), ("cpml", "options"),
+])
+def test_hidden_comparison_changes_are_rejected_before_any_solve(tmp_path, monkeypatch, fault, expected):
+    import dataclasses
+
+    mod = _load(BUILDER, "_cv06b_reject_environment")
+    original_load = mod._load
+
+    def load_faulty_case():
+        cv = original_load()
+        build = cv._build_sim
+
+        def faulty_build(**kwargs):
+            # Only perturb the arms that were given explicit baseline controls.
+            if not kwargs:
+                return build()
+            if fault == "domain":
+                kwargs.pop("domain_y")
+            if fault == "auto_probes":
+                kwargs.pop("probe_settings")
+            sim = build(**kwargs)
+            if fault == "substrate":
+                from rfx import Box
+                entry = sim._geometry[0]
+                # Keep Simulation.domain fixed while silently shortening the
+                # actual dielectric carrier, reproducing the hidden dependency.
+                old = entry.shape
+                hi = tuple(old.corner_hi[i] - (cv.DX if i == 1 else 0) for i in range(3))
+                sim._geometry[0] = dataclasses.replace(entry, shape=Box(old.corner_lo, hi))
+            elif fault == "material_array":
+                assemble = sim._assemble_materials
+
+                def wrong_materials(*args, **kw):
+                    values = list(assemble(*args, **kw))
+                    mats = values[0]
+                    values[0] = mats._replace(eps_r=mats.eps_r.at[10, 10, 10].add(.5))
+                    return tuple(values)
+
+                sim._assemble_materials = wrong_materials
+            elif fault == "waveform":
+                entry = sim._msl_ports[0]
+                wave = dataclasses.replace(entry.waveform, amplitude=entry.waveform.amplitude * .9)
+                sim._msl_ports[0] = dataclasses.replace(entry, waveform=wave)
+            elif fault == "cpml":
+                sim._cpml_kappa_max += .25
+            return sim
+
+        cv._build_sim = faulty_build
+        return cv
+
+    monkeypatch.setattr(mod, "_load", load_faulty_case)
+    monkeypatch.setattr(mod, "solve", lambda *a, **kw: pytest.fail("field solve must not start"))
+    monkeypatch.setattr("sys.argv", ["x", "--out-dir", str(tmp_path)])
+    with pytest.raises(RuntimeError, match=expected):
+        mod.main()
+    assert not list(tmp_path.iterdir())
 
 
 @pytest.mark.parametrize("fault", ["discard_bounds", "shift_centre"])
@@ -238,17 +322,17 @@ def test_bad_narrow_input_is_rejected_before_any_solve(tmp_path, monkeypatch, fa
         cv = original_load()
         build = cv._build_sim
 
-        def faulty_build(*, stub_x_bounds=None):
+        def faulty_build(*, stub_x_bounds=None, **kwargs):
             if stub_x_bounds is not None and fault == "shift_centre":
                 from rfx.geometry.rasterize_grid import coords_from_uniform_grid
 
-                complete = build(stub_x_bounds=stub_x_bounds)
+                complete = build(stub_x_bounds=stub_x_bounds, **kwargs)
                 nodes = np.asarray(coords_from_uniform_grid(complete._build_grid()).x)
                 indices = [int(np.argmin(abs(nodes - value))) for value in stub_x_bounds]
                 stub_x_bounds = tuple(float(nodes[i + 1]) for i in indices)
             if fault == "discard_bounds":
                 stub_x_bounds = None
-            return build(stub_x_bounds=stub_x_bounds)
+            return build(stub_x_bounds=stub_x_bounds, **kwargs)
 
         cv._build_sim = faulty_build
         return cv

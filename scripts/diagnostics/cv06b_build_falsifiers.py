@@ -50,6 +50,8 @@ Usage (GPU):
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import hashlib
 import importlib.util
 import json
 import time
@@ -129,11 +131,81 @@ def _assert_arm_geometry(label, geometry, baseline, dx):
         raise RuntimeError(f"{label} input contract failed: " + "; ".join(problems))
 
 
+def _array_record(value):
+    array = np.ascontiguousarray(np.asarray(value))
+    return dict(shape=list(array.shape), dtype=str(array.dtype),
+                sha256=hashlib.sha256(array.tobytes()).hexdigest())
+
+
+def environment_signature(sim):
+    """Consumed grid/material/port inputs that must not follow the stub change.
+
+    Material arrays include CPML pad extension. The resolved port declaration,
+    grid and registered materials determine the existing launch profile/load
+    and source coefficients. PEC masks are deliberately not hashed as fixed:
+    the stub's metal is the intended independent variable.
+    """
+    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
+    from rfx.sources.msl_port import (
+        msl_h_plane_stencil, msl_port_from_entry, msl_probe_x_coords_n,
+        msl_sampled_node_coordinates,
+    )
+
+    grid = sim._build_grid()
+    coords = coords_from_uniform_grid(grid)
+    materials = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
+    entries = sim._resolve_msl_probe_entries(grid)
+    ports = []
+    for entry in entries:
+        port = msl_port_from_entry(entry)
+        requested = msl_probe_x_coords_n(
+            grid, port, n_probes=entry.n_probes,
+            n_offset_cells=entry.n_probe_offset, n_spacing_cells=entry.n_probe_spacing,
+        )
+        record = dataclasses.asdict(entry)
+        record["waveform_type"] = type(entry.waveform).__qualname__
+        record["sampled_voltage_nodes_m"] = msl_sampled_node_coordinates(grid, port, requested)
+        record["current_plane_stencil"] = msl_h_plane_stencil(grid, port, requested[0])
+        ports.append(record)
+    if len(sim._geometry) != 3:
+        raise RuntimeError("cv06b control expects substrate, trace and stub declarations")
+    return _plain(dict(
+        grid=dict(shape=list(grid.shape), dx=float(grid.dx), dt=float(grid.dt),
+                  coordinates={axis: _array_record(getattr(coords, axis)) for axis in "xyz"}),
+        materials={key: _array_record(getattr(materials, key)) for key in ("eps_r", "sigma", "mu_r")},
+        fixed_geometry=[dataclasses.asdict(entry) for entry in sim._geometry[:2]],
+        options=dict(freq_max=sim._freq_max, precision=sim._precision,
+                     solver=sim._solver, stencil_order=sim._stencil_order,
+                     cpml_layers=sim._cpml_layers, cpml_kappa_max=sim._cpml_kappa_max,
+                     boundary=dataclasses.asdict(sim._boundary_spec)),
+        ports=ports,
+    ))
+
+
+def _assert_environment(label, sim, baseline):
+    if sim._msl_auto_offset_min or getattr(sim, "_msl_auto_probe_spacing", {}):
+        raise RuntimeError(f"{label} comparison control changed: automatic probe placement still enabled")
+    actual = environment_signature(sim)
+    changed = [key for key in baseline if actual[key] != baseline[key]]
+    if changed:
+        raise RuntimeError(f"{label} comparison control changed: " + ", ".join(changed))
+    return actual
+
+
 def prepare_inputs():
     """Build and validate all three geometries before the first field solve."""
     baseline_cv = _load()
     baseline_sim = baseline_cv._build_sim()
     baseline = baseline_cv.assert_realized_metal(baseline_sim)
+    baseline_environment = environment_signature(baseline_sim)
+    # Resolve the ordinary baseline once, then register those same choices
+    # explicitly on every perturbed build. Replacing entries without disabling
+    # their automatic flags would let the extractor move them again.
+    keys = ("n_probe_offset", "n_probe_spacing", "n_probes")
+    probe_settings = tuple({key: entry[key] for key in keys}
+                           for entry in baseline_environment["ports"])
+    controls = dict(domain_y=baseline_sim._domain[1], probe_settings=probe_settings)
+    baseline["comparison_environment"] = baseline_environment
     inputs = [("baseline", baseline_cv, baseline_sim, baseline)]
     bounds = _centred_stub_bounds(baseline_sim, baseline, 5)
     for label, mutate in (
@@ -142,9 +214,11 @@ def prepare_inputs():
     ):
         cv = _load()
         mutate(cv)
-        sim = cv._build_sim(stub_x_bounds=bounds) if label == "stub_narrow" else cv._build_sim()
+        sim = cv._build_sim(stub_x_bounds=bounds if label == "stub_narrow" else None,
+                            **controls)
         geometry = cv.realized_metal(sim)
         _assert_arm_geometry(label, geometry, baseline, cv.DX)
+        geometry["comparison_environment"] = _assert_environment(label, sim, baseline_environment)
         inputs.append((label, cv, sim, geometry))
     return inputs
 

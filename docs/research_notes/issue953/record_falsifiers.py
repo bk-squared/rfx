@@ -24,7 +24,7 @@ assert Path(rfx.__file__).resolve().is_relative_to(ROOT)
 LABELS = ("baseline", "stub_1cell", "stub_narrow")
 
 
-def main(out, build_only=False):
+def main(out, build_only=False, *, audit_runner=True):
     out.mkdir(parents=True, exist_ok=False)
     producer = ROOT / "scripts/diagnostics/cv06b_build_falsifiers.py"
     spec = importlib.util.spec_from_file_location("cv06b_falsifiers_recorded", producer)
@@ -39,6 +39,7 @@ def main(out, build_only=False):
         "case_sha256": hashlib.sha256(module.CV06B.read_bytes()).hexdigest(),
         "recorder_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "n_freqs": 100, "num_periods": 20.0,
+        "consumed_plan_check_requested": audit_runner,
         "inputs": {},
         "limits": ["No general MSL power calibration claim", "No unique historical frequency-shift attribution"],
     }
@@ -57,6 +58,30 @@ def main(out, build_only=False):
 
     original = rfx.Simulation.compute_msl_s_matrix
     observations = []
+    consumed = []
+    import rfx.simulation as engine
+    original_run = engine.run
+    if audit_runner:
+        checker_path = ROOT / "docs/research_notes/issue953/consumed_plan.py"
+        checker_spec = importlib.util.spec_from_file_location("_cv06b_consumed_plan", checker_path)
+        checker = importlib.util.module_from_spec(checker_spec)
+        checker_spec.loader.exec_module(checker)
+        allowed_stub_box = checker.stub_box_from_geometry(inputs[0][3])
+
+        def checked_run(*args, **kwargs):
+            arm = len(observations)
+            drive = len(consumed) - 2 * arm
+            assert arm < 3 and drive in (0, 1)
+            signature = checker.fingerprint_run_call(
+                original_run, args, kwargs, allowed_stub_box=allowed_stub_box,
+            )
+            if arm:
+                checker.compare_run_plans(consumed[drive]["signature"], signature)
+            consumed.append(dict(label=inputs[arm][0], drive=drive, signature=signature))
+            (out / "consumed-run-plans.json").write_text(json.dumps(consumed, indent=2) + "\n")
+            return original_run(*args, **kwargs)
+
+        engine.run = checked_run
 
     def observed(self, *args, **kwargs):
         index = len(observations)
@@ -101,7 +126,10 @@ def main(out, build_only=False):
         sys.argv = [str(producer), "--out-dir", str(out)]
         rc = module.main()
         assert len(observations) == 3
+        if audit_runner:
+            assert len(consumed) == 6, "all six field runs must pass the consumed-plan check"
         outcome.update(complete=True, producer_return_code=rc,
+                       runner_plan_verified=bool(audit_runner and len(consumed) == 6),
                        all_settling_screens_pass=all(o["settling_screen_pass"] is True for o in observations))
         return rc
     except BaseException:
@@ -109,6 +137,7 @@ def main(out, build_only=False):
         raise
     finally:
         rfx.Simulation.compute_msl_s_matrix = original
+        engine.run = original_run
         sys.argv = saved_argv
         outcome["field_matrix_calls"] = len(observations)
         (out / "outcome.json").write_text(json.dumps(outcome, indent=2) + "\n")
