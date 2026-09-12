@@ -2786,19 +2786,26 @@ class Simulation(
         n_freqs : int
             Number of frequencies if freqs is None.
         size : (float, float) or None
-            Physical extent in the two tangential directions.  ``None``
-            means the full plane (legacy behaviour).
+            Positive finite extents in the two tangential directions. A finite
+            window snaps to cell edges, clamps to the physical interior with
+            a warning on any clamp, and excludes CPML/bounding-node slots.
+            ``None`` means the full allocated plane (legacy behaviour).
         center : (float, float) or None
             Physical centre of the flux region in the two tangential
-            directions.  ``None`` defaults to the domain midpoint.
+            directions. ``None`` defaults to the declared domain midpoint
+            on uniform grids and the realized interior midpoint on graded grids.
             For example, for an x-normal monitor the two tangential
-            axes are (y, z).
+            axes are (y, z). Exactly two finite values are required.
+            Preflight reports finite requested/realized bounds in metres
+            through ``report.flux_regions``.
         name : str or None
             Result key. Default: ``flux_{axis}_{idx}``.
         """
         if axis not in ("x", "y", "z"):
             raise ValueError(f"axis must be 'x', 'y', or 'z', got {axis!r}")
         self._validate_declared_plane_coordinate(axis, coordinate)
+        from rfx.probes.flux_region import validate_flux_region_inputs
+        validate_flux_region_inputs(size, center)
         if freqs is not None:
             freqs_arr = jnp.asarray(freqs)
         else:

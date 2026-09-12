@@ -1038,7 +1038,15 @@ class PreflightReport(list):
     / truthiness) keeps working unchanged. It also exposes the canonical report
     API shared with :class:`rfx.validation.PortValidationReport` and
     :class:`rfx.subgridding.validation.SubgridValidationReport`.
+
+    ``flux_regions`` records finite monitor windows in metres and cell
+    indices. These records are metadata, not findings: an aligned window
+    must not change list truthiness or the historical strict-mode gate.
     """
+
+    def __init__(self, issues=(), *, flux_regions=None):
+        super().__init__(issues)
+        self.flux_regions = [] if flux_regions is None else list(flux_regions)
 
     @property
     def issues(self) -> list:
@@ -1080,13 +1088,16 @@ class PreflightReport(list):
     def format(self) -> str:
         """Return a compact human-readable multiline summary."""
         status = "PASS" if self.ok else "FAIL"
-        if not self:
-            return f"preflight: {status} (no issues)"
-        lines = [f"preflight: {status} ({len(self)} issue(s))"]
+        count = f"{len(self)} issue(s)" if self else "no issues"
+        lines = [f"preflight: {status} ({count})"]
         for issue in self:
             sev = getattr(issue, "severity", "warning")
             code = getattr(issue, "code", "uncoded")
             lines.append(f"- {sev.upper()} [{code}] {issue}")
+        if self.flux_regions:
+            from rfx.probes.flux_region import flux_region_message
+            lines.extend(f"- FLUX REGION {flux_region_message(record)}"
+                         for record in self.flux_regions)
         return "\n".join(lines)
 
     def raise_for_failure(self) -> "PreflightReport":
@@ -1109,7 +1120,7 @@ class PreflightReport(list):
         Real serialization (unlike ``json.dumps`` of a bare
         :class:`PreflightIssue`, which drops the code/severity attrs).
         """
-        return {
+        result = {
             "ok": self.ok,
             "n_issues": len(self),
             "n_errors": len(self.errors),
@@ -1125,6 +1136,9 @@ class PreflightReport(list):
                 for i in self
             ],
         }
+        if self.flux_regions:
+            result["flux_regions"] = self.flux_regions
+        return result
 
     def to_json(self, **kwargs: object) -> str:
         """Serialize the report for research-note artifacts."""
@@ -2980,6 +2994,70 @@ class _PreflightMixin:
             self._emit_waveguide_port_cutoff_findings(
                 entry, a_ap, b_ap, a_gd, b_gd, guide_label)
 
+    def _collect_flux_regions(self, report: PreflightReport) -> None:
+        """Record the same finite windows the uniform/NU runners consume.
+
+        Only geometry is evaluated, never material arrays or field values.
+        Traced geometry cannot provide metre bounds; keep that limitation
+        explicit without forcing a material-AD caller off its tape.
+        """
+        from rfx.probes.flux_region import (
+            flux_region_message, resolve_flux_region, validate_flux_region_inputs,
+        )
+
+        source = "_collect_flux_regions"
+
+        def finding(entry, message, code, severity="warning"):
+            report.append(PreflightIssue(
+                message, severity=severity, code=code,
+                loc=getattr(entry, "name", None), source=source,
+            ))
+
+        def traced(value):
+            return any(is_tracer(leaf) for leaf in jax.tree_util.tree_leaves(value))
+
+        finite = []
+        for entry in getattr(self, "_flux_monitors", ()):
+            geometry = (entry.size, entry.center, entry.coordinate)
+            if traced(geometry):
+                finding(entry, "Flux monitor region is unavailable: traced geometry.",
+                        "flux_region_unavailable")
+                continue
+            try:
+                size, _ = validate_flux_region_inputs(entry.size, entry.center)
+            except (ValueError, TypeError) as exc:
+                finding(entry, f"Flux monitor {entry.name!r}: {exc}",
+                        "flux_region_invalid", "error")
+                continue
+            if size is not None:
+                finite.append(entry)
+        if not finite:
+            return
+
+        # Resolve the selected/frozen mesh, including inferred NU profiles.
+        # No independent rounding or declaration-only grid choice belongs here.
+        try:
+            if traced(self._resolve_mesh()):
+                raise ValueError("traced mesh has no concrete metre bounds")
+            grid = self._build_realized_grid()
+        except (ValueError, TypeError, NotImplementedError, AttributeError,
+                IndexError, KeyError) as exc:
+            for entry in finite:
+                finding(entry, f"Flux monitor {entry.name!r} region is unavailable: {exc}",
+                        "flux_region_unavailable")
+            return
+
+        for entry in finite:
+            try:
+                record = resolve_flux_region(grid, entry, self._domain, warn=False)
+            except (ValueError, TypeError, IndexError) as exc:
+                finding(entry, f"Flux monitor {entry.name!r}: {exc}",
+                        "flux_region_invalid", "error")
+                continue
+            report.flux_regions.append(record)
+            if record["clamped"]:
+                finding(entry, flux_region_message(record), "flux_region_clamped")
+
     def preflight(
         self,
         *,
@@ -3028,7 +3106,8 @@ class _PreflightMixin:
         PreflightReport
             A ``list`` subclass of :class:`PreflightIssue` (each a ``str``
             subclass), back-compatible with the legacy ``list[str]`` return.
-            Empty if no issues found.
+            Empty if no issues found. Finite flux-window geometry is recorded
+            separately in ``flux_regions``, including for issue-free reports.
         """
         import warnings
         # Selection information belongs outside the captured legality findings.
@@ -3043,6 +3122,7 @@ class _PreflightMixin:
         # validators' existing not-evaluable guards.
         with warnings.catch_warnings(record=True) as caught, jax.ensure_compile_time_eval():
             warnings.simplefilter("always")
+            self._collect_flux_regions(issues)
             try:
                 if check_resolution:
                     self._validate_mesh_quality()
@@ -3125,6 +3205,11 @@ class _PreflightMixin:
         else:
             print("  [PREFLIGHT] All checks passed (NTFF checks skipped; "
                   "run sim.preflight() for the full set).")
+
+        if issues.flux_regions:
+            from rfx.probes.flux_region import flux_region_message
+            for record in issues.flux_regions:
+                print(f"  [FLUX REGION] {flux_region_message(record)}")
 
         return issues
 
@@ -3292,7 +3377,9 @@ class _PreflightMixin:
         if include_general:
             # strict=False here: collect the general findings, then aggregate
             # everything in one raise below (don't fail-on-first).
-            issues.extend(self.preflight(strict=False))
+            general = self.preflight(strict=False)
+            issues.extend(general)
+            issues.flux_regions.extend(general.flux_regions)
 
         _errors = issues.errors
         if strict and _errors:

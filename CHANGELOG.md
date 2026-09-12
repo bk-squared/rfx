@@ -18,6 +18,16 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
 - Preserve historical outputs, qualify the controlled arms with retained raw
   records, and clarify that nearest-node residuals are not extent-error bounds.
 
+### Fixed — finite flux windows exclude absorber cells (#910)
+
+- Clamp explicit `add_flux_monitor(size=...)` windows to physical interior
+  cells on both grid lanes, excluding CPML and the trailing bounding-node
+  slot. Warn on physical endpoint overflow, distinguish coordinate roundoff,
+  and reject empty apertures or malformed size/centre pairs before stepping.
+- Preflight exposes requested/realized bounds in metres through
+  `report.flux_regions`, using the same cell selection as the runners.
+  `size=None` retains the legacy full allocated plane.
+
 ### Fixed — MSL clearance and accuracy claims (#726)
 
 - **BREAKING for unequal MSL reference impedances:** return standard power-wave

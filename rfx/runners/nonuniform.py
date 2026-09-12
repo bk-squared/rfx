@@ -400,119 +400,26 @@ def pos_to_nu_index(grid: NonUniformGrid, pos) -> tuple[int, int, int]:
 
 def _nu_flux_tangential_bounds(d_arr, pad_lo: int, pad_hi: int,
                                center, size) -> tuple[int, int]:
-    """Physical ``(center, size)`` in metres -> half-open CELL slice
-    ``[lo:hi]`` on one graded tangential axis of a flux-monitor plane.
+    """Resolve a finite graded-axis CELL window inside the physical interior.
 
-    The finite-region ``add_flux_monitor(size=...)`` counterpart of the
-    waveguide port's ``_range_to_slice_nu`` cumulative-edge argmin lookup.
-    This is a FRESH helper used ONLY by the flux-monitor loop; the waveguide
-    path (``_build_waveguide_port_config_nu`` / ``_range_to_slice_nu``) is
-    left byte-identical because origin/main #889 is editing it concurrently
-    (audit c/B1 collision-avoidance). Steps, all against the REALIZED graded
-    profile ``d_arr`` (no ``/dx`` cubic-cell arithmetic):
-
-      edges = insert(cumsum(interior_cells(d_arr, pad_lo, pad_hi)), 0, 0)
-      lo_local = argmin|edges - (center - size/2)|
-      hi_local = argmin|edges - (center + size/2)|
-
-    ``edges`` is interior-relative (edges[0]=0 at the first interior face),
-    matching the physical-coordinate convention ``add_flux_monitor`` validates
-    against ``[0, domain]``. ``center=None`` -> the realized interior midpoint
-    ``edges[-1]/2`` (uniform-lane ``domain/2`` parity, but read off the graded
-    grid so it tracks the mesh).
-
-    NODE span -> CELL span (issue #868): ``FluxMonitor`` integrates per-cell
-    face areas ``dA = d1[lo:hi] (x) d2[lo:hi]``, so the window must select the
-    ``hi_local - lo_local`` CELLS whose cumulative width equals the requested
-    ``size`` -- NOT the ``hi_local - lo_local + 1`` NODES the argmin brackets.
-    We build the node span and narrow it with the shipped, tested
-    ``_node_span_to_cell_span`` (the same conversion the NU waveguide builder
-    applies to its aperture), which also raises on a degenerate (<1 cell) span.
-
-    SNAPPING AND CLAMPING (review2 F7 — an earlier wording claimed this helper
-    "never clamps", which is false). ``argmin`` is taken over the interior edge
-    array, so a requested endpoint outside ``[0, edges[-1]]`` snaps to the first
-    or last edge: ``size`` larger than the axis, or a ``center`` that pushes the
-    window off an end, yields the CLAMPED intersection with the interior (e.g.
-    ``size=30 mm`` on a 10 mm axis -> the whole axis; ``center=1 mm,
-    size=6 mm`` -> ``[0, 4] mm``). Inside the interior the endpoints still snap
-    by up to half a local cell each. That is deliberate; only the degenerate
-    (<1 cell) case raises. It is NOT what the uniform lane does: that lane
-    saturates at the padded array bounds and integrates absorber cells with no
-    warning (issue #910).
-
-    To make it non-silent a ``UserWarning`` is emitted when EITHER of two
-    runtime-derived conditions holds (fix2b, verify nit 1 — the previous single
-    size-difference test was a PROXY that missed clamps of up to ~1.5 end cells):
-
-      (a) CLAMP, tested PER ENDPOINT: the REQUESTED ``center -/+ size/2``
-          reaches outside ``[0, edges[-1]]`` by more than half the end cell
-          (``interior[0]/2`` at the low end, ``interior[-1]/2`` at the high
-          end). Half a cell is the threshold because an endpoint anywhere in
-          the interior may legitimately move that far by ordinary snapping, so
-          a clamp of half an end cell or less is indistinguishable from it and
-          stays silent — the one documented silent case.
-      (b) SNAP PAST AN ADJACENT EDGE: the realized extent differs from the
-          requested ``size`` by more than the largest cell touching the window
-          (which envelopes the (d_lo + d_hi)/2 two-endpoint worst case).
-
-    Ordinary sub-cell snapping inside the interior triggers neither.
+    Uses nearest cumulative edges, with the lower edge at a tie. Every
+    requested endpoint outside the interior emits a clamp warning, including
+    sub-cell overflow. Ordinary interior snapping remains a geometry result.
     """
-    d_np = np.asarray(d_arr)
-    interior = interior_cells(d_np, pad_lo, pad_hi)
+    from rfx.probes.flux_region import resolve_flux_axis
+
+    interior = interior_cells(np.asarray(d_arr, dtype=float), pad_lo, pad_hi)
     edges = np.insert(np.cumsum(interior), 0, 0.0)
-    if size is None or float(size) <= 0.0:
-        raise ValueError(
-            f"flux monitor size={size!r} is not a positive extent")
-    c = float(edges[-1]) / 2.0 if center is None else float(center)
-    lo_phys = c - float(size) / 2.0
-    hi_phys = c + float(size) / 2.0
-    lo_local = int(np.argmin(np.abs(edges - lo_phys)))
-    hi_local = int(np.argmin(np.abs(edges - hi_phys)))
-    if hi_local <= lo_local:
-        raise ValueError(
-            f"flux monitor center={center!r} size={size!r} resolves to a "
-            f"degenerate aperture on the NU grid (edge nodes "
-            f"lo_local={lo_local}, hi_local={hi_local}); it spans no "
-            f"interior cell -- widen size= or move center=")
-    realized = float(edges[hi_local] - edges[lo_local])
-    axis_len = float(edges[-1])
-    # (a) per-endpoint clamp: how far each REQUESTED endpoint reaches outside
-    #     the realized interior, against half the end cell it would be clamped
-    #     onto. Both quantities are read off the realized profile.
-    over_lo = max(0.0 - lo_phys, 0.0)
-    over_hi = max(hi_phys - axis_len, 0.0)
-    half_end_lo = float(interior[0]) / 2.0
-    half_end_hi = float(interior[-1]) / 2.0
-    clamped = (over_lo > half_end_lo) or (over_hi > half_end_hi)
-    # (b) snap past an adjacent edge (size-difference test, kept).
-    snap_bound = float(np.max(interior[max(lo_local - 1, 0):hi_local + 1]))
-    far_snap = abs(realized - float(size)) > snap_bound
-    if clamped or far_snap:
-        why = []
-        if over_lo > half_end_lo:
-            why.append(
-                f"CLAMPED at the low end (requested {lo_phys:.6g} m is "
-                f"{over_lo:.3g} m below the interior, more than the "
-                f"{half_end_lo:.3g} m half end cell)")
-        if over_hi > half_end_hi:
-            why.append(
-                f"CLAMPED at the high end (requested {hi_phys:.6g} m is "
-                f"{over_hi:.3g} m above the interior, more than the "
-                f"{half_end_hi:.3g} m half end cell)")
-        if far_snap:
-            why.append(
-                f"snapped past an adjacent edge (extent differs from the "
-                f"request by {abs(realized - float(size)):.3g} m, more than "
-                f"the {snap_bound:.3g} m largest cell touching the window)")
+    result = resolve_flux_axis(edges, pad_lo, center, size)
+    if result["clamped_low"] or result["clamped_high"]:
         warnings.warn(
-            f"flux monitor center={center!r} size={size!r} resolves to a "
-            f"{realized:.6g} m extent on this graded axis (interior "
-            f"[0, {axis_len:.6g}] m): " + "; ".join(why) + ". The monitor "
-            "integrates the realized extent, not the requested one.",
-            UserWarning, stacklevel=2)
-    node_span = (lo_local + pad_lo, hi_local + pad_lo + 1)
-    return _node_span_to_cell_span(node_span)
+            f"flux monitor center={center!r} size={size!r}: CLAMPED to interior "
+            f"[0, {float(edges[-1]):.12g}] m; requested bounds "
+            f"{result['requested_bounds_m']} m, realized bounds "
+            f"{result['realized_bounds_m']} m. The monitor integrates the realized extent.",
+            UserWarning, stacklevel=2,
+        )
+    return result["cell_slice"]
 
 
 def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
@@ -1243,14 +1150,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             1: (np.asarray(grid.dx_arr), np.asarray(grid.dz)),
             2: (np.asarray(grid.dx_arr), np.asarray(grid.dy_arr)),
         }
-        # Per-tangential-axis (d_arr, pad_lo, pad_hi) for size-> CELL index.
-        _axis_d = {0: np.asarray(grid.dx_arr), 1: np.asarray(grid.dy_arr),
-                   2: np.asarray(grid.dz)}
-        _axis_pad = {
-            0: (grid.pad_x_lo, grid.pad_x_hi),
-            1: (grid.pad_y_lo, grid.pad_y_hi),
-            2: (grid.pad_z_lo, grid.pad_z_hi),
-        }
+        from rfx.probes.flux_region import resolve_flux_region
         for pe in sim._flux_monitors:
             axis_idx = axis_to_index[pe.axis]
             plane_pos = [0.0, 0.0, 0.0]
@@ -1266,17 +1166,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             # each tangential axis against the graded cumulative edges. Full
             # plane keeps init_flux_monitor's (0, -1) full-extent defaults.
             lo1, hi1, lo2, hi2 = 0, -1, 0, -1
-            if getattr(pe, "size", None) is not None:
-                tangential_axes = [a for a in range(3) if a != axis_idx]
-                centers = (pe.center
-                           if getattr(pe, "center", None) is not None
-                           else (None, None))
-                bounds = []
-                for j, t in enumerate(tangential_axes):
-                    _plo, _phi = _axis_pad[t]
-                    bounds.append(_nu_flux_tangential_bounds(
-                        _axis_d[t], _plo, _phi, centers[j], pe.size[j]))
-                (lo1, hi1), (lo2, hi2) = bounds
+            region = resolve_flux_region(grid, pe, sim._domain)
+            if region is not None:
+                (lo1, hi1), (lo2, hi2) = region["cell_slices"]
+                grid_index = region["normal_index"]
             flux_monitor_objs.append(
                 init_flux_monitor(
                     axis=axis_idx,
