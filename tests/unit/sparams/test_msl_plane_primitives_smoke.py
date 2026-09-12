@@ -14,7 +14,7 @@ re-implementing them, so `_i_from_plane`'s closed-loop I reads BOTH an Hy
 plane (`plane_name`) and an Hz plane (`p.hz_name`, registered alongside
 it) — not "the Hy plane" alone as this file used to say.
 
-Scope: register the 4 plane DFT probes on a real cv06b-class MSL thru-line,
+Scope: register the 7 plane DFT probes per port on a real cv06b-class MSL thru-line,
 run a short forward, and assert the line-integrated V and closed-loop I
 phasors come back finite, correctly-shaped, and non-zero. NOT an accuracy
 gate (that lived in the deleted file vs the imperative reference) — purely a

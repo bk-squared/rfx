@@ -476,26 +476,23 @@ def _build_sim_with_stub(*, dx: float, l_line_mm: float, l_stub_mm: float = 8.63
 
 
 def test_reflector_clearance_warning_fires_on_short_l_line():
-    """L_LINE=9mm with stub at LX/2 — V₃ sits ~0.6–0.9mm from the stub
-    PEC reflector, well under λ_g/4 ≈ 3.7mm at f_max=9GHz with
-    ε_eff_proxy=5.  Expect the reflector-clearance warning to
-    fire on BOTH ports (the stub is between them).
+    """The 9 mm line cannot fit both source and stub-clearance rules.
 
-    NOTE (issue #80 Fix B): the L_LINE was 5mm prior to the
-    wavelength-bound probe-placement defaults. Fix B grew the default
-    3-probe span from ~0.9mm to ~3.6mm (offset 17 + 2·spacing 14 cells
-    at dx=80µm, eps_r_sub≈3.66, f_max=9GHz), so at L_LINE=5mm V₃
-    overshot the LX/2 stub entirely and the warning no longer fired.
-    L_LINE=9mm keeps V₃ before the stub yet within λ_g/4, restoring the
-    intended scenario. The λ_g/4 threshold and the fire-on-both-ports
-    assertion are unchanged — only the geometry is re-tuned to the new
-    defaults."""
+    Preflight now resolves the same automatic ladder as extraction. It
+    reports both the impossible placement interval and the actual short
+    downstream gap for each port. Assert each message's purpose and port,
+    rather than counting every warning containing the word reflector.
+    """
     sim = _build_sim_with_stub(dx=80e-6, l_line_mm=9.0)
     msgs = _msl_warnings(sim)
-    refl = [m for m in msgs if "reflector" in m]
+    refl = [m for m in msgs if "strong reflector candidate" in m]
     assert len(refl) == 2, (
-        f"expected reflector warnings on BOTH ports at L_LINE=5mm, got: {refl}"
+        f"expected reflector warnings on BOTH ports at L_LINE=9mm, got: {refl}"
     )
+    placement = [m for m in msgs if "mutually unsatisfiable" in m]
+    for pe in sim._msl_ports:
+        assert sum(repr(pe.name) in m for m in refl) == 1
+        assert sum(repr(pe.name) in m for m in placement) == 1
     assert "λ_g/4" in refl[0]
     assert "L_LINE" in refl[0] or "n_probe_offset" in refl[0]
 

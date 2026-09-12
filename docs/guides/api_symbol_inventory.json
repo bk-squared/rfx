@@ -133,6 +133,9 @@
     "MATERIAL_LIBRARY": {
       "kind": "object"
     },
+    "MSLProbeClearance": {
+      "kind": "class"
+    },
     "MSLSMatrixResult": {
       "kind": "class"
     },

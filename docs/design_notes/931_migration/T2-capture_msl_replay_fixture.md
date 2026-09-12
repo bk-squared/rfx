@@ -1,5 +1,11 @@
 # T2 → owner of `scripts/capture_msl_replay_fixture.py`
 
+> Historical migration note. On 2026-09-12, #726 retired this capture
+> command because its reference used one-sided H and cannot validate the
+> current collocated extractor. The old binaries remain evidence; active
+> structural tests now use complete manufactured H records. See
+> [the current-plane validation record](../../research_notes/issue726/collocation/README.md).
+
 The MSL replay fixtures (`tests/fixtures/msl_replay_accumulators.npz`,
 `tests/fixtures/msl_replay_golden_f64.npy`) cannot be recaptured until this
 script draws the board the way the rest of the tree now does. It is the only
