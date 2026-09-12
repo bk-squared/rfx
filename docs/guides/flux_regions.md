@@ -59,5 +59,6 @@ flux through an interior aperture.
 Window correctness does not certify RF accuracy, settling, source purity or
 the normal-axis H interpolation on a graded mesh. Those require their own
 validation. The finite-window resolver changes geometry bookkeeping; it does
-not alter field evolution, DFT normalization or flux differentiation with
-respect to the fields/materials.
+not alter field evolution or DFT normalization. Field/material dependence
+stays on the existing autodiff tape; changing the selected aperture can
+change both the flux value and its gradient.
