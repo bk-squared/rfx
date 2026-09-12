@@ -66,6 +66,7 @@ from __future__ import annotations
 import ast
 import inspect
 import textwrap
+from collections import Counter
 from pathlib import Path
 
 from rfx.optimize import optimize as _optimize_fn
@@ -317,7 +318,10 @@ def _enumerate_emission_sites():
 # #726 adds three msl_port_geometry sites: resolved-placement warnings,
 # a failed placement resolution, and unavailable reflector assessment.
 # No new code slug or public compute entry point is introduced.
-_FROZEN_TOTAL_SITES = 112
+# #910 adds one shared finite-flux finding constructor. Its three explicit
+# slugs are passed to that dynamic-code emitter; they are frozen separately
+# below instead of being mistaken for constructor-local literal codes.
+_FROZEN_TOTAL_SITES = 113
 _FROZEN_LITERAL_CODE_COUNT = 74
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
@@ -335,6 +339,7 @@ _FROZEN_LITERAL_CODE_COUNT = 74
 _FROZEN_DYNAMIC_SITES_BY_FUNCTION = {
     "preflight": 2,
     "preflight_sparameters": 2,
+    "finding": 1,
 }
 
 
@@ -370,6 +375,29 @@ def test_preflight_emission_site_surface_is_frozen():
         "freeze: they drift on any insertion above and say nothing about "
         "the surface."
     )
+
+
+def test_finite_flux_emitter_has_a_bounded_explicit_code_surface():
+    """A shared constructor must not hide new or dynamically chosen slugs."""
+    tree = ast.parse(textwrap.dedent(inspect.getsource(Simulation._collect_flux_regions)))
+    calls = [node for node in ast.walk(tree)
+             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+             and node.func.id == "finding"]
+    uses = [node for node in ast.walk(tree)
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+            and node.id == "finding"]
+    assert len(uses) == len(calls), "finding must be called directly, not passed through an alias"
+    codes = []
+    for call in calls:
+        assert not any(isinstance(arg, ast.Starred) for arg in call.args)
+        assert len(call.args) >= 3 and isinstance(call.args[2], ast.Constant)
+        assert isinstance(call.args[2].value, str)
+        codes.append(call.args[2].value)
+    assert Counter(codes) == {
+        "flux_region_unavailable": 2,
+        "flux_region_invalid": 2,
+        "flux_region_clamped": 1,
+    }
 
 
 # ---------------------------------------------------------------------------

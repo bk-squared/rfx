@@ -35,8 +35,8 @@ edits it concurrently). These tests pin, from strongest to most physical:
       never claimed correctly that it "never clamps" — and that clamp emits a
       UserWarning. (d) pins the case the old size-difference PROXY missed: a
       clamp SMALLER than one cell, which only the per-endpoint clamp test sees.
-      (e) pins the documented silent case (a clamp of half an end cell or less,
-      indistinguishable from ordinary snapping); (c) pins that an
+      (e) pins the #910 correction: even a quarter-cell overflow is reported
+      as a clamp because the requested endpoint is outside; (c) pins that an
       exactly-representable window does not warn.
 
 Every tolerance printed in-assertion is ``f(dA, dt, dx/dy/dz, eps, freq)``.
@@ -207,8 +207,12 @@ def test_nu_finite_flux_absolute_aperture_and_dA():
     # Independent expectation from the realized graded edges (axis y=1, z=2).
     dy_full, pad_y_lo, pad_y_hi, _ = _grid_axis(grid, 1)
     dz_full, pad_z_lo, pad_z_hi, _ = _grid_axis(grid, 2)
-    edges_y = _interior_edges(dy_full, pad_y_lo, pad_y_hi)
-    edges_z = _interior_edges(dz_full, pad_z_lo, pad_z_hi)
+    # #910: geometry uses the exact #931 node spine, not a cumulative sum of
+    # solver-facing float32 spacings. Area arithmetic still uses those stores.
+    from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
+    coords = coords_from_nonuniform_grid(grid)
+    edges_y = np.asarray(coords.y)[pad_y_lo:grid.ny - pad_y_hi]
+    edges_z = np.asarray(coords.z)[pad_z_lo:grid.nz - pad_z_hi]
     (yl, yh), (yll, yhl) = _expected_cell_span(edges_y, pad_y_lo, cy, size_y)
     (zl, zh), (zll, zhl) = _expected_cell_span(edges_z, pad_z_lo, cz, size_z)
 
@@ -278,7 +282,7 @@ def test_nu_finite_flux_absolute_aperture_and_dA():
     for label, d_full_, edges_, pad_lo_, pad_hi_, lo, hi, c_req, s_req in (
             ("y", dy_full, edges_y, pad_y_lo, pad_y_hi, mon.lo1, mon.hi1, cy, size_y),
             ("z", dz_full, edges_z, pad_z_lo, pad_z_hi, mon.lo2, mon.hi2, cz, size_z)):
-        int_d = np.asarray(interior_cells(d_full_, pad_lo_, pad_hi_))
+        int_d = np.diff(edges_)
         n_int = int(len(int_d))
         for end, node, requested in (("lo", lo - pad_lo_, c_req - s_req / 2.0),
                                      ("hi", hi - pad_lo_, c_req + s_req / 2.0)):
@@ -577,11 +581,9 @@ def test_nu_finite_flux_oversize_window_clamps_and_warns():
         f"SILENT — the per-endpoint clamp test is gone and only the size-"
         f"difference proxy is left; caught={[str(c.message) for c in caught]}")
 
-    # (e) the DOCUMENTED silent case: a clamp of a QUARTER end cell, i.e. less
-    #     than the half-cell threshold. An endpoint anywhere in the interior may
-    #     move that far by ordinary snapping, so such a clamp is not
-    #     distinguishable from snapping and the docstring says it stays silent.
-    #     Pin that, so the threshold cannot drift unnoticed in either direction.
+    # (e) #910: a quarter-cell overflow is identifiable from the REQUESTED
+    #     endpoint even when its snapped index would match an interior request.
+    #     Keep the same realized window and make that clamp non-silent.
     lo_req_e = -0.25 * float(interior[0])
     hi_req_e = float(edges[k_hi])
     s_e = hi_req_e - lo_req_e
@@ -592,8 +594,6 @@ def test_nu_finite_flux_oversize_window_clamps_and_warns():
     assert (lo, hi) == (pad, pad + k_hi), (
         f"quarter-cell clamp resolved to ({lo},{hi}), expected "
         f"({pad},{pad + k_hi})")
-    assert not [c for c in caught if "CLAMPED" in str(c.message)], (
-        f"a clamp of {abs(lo_req_e):.3e} m (below the "
-        f"{float(interior[0]) / 2.0:.3e} m half-end-cell threshold the "
-        f"docstring documents as silent) warned: "
+    assert any("CLAMPED" in str(c.message) for c in caught), (
+        f"a quarter-cell clamp of {abs(lo_req_e):.3e} m was silent: "
         f"{[str(c.message) for c in caught]}")

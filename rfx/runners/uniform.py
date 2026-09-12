@@ -66,11 +66,12 @@ def _reconstruct_oblique_physical(sim_result, tfsf_cfg, grid, probes):
 def build_flux_monitor_cfgs(sim, grid, n_steps, entries=None):
     """Materialize ``sim._flux_monitors`` entries into scan monitor configs.
 
-    Mechanical extraction of the historical ``run_uniform`` inline block so
+    Shared extraction of the ``run_uniform`` inline block so
     the low-level forward lane (``_forward_from_materials``, issue-#488
     mixed-family flux magnitude channel) can register the SAME monitors
     the run() lane does. Pure function of (sim registrations, grid,
-    n_steps) — keep byte-identical to the pre-extraction block.
+    n_steps). Finite regions resolve to interior cells via the same geometry
+    resolver used by preflight; ``size=None`` keeps the legacy full plane.
 
     ``entries`` overrides the entry list (same ``_FluxMonitorEntry``
     objects ``add_flux_monitor`` registers) without touching the sim's
@@ -80,6 +81,7 @@ def build_flux_monitor_cfgs(sim, grid, n_steps, entries=None):
     is still consulted for ``_freq_max``/``_domain``.
     """
     axis_to_index = {"x": 0, "y": 1, "z": 2}
+    from rfx.probes.flux_region import resolve_flux_region
     flux_monitors = []
     if entries is None:
         entries = getattr(sim, '_flux_monitors', [])
@@ -95,25 +97,11 @@ def build_flux_monitor_cfgs(sim, grid, n_steps, entries=None):
         )
         # Compute tangential index bounds from size (finite flux region)
         tangential_axes = [a for a in range(3) if a != axis_idx]
-        domain_sizes = [sim._domain[a] for a in tangential_axes]
         grid_ns = [grid.shape[a] for a in tangential_axes]
-        if pe.size is not None:
-            # User-specified or default center (domain midpoint)
-            user_center = pe.center if hasattr(pe, 'center') and pe.center is not None else None
-            bounds = []
-            for idx_t, (s, dom, n) in enumerate(zip(pe.size, domain_sizes, grid_ns)):
-                c = user_center[idx_t] if user_center is not None else dom / 2.0
-                pad = getattr(
-                    grid,
-                    ['pad_x_lo', 'pad_y_lo', 'pad_z_lo'][tangential_axes[idx_t]],
-                    0,
-                )
-                # Convert physical coordinate to grid index (add CPML padding offset)
-                lo = max(0, int(round(c / grid.dx - s / (2.0 * grid.dx))) + pad)
-                hi = min(n, int(round(c / grid.dx + s / (2.0 * grid.dx))) + pad)
-                bounds.append((lo, hi))
-            lo1, hi1 = bounds[0]
-            lo2, hi2 = bounds[1]
+        region = resolve_flux_region(grid, pe, sim._domain)
+        if region is not None:
+            (lo1, hi1), (lo2, hi2) = region["cell_slices"]
+            grid_index = region["normal_index"]
         else:
             lo1, hi1 = 0, grid_ns[0]
             lo2, hi2 = 0, grid_ns[1]
