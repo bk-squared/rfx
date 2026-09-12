@@ -1,0 +1,22 @@
+[
+  {
+    "case": "axis",
+    "exit_code": 0,
+    "wall_s": 34.23726663785055
+  },
+  {
+    "case": "ad",
+    "exit_code": 0,
+    "wall_s": 130.30320576112717
+  },
+  {
+    "case": "coupon",
+    "exit_code": 1,
+    "wall_s": 115.7923131948337
+  },
+  {
+    "case": "nu",
+    "exit_code": 0,
+    "wall_s": 41.451990495901555
+  }
+]

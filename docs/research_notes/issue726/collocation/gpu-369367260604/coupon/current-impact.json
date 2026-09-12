@@ -1,0 +1,38 @@
+{
+  "dump": "/root/workspace/claude-workspace/rfx/runs/codex-i726-collocation-consumers-zbv0xvjb/coupon/call-0-raw-vi.npz",
+  "sha256": "7a946f9a76cdfc152dc93fd4eb6fdcd06a76dd4c6a22d020fb8d5cb95e4fa45a",
+  "production_assembly": "multi_drive_solve",
+  "scope": "same FDTD fields, same V plane and Zref; unprojected extraction comparison only",
+  "voltage_planes_m": [
+    0.005,
+    0.009000000000000001
+  ],
+  "current_weights": [
+    [
+      0.5,
+      0.5
+    ],
+    [
+      0.4999999999999826,
+      0.5000000000000173
+    ]
+  ],
+  "reference_impedances_ohm": [
+    47.89479996289313,
+    47.89479996289313
+  ],
+  "centered_vs_stored_s_max_abs": 1.8021456172203997e-07,
+  "current_interpolation_relative_residual": 1.0941925460652656e-07,
+  "current_change_relative_to_peak": 0.002455433019009363,
+  "s_change_max_abs": 0.0028381708343856353,
+  "s_change_worst": {
+    "receiver": 0,
+    "drive": 0,
+    "frequency_hz": 5000000000.0
+  },
+  "centered_max_column_power": 1.0000789346939412,
+  "same_index_max_column_power": 1.0000795046090238,
+  "physical_accuracy_verdict": null,
+  "same_index_projected_vs_historical_golden_max_abs": 1.7840044134004247e-05,
+  "interpretation": "Existing physical screens pass. Golden drift is explained by the authorized current-plane change; this does not requalify or update the golden."
+}

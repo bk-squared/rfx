@@ -1,0 +1,268 @@
+{
+  "run_id": 369367260604,
+  "status": "failed",
+  "reason": "All field cases complete; unchanged coupon old-algorithm drift lock failed. Axis, actual AD-FD, NU patch passed.",
+  "source_sha": "ec3bedfe2fc1a8c8be12ebd2b7054562a5fcf096",
+  "provider_log": "docs/research_notes/vessl_logs/369367260604_failed.log.gz",
+  "provider_log_sha256": "66a0477fa4282646ec23cf778194f0092731110df3f4bee75d8044965c087dfe",
+  "provider_uncompressed_sha256": "ae7a5cdfce04bb8f034128c5dc2a63c057533bd0e909a98ced99fe229045b74b",
+  "files": [
+    {
+      "path": "ad/call-0-raw-vi.npz",
+      "bytes": 17320,
+      "sha256": "14e6794e68293bf817d04f220906e4e1ab0db0384f79f57f2ba643a3213d6afe"
+    },
+    {
+      "path": "ad/call-0-result.npz",
+      "bytes": 1866,
+      "sha256": "7f33dabbfc4f36b82f46d5d881af9908590920dc3a95332c6534ef371002b60c"
+    },
+    {
+      "path": "ad/call-0-waves.npz",
+      "bytes": 1609,
+      "sha256": "ec21040c6c28c99c2ced1e09be5910f40b65db9b5f559965843693349aa491a7"
+    },
+    {
+      "path": "ad/call-2-raw-vi.npz",
+      "bytes": 20328,
+      "sha256": "f9dd50cbd9dcc47c83a205b86ca4fbd015a865455ee36405d73d298d759b3aba"
+    },
+    {
+      "path": "ad/call-2-result.npz",
+      "bytes": 2193,
+      "sha256": "3d2da7e8345c5f939f9c02388c1df8ad6807d0eb846a3e0ea0fb419736b4fd18"
+    },
+    {
+      "path": "ad/call-2-waves.npz",
+      "bytes": 2406,
+      "sha256": "b1648e7b6fc0b8791565095002e55bcb1bde20643b0d9ebf72e9a07f9cc8517d"
+    },
+    {
+      "path": "ad/call-3-raw-vi.npz",
+      "bytes": 20328,
+      "sha256": "0625a93880b3f046e49294172cc90853765251c1752b28bb46c28262173c9ac8"
+    },
+    {
+      "path": "ad/call-3-result.npz",
+      "bytes": 2200,
+      "sha256": "da9dd31505d4de263defbf07e53eb4605995d2926e44b7ddd4db8e5b9a94f651"
+    },
+    {
+      "path": "ad/call-3-waves.npz",
+      "bytes": 2409,
+      "sha256": "ffa425a8ab0e4c4bdc6a10ae203a7c8a28e168173325bdeb5fdd349ba436551d"
+    },
+    {
+      "path": "ad/calls.json",
+      "bytes": 2355,
+      "sha256": "a59204e06520126403a0bba2630cdf3043b4ac245a324f7eeef3b3d0f024ad7f"
+    },
+    {
+      "path": "ad/field-initializations.json",
+      "bytes": 5155,
+      "sha256": "bee44a907cba249582c9b28dde2318e8d6ef681ebd30e1a5c61163b34e2315fc"
+    },
+    {
+      "path": "ad/junit.xml.gz",
+      "bytes": 252,
+      "sha256": "fdb8f77b83ccc13f70b77ecfcb5332935ede6b3dae4996be3b47df90f14fd788"
+    },
+    {
+      "path": "ad/outcome.json",
+      "bytes": 52,
+      "sha256": "8f4ed87b861aa0ecbfad8e91c3fcae47a072b0a3c97c10a2468be8dcb3ceb8d0"
+    },
+    {
+      "path": "ad.log.gz",
+      "bytes": 2515,
+      "sha256": "0d43e46420a692b1f75709909e5ef088b67999f6f4116fa075fe2137756ba1aa"
+    },
+    {
+      "path": "axis/call-0-raw-vi-impact.json",
+      "bytes": 1065,
+      "sha256": "46739f23aa55e83fd058ade04983bd10ca96dd93d839620591e39a2b4060a364"
+    },
+    {
+      "path": "axis/call-0-raw-vi.npz",
+      "bytes": 18916,
+      "sha256": "3284b8bfc2dfb67077fc9a439b3c51c61806da6769fd60fb91116db88ef3b092"
+    },
+    {
+      "path": "axis/call-0-result.npz",
+      "bytes": 2980,
+      "sha256": "3999f6701feee3aa1fbd6c34142f2edd1ff0fed81d045a6ff1c43317c578b9b0"
+    },
+    {
+      "path": "axis/call-0-waves.npz",
+      "bytes": 2047,
+      "sha256": "7ef62659a7d897b0aefadc1ce765d105779e4660acb57710f9cc44ad90979fad"
+    },
+    {
+      "path": "axis/call-1-raw-vi-impact.json",
+      "bytes": 1064,
+      "sha256": "406097fb712fd94ed963cc5f8f788e9e3296f401175a0053fba67362ef3b915a"
+    },
+    {
+      "path": "axis/call-1-raw-vi.npz",
+      "bytes": 18916,
+      "sha256": "22a831dfaa1400f5e9c808fc25b92a980cd8292bbcd5003f65fe39f5c914a401"
+    },
+    {
+      "path": "axis/call-1-result.npz",
+      "bytes": 2981,
+      "sha256": "c28a67d973100e051c2d31efdf11d0e5140cc61e3d8901865ddc0d2ad9493bb7"
+    },
+    {
+      "path": "axis/call-1-waves.npz",
+      "bytes": 2046,
+      "sha256": "cc5b2135e1fa2e6d903106a7dc82bfe7166b643009a4336c07cb5e3b6f34c53f"
+    },
+    {
+      "path": "axis/calls.json",
+      "bytes": 1825,
+      "sha256": "a715a590591c23ac2513ac09e20b01c06ab7b526333dd32df072e7ceaeccacbe"
+    },
+    {
+      "path": "axis/field-initializations.json",
+      "bytes": 2579,
+      "sha256": "5eeaf5e88a79d9a0bb042cce60b00de1b23b7dc4e331b880b3c500f9b3b3a4ec"
+    },
+    {
+      "path": "axis/junit.xml.gz",
+      "bytes": 265,
+      "sha256": "5d3803e53970b7ca1cc941db3205b6927305012c163605ae7aced12562db2841"
+    },
+    {
+      "path": "axis/outcome.json",
+      "bytes": 52,
+      "sha256": "e32db82c4e9ffcdc89969cdc56f92b700fa7d81e86baafc0973957201a0e21ff"
+    },
+    {
+      "path": "axis.log.gz",
+      "bytes": 2473,
+      "sha256": "1515ed3b3f1caa6f3589a421925bb23ecc3e54078042df28e1bdcb2537ae91ee"
+    },
+    {
+      "path": "coupon/call-0-raw-vi.npz",
+      "bytes": 17688,
+      "sha256": "7a946f9a76cdfc152dc93fd4eb6fdcd06a76dd4c6a22d020fb8d5cb95e4fa45a"
+    },
+    {
+      "path": "coupon/call-0-result.npz",
+      "bytes": 2765,
+      "sha256": "b8b23b3426f7d31b48d62cbef4d8f46ca9c7d96b23c23f96dae91398aaf09dcf"
+    },
+    {
+      "path": "coupon/call-0-waves.npz",
+      "bytes": 1831,
+      "sha256": "fd46153e5a8808e01c4b298dfc052a845f479589e40dccb21db8066dfb6ac3a5"
+    },
+    {
+      "path": "coupon/calls.json",
+      "bytes": 916,
+      "sha256": "f46bc1072234422f7ba4d97b3d68f051e8dd4e7df36b6f049d8b658cc5cc763d"
+    },
+    {
+      "path": "coupon/current-impact.json",
+      "bytes": 1330,
+      "sha256": "2508110f5b60357d038cdb1eb21f88e23dfb7bc00fc61df355c864b7e780d91e"
+    },
+    {
+      "path": "coupon/junit.xml.gz",
+      "bytes": 4215,
+      "sha256": "073d1ccd9cc099a557d76ea73e18ec53e0a459f4bcdb29140dcce4acd51e28cb"
+    },
+    {
+      "path": "coupon/outcome.json",
+      "bytes": 53,
+      "sha256": "31f9772fa56c84aa4f7ac278058bfc57495fa65ff0701133a4bf59ea70f954b4"
+    },
+    {
+      "path": "coupon.log.gz",
+      "bytes": 7578,
+      "sha256": "b22c9b8eb10355882869c6f0201fffb500b1ca36d4a2d8bb8b78c7999097d2ef"
+    },
+    {
+      "path": "driver.py",
+      "bytes": 6143,
+      "sha256": "255412c78bd40123ece0fb9e24117fb605245e6311283b4d393b59c280c5f7dd"
+    },
+    {
+      "path": "environment.json",
+      "bytes": 744,
+      "sha256": "dacf796c32faa743969f743d0b500da8bc82fd6c44e3fb72a93f57fb6ea58497"
+    },
+    {
+      "path": "nu/call-0-raw-vi.npz",
+      "bytes": 20979,
+      "sha256": "6deeebf9d658ce122a60888c0f34a82e939b53ee53a8bb6ff9a36042c989f14e"
+    },
+    {
+      "path": "nu/call-0-result.npz",
+      "bytes": 3338,
+      "sha256": "1742e40eeb9c63371d534dedbdc5efda244502a3c7126badd963fbdda294f56c"
+    },
+    {
+      "path": "nu/call-0-waves.npz",
+      "bytes": 2711,
+      "sha256": "1ed686cff825972bc566117fe9eabfba805050e44a75de473ec617529cb3c262"
+    },
+    {
+      "path": "nu/calls.json",
+      "bytes": 739,
+      "sha256": "6ab5737c13d73eba8904009ca7254641965ac25bfc0fb40a8b7edbe2f69e2d26"
+    },
+    {
+      "path": "nu/junit.xml.gz",
+      "bytes": 262,
+      "sha256": "7d0c9df6fcb8617071a7986db03d25eda60288007293d7531402ee385171e481"
+    },
+    {
+      "path": "nu/outcome.json",
+      "bytes": 52,
+      "sha256": "fa74dd93f6198ed1c1b657b1f797193ce42bf8796c82ddfd82a914e6bc9c0620"
+    },
+    {
+      "path": "nu.log.gz",
+      "bytes": 4009,
+      "sha256": "3f1cecf8f6188ced2599fba64c3bc55f203addd27eb1715c5d0c63a40f02c526"
+    },
+    {
+      "path": "outcomes.json",
+      "bytes": 327,
+      "sha256": "cf8a465ceefb42090fa9c35d81b646d80f79b08240bf4fe1121f0270a810ec25"
+    },
+    {
+      "path": "provider-state.txt.gz",
+      "bytes": 883,
+      "sha256": "1f72da04a9db08e6f8d33c4eb19d4642470021a14e2832eb6bb4adc71adc19ff"
+    },
+    {
+      "path": "run.yaml",
+      "bytes": 1414,
+      "sha256": "6e8b926f47c8d0a510c2f0a67fbbda07fe9c285dad3dbc39e28df680d139c983"
+    }
+  ],
+  "compressed_reports": [
+    {
+      "path": "coupon/junit.xml.gz",
+      "uncompressed_sha256": "b992771925b8e9c2a1cef5e24100c94124f676201ebe3b60549f3d1347cad6b2"
+    },
+    {
+      "path": "nu/junit.xml.gz",
+      "uncompressed_sha256": "2707cfba216687d226c1e6ab5526adf39e249164b067872213bd0d15201bbd11"
+    },
+    {
+      "path": "ad/junit.xml.gz",
+      "uncompressed_sha256": "d35180773399986a5bafc4eb29d35f27bd24162102ce5f5622b39f693c813468"
+    },
+    {
+      "path": "axis/junit.xml.gz",
+      "uncompressed_sha256": "b03559898a4e814f7881b29d87af506c0d8be8718d3bcb8a1cc49b0bc717f787"
+    },
+    {
+      "path": "provider-state.txt.gz",
+      "uncompressed_sha256": "d9675dcc20f156217b3aae8e0f80b6595ae6f4b5987f1e964a77de4a36321f6d"
+    }
+  ]
+}

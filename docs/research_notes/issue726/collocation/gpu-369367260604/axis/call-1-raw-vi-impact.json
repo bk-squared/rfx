@@ -1,0 +1,36 @@
+{
+  "dump": "/root/workspace/claude-workspace/rfx/runs/codex-i726-collocation-consumers-zbv0xvjb/axis/call-1-raw-vi.npz",
+  "sha256": "22a831dfaa1400f5e9c808fc25b92a980cd8292bbcd5003f65fe39f5c914a401",
+  "production_assembly": "multi_drive_solve",
+  "scope": "same FDTD fields, same V plane and Zref; unprojected extraction comparison only",
+  "voltage_planes_m": [
+    0.004487333333333333,
+    0.009567333333333332
+  ],
+  "current_weights": [
+    [
+      0.5,
+      0.5
+    ],
+    [
+      0.5,
+      0.5
+    ]
+  ],
+  "reference_impedances_ohm": [
+    47.89479996289313,
+    47.89479996289313
+  ],
+  "centered_vs_stored_s_max_abs": 2.2971086531055764e-07,
+  "current_interpolation_relative_residual": 6.2734452772375e-08,
+  "current_change_relative_to_peak": 0.0025117978749078724,
+  "s_change_max_abs": 0.005673847999596961,
+  "s_change_worst": {
+    "receiver": 0,
+    "drive": 0,
+    "frequency_hz": 5000000000.0
+  },
+  "centered_max_column_power": 1.0006828197620734,
+  "same_index_max_column_power": 1.0006911687649835,
+  "physical_accuracy_verdict": null
+}

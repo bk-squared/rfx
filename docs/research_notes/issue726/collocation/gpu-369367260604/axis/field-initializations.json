@@ -1,0 +1,202 @@
+[
+  {
+    "ex": {
+      "dtype": "float32",
+      "shape": [
+        183,
+        53,
+        30
+      ]
+    },
+    "ey": {
+      "dtype": "float32",
+      "shape": [
+        183,
+        53,
+        30
+      ]
+    },
+    "ez": {
+      "dtype": "float32",
+      "shape": [
+        183,
+        53,
+        30
+      ]
+    },
+    "hx": {
+      "dtype": "float32",
+      "shape": [
+        183,
+        53,
+        30
+      ]
+    },
+    "hy": {
+      "dtype": "float32",
+      "shape": [
+        183,
+        53,
+        30
+      ]
+    },
+    "hz": {
+      "dtype": "float32",
+      "shape": [
+        183,
+        53,
+        30
+      ]
+    }
+  },
+  {
+    "ex": {
+      "dtype": "float32",
+      "shape": [
+        183,
+        53,
+        30
+      ]
+    },
+    "ey": {
+      "dtype": "float32",
+      "shape": [
+        183,
+        53,
+        30
+      ]
+    },
+    "ez": {
+      "dtype": "float32",
+      "shape": [
+        183,
+        53,
+        30
+      ]
+    },
+    "hx": {
+      "dtype": "float32",
+      "shape": [
+        183,
+        53,
+        30
+      ]
+    },
+    "hy": {
+      "dtype": "float32",
+      "shape": [
+        183,
+        53,
+        30
+      ]
+    },
+    "hz": {
+      "dtype": "float32",
+      "shape": [
+        183,
+        53,
+        30
+      ]
+    }
+  },
+  {
+    "ex": {
+      "dtype": "float32",
+      "shape": [
+        53,
+        183,
+        30
+      ]
+    },
+    "ey": {
+      "dtype": "float32",
+      "shape": [
+        53,
+        183,
+        30
+      ]
+    },
+    "ez": {
+      "dtype": "float32",
+      "shape": [
+        53,
+        183,
+        30
+      ]
+    },
+    "hx": {
+      "dtype": "float32",
+      "shape": [
+        53,
+        183,
+        30
+      ]
+    },
+    "hy": {
+      "dtype": "float32",
+      "shape": [
+        53,
+        183,
+        30
+      ]
+    },
+    "hz": {
+      "dtype": "float32",
+      "shape": [
+        53,
+        183,
+        30
+      ]
+    }
+  },
+  {
+    "ex": {
+      "dtype": "float32",
+      "shape": [
+        53,
+        183,
+        30
+      ]
+    },
+    "ey": {
+      "dtype": "float32",
+      "shape": [
+        53,
+        183,
+        30
+      ]
+    },
+    "ez": {
+      "dtype": "float32",
+      "shape": [
+        53,
+        183,
+        30
+      ]
+    },
+    "hx": {
+      "dtype": "float32",
+      "shape": [
+        53,
+        183,
+        30
+      ]
+    },
+    "hy": {
+      "dtype": "float32",
+      "shape": [
+        53,
+        183,
+        30
+      ]
+    },
+    "hz": {
+      "dtype": "float32",
+      "shape": [
+        53,
+        183,
+        30
+      ]
+    }
+  }
+]
