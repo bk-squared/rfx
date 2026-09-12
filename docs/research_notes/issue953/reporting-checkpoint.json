@@ -1,0 +1,27 @@
+{
+  "scope": "Approved baseline-only G1 reporting and source-geometry reference contract; no RF solve or issue-completion claim",
+  "base_main": "87927064131a1df44133117304c746a0e9e9f4bc",
+  "rebased_input_checkpoint": "fcf40edd066cfdd8eb5d74aee30a6d38017803db",
+  "source_sha256": {
+    "scripts/diagnostics/cv06b_build_falsifiers.py": "a70d06f4771f026f1fa2e5d22e4df3f1ccea8e913bdbc9e6657877beb0ae8b51",
+    "validation/crossval/06b_msl_notch_filter_uniform.py": "ee80255e96782b1460dc619f0f0dfb47b2ac629affa4ac1cbc709a51258fe08c",
+    "tests/crossval/test_cv06b_build_falsifier_plumbing.py": "1fa6b7e9ee066109236de454d9ebae82c6587ca8c0231404e28b6380e3179e51"
+  },
+  "geometry_check": "All three realized input records equal the original approved production-inputs.json; narrow five intervals and baseline centre/length preserved",
+  "g1": "baseline only; unchanged 4% threshold and row-pitch/declared-length reference",
+  "one_cell": "same baseline reference conventions; one-cell length change retains original visibility prediction",
+  "narrow": "own geometric width and realized extension in diagnostic-only quarter-wave approximation; no electrical-width certification",
+  "g2": "unchanged ideal r=1 bandwidth target",
+  "report_schema_version": 2,
+  "historical_outputs": "untouched; producer refuses existing per-arm or summary outputs before building or solving",
+  "tests": {
+    "command": "python -m pytest -q tests/crossval/test_cv06b_build_falsifier_plumbing.py tests/crossval/test_cv06b_shallow_stub_model.py tests/crossval/test_spectral_feature_estimators.py tests/crossval/test_patch_msl_public_carriers.py",
+    "result": "58 passed",
+    "log_sha256": "338f4f79931d7f1c98e276a77e9ee0029e7e9242618a01241654920d251248bc"
+  },
+  "not_verified": [
+    "Fresh RF response of corrected five-interval narrow arm",
+    "Unique attribution of historical frequency shift",
+    "Calibrated MSL power accuracy"
+  ]
+}

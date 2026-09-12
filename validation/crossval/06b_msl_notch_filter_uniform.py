@@ -817,7 +817,7 @@ def worst_sampled_notch_db(bin_hz, f0, r=1.0):
     return float(20.0 * np.log10(2.0 / np.sqrt(4.0 + (r * np.tan(theta)) ** 2)))
 
 
-def evaluate(freqs, s21_mag, z0_real, f_notch_analytic):
+def evaluate(freqs, s21_mag, z0_real, f_notch_analytic, *, frequency_gate=True):
     """Every gated quantity, as a pure function of the sweep.
 
     Factored out of ``main()`` deliberately (#812): the judgement of this case
@@ -827,6 +827,9 @@ def evaluate(freqs, s21_mag, z0_real, f_notch_analytic):
     ``scripts/diagnostics/cv06b_estimator_falsifiers.py``.
 
     ``freqs`` in Hz, ``s21_mag`` linear magnitude, ``z0_real`` in ohm.
+    ``frequency_gate=False`` retains the frequency comparison in an explicit
+    diagnostic block without evaluating G1. The build falsifiers use this
+    for their perturbed arms; the baseline accuracy gate remains unchanged.
     """
     f = np.asarray(freqs, dtype=float)
     s21_mag = np.asarray(s21_mag, dtype=float)
@@ -854,14 +857,11 @@ def evaluate(freqs, s21_mag, z0_real, f_notch_analytic):
     lo_r, hi_r = STOPBAND_BW_RATIO_WINDOW
 
     m = {
-        "f_notch_analytic": float(f_notch_analytic),
         "f_notch_bin": float(f[i_notch]),
         "f_notch_refined": float(est["refined_f"]),
         "sub_bin_shift": float(est["sub_bin_shift"]),
         "bin_hz": float(est["bin_width"]),
         "notch_depth_db": float(s21_db[i_notch]),
-        "err_pct": abs(est["refined_f"] - f_notch_analytic) / f_notch_analytic * 100.0,
-        "err_pct_bin": abs(float(f[i_notch]) - f_notch_analytic) / f_notch_analytic * 100.0,
         "bw_lo": bw_lo, "bw_hi": bw_hi, "bw_bins": int(bw_bins),
         "bw_frac": bw_frac, "bw_ratio": bw_ratio,
         "witness_bins": float(wit["spread_bins"]),
@@ -871,8 +871,18 @@ def evaluate(freqs, s21_mag, z0_real, f_notch_analytic):
     m["worst_sampled_depth_db"] = worst_sampled_notch_db(
         m["bin_hz"], m["f_notch_refined"])
     m["depth_gate_blind_margin_db"] = m["worst_sampled_depth_db"] - (-10.0)
-    m["gates"] = {
-        "G1 notch freq vs analytic": m["err_pct"] < NOTCH_FREQ_TOL_PCT,
+    frequency = {
+        "f_notch_analytic": float(f_notch_analytic),
+        "err_pct": abs(est["refined_f"] - f_notch_analytic) / f_notch_analytic * 100.0,
+        "err_pct_bin": abs(float(f[i_notch]) - f_notch_analytic) / f_notch_analytic * 100.0,
+    }
+    gates = {}
+    if frequency_gate:
+        m.update(frequency)
+        gates["G1 notch freq vs analytic"] = m["err_pct"] < NOTCH_FREQ_TOL_PCT
+    else:
+        m["frequency_diagnostic"] = frequency
+    gates.update({
         "G2 -10 dB stopband width": lo_r < bw_ratio < hi_r,
         "G3 half-grid resolution witness": m["witness_bins"] < HALF_GRID_WITNESS_BINS,
         "G4 Z0 median": 40 < z0_median < 65,
@@ -882,7 +892,8 @@ def evaluate(freqs, s21_mag, z0_real, f_notch_analytic):
         # printed beside the verdict. It stays as a witness; G2 carries the
         # real depth requirement.
         "notch depth (witness only)": m["notch_depth_db"] < -10,
-    }
+    })
+    m["gates"] = gates
     return m
 
 
@@ -894,11 +905,16 @@ def report(m) -> bool:
     parsing.
     """
     lo_r, hi_r = STOPBAND_BW_RATIO_WINDOW
+    frequency = m.get("frequency_diagnostic", m)
     print()
     print("Result:")
     print(f"  Notch frequency (rfx)      = {m['f_notch_refined']/1e9:.3f} GHz")
-    print(f"  Notch frequency (analytic) = {m['f_notch_analytic']/1e9:.3f} GHz")
-    print(f"  Notch frequency error      = {m['err_pct']:.2f} %")
+    if "frequency_diagnostic" in m:
+        print(f"  Quarter-wave reference    = {frequency['f_notch_analytic']/1e9:.3f} GHz (diagnostic only)")
+        print(f"  Frequency deviation       = {frequency['err_pct']:.2f} % (not an accuracy verdict)")
+    else:
+        print(f"  Notch frequency (analytic) = {frequency['f_notch_analytic']/1e9:.3f} GHz")
+        print(f"  Notch frequency error      = {frequency['err_pct']:.2f} %")
     print(f"  Notch depth |S21|          = {m['notch_depth_db']:.1f} dB")
     print(f"  Re(Z0) median              = {m['z0_median']:.1f} Ω")
     print()
@@ -906,7 +922,7 @@ def report(m) -> bool:
     print(f"  sweep bin                  = {m['bin_hz']/1e6:.4f} MHz "
           f"= {m['bin_hz']/m['f_notch_refined']*100:.3f} % at the notch")
     print(f"  bin argmin                 = {m['f_notch_bin']/1e9:.4f} GHz "
-          f"(would report {m['err_pct_bin']:.2f} % vs analytic)")
+          f"(would report {frequency['err_pct_bin']:.2f} % vs reference)")
     print(f"  sub-bin refined vertex     = {m['f_notch_refined']/1e9:.4f} GHz "
           f"({m['sub_bin_shift']:+.3f} bin)")
     print(f"  half-grid witness spread   = {m['witness_bins']:.4f} bin "
@@ -919,9 +935,10 @@ def report(m) -> bool:
     g = m["gates"]
     print()
     print("Gates:")
-    print(f"  G1 Notch freq vs analytic (< {NOTCH_FREQ_TOL_PCT:.1f} %): "
-          f"{'PASS' if g['G1 notch freq vs analytic'] else 'FAIL'}  "
-          f"({m['err_pct']:.2f} %, sub-bin refined)")
+    if "G1 notch freq vs analytic" in g:
+        print(f"  G1 Notch freq vs analytic (< {NOTCH_FREQ_TOL_PCT:.1f} %): "
+              f"{'PASS' if g['G1 notch freq vs analytic'] else 'FAIL'}  "
+              f"({m['err_pct']:.2f} %, sub-bin refined)")
     print(f"  G2 -10 dB stopband width / ideal r=1 stub ∈ "
           f"({lo_r:.2f}, {hi_r:.2f}): "
           f"{'PASS' if g['G2 -10 dB stopband width'] else 'FAIL'}  "

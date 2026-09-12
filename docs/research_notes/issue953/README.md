@@ -1,9 +1,10 @@
 # cv06b falsifier input and diagnostic checkpoint
 
 Base main: `0662c3b96d82ca65d7bd041b94c4ab984230e00d` (2026-09-11).
-**Issue #953 remains open.** This checkpoint fixes input geometry and a
-misleading preflight interpretation. G1 scope/reference/reporting and fresh
-RF qualification remain unfinished; no field solve was run for this packet.
+**Issue #953 remains open.** The original checkpoint fixed input geometry and
+a misleading preflight interpretation. The subsequent reporting repair below
+implements the user's G1-scope decision. Fresh RF qualification remains
+unfinished; no field solve was run for either packet.
 
 ## Observed input and correction
 
@@ -55,7 +56,8 @@ its quarter-wave reference. Holding the recorded notch fixed at
 arithmetic discrepancy from 6.4388% to 3.7506%. This does not establish physical
 accuracy: the row-pitch electrical-width convention itself is unresolved,
 and these are retained pre-#729 fields, not a new measurement. No frequency
-gate or tolerance was changed here. The user's G1-scope decision is pending.
+gate or tolerance was changed by that original checkpoint. The later scope
+decision is recorded below; this calculation remains historical evidence.
 
 The original pre-#931 run was 369367257702; its provider log records a staging
 copy and failed git revision lookup. Import commit 4bee84f3 is therefore not
@@ -86,3 +88,36 @@ frequency-shift attribution must respect these distinctions.
 
 Hashes and commands are in `manifest.json`. This packet supports the input
 and message repairs, not completion of #953 or a new RF accuracy claim.
+
+## Approved frequency-reporting scope
+
+The user selected baseline-only frequency accuracy, with the narrow arm
+remaining a G2-fail/depth-pass control. The branch was rebased onto main
+`87927064` before implementing that decision. Baseline G1 retains its 4%
+limit and its existing main-line row-pitch/declared-extension reference.
+Neither the baseline tolerance nor G2's ideal r=1 bandwidth target changes.
+
+Perturbed arms no longer compute or persist a G1 boolean. Their frequency
+comparison is under `frequency_diagnostic`, explicitly excluded from an
+accuracy verdict. The one-cell arm retains the baseline width/length
+conventions: its changed length still supplies the existing shift prediction
+used by the visibility criterion. That reference is not merely display data.
+
+The narrow arm uses its own realized node-span width and extension length in
+a stated continuous quarter-wave approximation. Metadata records width,
+length convention, substrate height, permittivity and effective permittivity.
+Open-end and tee-junction corrections are absent. A geometric width is not a
+certification of discrete electrical width. The old main-line reference and
+its deviation are retained as a separately named diagnostic comparison.
+
+New reports use schema version 2. Historical spectra and schema-1 summaries
+remain unchanged; the producer refuses any existing per-arm or summary output
+before building or solving. Use a new output directory. Structural
+tests exercise the actual solve/report/evaluation wiring with only the field
+result stubbed; these do not qualify the corrected five-interval RF response
+or uniquely attribute the historical frequency shift.
+
+The reporting checkpoint passed 58 focused tests. A fresh build certificate
+matches all three earlier approved input records exactly. Commands, source
+hashes and remaining limits are in [reporting-checkpoint.json](reporting-checkpoint.json),
+with the current geometry in [reporting-inputs.json](reporting-inputs.json).

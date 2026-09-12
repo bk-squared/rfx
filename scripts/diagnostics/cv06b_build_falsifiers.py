@@ -26,6 +26,12 @@ not only on a replayed sweep. This runs cv06b's own solve three times:
               -> G2 must FAIL while the retained -10 dB depth gate still
               PASSES, which is the blindness #812 measured.
 
+G1 frequency accuracy applies to the baseline only. Perturbed-arm frequency
+comparisons are stored under frequency_diagnostic and do not produce a G1
+boolean. The baseline's 4% limit is unchanged (#953).
+Schema-2 reports require new output filenames; existing per-arm or summary
+records are refused before building or solving, preserving historical evidence.
+
 Each run writes its full metric dict as JSON, and the three are reduced to
 cv06b_build_falsifiers_summary.json, so every number the verdict rests on is
 re-derivable without re-solving and prose can cite it by key.
@@ -143,14 +149,62 @@ def prepare_inputs():
     return inputs
 
 
-def solve(cv, label, *, sim, geometry):
-    w_realized = geometry["trace_w_elec"]
-    u = w_realized / cv.H_SUB
+def frequency_reference(cv, label, geometry):
+    """State the geometry convention of the approximate quarter-wave model.
+
+    Baseline qualification retains its existing row-pitch reference. The
+    narrow arm uses its own node-span geometry as a continuous-line diagnostic;
+    that choice is not a claim about its effective discrete electrical width.
+    Neither reference contains an open-end or tee-junction correction.
+    """
+    narrow = label == "stub_narrow"
+    width = geometry["stub_w"] if narrow else geometry["trace_w_elec"]
+    length = geometry["stub_len"] if narrow else cv.STUB_LEN
+    u = width / cv.H_SUB
     eps_eff = (cv.EPS_R + 1) / 2 + (cv.EPS_R - 1) / 2 * (1 + 12 / u) ** -0.5
-    f_an = cv.C0 / (4 * cv.STUB_LEN * np.sqrt(eps_eff))
+    role = ("baseline_accuracy_reference" if label == "baseline"
+            else "length_shift_prediction" if label == "stub_1cell"
+            else "diagnostic_only")
+    return {
+        "frequency_hz": float(cv.C0 / (4 * length * np.sqrt(eps_eff))),
+        "role": role,
+        "model": "quasistatic_quarter_wave_without_open_end_or_tee_correction",
+        "width_m": float(width),
+        "width_convention": "stub_node_span" if narrow else "main_line_row_pitch",
+        "length_m": float(length),
+        "length_convention": "stub_realized_extension" if narrow else "declared_stub_extension",
+        "substrate_height_m": float(cv.H_SUB),
+        "substrate_eps_r": float(cv.EPS_R), "eps_eff": float(eps_eff),
+        "discrete_electrical_width_certified": False,
+    }
+
+
+def evaluate_arm(cv, label, geometry, freqs, s21, z0):
+    reference = frequency_reference(cv, label, geometry)
+    m = cv.evaluate(freqs, s21, z0, reference["frequency_hz"],
+                    frequency_gate=(label == "baseline"))
+    m["frequency_reference"] = reference
+    if label != "baseline":
+        diagnostic = m["frequency_diagnostic"]
+        diagnostic["reference"] = reference
+        diagnostic["f_notch_refined_hz"] = m["f_notch_refined"]
+        if label == "stub_narrow":
+            # Retain the old main-line comparison as named arithmetic history,
+            # never as a gate or as evidence of the corrected arm's accuracy.
+            legacy = frequency_reference(cv, "legacy_narrow_reference", geometry)
+            diagnostic["legacy_main_line_reference"] = legacy
+            diagnostic["legacy_main_line_err_pct"] = (
+                abs(m["f_notch_refined"] - legacy["frequency_hz"])
+                / legacy["frequency_hz"] * 100)
+    return m
+
+
+def solve(cv, label, *, sim, geometry):
+    reference = frequency_reference(cv, label, geometry)
+    f_an = reference["frequency_hz"]
     print(f"\n=== {label}: STUB_LEN={cv.STUB_LEN*1e3:.4f} mm  "
-          f"W_STUB={cv.W_STUB*1e6:.1f} um  W_realized={w_realized*1e6:.1f} um  "
-          f"analytic {f_an/1e9:.4f} GHz ===", flush=True)
+          f"W_STUB={cv.W_STUB*1e6:.1f} um  W_reference={reference['width_m']*1e6:.1f} um  "
+          f"quarter-wave reference {f_an/1e9:.4f} GHz ({reference['role']}) ===", flush=True)
     sim.preflight(strict=False)
     t0 = time.time()
     res = sim.compute_msl_s_matrix(n_freqs=100, num_periods=20.0)
@@ -158,7 +212,7 @@ def solve(cv, label, *, sim, geometry):
     f = np.asarray(res.freqs)
     s21 = np.abs(np.asarray(res.S[1, 0, :]))
     z0 = np.asarray(res.Z0[0, :]).real
-    m = cv.evaluate(f, s21, z0, f_an)
+    m = evaluate_arm(cv, label, geometry, f, s21, z0)
     m["label"] = label
     m["solve_s"] = dt
     m["stub_len_m"] = float(cv.STUB_LEN)
@@ -176,6 +230,15 @@ def main() -> int:
     args = ap.parse_args()
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
+    targets = [out / f"cv06b_falsifier_{label}.json"
+               for label in ("baseline", "stub_1cell", "stub_narrow")]
+    targets.append(out / "cv06b_build_falsifiers_summary.json")
+    existing = [str(path) for path in targets if path.exists()]
+    if existing:
+        raise FileExistsError(
+            "refusing to overwrite retained falsifier evidence; use a new "
+            "--out-dir: " + ", ".join(existing)
+        )
 
     results = {}
     for label, cv, sim, geometry in prepare_inputs():
@@ -202,7 +265,7 @@ def main() -> int:
     # The true shift is DERIVED from the two builds' own analytic anchors, not
     # asserted: f_notch ~ 1/L_stub through the same eps_eff, so the anchor
     # ratio is the shift the solve should show.
-    true_shift = (c["f_notch_analytic"] - b["f_notch_analytic"]) \
+    true_shift = (c["frequency_diagnostic"]["f_notch_analytic"] - b["f_notch_analytic"]) \
         / b["f_notch_analytic"] * 100
     true_bins = abs(true_shift) / 100 * b["f_notch_refined"] / b["bin_hz"]
     # "visible" = the refined estimate responded to a defect smaller than a
@@ -222,6 +285,9 @@ def main() -> int:
 
     summary = {
         "meta": {"issue": 812, "case": "cv06b",
+                 "report_schema_version": 2,
+                 "frequency_g1_scope": "baseline_only",
+                 "narrow_frequency_accuracy_claim": False,
                  "produced_by": "scripts/diagnostics/cv06b_build_falsifiers.py",
                  "board": "cv06b's own dx=63.5um, 5,729,080-cell mesh"},
         "criterion_A_baseline": {
@@ -239,11 +305,12 @@ def main() -> int:
             "true_shift_bins": true_bins,
             "bin_argmin_delta_pct": d_bin, "refined_delta_pct": d_ref,
             "visible": bool(visible), "gates": c["gates"],
+            "frequency_diagnostic": c["frequency_diagnostic"],
             "solve_s": c["solve_s"]},
         "stub_narrow": {
             "w_stub_m": n["w_stub_m"], "bw_ratio": n["bw_ratio"],
             "bw_frac": n["bw_frac"], "notch_depth_db": n["notch_depth_db"],
-            "err_pct": n["err_pct"], "gates": n["gates"],
+            "frequency_diagnostic": n["frequency_diagnostic"], "gates": n["gates"],
             "G2_fired": bool(not g2), "depth_witness_still_passes": bool(dep),
             "solve_s": n["solve_s"]},
         "verdict": {"criterion_A": bool(ok),
