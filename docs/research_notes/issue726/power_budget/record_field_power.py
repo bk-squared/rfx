@@ -144,7 +144,9 @@ def build(*, lead_through_cpml=False):
                                         component=component, coordinate_m=coordinate, region=region))
                 keys.append(name)
             face['probes'][component] = keys
-    plan = dict(scope='raw field diagnostic only; no geometry/source change or accuracy PASS',
+    plan = dict(scope=('one explicit exterior trace continuation; fixed source/DUT/observer recipe; diagnostic only'
+                       if lead_through_cpml else 'raw field diagnostic only; no geometry/source change or accuracy PASS'),
+                inputs_role='unchanged original control/near builder receipt; its comparison label is inherited, not this experiment description',
                 inputs=inputs, lead_change=lead_change,
                 registered_geometry=[asdict(g) for g in sim._geometry],
                 box_node_lo=box_lo, box_node_hi=box_hi,

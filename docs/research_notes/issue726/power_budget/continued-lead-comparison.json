@@ -1,0 +1,194 @@
+{
+  "scope": "one explicit exterior lead change; causal diagnostic, no calibrated accuracy verdict",
+  "field_comparison_basis": "same old VI A basis and same old worst-VI-gain drive combination for both records",
+  "normalization_limit": "original VI A does not independently calibrate incident electromagnetic power",
+  "lead_change": {
+    "old": [
+      [
+        0,
+        0.001016,
+        0.000254
+      ],
+      [
+        0.034,
+        0.0016159999999999998,
+        0.000254
+      ]
+    ],
+    "new": [
+      [
+        -0.000508,
+        0.001016,
+        0.000254
+      ],
+      [
+        0.034544,
+        0.0016159999999999998,
+        0.000254
+      ]
+    ],
+    "unchanged_pec_x_slice": [
+      37,
+      515
+    ],
+    "all_material_arrays_identical": true,
+    "source_load_declarations_identical": true,
+    "requested_boundary_model": "trace explicitly continuous through allocated x CPML"
+  },
+  "original": {
+    "max_coherent_gain": 1.0112928109720252,
+    "frequency_hz": 3653125000.0,
+    "max_column_power": 1.0064897822683858,
+    "max_entry_magnitude": 1.0031057586654113,
+    "settling_db": [
+      -122.15785574943226,
+      -120.00605473787154
+    ]
+  },
+  "continued": {
+    "max_coherent_gain": 1.019534490711232,
+    "frequency_hz": 6803125000.0,
+    "max_column_power": 1.0190920549815037,
+    "max_entry_magnitude": 1.0045570571019398,
+    "settling_db": [
+      -65.2832784205876,
+      -64.16030263425141
+    ]
+  },
+  "selected_fixed_drive_power": [
+    {
+      "frequency_hz": 1999375000.0,
+      "fixed_original_input_vector_complex": [
+        [
+          -0.7518839881932936,
+          0.0
+        ],
+        [
+          0.48233073716083896,
+          -0.4494747248605074
+        ]
+      ],
+      "declared_ends": {
+        "vi_out": 0.0019023575918335738,
+        "x_out": 0.0010890334785414297,
+        "side_out": -0.0010743641233200564,
+        "closed_out": 1.4669355221373288e-05
+      },
+      "continued_lead": {
+        "vi_out": 0.0009196680588415977,
+        "x_out": 0.0005499959673553268,
+        "side_out": -0.0007066066625365566,
+        "closed_out": -0.00015661069518123
+      }
+    },
+    {
+      "frequency_hz": 3653125000.0,
+      "fixed_original_input_vector_complex": [
+        [
+          -0.7120986247161426,
+          0.0
+        ],
+        [
+          -0.7020746294783518,
+          0.0026006384242601966
+        ]
+      ],
+      "declared_ends": {
+        "vi_out": 0.011292854603009357,
+        "x_out": 0.012211278144643107,
+        "side_out": -0.012229596666368154,
+        "closed_out": -1.8318521725044602e-05
+      },
+      "continued_lead": {
+        "vi_out": 0.0038947656575090677,
+        "x_out": 0.00360016193609018,
+        "side_out": -0.003484627893265943,
+        "closed_out": 0.00011553404282423662
+      }
+    },
+    {
+      "frequency_hz": 3771250000.0,
+      "fixed_original_input_vector_complex": [
+        [
+          -0.7148029273783074,
+          0.0
+        ],
+        [
+          -0.6993254742233428,
+          0.0008100084560853168
+        ]
+      ],
+      "declared_ends": {
+        "vi_out": 0.011291439540988385,
+        "x_out": 0.01237902258671174,
+        "side_out": -0.012350800222599578,
+        "closed_out": 2.8222364112162223e-05
+      },
+      "continued_lead": {
+        "vi_out": 0.0041329752814836685,
+        "x_out": 0.003909277648376196,
+        "side_out": -0.004027664898342188,
+        "closed_out": -0.00011838724996599314
+      }
+    },
+    {
+      "frequency_hz": 3968125000.0,
+      "fixed_original_input_vector_complex": [
+        [
+          -0.7170448066193932,
+          0.0
+        ],
+        [
+          -0.6970161525754185,
+          -0.0039023517419564456
+        ]
+      ],
+      "declared_ends": {
+        "vi_out": 0.010872308963297024,
+        "x_out": 0.01215093781004367,
+        "side_out": -0.012150661851569409,
+        "closed_out": 2.7595847426214104e-07
+      },
+      "continued_lead": {
+        "vi_out": 0.005350156274928092,
+        "x_out": 0.005315400726953557,
+        "side_out": -0.005225329259535409,
+        "closed_out": 9.007146741814862e-05
+      }
+    },
+    {
+      "frequency_hz": 4991875000.0,
+      "fixed_original_input_vector_complex": [
+        [
+          -0.6889610346759315,
+          0.0
+        ],
+        [
+          -0.7222986975972279,
+          0.06014386209429824
+        ]
+      ],
+      "declared_ends": {
+        "vi_out": 0.004332423910673869,
+        "x_out": 0.00471419369856199,
+        "side_out": -0.0047158110423514785,
+        "closed_out": -1.6173437894905027e-06
+      },
+      "continued_lead": {
+        "vi_out": 0.0035915100648620264,
+        "x_out": 0.003824222620565199,
+        "side_out": -0.0032474966929747933,
+        "closed_out": 0.0005767259275904057
+      }
+    }
+  ],
+  "max_raw_s_change": 0.016758207965651795,
+  "settled": true,
+  "physical_accuracy_verdict": null,
+  "inputs_sha256": {
+    "docs/research_notes/issue726/power_budget/gpu-369367260633/artifacts/raw-vi.npz": "cfef4d6d3b8adc94b888c66e9b28f77df0b4dcbb2518e37e6259704ebbf17bd1",
+    "/root/workspace/claude-workspace/rfx/runs/codex-i726-continued-lead-9hac_q0t/artifacts/raw-vi.npz": "efbcad04087a1e6047826fbdfb77ec2fa9a3e7510d98e8970838af2e278fc77f",
+    "docs/research_notes/issue726/power_budget/field-power-audit.npz": "8f06fabf88977769a404c683bff605b6150e8c77487fa6185828f22d2bcd9bf5",
+    ".git/issue726-continued-lead-audit.npz": "d4089269dce51511c0bd9e8134aea5b56838b5c21a919e03f40ccd8b28537aa4"
+  }
+}

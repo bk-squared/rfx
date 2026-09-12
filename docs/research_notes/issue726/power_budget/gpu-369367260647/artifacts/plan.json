@@ -1,0 +1,1982 @@
+{
+  "scope": "raw field diagnostic only; no geometry/source change or accuracy PASS",
+  "inputs": {
+    "realized_metal": {
+      "plane_k": 4,
+      "plane_z": 0.000254,
+      "n_sheets": 2,
+      "n_volume_cells": 0,
+      "trace_j": [
+        24,
+        33
+      ],
+      "trace_w": 0.0005715,
+      "n_rows": 10,
+      "trace_y": [
+        0.001016,
+        0.0015875
+      ],
+      "stub_i": [
+        271,
+        280
+      ],
+      "stub_w": 0.0005714999999999991,
+      "n_cols": 10,
+      "trace_w_elec": 0.0006349999999999999,
+      "stub_w_elec": 0.0006349999999999999,
+      "stub_len": 0.0120015,
+      "stub_open_j": 222,
+      "stub_len_centreline": 0.01228725,
+      "n_ex": 7051,
+      "n_ey": 6714,
+      "n_ez": 0
+    },
+    "stub_bounds_m": [
+      0.0167005,
+      0.017272
+    ],
+    "ports": {
+      "clean": [
+        {
+          "name": "msl_0",
+          "feed_x_m": 0.0019684999999999998,
+          "probe_x_m": [
+            0.0073025,
+            0.0074294999999999995,
+            0.0075565,
+            0.0076835,
+            0.0078105
+          ],
+          "first_gap_m": 0.009398,
+          "deepest_gap_m": 0.00889,
+          "source_standoff_cells": 20,
+          "offset_cells": 84,
+          "spacing_cells": 2,
+          "recommended_gap_m": 0.004788379854674549,
+          "source": {
+            "name": "msl_0",
+            "position": [
+              0.002,
+              0.001316,
+              0.0
+            ],
+            "width": 0.0006,
+            "height": 0.000254,
+            "direction": "+x",
+            "impedance": 50.0,
+            "waveform": {
+              "f0": 3500000000.0,
+              "bandwidth": 0.8,
+              "amplitude": 1.0,
+              "cutoff": 3.0
+            },
+            "excite": true,
+            "mode": "laplace",
+            "eps_r_sub": null
+          }
+        },
+        {
+          "name": "msl_1",
+          "feed_x_m": 0.032004,
+          "probe_x_m": [
+            0.02667,
+            0.026543,
+            0.026416,
+            0.026289,
+            0.026161999999999998
+          ],
+          "first_gap_m": 0.009398,
+          "deepest_gap_m": 0.008889999999999999,
+          "source_standoff_cells": 20,
+          "offset_cells": 84,
+          "spacing_cells": 2,
+          "recommended_gap_m": 0.004788379854674549,
+          "source": {
+            "name": "msl_1",
+            "position": [
+              0.032,
+              0.001316,
+              0.0
+            ],
+            "width": 0.0006,
+            "height": 0.000254,
+            "direction": "-x",
+            "impedance": 50.0,
+            "waveform": {
+              "f0": 3500000000.0,
+              "bandwidth": 0.8,
+              "amplitude": 1.0,
+              "cutoff": 3.0
+            },
+            "excite": true,
+            "mode": "laplace",
+            "eps_r_sub": null
+          }
+        }
+      ],
+      "near": [
+        {
+          "name": "msl_0",
+          "feed_x_m": 0.0019684999999999998,
+          "probe_x_m": [
+            0.016129,
+            0.016256,
+            0.016382999999999998,
+            0.01651,
+            0.016637
+          ],
+          "first_gap_m": 0.0005714999999999991,
+          "deepest_gap_m": 6.350000000000106e-05,
+          "source_standoff_cells": 20,
+          "offset_cells": 223,
+          "spacing_cells": 2,
+          "recommended_gap_m": 0.004788379854674549,
+          "source": {
+            "name": "msl_0",
+            "position": [
+              0.002,
+              0.001316,
+              0.0
+            ],
+            "width": 0.0006,
+            "height": 0.000254,
+            "direction": "+x",
+            "impedance": 50.0,
+            "waveform": {
+              "f0": 3500000000.0,
+              "bandwidth": 0.8,
+              "amplitude": 1.0,
+              "cutoff": 3.0
+            },
+            "excite": true,
+            "mode": "laplace",
+            "eps_r_sub": null
+          }
+        },
+        {
+          "name": "msl_1",
+          "feed_x_m": 0.032004,
+          "probe_x_m": [
+            0.02667,
+            0.026543,
+            0.026416,
+            0.026289,
+            0.026161999999999998
+          ],
+          "first_gap_m": 0.009398,
+          "deepest_gap_m": 0.008889999999999999,
+          "source_standoff_cells": 20,
+          "offset_cells": 84,
+          "spacing_cells": 2,
+          "recommended_gap_m": 0.004788379854674549,
+          "source": {
+            "name": "msl_1",
+            "position": [
+              0.032,
+              0.001316,
+              0.0
+            ],
+            "width": 0.0006,
+            "height": 0.000254,
+            "direction": "-x",
+            "impedance": 50.0,
+            "waveform": {
+              "f0": 3500000000.0,
+              "bandwidth": 0.8,
+              "amplitude": 1.0,
+              "cutoff": 3.0
+            },
+            "excite": true,
+            "mode": "laplace",
+            "eps_r_sub": null
+          }
+        }
+      ]
+    },
+    "case_sha256": "a2c08892fe91e8131163327450bd40ff57ca03947e953a8a061e3449b15020ab",
+    "driver_sha256": "e76c193d1a5012afc388a3de010a60907e2d09cd89ef42f0581d7cf104fb5542",
+    "comparison": "fixed DUT/source; only p1 observation offset changes",
+    "exact_full_wave_truth": false
+  },
+  "lead_change": {
+    "old": [
+      [
+        0,
+        0.001016,
+        0.000254
+      ],
+      [
+        0.034,
+        0.0016159999999999998,
+        0.000254
+      ]
+    ],
+    "new": [
+      [
+        -0.000508,
+        0.001016,
+        0.000254
+      ],
+      [
+        0.034544,
+        0.0016159999999999998,
+        0.000254
+      ]
+    ],
+    "unchanged_pec_x_slice": [
+      37,
+      515
+    ],
+    "all_material_arrays_identical": true,
+    "source_load_declarations_identical": true,
+    "requested_boundary_model": "trace explicitly continuous through allocated x CPML"
+  },
+  "registered_geometry": [
+    {
+      "shape": {
+        "corner_lo": [
+          0,
+          0,
+          0
+        ],
+        "corner_hi": [
+          0.034,
+          0.016663999999999998,
+          0.000254
+        ]
+      },
+      "material_name": "ro4350b"
+    },
+    {
+      "shape": {
+        "corner_lo": [
+          -0.000508,
+          0.001016,
+          0.000254
+        ],
+        "corner_hi": [
+          0.034544,
+          0.0016159999999999998,
+          0.000254
+        ]
+      },
+      "material_name": "pec"
+    },
+    {
+      "shape": {
+        "corner_lo": [
+          0.0167,
+          0.0016159999999999998,
+          0.000254
+        ],
+        "corner_hi": [
+          0.017300000000000003,
+          0.013616,
+          0.000254
+        ]
+      },
+      "material_name": "pec"
+    }
+  ],
+  "box_node_lo": [
+    123,
+    9,
+    0
+  ],
+  "box_node_hi": [
+    428,
+    270,
+    27
+  ],
+  "box_coordinates_m": [
+    [
+      0.0073025,
+      6.35e-05,
+      0.0
+    ],
+    [
+      0.02667,
+      0.016637,
+      0.0017144999999999999
+    ]
+  ],
+  "grid_shape": [
+    553,
+    280,
+    37
+  ],
+  "dt_s": 1.2106750421521888e-13,
+  "dx_m": 6.35e-05,
+  "all_freqs_hz": [
+    700000000.0,
+    739375000.0,
+    778750000.0,
+    818125000.0,
+    857500000.0,
+    896875000.0,
+    936250000.0,
+    975625000.0,
+    1015000000.0,
+    1054375000.0,
+    1093750000.0,
+    1133125000.0,
+    1172500000.0,
+    1211875000.0,
+    1251250000.0,
+    1290625000.0,
+    1330000000.0,
+    1369375000.0,
+    1408750000.0,
+    1448125000.0,
+    1487500000.0,
+    1526875000.0,
+    1566250000.0,
+    1605625000.0,
+    1645000000.0,
+    1684375000.0,
+    1723750000.0,
+    1763125000.0,
+    1802500000.0,
+    1841875000.0,
+    1881250000.0,
+    1920625000.0,
+    1960000000.0,
+    1999375000.0,
+    2038750000.0,
+    2078125000.0,
+    2117500000.0,
+    2156875000.0,
+    2196250000.0,
+    2235625000.0,
+    2275000000.0,
+    2314375000.0,
+    2353750000.0,
+    2393125000.0,
+    2432500000.0,
+    2471875000.0,
+    2511250000.0,
+    2550625000.0,
+    2590000000.0,
+    2629375000.0,
+    2668750000.0,
+    2708125000.0,
+    2747500000.0,
+    2786875000.0,
+    2826250000.0,
+    2865625000.0,
+    2905000000.0,
+    2944375000.0,
+    2983750000.0,
+    3023125000.0,
+    3062500000.0,
+    3101875000.0,
+    3141250000.0,
+    3180625000.0,
+    3220000000.0,
+    3259375000.0,
+    3298750000.0,
+    3338125000.0,
+    3377500000.0,
+    3416875000.0,
+    3456250000.0,
+    3495625000.0,
+    3535000000.0,
+    3574375000.0,
+    3613750000.0,
+    3653125000.0,
+    3692500000.0,
+    3731875000.0,
+    3771250000.0,
+    3810625000.0,
+    3850000000.0,
+    3889375000.0,
+    3928750000.0,
+    3968125000.0,
+    4007500000.0,
+    4046875000.0,
+    4086250000.0,
+    4125625000.0,
+    4165000000.0,
+    4204375000.0,
+    4243750000.0,
+    4283125000.0,
+    4322500000.0,
+    4361875000.0,
+    4401250000.0,
+    4440625000.0,
+    4480000000.0,
+    4519375000.0,
+    4558750000.0,
+    4598125000.0,
+    4637500000.0,
+    4676875000.0,
+    4716250000.0,
+    4755625000.0,
+    4795000000.0,
+    4834375000.0,
+    4873750000.0,
+    4913125000.0,
+    4952500000.0,
+    4991875000.0,
+    5031250000.0,
+    5070625000.0,
+    5110000000.0,
+    5149375000.0,
+    5188750000.0,
+    5228125000.0,
+    5267500000.0,
+    5306875000.0,
+    5346250000.0,
+    5385625000.0,
+    5425000000.0,
+    5464375000.0,
+    5503750000.0,
+    5543125000.0,
+    5582500000.0,
+    5621875000.0,
+    5661250000.0,
+    5700625000.0,
+    5740000000.0,
+    5779375000.0,
+    5818750000.0,
+    5858125000.0,
+    5897500000.0,
+    5936875000.0,
+    5976250000.0,
+    6015625000.0,
+    6055000000.0,
+    6094375000.0,
+    6133750000.0,
+    6173125000.0,
+    6212500000.0,
+    6251875000.0,
+    6291250000.0,
+    6330625000.0,
+    6370000000.0,
+    6409375000.0,
+    6448750000.0,
+    6488125000.0,
+    6527500000.0,
+    6566875000.0,
+    6606250000.0,
+    6645625000.0,
+    6685000000.0,
+    6724375000.0,
+    6763750000.0,
+    6803125000.0,
+    6842500000.0,
+    6881875000.0,
+    6921250000.0,
+    6960625000.0,
+    7000000000.0
+  ],
+  "selected_indices": [
+    33,
+    75,
+    78,
+    83,
+    109
+  ],
+  "field_freqs_hz": [
+    1999374976.0,
+    3653125120.0,
+    3771249920.0,
+    3968124928.0,
+    4991875072.0
+  ],
+  "faces": [
+    {
+      "name": "x_station_0",
+      "axis": 0,
+      "index": 123,
+      "outward": -1,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ],
+      "coordinate_m": 0.0073025,
+      "probes": {
+        "ey": [
+          "power_x_station_0_ey_123"
+        ],
+        "ez": [
+          "power_x_station_0_ez_123"
+        ],
+        "hy": [
+          "power_x_station_0_hy_122",
+          "power_x_station_0_hy_123"
+        ],
+        "hz": [
+          "power_x_station_0_hz_122",
+          "power_x_station_0_hz_123"
+        ]
+      },
+      "tangential_axes": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "x_station_1",
+      "axis": 0,
+      "index": 192,
+      "outward": 0,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ],
+      "coordinate_m": 0.011684,
+      "probes": {
+        "ey": [
+          "power_x_station_1_ey_192"
+        ],
+        "ez": [
+          "power_x_station_1_ez_192"
+        ],
+        "hy": [
+          "power_x_station_1_hy_191",
+          "power_x_station_1_hy_192"
+        ],
+        "hz": [
+          "power_x_station_1_hz_191",
+          "power_x_station_1_hz_192"
+        ]
+      },
+      "tangential_axes": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "x_station_2",
+      "axis": 0,
+      "index": 262,
+      "outward": 0,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ],
+      "coordinate_m": 0.016129,
+      "probes": {
+        "ey": [
+          "power_x_station_2_ey_262"
+        ],
+        "ez": [
+          "power_x_station_2_ez_262"
+        ],
+        "hy": [
+          "power_x_station_2_hy_261",
+          "power_x_station_2_hy_262"
+        ],
+        "hz": [
+          "power_x_station_2_hz_261",
+          "power_x_station_2_hz_262"
+        ]
+      },
+      "tangential_axes": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "x_station_3",
+      "axis": 0,
+      "index": 289,
+      "outward": 0,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ],
+      "coordinate_m": 0.017843499999999998,
+      "probes": {
+        "ey": [
+          "power_x_station_3_ey_289"
+        ],
+        "ez": [
+          "power_x_station_3_ez_289"
+        ],
+        "hy": [
+          "power_x_station_3_hy_288",
+          "power_x_station_3_hy_289"
+        ],
+        "hz": [
+          "power_x_station_3_hz_288",
+          "power_x_station_3_hz_289"
+        ]
+      },
+      "tangential_axes": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "x_station_4",
+      "axis": 0,
+      "index": 358,
+      "outward": 0,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ],
+      "coordinate_m": 0.022224999999999998,
+      "probes": {
+        "ey": [
+          "power_x_station_4_ey_358"
+        ],
+        "ez": [
+          "power_x_station_4_ez_358"
+        ],
+        "hy": [
+          "power_x_station_4_hy_357",
+          "power_x_station_4_hy_358"
+        ],
+        "hz": [
+          "power_x_station_4_hz_357",
+          "power_x_station_4_hz_358"
+        ]
+      },
+      "tangential_axes": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "x_station_5",
+      "axis": 0,
+      "index": 428,
+      "outward": 1,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ],
+      "coordinate_m": 0.02667,
+      "probes": {
+        "ey": [
+          "power_x_station_5_ey_428"
+        ],
+        "ez": [
+          "power_x_station_5_ez_428"
+        ],
+        "hy": [
+          "power_x_station_5_hy_427",
+          "power_x_station_5_hy_428"
+        ],
+        "hz": [
+          "power_x_station_5_hz_427",
+          "power_x_station_5_hz_428"
+        ]
+      },
+      "tangential_axes": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "y_lo",
+      "axis": 1,
+      "index": 9,
+      "outward": -1,
+      "region": [
+        123,
+        429,
+        0,
+        28
+      ],
+      "coordinate_m": 6.35e-05,
+      "probes": {
+        "ez": [
+          "power_y_lo_ez_9"
+        ],
+        "ex": [
+          "power_y_lo_ex_9"
+        ],
+        "hz": [
+          "power_y_lo_hz_8",
+          "power_y_lo_hz_9"
+        ],
+        "hx": [
+          "power_y_lo_hx_8",
+          "power_y_lo_hx_9"
+        ]
+      },
+      "tangential_axes": [
+        0,
+        2
+      ]
+    },
+    {
+      "name": "y_hi",
+      "axis": 1,
+      "index": 270,
+      "outward": 1,
+      "region": [
+        123,
+        429,
+        0,
+        28
+      ],
+      "coordinate_m": 0.016637,
+      "probes": {
+        "ez": [
+          "power_y_hi_ez_270"
+        ],
+        "ex": [
+          "power_y_hi_ex_270"
+        ],
+        "hz": [
+          "power_y_hi_hz_269",
+          "power_y_hi_hz_270"
+        ],
+        "hx": [
+          "power_y_hi_hx_269",
+          "power_y_hi_hx_270"
+        ]
+      },
+      "tangential_axes": [
+        0,
+        2
+      ]
+    },
+    {
+      "name": "z_lo",
+      "axis": 2,
+      "index": 0,
+      "outward": -1,
+      "region": [
+        123,
+        429,
+        9,
+        271
+      ],
+      "coordinate_m": 0.0,
+      "probes": {
+        "ex": [
+          "power_z_lo_ex_0"
+        ],
+        "ey": [
+          "power_z_lo_ey_0"
+        ]
+      },
+      "tangential_axes": [
+        0,
+        1
+      ],
+      "zero_flux_pec_boundary": true
+    },
+    {
+      "name": "z_hi",
+      "axis": 2,
+      "index": 27,
+      "outward": 1,
+      "region": [
+        123,
+        429,
+        9,
+        271
+      ],
+      "coordinate_m": 0.0017144999999999999,
+      "probes": {
+        "ex": [
+          "power_z_hi_ex_27"
+        ],
+        "ey": [
+          "power_z_hi_ey_27"
+        ],
+        "hx": [
+          "power_z_hi_hx_26",
+          "power_z_hi_hx_27"
+        ],
+        "hy": [
+          "power_z_hi_hy_26",
+          "power_z_hi_hy_27"
+        ]
+      },
+      "tangential_axes": [
+        0,
+        1
+      ]
+    }
+  ],
+  "probes": [
+    {
+      "name": "power_x_station_0_ey_123",
+      "axis": 0,
+      "index": 123,
+      "component": "ey",
+      "coordinate_m": 0.0073025,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_0_ez_123",
+      "axis": 0,
+      "index": 123,
+      "component": "ez",
+      "coordinate_m": 0.0073025,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_0_hy_122",
+      "axis": 0,
+      "index": 122,
+      "component": "hy",
+      "coordinate_m": 0.007239,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_0_hy_123",
+      "axis": 0,
+      "index": 123,
+      "component": "hy",
+      "coordinate_m": 0.0073025,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_0_hz_122",
+      "axis": 0,
+      "index": 122,
+      "component": "hz",
+      "coordinate_m": 0.007239,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_0_hz_123",
+      "axis": 0,
+      "index": 123,
+      "component": "hz",
+      "coordinate_m": 0.0073025,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_1_ey_192",
+      "axis": 0,
+      "index": 192,
+      "component": "ey",
+      "coordinate_m": 0.011684,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_1_ez_192",
+      "axis": 0,
+      "index": 192,
+      "component": "ez",
+      "coordinate_m": 0.011684,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_1_hy_191",
+      "axis": 0,
+      "index": 191,
+      "component": "hy",
+      "coordinate_m": 0.011620499999999999,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_1_hy_192",
+      "axis": 0,
+      "index": 192,
+      "component": "hy",
+      "coordinate_m": 0.011684,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_1_hz_191",
+      "axis": 0,
+      "index": 191,
+      "component": "hz",
+      "coordinate_m": 0.011620499999999999,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_1_hz_192",
+      "axis": 0,
+      "index": 192,
+      "component": "hz",
+      "coordinate_m": 0.011684,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_2_ey_262",
+      "axis": 0,
+      "index": 262,
+      "component": "ey",
+      "coordinate_m": 0.016129,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_2_ez_262",
+      "axis": 0,
+      "index": 262,
+      "component": "ez",
+      "coordinate_m": 0.016129,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_2_hy_261",
+      "axis": 0,
+      "index": 261,
+      "component": "hy",
+      "coordinate_m": 0.0160655,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_2_hy_262",
+      "axis": 0,
+      "index": 262,
+      "component": "hy",
+      "coordinate_m": 0.016129,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_2_hz_261",
+      "axis": 0,
+      "index": 261,
+      "component": "hz",
+      "coordinate_m": 0.0160655,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_2_hz_262",
+      "axis": 0,
+      "index": 262,
+      "component": "hz",
+      "coordinate_m": 0.016129,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_3_ey_289",
+      "axis": 0,
+      "index": 289,
+      "component": "ey",
+      "coordinate_m": 0.017843499999999998,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_3_ez_289",
+      "axis": 0,
+      "index": 289,
+      "component": "ez",
+      "coordinate_m": 0.017843499999999998,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_3_hy_288",
+      "axis": 0,
+      "index": 288,
+      "component": "hy",
+      "coordinate_m": 0.01778,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_3_hy_289",
+      "axis": 0,
+      "index": 289,
+      "component": "hy",
+      "coordinate_m": 0.017843499999999998,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_3_hz_288",
+      "axis": 0,
+      "index": 288,
+      "component": "hz",
+      "coordinate_m": 0.01778,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_3_hz_289",
+      "axis": 0,
+      "index": 289,
+      "component": "hz",
+      "coordinate_m": 0.017843499999999998,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_4_ey_358",
+      "axis": 0,
+      "index": 358,
+      "component": "ey",
+      "coordinate_m": 0.022224999999999998,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_4_ez_358",
+      "axis": 0,
+      "index": 358,
+      "component": "ez",
+      "coordinate_m": 0.022224999999999998,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_4_hy_357",
+      "axis": 0,
+      "index": 357,
+      "component": "hy",
+      "coordinate_m": 0.0221615,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_4_hy_358",
+      "axis": 0,
+      "index": 358,
+      "component": "hy",
+      "coordinate_m": 0.022224999999999998,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_4_hz_357",
+      "axis": 0,
+      "index": 357,
+      "component": "hz",
+      "coordinate_m": 0.0221615,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_4_hz_358",
+      "axis": 0,
+      "index": 358,
+      "component": "hz",
+      "coordinate_m": 0.022224999999999998,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_5_ey_428",
+      "axis": 0,
+      "index": 428,
+      "component": "ey",
+      "coordinate_m": 0.02667,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_5_ez_428",
+      "axis": 0,
+      "index": 428,
+      "component": "ez",
+      "coordinate_m": 0.02667,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_5_hy_427",
+      "axis": 0,
+      "index": 427,
+      "component": "hy",
+      "coordinate_m": 0.026606499999999998,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_5_hy_428",
+      "axis": 0,
+      "index": 428,
+      "component": "hy",
+      "coordinate_m": 0.02667,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_5_hz_427",
+      "axis": 0,
+      "index": 427,
+      "component": "hz",
+      "coordinate_m": 0.026606499999999998,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_x_station_5_hz_428",
+      "axis": 0,
+      "index": 428,
+      "component": "hz",
+      "coordinate_m": 0.02667,
+      "region": [
+        9,
+        271,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_y_lo_ez_9",
+      "axis": 1,
+      "index": 9,
+      "component": "ez",
+      "coordinate_m": 6.35e-05,
+      "region": [
+        123,
+        429,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_y_lo_ex_9",
+      "axis": 1,
+      "index": 9,
+      "component": "ex",
+      "coordinate_m": 6.35e-05,
+      "region": [
+        123,
+        429,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_y_lo_hz_8",
+      "axis": 1,
+      "index": 8,
+      "component": "hz",
+      "coordinate_m": 0.0,
+      "region": [
+        123,
+        429,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_y_lo_hz_9",
+      "axis": 1,
+      "index": 9,
+      "component": "hz",
+      "coordinate_m": 6.35e-05,
+      "region": [
+        123,
+        429,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_y_lo_hx_8",
+      "axis": 1,
+      "index": 8,
+      "component": "hx",
+      "coordinate_m": 0.0,
+      "region": [
+        123,
+        429,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_y_lo_hx_9",
+      "axis": 1,
+      "index": 9,
+      "component": "hx",
+      "coordinate_m": 6.35e-05,
+      "region": [
+        123,
+        429,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_y_hi_ez_270",
+      "axis": 1,
+      "index": 270,
+      "component": "ez",
+      "coordinate_m": 0.016637,
+      "region": [
+        123,
+        429,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_y_hi_ex_270",
+      "axis": 1,
+      "index": 270,
+      "component": "ex",
+      "coordinate_m": 0.016637,
+      "region": [
+        123,
+        429,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_y_hi_hz_269",
+      "axis": 1,
+      "index": 269,
+      "component": "hz",
+      "coordinate_m": 0.016573499999999998,
+      "region": [
+        123,
+        429,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_y_hi_hz_270",
+      "axis": 1,
+      "index": 270,
+      "component": "hz",
+      "coordinate_m": 0.016637,
+      "region": [
+        123,
+        429,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_y_hi_hx_269",
+      "axis": 1,
+      "index": 269,
+      "component": "hx",
+      "coordinate_m": 0.016573499999999998,
+      "region": [
+        123,
+        429,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_y_hi_hx_270",
+      "axis": 1,
+      "index": 270,
+      "component": "hx",
+      "coordinate_m": 0.016637,
+      "region": [
+        123,
+        429,
+        0,
+        28
+      ]
+    },
+    {
+      "name": "power_z_lo_ex_0",
+      "axis": 2,
+      "index": 0,
+      "component": "ex",
+      "coordinate_m": 0.0,
+      "region": [
+        123,
+        429,
+        9,
+        271
+      ]
+    },
+    {
+      "name": "power_z_lo_ey_0",
+      "axis": 2,
+      "index": 0,
+      "component": "ey",
+      "coordinate_m": 0.0,
+      "region": [
+        123,
+        429,
+        9,
+        271
+      ]
+    },
+    {
+      "name": "power_z_hi_ex_27",
+      "axis": 2,
+      "index": 27,
+      "component": "ex",
+      "coordinate_m": 0.0017144999999999999,
+      "region": [
+        123,
+        429,
+        9,
+        271
+      ]
+    },
+    {
+      "name": "power_z_hi_ey_27",
+      "axis": 2,
+      "index": 27,
+      "component": "ey",
+      "coordinate_m": 0.0017144999999999999,
+      "region": [
+        123,
+        429,
+        9,
+        271
+      ]
+    },
+    {
+      "name": "power_z_hi_hx_26",
+      "axis": 2,
+      "index": 26,
+      "component": "hx",
+      "coordinate_m": 0.001651,
+      "region": [
+        123,
+        429,
+        9,
+        271
+      ]
+    },
+    {
+      "name": "power_z_hi_hx_27",
+      "axis": 2,
+      "index": 27,
+      "component": "hx",
+      "coordinate_m": 0.0017144999999999999,
+      "region": [
+        123,
+        429,
+        9,
+        271
+      ]
+    },
+    {
+      "name": "power_z_hi_hy_26",
+      "axis": 2,
+      "index": 26,
+      "component": "hy",
+      "coordinate_m": 0.001651,
+      "region": [
+        123,
+        429,
+        9,
+        271
+      ]
+    },
+    {
+      "name": "power_z_hi_hy_27",
+      "axis": 2,
+      "index": 27,
+      "component": "hy",
+      "coordinate_m": 0.0017144999999999999,
+      "region": [
+        123,
+        429,
+        9,
+        271
+      ]
+    }
+  ],
+  "port_spans": [
+    {
+      "prop_axis": "x",
+      "width_axis": "y",
+      "normal_axis": "z",
+      "sign": 1.0,
+      "prop_idx": 0,
+      "width_idx": 1,
+      "normal_idx": 2,
+      "i_feed": 39,
+      "w_lo": 24,
+      "w_hi": 33,
+      "w_centre": 29,
+      "n_lo": 0,
+      "n_hi": 4,
+      "cells": [
+        [
+          39,
+          24,
+          0
+        ],
+        [
+          39,
+          24,
+          1
+        ],
+        [
+          39,
+          24,
+          2
+        ],
+        [
+          39,
+          24,
+          3
+        ],
+        [
+          39,
+          25,
+          0
+        ],
+        [
+          39,
+          25,
+          1
+        ],
+        [
+          39,
+          25,
+          2
+        ],
+        [
+          39,
+          25,
+          3
+        ],
+        [
+          39,
+          26,
+          0
+        ],
+        [
+          39,
+          26,
+          1
+        ],
+        [
+          39,
+          26,
+          2
+        ],
+        [
+          39,
+          26,
+          3
+        ],
+        [
+          39,
+          27,
+          0
+        ],
+        [
+          39,
+          27,
+          1
+        ],
+        [
+          39,
+          27,
+          2
+        ],
+        [
+          39,
+          27,
+          3
+        ],
+        [
+          39,
+          28,
+          0
+        ],
+        [
+          39,
+          28,
+          1
+        ],
+        [
+          39,
+          28,
+          2
+        ],
+        [
+          39,
+          28,
+          3
+        ],
+        [
+          39,
+          29,
+          0
+        ],
+        [
+          39,
+          29,
+          1
+        ],
+        [
+          39,
+          29,
+          2
+        ],
+        [
+          39,
+          29,
+          3
+        ],
+        [
+          39,
+          30,
+          0
+        ],
+        [
+          39,
+          30,
+          1
+        ],
+        [
+          39,
+          30,
+          2
+        ],
+        [
+          39,
+          30,
+          3
+        ],
+        [
+          39,
+          31,
+          0
+        ],
+        [
+          39,
+          31,
+          1
+        ],
+        [
+          39,
+          31,
+          2
+        ],
+        [
+          39,
+          31,
+          3
+        ],
+        [
+          39,
+          32,
+          0
+        ],
+        [
+          39,
+          32,
+          1
+        ],
+        [
+          39,
+          32,
+          2
+        ],
+        [
+          39,
+          32,
+          3
+        ],
+        [
+          39,
+          33,
+          0
+        ],
+        [
+          39,
+          33,
+          1
+        ],
+        [
+          39,
+          33,
+          2
+        ],
+        [
+          39,
+          33,
+          3
+        ]
+      ]
+    },
+    {
+      "prop_axis": "x",
+      "width_axis": "y",
+      "normal_axis": "z",
+      "sign": -1.0,
+      "prop_idx": 0,
+      "width_idx": 1,
+      "normal_idx": 2,
+      "i_feed": 512,
+      "w_lo": 24,
+      "w_hi": 33,
+      "w_centre": 29,
+      "n_lo": 0,
+      "n_hi": 4,
+      "cells": [
+        [
+          512,
+          24,
+          0
+        ],
+        [
+          512,
+          24,
+          1
+        ],
+        [
+          512,
+          24,
+          2
+        ],
+        [
+          512,
+          24,
+          3
+        ],
+        [
+          512,
+          25,
+          0
+        ],
+        [
+          512,
+          25,
+          1
+        ],
+        [
+          512,
+          25,
+          2
+        ],
+        [
+          512,
+          25,
+          3
+        ],
+        [
+          512,
+          26,
+          0
+        ],
+        [
+          512,
+          26,
+          1
+        ],
+        [
+          512,
+          26,
+          2
+        ],
+        [
+          512,
+          26,
+          3
+        ],
+        [
+          512,
+          27,
+          0
+        ],
+        [
+          512,
+          27,
+          1
+        ],
+        [
+          512,
+          27,
+          2
+        ],
+        [
+          512,
+          27,
+          3
+        ],
+        [
+          512,
+          28,
+          0
+        ],
+        [
+          512,
+          28,
+          1
+        ],
+        [
+          512,
+          28,
+          2
+        ],
+        [
+          512,
+          28,
+          3
+        ],
+        [
+          512,
+          29,
+          0
+        ],
+        [
+          512,
+          29,
+          1
+        ],
+        [
+          512,
+          29,
+          2
+        ],
+        [
+          512,
+          29,
+          3
+        ],
+        [
+          512,
+          30,
+          0
+        ],
+        [
+          512,
+          30,
+          1
+        ],
+        [
+          512,
+          30,
+          2
+        ],
+        [
+          512,
+          30,
+          3
+        ],
+        [
+          512,
+          31,
+          0
+        ],
+        [
+          512,
+          31,
+          1
+        ],
+        [
+          512,
+          31,
+          2
+        ],
+        [
+          512,
+          31,
+          3
+        ],
+        [
+          512,
+          32,
+          0
+        ],
+        [
+          512,
+          32,
+          1
+        ],
+        [
+          512,
+          32,
+          2
+        ],
+        [
+          512,
+          32,
+          3
+        ],
+        [
+          512,
+          33,
+          0
+        ],
+        [
+          512,
+          33,
+          1
+        ],
+        [
+          512,
+          33,
+          2
+        ],
+        [
+          512,
+          33,
+          3
+        ]
+      ]
+    }
+  ],
+  "baseline_sha256": "6253b6115027d51b121fea710e688d70df6a84c1646d9fbadb367639793ddd15",
+  "driver_sha256": "65e0406ed1e6abb2e44f2f9a9af56ac32c47e0ba2ae35483747533a8b024e6fa",
+  "num_periods": 100,
+  "passivity_projection": false
+}

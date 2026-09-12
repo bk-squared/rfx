@@ -1,0 +1,20 @@
+[
+  {
+    "drive": 0,
+    "wall_s": 703.6988823511638,
+    "state_dtype": "float32",
+    "accumulator_dtypes": [
+      "complex64"
+    ],
+    "n_steps": 117998
+  },
+  {
+    "drive": 1,
+    "wall_s": 702.9460656940937,
+    "state_dtype": "float32",
+    "accumulator_dtypes": [
+      "complex64"
+    ],
+    "n_steps": 117998
+  }
+]

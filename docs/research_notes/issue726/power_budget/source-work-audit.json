@@ -1,0 +1,54 @@
+{
+  "scope": "structural prescribed-field audit; no Maxwell mode or RF accuracy verdict",
+  "grid_dx_m": 1.0,
+  "dt_s": 1.906574869531006e-09,
+  "reference_resistance_ohm": 50.0,
+  "profile_norm_n_m": 0.55,
+  "waveform_parameter_u": 0.8,
+  "waveform_parameter_units_from_equation": "A/m for profile in1/m",
+  "source_rhs": "e*u, not sigma_port*e*u",
+  "results": [
+    {
+      "case": "profile_only",
+      "initial_centre_voltage": 1.0,
+      "initial_projected_voltage": 1.0,
+      "initial_actual_load_power": 0.019999999999999997,
+      "initial_vcentre_squared_over_r": 0.02,
+      "electric_storage_rate": 2.197437279145471,
+      "actual_ohmic_power": 4.110352602912533,
+      "source_work_power": 6.307789882058004,
+      "relative_work_residual": 0.0,
+      "power_conjugate_mid_voltage": 14.335886095586371,
+      "source_current": 0.44000000000000006,
+      "actual_equivalent_thevenin_voltage": 22.000000000000004
+    },
+    {
+      "case": "orthogonal_fringe",
+      "initial_centre_voltage": 1.0,
+      "initial_projected_voltage": 1.0,
+      "initial_actual_load_power": 0.02181818181818182,
+      "initial_vcentre_squared_over_r": 0.02,
+      "electric_storage_rate": 2.1971951078738168,
+      "actual_ohmic_power": 4.110594774184188,
+      "source_work_power": 6.307789882058003,
+      "relative_work_residual": 2.816131914052739e-16,
+      "power_conjugate_mid_voltage": 14.33588609558637,
+      "source_current": 0.44000000000000006,
+      "actual_equivalent_thevenin_voltage": 22.000000000000004
+    },
+    {
+      "case": "transverse_field",
+      "initial_centre_voltage": 1.0,
+      "initial_projected_voltage": 1.0,
+      "initial_actual_load_power": 0.03890909090909091,
+      "initial_vcentre_squared_over_r": 0.02,
+      "electric_storage_rate": 2.1949186979202633,
+      "actual_ohmic_power": 4.112871184137741,
+      "source_work_power": 6.307789882058004,
+      "relative_work_residual": 0.0,
+      "power_conjugate_mid_voltage": 14.335886095586371,
+      "source_current": 0.44000000000000006,
+      "actual_equivalent_thevenin_voltage": 22.000000000000004
+    }
+  ]
+}

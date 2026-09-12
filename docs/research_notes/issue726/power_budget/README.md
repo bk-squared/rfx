@@ -106,3 +106,69 @@ accepts an explicit lead-continuation switch and checks unchanged materials,
 source declarations, and PEC across the complete source-to-source interval
 before stepping. Its [build receipt](explicit-lead-record-plan.json)
 records the exact changed geometry.
+
+
+## Continued-lead result and subsequent code audit
+
+Run [369367260647](gpu-369367260647/manifest.json) completed the single
+predeclared continuation comparison on main87927064, whose Git tree is
+identical to633's d3f049d8. Software and precision were checked against633
+before stepping. The [provenance note](continued-lead-provenance-note.json)
+corrects inherited scope labels without modifying the raw producer plan.
+
+The [comparison](continued-lead-comparison.json) is not grounds to adopt
+continuation as the power fix. At the original worst-notch coherent drive,
+apparent excess decreases from0.01129285 to0.00389477 in the same original
+input basis. Across the full161-bin S sweep, however, maximum coherent gain
+increases from1.01129281 to1.01953449 near6.803125GHz. The existing settling
+screen passes(-65.28/-64.16dB versus its unchanged-40dB threshold), but is
+much weaker than633. The selected-bin closed-face Gram residual reaches
+0.00237806 in the continued run's own V/I input basis; there is no global
+finite-window bound. Full raw records/logs were hash-checked before deleting
+the completed provider. No continuation change has been applied to the
+production fixture.
+
+Code review then followed actual source/loading construction into the
+scalar-conductivity electric update and post-update source addition. It
+found no negative dissipation coefficient or duplicate load in this case.
+The [electric-substep audit](source-work-audit.json) calls real loading,
+source construction and update_e with prescribed fields; midpoint source
+work equals electric storage change plus full ohmic loss to2.9e-16 relative.
+This is a local algebra check, not a Maxwell eigenmode or RF benchmark.
+
+For a supplied Ez profile e and N=sum(volume*e^2), the code chooses
+sigma_port=1/(R*N), adds source force e*u, and damps all three E components
+with scalar sigma. Its power-conjugate variables are
+V_proj=sum(volume*e*Ez)/N and I_source=N*u; source work uses midpoint E.
+The waveform u is not itself a calibrated Thevenin voltage: U=R*N*u.
+For fields beyond the supplied Ez profile, load loss includes additional
+nonnegative terms and is not generally V_centre^2/R. These facts alone do
+not explain S gain; drive-column scaling cancels from B A^-1.
+
+[Actual support inspection](source-support-audit.json) finds72 Laplace
+source/load cells per port.32 cells in8 lateral fringe columns do not end
+on the trace; they carry11.58988% of the supplied profile's weighted e^2
+norm. This is not an RF power fraction or an automatic invalidity verdict
+for an impressed source. All72 cells are interior, so direct source
+injection into CPML is refuted for this fixture. Every profile-norm term is
+included by actual source/load loops; there is no normalization truncation.
+
+Before any further field experiment, the next check must follow this
+source-work contract and distinguish a complete source-model power port
+from the first-probe-plane V/I observable. A passive source-model result
+must not be substituted for the intended MSL S or used as its calibration.
+
+
+The next [source-work recorder](record_source_work.py) adds only source-cell
+observers to the unchanged633 model:144 ordinary Ez point probes plus six
+cropped source E DFTs. A [real runner-entry interception](source-work-wiring.json)
+checks all point indices, actual added sigma and72 active SourceSpecs before
+any field step. Actual source increments agree with independently reconstructed
+Cb*e*u within2.22e-7 relative peak error; no exact-float32 claim is made.
+The [midpoint diagnostic](source_work_observable.py) passes independent
+prescribed passive and active response tests with unequal references and
+orthogonal field components. A separate review verified time levels, shunt
+power decomposition and absence of a fitted normalization or passivity clip.
+Its response remains a distinct source-model observable, not a replacement
+for the intended MSL S. Streaming E DFTs are not silently equated to the
+independent midpoint clock.
