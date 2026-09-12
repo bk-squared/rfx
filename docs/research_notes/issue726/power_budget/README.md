@@ -96,3 +96,13 @@ Reproduce from the repository root:
 #726 remains open. This record identifies missing power channels in the
 measurement and a testable lead-continuation defect, not a completed port
 calibration or a broad support promotion.
+
+An [independent raw-array referee](independent-field-budget.json) reproduces
+the flux budget by directly superposing complex fields and recovering the
+Gram by polarization, without using the reader above. At 3.653125120 GHz
+the upper z face contributes -0.01284067; both y faces together contribute
++0.00061107 in the same original V/I input basis. The [next recorder](record_field_power.py)
+accepts an explicit lead-continuation switch and checks unchanged materials,
+source declarations, and PEC across the complete source-to-source interval
+before stepping. Its [build receipt](explicit-lead-record-plan.json)
+records the exact changed geometry.

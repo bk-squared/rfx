@@ -1,0 +1,350 @@
+{
+  "scope": "Independent scalar surface integration and polarization of retained 633 raw fields; no field evolution or production helper imports.",
+  "normalization": "Original native VI A basis; not independent physical incident-power calibration.",
+  "nominal_vi_metadata_frequencies_hz": [
+    1999375000.0,
+    3653125000.0,
+    3771250000.0,
+    3968125000.0,
+    4991875000.0
+  ],
+  "actual_field_frequencies_hz": [
+    1999374976.0,
+    3653125120.0,
+    3771249920.0,
+    3968124928.0,
+    4991875072.0
+  ],
+  "raw_fields_sha256": {
+    "drive-0-fields.npz": "9f9931e8c507b3db8768fe3cb7a674bd69721b760289ffeca772f29744010225",
+    "drive-1-fields.npz": "00fa3dd823a08eef3652d1a42c92865595d07c872041376fc1d440786dc6b8e1"
+  },
+  "rows": [
+    {
+      "frequency_hz": 1999374976.0,
+      "apparent_vi_excess": 0.001902357591833481,
+      "x_out": 0.0010890334785425004,
+      "side_out": -0.001074364123322695,
+      "closed_out": 1.4669355219805533e-05,
+      "signed_coherent_faces": {
+        "x_station_0": -0.3816883873705835,
+        "x_station_5": 0.382777420849126,
+        "y_lo": -0.00037918938373148077,
+        "y_hi": 1.2178512874487052e-05,
+        "z_lo": -0.0,
+        "z_hi": -0.0007073532524657011
+      },
+      "closed_gram_eigenvalues": [
+        -1.113606894366072e-05,
+        1.8470233392520745e-05
+      ],
+      "vi_inward_eigenvalues": [
+        -0.001902357591833481,
+        -0.001850149749428055
+      ],
+      "drive_rows": [
+        {
+          "drive": 0,
+          "positive_axis_faces": {
+            "x_station_0": 0.7967485605628403,
+            "x_station_5": 0.7984582311309286,
+            "y_lo": 0.00016477424622395013,
+            "y_hi": 4.7809336777995305e-05,
+            "z_lo": 0.0,
+            "z_hi": -0.0015871191502549117
+          },
+          "x_out": 0.0017096705680883506,
+          "side_out": -0.0017040840597008665,
+          "closed_out": 5.586508387484153e-06,
+          "normalization": "squared own-port native VI incident wave"
+        },
+        {
+          "drive": 1,
+          "positive_axis_faces": {
+            "x_station_0": -0.797196223333645,
+            "x_station_5": -0.7955988051147437,
+            "y_lo": -6.31256783192698e-05,
+            "y_hi": 3.5125204259636427e-05,
+            "z_lo": 0.0,
+            "z_hi": -0.0016912252420441158
+          },
+          "x_out": 0.0015974182189013586,
+          "side_out": -0.0015929743594652096,
+          "closed_out": 4.443859436149009e-06,
+          "normalization": "squared own-port native VI incident wave"
+        }
+      ]
+    },
+    {
+      "frequency_hz": 3653125120.0,
+      "apparent_vi_excess": 0.011292854603009512,
+      "x_out": 0.012211278144643144,
+      "side_out": -0.012229596666368147,
+      "closed_out": -1.8318521725003284e-05,
+      "signed_coherent_faces": {
+        "x_station_0": 0.006424229808230778,
+        "x_station_5": 0.005787048336412365,
+        "y_lo": 0.0005641270631797667,
+        "y_hi": 4.6945664409420966e-05,
+        "z_lo": -0.0,
+        "z_hi": -0.012840669393957335
+      },
+      "closed_gram_eigenvalues": [
+        -2.914013889204686e-05,
+        -1.810188218714998e-05
+      ],
+      "vi_inward_eigenvalues": [
+        -0.011292854603009512,
+        -0.0011964912061575993
+      ],
+      "drive_rows": [
+        {
+          "drive": 0,
+          "positive_axis_faces": {
+            "x_station_0": 0.0007358719186260786,
+            "x_station_5": 0.0076515792014814135,
+            "y_lo": 2.595570428056066e-05,
+            "y_hi": 4.259696166003321e-06,
+            "z_lo": 0.0,
+            "z_hi": -0.006916208115482284
+          },
+          "x_out": 0.006915707282855335,
+          "side_out": -0.006937904123596842,
+          "closed_out": -2.2196840741507164e-05,
+          "normalization": "squared own-port native VI incident wave"
+        },
+        {
+          "drive": 1,
+          "positive_axis_faces": {
+            "x_station_0": -0.007684606871828041,
+            "x_station_5": -0.0008450404115997655,
+            "y_lo": 2.520096189948997e-06,
+            "y_hi": 2.5075738307685777e-05,
+            "z_lo": 0.0,
+            "z_hi": -0.0068869820921320995
+          },
+          "x_out": 0.006839566460228276,
+          "side_out": -0.0068644264500143624,
+          "closed_out": -2.4859989786086764e-05,
+          "normalization": "squared own-port native VI incident wave"
+        }
+      ]
+    },
+    {
+      "frequency_hz": 3771249920.0,
+      "apparent_vi_excess": 0.011291439540988314,
+      "x_out": 0.012379022586711714,
+      "side_out": -0.012350800222599568,
+      "closed_out": 2.8222364112146306e-05,
+      "signed_coherent_faces": {
+        "x_station_0": 0.006330408414764925,
+        "x_station_5": 0.006048614171946789,
+        "y_lo": 0.0007372374106746817,
+        "y_hi": 5.2231862563074564e-05,
+        "z_lo": -0.0,
+        "z_hi": -0.013140269495837324
+      },
+      "closed_gram_eigenvalues": [
+        2.817463548822479e-05,
+        2.8779063356785913e-05
+      ],
+      "vi_inward_eigenvalues": [
+        -0.011291439540988314,
+        -0.000958368821211707
+      ],
+      "drive_rows": [
+        {
+          "drive": 0,
+          "positive_axis_faces": {
+            "x_station_0": -0.0068733773854696536,
+            "x_station_5": 7.023098636882295e-05,
+            "y_lo": -2.859069609019161e-05,
+            "y_hi": 1.0246139767242647e-05,
+            "z_lo": 0.0,
+            "z_hi": -0.006953810826323929
+          },
+          "x_out": 0.006943608371838476,
+          "side_out": -0.006914973990466495,
+          "closed_out": 2.8634381371981342e-05,
+          "normalization": "squared own-port native VI incident wave"
+        },
+        {
+          "drive": 1,
+          "positive_axis_faces": {
+            "x_station_0": -6.510955607344603e-05,
+            "x_station_5": 0.006721048715902586,
+            "y_lo": -0.0001673449595470034,
+            "y_hi": 2.364288697763939e-05,
+            "z_lo": 0.0,
+            "z_hi": -0.006948826446159011
+          },
+          "x_out": 0.006786158271976032,
+          "side_out": -0.006757838599634368,
+          "closed_out": 2.8319672341663854e-05,
+          "normalization": "squared own-port native VI incident wave"
+        }
+      ]
+    },
+    {
+      "frequency_hz": 3968124928.0,
+      "apparent_vi_excess": 0.010872308963297016,
+      "x_out": 0.01215093781004374,
+      "side_out": -0.012150661851569407,
+      "closed_out": 2.7595847433212195e-07,
+      "signed_coherent_faces": {
+        "x_station_0": 0.00639759789762508,
+        "x_station_5": 0.005753339912418659,
+        "y_lo": 0.000830258196218922,
+        "y_hi": 7.787702041172139e-05,
+        "z_lo": -0.0,
+        "z_hi": -0.01305879706820005
+      },
+      "closed_gram_eigenvalues": [
+        -7.228747733106447e-06,
+        4.2340572843671734e-07
+      ],
+      "vi_inward_eigenvalues": [
+        -0.010872308963297016,
+        -0.00042362478504390884
+      ],
+      "drive_rows": [
+        {
+          "drive": 0,
+          "positive_axis_faces": {
+            "x_station_0": 0.014405527461732277,
+            "x_station_5": 0.021140654920345007,
+            "y_lo": -5.133199511369051e-05,
+            "y_hi": 2.9736265726355004e-05,
+            "z_lo": 0.0,
+            "z_hi": -0.006820544746714743
+          },
+          "x_out": 0.00673512745861273,
+          "side_out": -0.006739476485874698,
+          "closed_out": -4.349027261967703e-06,
+          "normalization": "squared own-port native VI incident wave"
+        },
+        {
+          "drive": 1,
+          "positive_axis_faces": {
+            "x_station_0": -0.021197533744243113,
+            "x_station_5": -0.014700445800379889,
+            "y_lo": -0.0003648518945766228,
+            "y_hi": 2.9573834922348726e-05,
+            "z_lo": 0.0,
+            "z_hi": -0.006894077848892654
+          },
+          "x_out": 0.006497087943863224,
+          "side_out": -0.006499652119393682,
+          "closed_out": -2.5641755304582625e-06,
+          "normalization": "squared own-port native VI incident wave"
+        }
+      ]
+    },
+    {
+      "frequency_hz": 4991875072.0,
+      "apparent_vi_excess": 0.004332423910673854,
+      "x_out": 0.0047141936985600815,
+      "side_out": -0.004715811042351473,
+      "closed_out": -1.6173437913918204e-06,
+      "signed_coherent_faces": {
+        "x_station_0": -0.01020756200907156,
+        "x_station_5": 0.014921755707631641,
+        "y_lo": 0.002011656651482098,
+        "y_hi": 0.0002512711718540766,
+        "z_lo": -0.0,
+        "z_hi": -0.006978738865687648
+      },
+      "closed_gram_eigenvalues": [
+        -1.872998217026027e-06,
+        2.1725981613285305e-05
+      ],
+      "vi_inward_eigenvalues": [
+        -0.004332423910673854,
+        0.0013141329390221157
+      ],
+      "drive_rows": [
+        {
+          "drive": 0,
+          "positive_axis_faces": {
+            "x_station_0": 0.5151655628443669,
+            "x_station_5": 0.5179580124440861,
+            "y_lo": -0.0018110223707113258,
+            "y_hi": 0.00016827216343939864,
+            "z_lo": 0.0,
+            "z_hi": -0.004762436438051936
+          },
+          "x_out": 0.002792449599719249,
+          "side_out": -0.0027831419039012115,
+          "closed_out": 9.307695818037368e-06,
+          "normalization": "squared own-port native VI incident wave"
+        },
+        {
+          "drive": 1,
+          "positive_axis_faces": {
+            "x_station_0": -0.517068261062336,
+            "x_station_5": -0.5138154615567416,
+            "y_lo": -0.0016186697702127754,
+            "y_hi": 0.00014487483372460853,
+            "z_lo": 0.0,
+            "z_hi": -0.005011416055558108
+          },
+          "x_out": 0.003252799505594428,
+          "side_out": -0.0032478714516207237,
+          "closed_out": 4.928053973704376e-06,
+          "normalization": "squared own-port native VI incident wave"
+        }
+      ]
+    }
+  ],
+  "reconstructed_native_vi_errors": [
+    {
+      "port": 0,
+      "max_v_relative": 1.06909360607201e-07,
+      "max_i_relative": 4.8330446343704165e-08
+    },
+    {
+      "port": 1,
+      "max_v_relative": 7.739026498958827e-08,
+      "max_i_relative": 4.8707561370878614e-08
+    }
+  ],
+  "bit_identity_605": {
+    "raw_v": {
+      "same_shape": true,
+      "same_dtype": true,
+      "same_bytes": true
+    },
+    "raw_i1": {
+      "same_shape": true,
+      "same_dtype": true,
+      "same_bytes": true
+    },
+    "production_smatrix": {
+      "same_shape": true,
+      "same_dtype": true,
+      "same_bytes": true
+    }
+  },
+  "max_closed_gram_eigenvalue_magnitude": 2.914013889204686e-05,
+  "comparisons_to_author": {
+    "face_gram_max_absolute_differences": {
+      "x_station_0": 3.0133522176840866e-41,
+      "x_station_1": 3.4438311059246704e-41,
+      "x_station_2": 5.227655616285924e-41,
+      "x_station_3": 5.883211472621312e-41,
+      "x_station_4": 4.304788882405838e-41,
+      "x_station_5": 8.035605913824231e-41,
+      "y_lo": 2.621548558700289e-43,
+      "y_hi": 1.313717310304516e-45,
+      "z_lo": 0.0,
+      "z_hi": 6.445972935894159e-44
+    },
+    "closed_input_basis_max_difference": 4.077438307646805e-15,
+    "vi_input_basis_max_difference": 1.486731007244251e-16
+  },
+  "limits": [
+    "Finite-window endpoint terms unbounded.",
+    "Source, finite-lead and boundary origin unresolved.",
+    "VI-power versus x-face power residual remains; no port calibration claim."
+  ]
+}
