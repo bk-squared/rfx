@@ -1,0 +1,17 @@
+{
+  "pytest_exit_code": 1,
+  "jax": "0.6.2",
+  "x64": false,
+  "settling_db": [
+    -58.87838726097742,
+    -64.8423620851414
+  ],
+  "captured_fields": [
+    "time_series_0",
+    "time_series_1",
+    "S",
+    "settling_db",
+    "freqs"
+  ],
+  "source_sha256": "49fdec9bd1ba6e74839629f22f60c0de05b06c4fe66a09bdfa01c53a683ed1b9"
+}

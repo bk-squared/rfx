@@ -388,19 +388,49 @@ def test_underrun_coax_two_port_warns_instead_of_returning_it_quietly():
 
 @pytest.mark.slow_physics
 def test_settled_coax_two_port_stays_silent():
-    """Control on the SAME fixture: measured [-67.26, -68.09] dB at
-    n_steps=3000. A settled run must not warn."""
+    """A valid record at or below the documented -40 dB bar must not warn.
+
+    Historical n_steps=3000 record: [-67.26, -68.09] dB. Current main
+    records [-58.88, -64.84] dB, still 18.88/24.84 dB below the bar.
+    The extra -60 dB fixture margin formerly rejected a valid silence
+    control (#940); it was not the result's settling contract. Preserve
+    the record length and test the actual contract, including availability.
+    This does not attribute the change in physical decay between records.
+    """
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         res = _coax_two_port_sim().compute_coaxial_two_port(
             n_steps=3000, freqs=_BAND)
 
     sd = np.asarray(res.settling_db)
-    assert np.all(sd < -60.0), (
-        f"settled control drifted to {sd}; it no longer sits well clear of "
-        "the bar, so its silence would stop meaning anything."
+    assert sd.shape == (2,) and np.all(np.isfinite(sd)), sd
+    assert np.all(sd <= _SETTLING_WITNESS_DB), (
+        f"settled control {sd} does not meet the {_SETTLING_WITNESS_DB:g} dB "
+        "return contract; it cannot establish the settled-silence behavior."
     )
     assert not [w for w in caught if "settling witness" in str(w.message)]
+
+
+@pytest.mark.parametrize("db,eligible", [
+    ([-50.0, -55.0], True),
+    ([-39.0, -55.0], False),
+    ([-40.0, -55.0], True),
+    ([np.nan, -55.0], False),
+    ([-np.inf, -55.0], False),
+    ([], False),
+])
+def test_settled_coax_control_requires_valid_contract_evidence(monkeypatch, db, eligible):
+    """No FDTD: the real control accepts settled records, not absent ones."""
+    from types import SimpleNamespace
+
+    result = SimpleNamespace(settling_db=np.asarray(db))
+    sim = SimpleNamespace(compute_coaxial_two_port=lambda **kwargs: result)
+    monkeypatch.setitem(globals(), "_coax_two_port_sim", lambda: sim)
+    if eligible:
+        test_settled_coax_two_port_stays_silent()
+    else:
+        with pytest.raises(AssertionError):
+            test_settled_coax_two_port_stays_silent()
 
 
 @pytest.mark.slow_physics

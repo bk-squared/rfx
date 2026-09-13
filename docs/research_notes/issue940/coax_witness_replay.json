@@ -1,0 +1,22 @@
+[
+  {
+    "drive": 0,
+    "longdouble_component_db": [
+      -58.87838726097742,
+      -69.69281904170555
+    ],
+    "worst_db": -58.87838726097742,
+    "reported_db": -58.87838726097742,
+    "worst_to_minus40_margin_db": 18.87838726097742
+  },
+  {
+    "drive": 1,
+    "longdouble_component_db": [
+      -68.81217099427565,
+      -64.84236208514139
+    ],
+    "worst_db": -64.84236208514139,
+    "reported_db": -64.8423620851414,
+    "worst_to_minus40_margin_db": 24.842362085141392
+  }
+]

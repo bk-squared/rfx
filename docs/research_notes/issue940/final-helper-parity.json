@@ -1,0 +1,13 @@
+{
+  "kind": "build only, final helper compared to exact pad-only measured override",
+  "shape": [
+    67,
+    13,
+    7
+  ],
+  "dx": 0.002,
+  "pad_x_lo": 8,
+  "eps_equal_at_both_run_lengths": true,
+  "eps_sha256": "b32a9531812faa00fa1e2c3feff5b23c7581d79898c6b935fd76a93cc5ee053b",
+  "current_test_source_sha256": "1d9d1ebde79e7dce486b626cc386a48dc68dd1df15b3a6dcacb1a73af48aec3c"
+}

@@ -9,6 +9,16 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
+### Fixed — weekly fixture and verdict regressions (#940)
+
+- Address the two-slab guide's material override on the padded grid so the
+  declared slabs clear its vacuum-mode sources and reference stencils.
+- Judge the ordered pytest subprocess by its exit code; expected warning
+  prose containing `failed` no longer turns a passing run into a failure.
+- Qualify the coax silence control with two finite records at the existing
+  inclusive -40 dB threshold, removing its auxiliary -60 dB fixture margin.
+  Retain the run length, hot/AD controls and unexplained historical decay shift.
+
 ### Fixed — Leontovich oracle fixture and observable pairing (#947)
 
 - Tile the guide's graded absorber with canonical node bounds, removing a

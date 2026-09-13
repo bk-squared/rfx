@@ -1,0 +1,31 @@
+{
+  "pytest_exit_code": 0,
+  "jax": "0.6.2",
+  "backend": "cpu",
+  "x64": false,
+  "rows": [
+    {
+      "n_steps": 2400,
+      "max_column_power": 1.0100830793380737,
+      "grid_shape": [
+        67,
+        13,
+        7
+      ],
+      "pad_x_lo": 8,
+      "dx": 0.002
+    },
+    {
+      "n_steps": 4800,
+      "max_column_power": 1.0124026536941528,
+      "grid_shape": [
+        67,
+        13,
+        7
+      ],
+      "pad_x_lo": 8,
+      "dx": 0.002
+    }
+  ],
+  "source_sha256": "e56ece6e2fb18c8ff3bcca3e4e6d10d3c0a1a7f1bbc65af99f9a9541d0508eab"
+}
