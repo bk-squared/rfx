@@ -356,6 +356,27 @@ deferred to a pre-declared campaign rather than settled by choosing a floor —
 a floor taken from the observed gap would have made the gate certify the
 agreement it exists to test.
 
+**(d) The retained evidence record predates (a)–(c) and keeps the old wording,
+on purpose.** `validation/crossval/_02_ring_resonator_results/crossval.json` is
+the run of 2026-09-06T17:07:57Z (commit `296cabad`). It is the only copy that
+predates the (a) transform, so re-driving today's judge on it is the falsifier
+for "the transform moved a verdict that was already committed"; regenerating it
+would turn that check into the judge against its own output. It is therefore
+pinned as-is by `CV02_RECORD_PIN` and
+`test_the_committed_record_is_still_the_pre_transform_one`, which red loudly if
+the record moves.
+
+The cost is that the withdrawn framing survives in the reader-facing artifact:
+that record's `gate_limits.note` still reads "the Q window is tau_ref/T per
+mode, derived from the reference Q and THIS record length — not a chosen
+number". Read it as **superseded** by `ring_mode_judge.Q_GATE_INGREDIENTS`,
+which records written after 2026-09-13 carry instead. The half about the
+window's *arguments* stands — no measured rfx quantity enters it. The half
+about its *form* does not: `tau_ref/T` is declared policy with #812's bracket
+behind it, not a derived bound. No number in that record is affected; the note
+describes provenance, and the gates it reports are the ones today's judge
+reproduces.
+
 **What did not change.** No gate moved. The verdict on the committed board is
 unchanged: re-driving the judge on that record's own mode pairs and record
 length reproduces all five gates PASS. The run-length contingency #907

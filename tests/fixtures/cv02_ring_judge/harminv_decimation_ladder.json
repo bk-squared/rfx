@@ -26,7 +26,7 @@
     "cv02_analysis_band": {
       "f_min_hz": 29979245800000.0,
       "f_max_hz": 59958491600000.01,
-      "why": "rig.band_c_over_a -- the band cv02 actually runs; witness"
+      "why": "rig.band_c_over_a -- the band cv02 actually runs. Plan-stability check, NOT an independent witness: both bands resolve to the same decimation plan on every rung, so the two columns are one computation. The independent witness is auto vs no_decimation."
     }
   },
   "withdrawn_claim": {
@@ -56,7 +56,7 @@
             "relative_q_error": 3.700914703016616e-12,
             "relative_freq_error": 2.6552384813203153e-15,
             "harminv_error_field": 9.038738734268303e-05,
-            "wall_time_s": 2.208813190460205
+            "wall_time_s": 0.11081838607788086
           },
           "no_decimation": {
             "measured": true,
@@ -65,7 +65,7 @@
             "relative_q_error": 3.700914703016616e-12,
             "relative_freq_error": 2.6552384813203153e-15,
             "harminv_error_field": 9.038738734268303e-05,
-            "wall_time_s": 0.42722129821777344
+            "wall_time_s": 0.0882575511932373
           }
         },
         "cv02_analysis_band": {
@@ -81,7 +81,7 @@
             "relative_q_error": 3.700914703016616e-12,
             "relative_freq_error": 2.6552384813203153e-15,
             "harminv_error_field": 9.038738734268303e-05,
-            "wall_time_s": 0.400526762008667
+            "wall_time_s": 0.08078265190124512
           },
           "no_decimation": {
             "measured": true,
@@ -90,7 +90,7 @@
             "relative_q_error": 3.700914703016616e-12,
             "relative_freq_error": 2.6552384813203153e-15,
             "harminv_error_field": 9.038738734268303e-05,
-            "wall_time_s": 0.3987305164337158
+            "wall_time_s": 0.0776529312133789
           }
         }
       }
@@ -114,7 +114,7 @@
             "relative_q_error": 4.3801563380471096e-13,
             "relative_freq_error": 1.770158987546877e-16,
             "harminv_error_field": 0.0007228703834534222,
-            "wall_time_s": 0.0888969898223877
+            "wall_time_s": 0.01816725730895996
           },
           "no_decimation": {
             "measured": true,
@@ -123,7 +123,7 @@
             "relative_q_error": 3.8156557549154585e-12,
             "relative_freq_error": 1.770158987546877e-16,
             "harminv_error_field": 9.03873873420169e-05,
-            "wall_time_s": 7.821901082992554
+            "wall_time_s": 0.7761824131011963
           }
         },
         "cv02_analysis_band": {
@@ -141,7 +141,7 @@
             "relative_q_error": 4.3801563380471096e-13,
             "relative_freq_error": 1.770158987546877e-16,
             "harminv_error_field": 0.0007228703834534222,
-            "wall_time_s": 0.9660351276397705
+            "wall_time_s": 0.017762422561645508
           },
           "no_decimation": {
             "measured": true,
@@ -150,7 +150,7 @@
             "relative_q_error": 3.8156557549154585e-12,
             "relative_freq_error": 1.770158987546877e-16,
             "harminv_error_field": 9.03873873420169e-05,
-            "wall_time_s": 11.554769277572632
+            "wall_time_s": 0.7532444000244141
           }
         }
       }
@@ -175,7 +175,7 @@
             "relative_q_error": 1.7155612324017846e-13,
             "relative_freq_error": 0.0,
             "harminv_error_field": 0.0014452182253151813,
-            "wall_time_s": 0.01520848274230957
+            "wall_time_s": 0.008836984634399414
           },
           "no_decimation": {
             "measured": true,
@@ -184,7 +184,7 @@
             "relative_q_error": 1.005848944584876e-12,
             "relative_freq_error": 2.30120668381094e-15,
             "harminv_error_field": 9.038738734234997e-05,
-            "wall_time_s": 25.64661431312561
+            "wall_time_s": 1.5219330787658691
           }
         },
         "cv02_analysis_band": {
@@ -203,7 +203,7 @@
             "relative_q_error": 1.7155612324017846e-13,
             "relative_freq_error": 0.0,
             "harminv_error_field": 0.0014452182253151813,
-            "wall_time_s": 0.016112565994262695
+            "wall_time_s": 0.008817672729492188
           },
           "no_decimation": {
             "measured": true,
@@ -212,7 +212,7 @@
             "relative_q_error": 1.005848944584876e-12,
             "relative_freq_error": 2.30120668381094e-15,
             "harminv_error_field": 9.038738734234997e-05,
-            "wall_time_s": 16.680891036987305
+            "wall_time_s": 1.541494369506836
           }
         }
       }
@@ -237,7 +237,7 @@
             "relative_q_error": 1.4441819810227789e-13,
             "relative_freq_error": 0.0,
             "harminv_error_field": 0.0014452182253147372,
-            "wall_time_s": 3.1022086143493652
+            "wall_time_s": 0.07190489768981934
           },
           "no_decimation": {
             "measured": false,
@@ -261,7 +261,7 @@
             "relative_q_error": 1.4441819810227789e-13,
             "relative_freq_error": 0.0,
             "harminv_error_field": 0.0014452182253147372,
-            "wall_time_s": 0.6984472274780273
+            "wall_time_s": 0.06927251815795898
           },
           "no_decimation": {
             "measured": false,

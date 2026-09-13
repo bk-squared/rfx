@@ -17,9 +17,12 @@ from __future__ import annotations
 import ast
 import dataclasses
 import importlib.util
+import io
 import json
 import math
+import re
 import sys
+import tokenize
 from pathlib import Path
 
 import numpy as np
@@ -746,11 +749,21 @@ def test_the_decimation_penalty_claim_does_not_reproduce() -> None:
         for band in row["bands"].values():
             assert band["auto"]["relative_q_error"] * 1e6 < asserted
 
-    # (d) the two bands are each other's witness: a decimation plan depends on
-    #     f_max, so a finding that holds in only one band is a band artefact.
+    # (d) both bands land on the SAME decimation plan on every rung. That is a
+    #     plan-stability check, NOT an independent witness -- and the two are
+    #     easy to confuse here, so: f_max enters harminv only through the
+    #     decimation target and a pass-band filter, the two targets factor to
+    #     one plan, and the two columns are then the same computation reporting
+    #     the same error to every digit. Agreement by construction is not
+    #     evidence. The independent witness is legs (a)/(b), auto vs
+    #     decimate=False -- different sample counts, different pencil sizes.
+    #     What (d) buys is that a plan differing between bands would make every
+    #     other leg band-contingent; that is worth pinning, and it is all.
     for row in doc["rows"]:
         plans = {tuple(b["decimation_factors"]) for b in row["bands"].values()}
         assert len(plans) == 1, (row["t_over_tau"], plans)
+        errors = {b["auto"]["relative_q_error"] for b in row["bands"].values()}
+        assert len(errors) == 1, (row["t_over_tau"], errors)
 
     # (e) live, on the two rungs the claim named: the artifact is reproducible
     #     from today's rfx, not just a file somebody committed once.
@@ -809,6 +822,42 @@ def test_q_window_docstring_withdraws_the_decimation_penalty_claim() -> None:
     assert "3.49" not in SCRIPT_PATH.read_text(encoding="utf-8")
 
 
+def _flatten_prose(text: str, *, python_source: bool = False) -> str:
+    """The prose of ``text``, on one line.
+
+    ``python_source=True`` keeps only the prose of the file, in source order:
+    comments and triple-quoted strings. Identifiers are dropped, so a test's
+    own name is not read as an assertion, and short string literals are
+    dropped, so the fragments this module assembles its markers from
+    (``"a " + "b"``) cannot be glued back into a marker by the flattening.
+    Line wrapping, comment hashes, quotes and rst/markdown emphasis are
+    removed: a sentence split across three wrapped comment lines has to read
+    as one sentence, or a per-line check can be walked past by re-wrapping.
+    """
+    if python_source:
+        def _is_prose(tok: tokenize.TokenInfo) -> bool:
+            if tok.type == tokenize.COMMENT:
+                return True
+            return (tok.type == tokenize.STRING
+                    and tok.string.lstrip("rbuRBUf").startswith(('"""', "'''")))
+
+        text = " ".join(
+            tok.string
+            for tok in tokenize.generate_tokens(io.StringIO(text).readline)
+            if _is_prose(tok))
+    lines = [line.strip().lstrip("#").strip() for line in text.splitlines()]
+    flat = " ".join(lines)
+    for markup in ('"', "'", "`", "*"):
+        flat = flat.replace(markup, " ")
+    return re.sub(r"\s+", " ", flat).strip()
+
+
+#: Sentence boundary on the flattened form. Decimals and version strings have
+#: no space after the dot, so they do not split; ``e.g.`` splits, which only
+#: makes the check below stricter.
+_SENTENCE = re.compile(r"(?<=[.;:])\s+")
+
+
 def test_the_staircasing_attribution_is_withdrawn_everywhere() -> None:
     """#907 (2026-09-10) retracted the attribution of the rfx-vs-Meep Q gap to
     the ring's staircased curved boundary and its subpixel treatment, as an
@@ -817,35 +866,53 @@ def test_the_staircasing_attribution_is_withdrawn_everywhere() -> None:
     geometry, and the log decomposition cannot settle it either.
 
     The retraction has to hold on all three surfaces that carried it, not only
-    in the docstring that was being rewritten at the time. The markers are not
-    spelled out in this docstring: ``markers`` below builds them at runtime, so
-    the check cannot match its own source and pass for the wrong reason.
+    in the docstring that was being rewritten at the time.
+
+    TWO checks, because the two weaker forms of this guard were each measured
+    to pass a re-assertion. An exact-phrase check went first: a rephrasing --
+    same claim, parenthesised, different verb -- walked straight past it. A
+    +/-6-line proximity window replaced it, and review of 2026-09-13
+    reproduced a re-assertion parked INSIDE the retraction paragraph, which
+    supplies every history word a window looks for, on both prose surfaces.
+    So the rule is no longer proximity:
+
+    1. every sentence that names the retracted mechanism must mark it as
+       history BEFORE naming it. A retraction verb that only follows the
+       mention does not govern it;
+    2. no copula may attach the mechanism to anything anywhere in the
+       flattened prose.
+
+    The markers are not spelled out in this docstring: ``markers`` below builds
+    them at runtime, so the check cannot match its own source and pass for the
+    wrong reason.
     """
     surfaces = {
-        "q_window docstring": rmj.q_window.__doc__,
-        "script comment": SCRIPT_PATH.read_text(encoding="utf-8"),
-        "characterization test": Path(__file__).read_text(encoding="utf-8"),
+        "q_window docstring": _flatten_prose(rmj.q_window.__doc__),
+        "script comment": _flatten_prose(
+            SCRIPT_PATH.read_text(encoding="utf-8"), python_source=True),
+        "characterization test": _flatten_prose(
+            Path(__file__).read_text(encoding="utf-8"), python_source=True),
     }
     # Markers are assembled from fragments on purpose: one of the surfaces
     # checked is this file, so a spelled-out literal would match its own
-    # assertion. The check is a WINDOW rather than an exact phrase because the
-    # first version of it was an exact phrase and a rephrasing of the
-    # attribution -- same claim, parenthesised, different verb -- walked
-    # straight past it. Every mention now has to sit next to a word marking it
-    # as history.
+    # assertion.
     markers = ("discretization " + "offset", "stairc" + "as")
     history = ("retract", "withdraw", "UNRESOLVED", "used to", "overclaim",
-               "unresolved")
-    for name, text in surfaces.items():
-        assert "UNRESOLVED" in text or "unresolved" in text, name
-        lines = text.splitlines()
-        for marker in markers:
-            for i, line in enumerate(lines):
-                if marker not in line:
+               "unresolved", "earlier version")
+    copular = re.compile(
+        r"\b(?:is|are|was|were|remain|remains)\s+(?:an?|the)?\s*(?:%s)"
+        % "|".join(markers))
+    for name, flat in surfaces.items():
+        assert "UNRESOLVED" in flat or "unresolved" in flat, name
+        attached = copular.search(flat)
+        assert attached is None, (name, attached.group() if attached else "")
+        for sentence in _SENTENCE.split(flat):
+            for marker in markers:
+                at = sentence.find(marker)
+                if at < 0:
                     continue
-                window = "\n".join(lines[max(0, i - 6):i + 7])
-                assert any(h in window for h in history), (
-                    name, marker, i + 1, line.strip())
+                assert any(h in sentence[:at] for h in history), (
+                    name, marker, sentence)
     # and the judge no longer prescribes the floor that was refused
     assert "encoding the expected" not in rmj.q_window.__doc__
     assert "certify the agreement" in rmj.q_window.__doc__

@@ -20,11 +20,20 @@ damped exponential at cv02's own ``dt``, driven at the live mode's ``f`` and
 * the relative Q error on the default path (``decimate='auto'``) and on
   ``decimate=False``.
 
-Two frequency bands are measured, and they are the R5 independent witness for
-each other: the band the withdrawn claim used (``[0.5 f, 1.5 f]``) and the
-band cv02 actually analyses (``rig.band_c_over_a`` from the committed record).
-A decimation plan depends on ``f_max``, so a conclusion that survives both
-bands is not an artefact of one band choice.
+Two frequency bands are measured -- the band the withdrawn claim used
+(``[0.5 f, 1.5 f]``) and the band cv02 actually analyses (``rig.band_c_over_a``
+from the committed record). This is a **plan-stability check, not an
+independent witness**, and the artifact shows why: ``f_max`` enters
+``rfx.harminv`` only through the decimation target ``int(1/dt/(4 f_max))`` and
+a post-hoc pass-band filter, the two bands' targets both factor to the same
+plan, and every rung then reports the same relative Q error in both bands to
+every digit. The two columns are one computation; their agreement is by
+construction. What the check buys is narrow and worth keeping: a plan that
+differed between bands would make every other leg band-contingent.
+
+The R5 independent witness on each rung is the other pair -- ``decimate='auto'``
+against ``decimate=False``. Those run different sample counts through
+different pencil sizes and are the only two legs here that can disagree.
 
 Everything that identifies the case -- ``dt``, ``f``, ``Q``, the band -- is
 READ from the committed cv02 record rather than typed here, so the ladder
@@ -169,7 +178,11 @@ def main() -> int:
         "cv02_analysis_band": {
             "f_min_hz": band_lo * C_M_PER_S / a_m,
             "f_max_hz": band_hi * C_M_PER_S / a_m,
-            "why": "rig.band_c_over_a -- the band cv02 actually runs; witness",
+            "why": ("rig.band_c_over_a -- the band cv02 actually runs. "
+                    "Plan-stability check, NOT an independent witness: both "
+                    "bands resolve to the same decimation plan on every rung, "
+                    "so the two columns are one computation. The independent "
+                    "witness is auto vs no_decimation."),
         },
     }
 
