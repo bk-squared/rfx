@@ -917,7 +917,10 @@ def test_fence_msl_junction_mixed_s_matrix():
         _mixed_probe_fed_msl().compute_mixed_s_matrix(
             freqs=np.linspace(1e9, 4e9, 3), num_periods=1.0,
             skip_preflight=True)
-    _fence(go, where=("_sparams.py", "compute_mixed_s_matrix"),
+    # #980 Phase 2 moved the body (and with it this fence) verbatim from
+    # rfx/api/_sparams.py to rfx/sparams/mixed.py; the frame basename tracks
+    # the file, the lane and the enclosing function are unchanged.
+    _fence(go, where=("mixed.py", "compute_mixed_s_matrix"),
            match=r"on the MSL junction S-parameter lane")
 
 
@@ -1151,7 +1154,7 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
         (__name__, "test_fence_adi_run"),
     ("rfx/api/_execute.py", "run", "subgridded (SBP-SAT) run()"):
         (__name__, "test_fence_subgridded_run"),
-    ("rfx/api/_sparams.py", "compute_mixed_s_matrix",
+    ("rfx/sparams/mixed.py", "compute_mixed_s_matrix",
      "MSL junction S-parameter"):
         (__name__, "test_fence_msl_junction_mixed_s_matrix"),
     # #980 Phase 2 moved compute_coax_msl_transition (and this call site with
