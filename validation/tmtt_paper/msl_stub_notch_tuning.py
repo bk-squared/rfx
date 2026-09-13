@@ -266,6 +266,14 @@ def build_sim(freqs: jnp.ndarray) -> tuple[
                      width=W_TRACE, height=H_SUB,
                      direction="-x", impedance=50.0)
 
+    # A pair of local fields in the same observation region as the first MSL
+    # port supplies an energy ring-down witness for the paper example (#918).
+    # They are passive records and do not participate in either DFT-plane
+    # extractor or the AD objective.
+    witness = (PORT_MARGIN + 3.0 * DX, y_trace, 0.5 * H_SUB)
+    sim.add_probe(witness, "ez")
+    sim.add_probe(witness, "hy")
+
     # Plane DFT probes — line-integrated V (Ez) + closed-Ampere-loop I
     # (Hy + Hz) per port.  register_msl_plane_probes / _v_from_plane /
     # _i_from_plane call `compute_msl_s_matrix`'s own primitives

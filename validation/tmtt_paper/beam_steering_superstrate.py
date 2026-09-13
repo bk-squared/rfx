@@ -157,6 +157,10 @@ def build_problem():
     sim = Simulation(freq_max=freq_max, domain=(Lx, Ly, Lz),
                      cpml_layers=cpml_layers, dx=dx)
     sim.add_source((cx, cy, float(src_z)), "ex")     # x-oriented dipole
+    # Keep one field record at the source so NTFF results carry the shared
+    # ring-down witness (#918).  This is diagnostic only: it does not alter
+    # the source or the differentiated far-field path.
+    sim.add_probe((cx, cy, float(src_z)), "ex")
 
     region = DesignRegion(
         corner_lo=(cx - half, cy - half, float(slab_z)),

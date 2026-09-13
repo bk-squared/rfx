@@ -22,6 +22,12 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   zero. Keep the existing record-resolution policy and public scalar window,
   while removing the false symmetric upper restriction.
 
+### Fixed — TMTT paper settling witnesses (#918)
+
+- Add passive Ex, Ez and Hy point records to the beam-steering and MSL-notch
+  paper builders so NTFF and field-DFT results carry the shared ring-down
+  witness without changing their solve or AD observables.
+
 ### Fixed — shared coordinates for Kottke smoothing (#833)
 
 - Build uniform-grid smoothing coordinates from the same exact host-float64
