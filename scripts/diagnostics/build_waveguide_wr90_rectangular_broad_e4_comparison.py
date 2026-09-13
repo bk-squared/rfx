@@ -137,10 +137,11 @@ def build_rectangular_broad_e4_comparison(
             "grid. Phase conventions are not compared (magnitude metric)."
         ),
         "r5_reference_note": (
-            "Meep res-3/4 gives a non-physical PEC-short |S11|=1.1985>1; rfx is "
-            "1.0000 (||S11|-1|<=4e-4) and Palace FEM agrees to <=4e-4, so the "
-            "converged Palace reference is used for the |Gamma|->1 geometry. The "
-            "disagreement was a reference defect, not an rfx residual (R4/R5)."
+            "Historical R4/R5 reference selection: Meep res-3/4 gave a "
+            "non-physical PEC-short |S11|=1.1985>1; the then-current rfx and "
+            "Palace FEM comparison agreed to <=4e-4, motivating the converged "
+            "Palace reference. That historical rfx envelope is not a claim "
+            "about this capture; current residuals are the measured pairs below."
         ),
         "external_reference_column": reference_column,
         "normalization_by_geometry": normalization,

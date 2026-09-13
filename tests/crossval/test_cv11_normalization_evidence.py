@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -59,6 +60,26 @@ def test_historical_tables_do_not_imply_flux_or_ad_coverage(monkeypatch, tmp_pat
     current = json.loads(STDOUT.with_name("wr90_rectangular_broad_e4_comparison.json").read_text())
     assert payload["pairs"] == current["pairs"]
     assert payload["summary"] == current["summary"]
+
+
+def test_retrospective_source_audit_is_bound_to_the_retained_run():
+    current = json.loads(STDOUT.with_name("wr90_rectangular_broad_e4_comparison.json").read_text())
+    audit = current["provenance"]["normalization_source_audit_2026_09_13"]
+    source = ROOT / current["source_cv11_stdout"]
+    assert audit["producer_commit"] == current["setup"]["commit"]
+    assert hashlib.sha256(source.read_bytes()).hexdigest() == audit["source_cv11_stdout_sha256"]
+    # These are retrospectively audited values, not recorded stdout fields.
+    assert audit["normalization_by_geometry"] == {"empty": True, "pec_short": False, "slab": True}
+    assert set(current["normalization_by_geometry"].values()) == {None}
+
+
+@pytest.mark.parametrize("mode", [0, 1, "False", None])
+def test_invalid_extractor_metadata_is_rejected(monkeypatch, tmp_path, mode):
+    output = tmp_path / "invalid.stdout"
+    output.write_text("CV11_EXTRACTION_MODE " + json.dumps({
+        "geometry": "slab", "normalize": mode}) + "\n" + STDOUT.read_text())
+    with pytest.raises(ValueError, match="invalid cv11 extraction record"):
+        _builder(monkeypatch).build_rectangular_broad_e4_comparison(output, tmp_path)
 
 
 def test_mixed_run_extractor_records_are_rejected(monkeypatch, tmp_path):
