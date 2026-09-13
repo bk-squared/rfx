@@ -964,6 +964,18 @@ carried and what is dropped is listed in 14.3.
 * **13.3 is not closed.** Why a cleaner incident field makes the #280 subtraction
   agree WORSE with Mie is measured and unexplained. It belongs to #280.
 
+* **There is a THIRD auxiliary absorber, and it is untouched.** Method B, the
+  oblique open-domain path selected by `method='methodB'`
+  (`rfx/sources/tfsf_oblique_open.py`), builds its own 1-D auxiliary absorber:
+  20 cells, `sigma_max = 0.8 * 4 / (eta d_aux)`, `rho**3` — the same
+  standalone heuristic this lane replaced on the other two paths, with no
+  reflection measurement behind it. Nothing here says that path's injected field
+  is clean. Found while wiring the overrides through `init_tfsf`'s dispatch
+  (2026-09-13), and gated the only way it honestly can be for now: that path
+  REFUSES the `aux_*` arguments rather than accepting and dropping them
+  (`test_method_b_refuses_an_override_it_would_not_honour`). Bringing it under
+  the same derivation is a separate lane and wants its own measurement.
+
 ### 14.3 What r2 carries, and what it drops
 
 | #923 commit | r2 | why |
@@ -1005,6 +1017,8 @@ numbers moved when re-measured, and both are recorded:
 | the recompute waiver, both directions | same file, `test_an_artifact_on_a_superseded_absorber_is_declared_and_only_those_are` | a silent stale artifact, and a waiver that outlives its reason |
 | arrival must only move EARLIER | same file, `test_the_superseded_layout_only_ever_moves_the_arrival_earlier` | keeping a record whose bound got looser |
 | live monostatic vs the committed fixture, 0.25 dB | `tests/oracle/test_rcs_mie_fixture.py` | any drift in the TFSF/NTFF/RCS chain — this is what caught the 0.573 dB move |
+| an override must survive the oblique dispatch | `test_tfsf_aux_absorber_reflection.py::test_the_oblique_dispatch_carries_the_override_instead_of_dropping_it` | a forwarded-parameter bug, which succeeds silently and builds the default |
+| Method B must REFUSE what it would not honour | same file, `test_method_b_refuses_an_override_it_would_not_honour` | a knob that reads as working on a path this lane never touched |
 | uncorrected pattern must fail the moved bar | `test_rcs280_reference_subtraction.py::test_the_pattern_bar_still_rejects_the_uncorrected_path` | a bar widened past the defect it exists to catch |
 
 ### 14.5 R2 accounting

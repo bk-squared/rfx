@@ -198,6 +198,15 @@ def init_tfsf(
         narrowband measurements needing a well-defined ⟨E²⟩=A²/2 (e.g.
         the #446 Kerr SPM oracle). NORMAL INCIDENCE ONLY (the oblique
         2D-auxiliary path does not carry it).
+    aux_n_cpml, aux_cpml_order, aux_cpml_kappa_max, aux_cpml_r_asymptotic
+        Override the AUXILIARY grid's own absorber (#888). Defaults are the
+        derived constants at the top of this module (normal incidence) and of
+        ``tfsf_2d.py`` (oblique Bloch); both dispatch paths honour them, and
+        overriding is how the reflection gate measures the profile that shipped.
+        ``method='methodB'`` REFUSES them: that path
+        (``tfsf_oblique_open.py``) builds its own 20-cell auxiliary absorber
+        from the pre-#888 heuristic, so accepting the arguments there would say
+        the knob works when it does not.
 
     Returns
     -------
@@ -224,6 +233,25 @@ def init_tfsf(
     # selected explicitly via method='methodB'. angle_deg=0 falls through to the
     # normal 1D-aux path below regardless of method (byte-unchanged).
     if abs(angle_deg) > 0.01 and method == "methodB":
+        # Method B builds its own 1-D auxiliary absorber (tfsf_oblique_open.py:
+        # 20 cells, sigma_max = 0.8 * 4/(eta d_aux), rho**3) -- the pre-#888
+        # heuristic, untouched by this lane. Accepting an aux_* override here
+        # and dropping it would be the same silent-drop the waveform guard
+        # above exists to prevent.
+        _aux_overrides = {
+            "aux_n_cpml": aux_n_cpml, "aux_cpml_order": aux_cpml_order,
+            "aux_cpml_kappa_max": aux_cpml_kappa_max,
+            "aux_cpml_r_asymptotic": aux_cpml_r_asymptotic,
+        }
+        _given = sorted(k for k, v in _aux_overrides.items() if v is not None)
+        if _given:
+            raise ValueError(
+                f"{_given} are not supported with method='methodB': that path's "
+                "auxiliary absorber is built inside "
+                "rfx/sources/tfsf_oblique_open.py and is not derived from a "
+                "reflection target (#888 covers the normal-incidence and Bloch "
+                "oblique paths only)"
+            )
         from rfx.sources.tfsf_oblique_open import init_tfsf_methodB
         if ny is None:
             ny = nx
@@ -256,6 +284,12 @@ def init_tfsf(
             polarization=polarization,
             direction=direction,
             theta_deg=angle_deg,
+            # forwarded, not dropped: the reflection gate measures the oblique
+            # absorber through this entry point (#888)
+            aux_n_cpml=aux_n_cpml,
+            aux_cpml_order=aux_cpml_order,
+            aux_cpml_kappa_max=aux_cpml_kappa_max,
+            aux_cpml_r_asymptotic=aux_cpml_r_asymptotic,
         )
     if nx <= 0:
         raise ValueError(f"nx must be positive, got {nx}")

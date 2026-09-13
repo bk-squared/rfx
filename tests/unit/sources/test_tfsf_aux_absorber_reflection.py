@@ -157,6 +157,41 @@ def test_the_1d_path_refuses_a_kappa_it_cannot_realize():
                   aux_cpml_kappa_max=7.0)
 
 
+def test_the_oblique_dispatch_carries_the_override_instead_of_dropping_it():
+    """``init_tfsf`` at an oblique angle hands the work to ``init_tfsf_2d``, and
+    the auxiliary-absorber arguments have to survive that hop.
+
+    A forwarded-parameter bug is invisible from the outside -- the call
+    succeeds, the default absorber is built, and the caller believes it asked
+    for something else. The falsifier is the layout: an override to 30 cells
+    must produce a 30-cell auxiliary grid, and the default must not.
+    """
+    cfg_default, _ = init_tfsf(160, 1e-3, 1.9e-12, ny=160, cpml_layers=10,
+                               tfsf_margin=5, angle_deg=30.0, bandwidth=0.1)
+    cfg_override, _ = init_tfsf(160, 1e-3, 1.9e-12, ny=160, cpml_layers=10,
+                                tfsf_margin=5, angle_deg=30.0, bandwidth=0.1,
+                                **SHIPPED_2D)
+    assert cfg_default.n_cpml == AUX_N_CPML
+    assert cfg_override.n_cpml == SHIPPED_2D["aux_n_cpml"] != AUX_N_CPML
+    # and the profile itself, not only the depth: kappa is 1 on the derived
+    # absorber and 7 on the one that shipped, so a forwarded override changes
+    # the stretching array too, not just its length.
+    assert float(cfg_default.kappa_cpml.max()) == pytest.approx(
+        AUX_CPML_KAPPA_MAX, rel=1e-6)
+    assert float(cfg_override.kappa_cpml.max()) == pytest.approx(
+        SHIPPED_2D["aux_cpml_kappa_max"], rel=1e-5)
+
+
+def test_method_b_refuses_an_override_it_would_not_honour():
+    """Method B (``tfsf_oblique_open.py``) builds its own 20-cell auxiliary
+    absorber from the pre-#888 heuristic; #888 did not touch it. Accepting an
+    aux_* argument on that path and dropping it is the same silent-drop the
+    waveform guard beside it exists to prevent, so it raises."""
+    with pytest.raises(ValueError, match="methodB"):
+        init_tfsf(160, 1e-3, 1.9e-12, ny=160, cpml_layers=10, tfsf_margin=5,
+                  angle_deg=30.0, method="methodB", aux_n_cpml=200)
+
+
 # ==========================================================================
 # 2. What it reflects, where the instrument can see
 # ==========================================================================
