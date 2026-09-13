@@ -9,6 +9,32 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
+### Fixed — the TF/SF auxiliary grid's own absorber reflected 4–6 % (#888)
+
+- Both auxiliary grids now build their absorber through the same
+  `rfx.boundaries.cpml._cpml_profile` law the 3-D absorber uses, with `sigma_max`
+  derived from a declared reflection target instead of a standalone heuristic:
+  1-D (`rfx/sources/tfsf.py`) 20 → 200 cells at `R_asym = 1e-6`, 2-D Bloch
+  (`rfx/sources/tfsf_2d.py`) 30 → 200 cells at `R_asym = 1e-28`. Measured `|B/A|`
+  falls from 4.4e-02 to 9.4e-06 on the 1-D path and to 2.3e-06 … 2.9e-05 over
+  0–70° on the 2-D one. `init_tfsf` / `init_tfsf_2d` take `aux_n_cpml`,
+  `aux_cpml_order`, `aux_cpml_kappa_max` and `aux_cpml_r_asymptotic` overrides.
+- **This changes the injected incident field for every TF/SF consumer.** The
+  measured effect on the validated RCS path: the PEC-sphere monostatic fixture
+  moved 0.57 dB, and its previous 0.06 dB agreement with the exact Mie series
+  turned out to be a cancellation against an 8-cell CPML. Both sphere fixtures
+  are regenerated on a converged 24-cell absorber (0.185 dB from Mie, unchanged
+  1.0 dB gate). The #280 reference-subtracted bistatic pattern agrees *worse*
+  with Mie on the clean injection (0.42 → 0.70 dB mean); its bar is re-derived
+  from that measurement through the shared envelope policy to 1.06 dB, with a
+  new falsifier asserting the uncorrected path still fails it.
+- **Validity domain, gated:** the 2-D absorber meets the 1e-3 leakage bar for
+  incidence up to 80° and does NOT at 82°. Both halves are asserted, so the
+  domain cannot widen silently.
+- The committed cv04 / cv22 / cv23 slab-family records were produced with the
+  20-cell absorber and are declared pending recompute; their echo-arrival
+  witnesses are replayed against the layout each record declares, and the
+  shipped absorber's arrival is earlier at every rung, so each stays admissible.
 ### Fixed — cv05 external geometry handoff (#959)
 
 - Transfer complete realized sheet edges, substrate bounds and wire terminals
