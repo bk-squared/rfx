@@ -103,8 +103,9 @@ class _Armed:
 
 # Keyed by absolute path: a script that rewrites the same record keeps one arm.
 _armed: "dict[str, _Armed]" = {}
-_observed_code: int | None = None
+_observed_code: "int | None" = None
 _observed_via: str = "normal completion"
+_installed = False
 
 
 def normalize_exit_code(code: Any) -> int:
@@ -130,18 +131,24 @@ def _observe(code: Any, via: str) -> None:
 
 
 def _install() -> None:
-    """Wrap ``sys.exit`` / ``sys.excepthook`` and register the finalizer once."""
-    if getattr(sys.exit, "_crossval_exit_evidence", False):
-        return
+    """Wrap ``sys.exit`` / ``sys.excepthook`` and register the finalizer once.
 
-    real_exit = sys.exit
+    Once per module instance, not once per process: both wrappers chain to
+    whatever was there before, so a second copy of this module (loaded under
+    another name) observes the same exits instead of silently holding records
+    it can never amend.
+    """
+    global _installed
+    if _installed:
+        return
+    _installed = True
+
+    previous_exit = sys.exit
 
     def _tracking_exit(code=None):  # noqa: ANN001 - mirrors sys.exit
         _observe(code, "sys.exit")
-        real_exit(code)
+        previous_exit(code)
 
-    _tracking_exit._crossval_exit_evidence = True  # type: ignore[attr-defined]
-    _tracking_exit._crossval_real_exit = real_exit  # type: ignore[attr-defined]
     sys.exit = _tracking_exit  # type: ignore[assignment]
 
     previous_hook = sys.excepthook
