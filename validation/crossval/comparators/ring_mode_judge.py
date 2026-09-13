@@ -61,7 +61,10 @@ Gates (all evaluated only when the external reference is present):
 
 Frequencies and the record length must be in reciprocal units (the script
 passes both in Meep normalised units: ``f`` in ``c/a``, ``T`` in ``a/c``).
-Pre-declaration: ``docs/design_notes/20260831_cv02_ring_judge_predeclaration.md``.
+Pre-declaration: ``docs/design_notes/20260831_cv02_ring_judge_predeclaration.md``
+— read its **Correction 4** with it: the gate form declared there was
+superseded (#945) and its "the Q window carries no chosen value at all"
+claim is withdrawn (#907).
 """
 
 from __future__ import annotations

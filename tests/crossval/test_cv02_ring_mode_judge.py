@@ -1061,9 +1061,19 @@ def test_verdict_lane_q_gate_is_run_length_contingent() -> None:
 
     CHARACTERIZATION TEST. It pins the CURRENT, DEFECTIVE behaviour: the
     assertion ``longer.gates["q"] is False`` is the bug, not the requirement.
-    When #907 is fixed this test must be INVERTED (a longer, better-settled
-    record has to keep the PASS) or deleted along with it -- do not "repair"
-    the judge to keep this assertion green."""
+    When the contingency is fixed this test must be INVERTED (a longer,
+    better-settled record has to keep the PASS) or deleted along with it -- do
+    not "repair" the judge to keep this assertion green.
+
+    **#907 being CLOSED is not that fix.** It was closed on 2026-09-13 as a
+    design item: its separable mathematical defect went to #945, and the three
+    ingredients that would let a floor be derived -- the rfx estimator's real
+    SNR / model-order uncertainty, a source-free Meep reference record, and a
+    discretization budget against the exact annulus -- were deferred to a
+    pre-declared campaign rather than settled by choosing a number. Setting the
+    floor from the observed gap was refused, because it would make the gate
+    certify the agreement it exists to test. So this test stays as written
+    until that campaign lands."""
     committed = _judge(RFX_TODAY)                      # T = RECORD_T = 291
     longer = rmj.judge(MEEP_REFERENCE, RFX_TODAY, 3385.0,
                        f_min=0.1, f_max=0.2)           # 1 e-fold of tau_slow
