@@ -11,7 +11,8 @@ gate test `tests/oracle/test_rcs_mie_fixture.py`.
   `9(ka)^4`, geometric-optics limit → 1, term-doubling convergence at
   ka~1, and the bistatic-formula bridge at the backscatter angle.
 - `generate_fixture.py` — runs the committed-resolution rfx simulation
-  (CPU, ~7 s) and writes `fixture.json`. Regenerate after any change to
+  (CPU, ~25 s at the 24-cell absorber; ~7 s before it) and writes
+  `fixture.json`. Regenerate after any change to
   the RCS / NTFF / TFSF path.
 - `fixture.json` — geometry + mesh metadata, the rfx monostatic value,
   the Mie value, the measured delta, and the full H-plane bistatic trace.

@@ -30,7 +30,8 @@ cells against 1123 for a declared PEC volume of the same sphere, so
 bringing the RCS family under the contract moves a_eff by ~1.2 % and
 needs the fixture and both gate constants regenerated.
 
-Runtime: one 58^3 x 700-step CPU run, ~7 s.
+Runtime: one 90^3 x 700-step CPU run, ~25 s (58^3 / ~7 s until the 24-cell
+absorber derivation of 2026-09-13 -- see tests/fixtures/rcs_sphere_mie/README.md).
 """
 
 import importlib.util

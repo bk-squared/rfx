@@ -11,7 +11,7 @@ dx=lambda/40) once on CPU and records:
     clearly labeled NON-GATED,
   * a claim_scope string bounding what this fixture validates.
 
-Usage (from the repo root, CPU is sufficient — wall ~7 s):
+Usage (from the repo root, CPU is sufficient — wall ~25 s at CPML_LAYERS = 24):
 
     JAX_PLATFORMS=cpu python tests/fixtures/rcs_sphere_mie/generate_fixture.py
 
