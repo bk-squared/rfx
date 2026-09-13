@@ -47,16 +47,16 @@
       "freq_hi_hz": 12400000000.0,
       "freq_lo_hz": 8199999999.999999,
       "geometry": "pec_short",
-      "max_mag_abs_diff": 0.00039999999999995595,
-      "mean_mag_abs_diff": 0.00018571428571425468,
+      "max_mag_abs_diff": 0.0019999999999998908,
+      "mean_mag_abs_diff": 0.000990476190476166,
       "n_freqs": 21,
       "ref_mag_range": [
         0.9999999999999999,
         1.0
       ],
       "rfx_mag_range": [
-        0.9995999999999999,
-        1.0
+        0.9980000000000001,
+        1.0019
       ],
       "status": "passed"
     },
@@ -65,16 +65,16 @@
       "freq_hi_hz": 12400000000.0,
       "freq_lo_hz": 8199999999.999999,
       "geometry": "slab",
-      "max_mag_abs_diff": 0.0707,
-      "mean_mag_abs_diff": 0.0439761904761905,
+      "max_mag_abs_diff": 0.019299999999999873,
+      "mean_mag_abs_diff": 0.007766666666666652,
       "n_freqs": 21,
       "ref_mag_range": [
         0.0014,
         0.5437
       ],
       "rfx_mag_range": [
-        0.0397,
-        0.5924000000000001
+        0.0018,
+        0.5244000000000001
       ],
       "status": "passed"
     },
@@ -83,20 +83,38 @@
       "freq_hi_hz": 12400000000.0,
       "freq_lo_hz": 8199999999.999999,
       "geometry": "slab",
-      "max_mag_abs_diff": 0.007399999999999851,
-      "mean_mag_abs_diff": 0.0030095238095237792,
+      "max_mag_abs_diff": 0.0044000000000000705,
+      "mean_mag_abs_diff": 0.0010095238095238306,
       "n_freqs": 21,
       "ref_mag_range": [
         0.8393,
         0.9999999999999999
       ],
       "rfx_mag_range": [
-        0.8443,
-        1.0014
+        0.8437000000000001,
+        1.0
       ],
       "status": "passed"
     }
   ],
+  "r5_reference_note": "Meep res-3/4 gives a non-physical PEC-short |S11|=1.1985>1; rfx is 1.0000 (||S11|-1|<=4e-4) and Palace FEM agrees to <=4e-4, so the converged Palace reference is used for the |Gamma|->1 geometry. The disagreement was a reference defect, not an rfx residual (R4/R5).",
+  "schema": "rfx.waveguide_wr90_rectangular_broad_e4_comparison",
+  "schema_version": 1,
+  "source_cv11_stdout": "tests/fixtures/waveguide_broad_e5/cv11_current_main_8206031d_stdout.txt",
+  "status": "passed",
+  "summary": {
+    "failed_pair_count": 0,
+    "geometries": [
+      "empty",
+      "pec_short",
+      "slab"
+    ],
+    "geometry_count": 3,
+    "max_mag_abs_diff": 0.019299999999999873,
+    "mean_mag_abs_diff": 0.001953333333333339,
+    "pair_count": 5,
+    "passed_pair_count": 5
+  },
   "provenance": {
     "correction_2026_08_31": {
       "severity_change": "evidence-chain break -> stale reference artifact. Matches the CORRECTION comment published on issue #812.",
@@ -106,7 +124,6 @@
     },
     "design_note": "docs/design_notes/20260831_cv11_broad_e4_artifact_provenance.md",
     "gates_touched": "NONE. No tolerance, threshold, status field, pair value or summary value in this file was changed by #812 Phase 0.",
-    "one_line": "This artifact reproduces EXACTLY from a committed run of its own script -- git show b0322c1:tests/fixtures/waveguide_broad_e5/cv11_wr90_fresh_stdout.txt fed to its builder rebuilds every field. Its provenance is settled. It is however STALE: it is the 2026-06-16 number, and the current code produces 0.0186-0.0194 on the same comparison (~3.7x better). Quote it WITH ITS DATE, and do not read 0.0707 as today's rfx-vs-Palace agreement.",
     "opened": "2026-08-31 (issue #812 Phase 0, documentation/provenance only; no gate, no threshold, no FDTD)",
     "remaining_warts": {
       "neither_is_a_chain_break": "Both are cosmetic-to-navigational. Neither needs an FDTD run to fix.",
@@ -170,25 +187,171 @@
       "binding_requirement_on_any_refresh": "The 3.7x delta must be EXPLAINED, not silently re-pinned. Overwriting 0.0707 with 0.0186 and moving on is a lock-value move justified by 'the code now produces this value', which SPEC-00 0.2.4 forbids without physics provenance. The refresh commit must attribute the improvement to a named change (candidate_causes_not_established lists three, with 20e5533 the most likely) by MEASURING it, not by asserting it.",
       "explicitly_out_of_scope_for_a_refresh": "Do NOT move max_mag_abs_tol (0.1) or mean_mag_abs_tol (0.07). They are ~1.4x looser than even the stale number and ~5x looser than the current one; whether that gate can discriminate anything is a separate question that belongs to the #812 re-gate phases and must not be folded into a refresh. Do NOT encode any status word in claim_scope or evidence_level: check_port_external_references.py and tests/crossval/test_waveguide_broad_e5.py:53-56,170 scan those strings for blocking tokens, so writing there would silently flip the family's audited status.",
       "the_one_open_decision": "Whether to REFRESH this artifact to a current committed stdout. The refresh itself is cheap -- git show plus the builder, still no FDTD -- and the argument for it is that a live chain should not publish a number 3.7x worse than the code produces."
-    }
+    },
+    "historical_artifact_2026_06_16": {
+      "artifact_commit": "b0322c1",
+      "summary": {
+        "failed_pair_count": 0,
+        "geometries": [
+          "empty",
+          "pec_short",
+          "slab"
+        ],
+        "geometry_count": 3,
+        "max_mag_abs_diff": 0.0707,
+        "mean_mag_abs_diff": 0.009434285714285718,
+        "pair_count": 5,
+        "passed_pair_count": 5
+      },
+      "pairs": [
+        {
+          "component": "S11",
+          "freq_hi_hz": 12400000000.0,
+          "freq_lo_hz": 8199999999.999999,
+          "geometry": "empty",
+          "max_mag_abs_diff": 0.0,
+          "mean_mag_abs_diff": 0.0,
+          "n_freqs": 21,
+          "ref_mag_range": [
+            0.0,
+            0.0
+          ],
+          "rfx_mag_range": [
+            0.0,
+            0.0
+          ],
+          "status": "passed"
+        },
+        {
+          "component": "S21",
+          "freq_hi_hz": 12400000000.0,
+          "freq_lo_hz": 8199999999.999999,
+          "geometry": "empty",
+          "max_mag_abs_diff": 2.220446049250313e-16,
+          "mean_mag_abs_diff": 4.7580986769649563e-17,
+          "n_freqs": 21,
+          "ref_mag_range": [
+            0.9999999999999998,
+            1.0000000000000002
+          ],
+          "rfx_mag_range": [
+            1.0,
+            1.0
+          ],
+          "status": "passed"
+        },
+        {
+          "component": "S11",
+          "freq_hi_hz": 12400000000.0,
+          "freq_lo_hz": 8199999999.999999,
+          "geometry": "pec_short",
+          "max_mag_abs_diff": 0.00039999999999995595,
+          "mean_mag_abs_diff": 0.00018571428571425468,
+          "n_freqs": 21,
+          "ref_mag_range": [
+            0.9999999999999999,
+            1.0
+          ],
+          "rfx_mag_range": [
+            0.9995999999999999,
+            1.0
+          ],
+          "status": "passed"
+        },
+        {
+          "component": "S11",
+          "freq_hi_hz": 12400000000.0,
+          "freq_lo_hz": 8199999999.999999,
+          "geometry": "slab",
+          "max_mag_abs_diff": 0.0707,
+          "mean_mag_abs_diff": 0.0439761904761905,
+          "n_freqs": 21,
+          "ref_mag_range": [
+            0.0014,
+            0.5437
+          ],
+          "rfx_mag_range": [
+            0.0397,
+            0.5924000000000001
+          ],
+          "status": "passed"
+        },
+        {
+          "component": "S21",
+          "freq_hi_hz": 12400000000.0,
+          "freq_lo_hz": 8199999999.999999,
+          "geometry": "slab",
+          "max_mag_abs_diff": 0.007399999999999851,
+          "mean_mag_abs_diff": 0.0030095238095237792,
+          "n_freqs": 21,
+          "ref_mag_range": [
+            0.8393,
+            0.9999999999999999
+          ],
+          "rfx_mag_range": [
+            0.8443,
+            1.0014
+          ],
+          "status": "passed"
+        }
+      ],
+      "source_stdout": "tests/fixtures/waveguide_broad_e5/cv11_wr90_fresh_stdout.txt"
+    },
+    "refresh_2026_09_13": {
+      "status": "refreshed_from_current_main_after_geometry_fix",
+      "pre_fix_run_id": "369367260733",
+      "post_fix_run_id": "369367260736",
+      "pre_fix_commit": "3fa534d17c35463fc5e0082bc9159eaec1ec5b37",
+      "post_fix_commit": "8206031de9923dfaddc17f7060def466a7906915",
+      "pre_fix_rc": 1,
+      "post_fix_rc": 0,
+      "pre_fix_summary": {
+        "palace_s11_max": 0.15,
+        "palace_s11_mean": 0.10550476190476189,
+        "palace_s21_max": 0.0343,
+        "palace_s21_mean": 0.021904761904761923
+      },
+      "post_fix_summary": {
+        "palace_s11_max": 0.019299999999999873,
+        "palace_s11_mean": 0.007766666666666652,
+        "palace_s21_max": 0.0044000000000000705,
+        "palace_s21_mean": 0.0010095238095238306
+      },
+      "a_b_material_replay": {
+        "declared_slab_length_m": 0.01,
+        "pre_fix_realized_material_nodes": 11,
+        "pre_fix_10mm_reference_max": 0.1487,
+        "pre_fix_10mm_reference_mean": 0.1028973171560199,
+        "same_trace_11mm_reference_max": 0.014059883957399821,
+        "same_trace_11mm_reference_mean": 0.008262226393000081,
+        "interpretation": "The exact-coordinate high-face inclusion solved an 11-node dielectric slab while analytic_slab_s described 10 mm; the Palace column is unchanged, so this was a producer board mismatch, not a port-extractor regression."
+      },
+      "old_summary_preserved_under": "provenance.historical_artifact_2026_06_16.summary",
+      "old_pairs_preserved_under": "provenance.historical_artifact_2026_06_16.pairs",
+      "pre_fix_stdout": "tests/fixtures/waveguide_broad_e5/cv11_current_main_pre_fix_3fa534d1_stdout.txt",
+      "post_fix_stdout": "tests/fixtures/waveguide_broad_e5/cv11_current_main_8206031d_stdout.txt",
+      "provider_logs": {
+        "369367260731": "docs/research_notes/vessl_logs/369367260731-failed.log",
+        "369367260733": "docs/research_notes/vessl_logs/369367260733-completed.log",
+        "369367260735": "docs/research_notes/vessl_logs/369367260735-failed-checkout.log",
+        "369367260736": "docs/research_notes/vessl_logs/369367260736-completed.log"
+      }
+    },
+    "historical_one_line_2026_06_16": "This artifact reproduces EXACTLY from a committed run of its own script -- git show b0322c1:tests/fixtures/waveguide_broad_e5/cv11_wr90_fresh_stdout.txt fed to its builder rebuilds every field. Its provenance is settled. It is however STALE: it is the 2026-06-16 number, and the current code produces 0.0186-0.0194 on the same comparison (~3.7x better). Quote it WITH ITS DATE, and do not read 0.0707 as today's rfx-vs-Palace agreement.",
+    "one_line": "Current artifact refreshed from VESSL 369367260736 on producer commit 8206031d after the cv11 dielectric slab was aligned to explicit ten-cell lattice bounds. Five Palace pairs pass; historical June, August and pre-fix records remain under provenance for delta review.",
+    "historical_provenance_status_2026_08_31": null
   },
-  "provenance_status": "STALE (2026-06-16 number on a live chain; provenance SETTLED). Corrected 2026-08-31 from the PROVENANCE-DISPUTED label written earlier the same day by commit 2d05212 -- see provenance.correction_2026_08_31.",
-  "r5_reference_note": "Meep res-3/4 gives a non-physical PEC-short |S11|=1.1985>1; rfx is 1.0000 (||S11|-1|<=4e-4) and Palace FEM agrees to <=4e-4, so the converged Palace reference is used for the |Gamma|->1 geometry. The disagreement was a reference defect, not an rfx residual (R4/R5).",
-  "schema": "rfx.waveguide_wr90_rectangular_broad_e4_comparison",
-  "schema_version": 1,
-  "source_cv11_stdout": "/tmp/cv11_fresh.stdout",
-  "status": "passed",
-  "summary": {
-    "failed_pair_count": 0,
-    "geometries": [
-      "empty",
-      "pec_short",
-      "slab"
-    ],
-    "geometry_count": 3,
-    "max_mag_abs_diff": 0.0707,
-    "mean_mag_abs_diff": 0.009434285714285718,
-    "pair_count": 5,
-    "passed_pair_count": 5
-  }
+  "setup": {
+    "commit": "8206031de9923dfaddc17f7060def466a7906915",
+    "vessl_run_id": "369367260736",
+    "image": "ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8",
+    "jax_version": "0.6.2",
+    "jax_backend": "cpu",
+    "jax_enable_x64": "0",
+    "dx_m": 0.001,
+    "num_periods_long": 200,
+    "cpml_layers": 43,
+    "reference_column": "Palace_r_h2"
+  },
+  "provenance_status": "REFRESHED 2026-09-13 (current-main producer 8206031d; VESSL 369367260736; five Palace pairs passed)"
 }

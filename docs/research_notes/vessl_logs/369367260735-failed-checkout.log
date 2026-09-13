@@ -1,0 +1,55 @@
+Organization: remilab
+Project: byungkwan
+Displayed last 52 lines of #369367260735.
+[12:27:12.224348] workload awaiting to start
+[12:27:12.224448] Workload status changed to pending
+[12:27:17.593037] Event Reason: FailedScheduling, Event Note: 0/14 nodes are available: pod has unbound immediate PersistentVolumeClaims. preemption: 0/14 nodes are available: 14 Preemption is not helpful for scheduling.
+[12:27:17.593037] Workload is in queue for scheduling. Please wait...
+[12:27:18.642320] VESSL Workload assigned successfully. Starting soon.
+[12:27:19.000000] Container image "quay.io/vessl-ai/kernels-toolbox:0.1.188" already present on machine
+[12:27:19.000000] Created container vops-init
+[12:27:19.000000] Started container vops-init
+[12:27:19.000000] Container image "ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8" already present on machine
+[12:27:19.001000] Container image "ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8" already present on machine
+[12:27:20.000000] Created container vops-sidecar
+[12:27:20.000000] Starting VESSL Workload...
+[12:27:20.000000] Started container vops-sidecar
+[12:27:20.000000] Started container run-exec
+[12:27:20.000000] Started container fluentbit
+[12:27:20.000000] Created container fluentbit
+[12:27:20.000000] Started container ttyd-sidecar
+[12:27:20.000000] Created container run-sidecar
+[12:27:20.692171] Installing VESSL CLI...
+[12:27:21.624508] workload reported alive as pod run-execution-4p6ya07fixfu-0
+[12:27:21.624608] Workload status changed to initializing
+[12:27:22.715923] + set +x
+[12:27:27.535084] vessl, version 0.1.199
+[12:27:27.752226] workload reported alive as pod run-execution-4p6ya07fixfu-0
+[12:27:27.752326] Workload status changed to running
+[12:27:27.854976] + mkdir -p /root
+[12:27:27.856684] + cd /root
+[12:27:27.857069] + set -u
+[12:27:27.857088] + COMMIT=8206031de9923dfaddc17f7060def466a7906915
+[12:27:27.857100] + REPO=/tmp/rfx-cv11-8206031de992
+[12:27:27.857114] + OUT=/root/workspace/byungkwan-workspace/research/rfx-cv11-refresh-8206031de992
+[12:27:27.857121] + rm -rf /tmp/rfx-cv11-8206031de992
+[12:27:27.858536] + mkdir -p /root/workspace/byungkwan-workspace/research/rfx-cv11-refresh-8206031de992
+[12:27:27.867376] + echo '=== cv11 refresh on exact origin/main ==='
+[12:27:27.867378] === cv11 refresh on exact origin/main ===
+[12:27:27.867397] + date -u
+[12:27:27.868477] Sun Sep 13 12:27:27 UTC 2026
+[12:27:27.868670] + git clone --quiet https://github.com/bk-squared/rfx.git /tmp/rfx-cv11-8206031de992
+[12:27:47.725059] + git -C /tmp/rfx-cv11-8206031de992 checkout --quiet 8206031de9923dfaddc17f7060def466a7906915
+[12:27:47.726972] fatal: reference is not a tree: 8206031de9923dfaddc17f7060def466a7906915
+[12:27:47.748516] workload reported done
+[12:27:47.748616] Workload status changed to stopping
+[12:27:51.883593] workload reported done
+[12:27:51.883693] Workload status changed to waitToBeKilled
+[12:27:53.000000] Stopping container vops-sidecar
+[12:27:53.000000] Stopping container run-sidecar
+[12:27:53.000000] Stopping container run-exec
+[12:27:53.000000] Terminating VESSL Workload...
+[12:27:53.000000] Stopping container ttyd-sidecar
+[12:27:53.000000] Stopping container fluentbit
+[12:27:53.719097] workload failed
+[12:27:53.719197] Workload status changed to failed

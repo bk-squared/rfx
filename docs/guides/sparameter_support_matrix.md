@@ -360,10 +360,12 @@ ports are required. `run()` provides only per-port diagnostics.
 - Analytic Airy checks cover WR-28, WR-62, WR-15, WR-340, and WR-10 dielectric
   slabs. With `normalize="flux"`, maximum per-band linear `|S11|` differences
   are 0.005--0.041 for the cited cases.
-- The Palace WR-90 comparison covers empty guide, PEC short, and dielectric slab
-  from 8.2--12.4 GHz. Across five compared terms, the maximum and mean
-  linear-magnitude differences are `0.0707` and `0.00943`.
-  > **STALE — 2026-06-16 numbers; quote them with their date (2026-08-31,
+- The refreshed Palace WR-90 comparison covers empty guide, PEC short, and
+  dielectric slab from 8.2--12.4 GHz. Across five compared terms, the current
+  main maximum and mean linear-magnitude differences are `0.0193` and
+  `0.00195`.
+  > **Historical record — 2026-06-16 numbers; quote them with their date
+  > (2026-08-31, issue #812 Phase 0).
   > issue #812 Phase 0).** They come from
   > `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json`,
   > which was committed at `b0322c1` (2026-06-16, PR #181) and never
@@ -376,7 +378,7 @@ ports are required. `run()` provides only per-port diagnostics.
   > rebuilds it field for field — 54 numeric fields, 52 bit-identical, 2
   > differing at ~1 ulp (`5.3e-18`, `1.7e-18`).
   >
-  > What is wrong with it is its **age**. The cv11 stdouts committed in that
+  > What was wrong with that record was its **age**. The cv11 stdouts committed in that
   > directory today are from 2026-08-28 (`20e5533`, #724/#730), and the same
   > builder on them rebuilds the slab `S11` `max_mag_abs_diff` to `0.0186` /
   > `0.0194` / `0.0193` against the artifact's `0.0707` (3.6x-3.8x better) and
@@ -387,7 +389,8 @@ ports are required. `run()` provides only per-port diagnostics.
   > entirely on the rfx leg, which is what a code change between June and
   > August looks like.
   >
-  > **Direction matters: this understates the family.** Every current run is
+  > **Direction matters: that historical record understated the family.** Every
+  > pre-fix/current run cited there was
   > *better*, and `0.0707` is inside the artifact's own `max_mag_abs_tol` of
   > `0.1`. No gate is at risk and no rectangular-waveguide physics verdict is
   > challenged. Two minor warts remain: `source_cv11_stdout` records a `/tmp`
@@ -399,11 +402,18 @@ ports are required. `run()` provides only per-port diagnostics.
   > PROVENANCE-DISPUTED and stated it "does not reproduce from any committed
   > run of its own producing script". That is withdrawn — it rebuilt only from
   > the working-tree revision of those stdouts, never from their content at the
-  > artifact's commit. Settling this needed `git show`, not an FDTD run. What
-  > remains open is only whether to refresh the artifact, and any refresh must
-  > *explain* the 3.7x delta rather than silently re-pin it. Full record: the
+  > artifact's commit. Settling this needed `git show`, not an FDTD run. The
+  > later refresh is recorded in `provenance.refresh_2026_09_13` and explains
+  > the June→August and August→current-main changes rather than silently
+  > re-pinning a value. Full record: the
   > artifact's own `provenance` key and
   > `docs/design_notes/20260831_cv11_broad_e4_artifact_provenance.md`.
+- The refreshed artifact is sourced from current-main VESSL run `369367260736`
+  (producer commit `8206031d`) and is reproduced by the committed stdout. Its
+  load-bearing slab S11 values are
+  `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].max_mag_abs_diff = 0.0193`
+  and
+  `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].mean_mag_abs_diff = 0.007767`.
 - The validation battery requires empty-guide `max |S11| < 0.02`, maximum column
   power `< 1.02`, symmetric-obstacle mean reciprocity error `< 0.01`, and a
   PEC-short result with `min |S11| >= 0.99` and `max |S11| < 1.03`.

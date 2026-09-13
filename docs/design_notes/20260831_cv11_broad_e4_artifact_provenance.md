@@ -257,12 +257,15 @@ artifact (§5).
 
 The four load-bearing quantities of §1.2 are now bound to their artifact keys and checked
 by `tests/contracts/test_evidence_numeric_provenance.py`, so a refresh of the artifact that does not
-also update this note fails the default fast lane:
+also update this note fails the default fast lane. The historical values are preserved under
+`provenance.historical_artifact_2026_06_16`:
 
-- this artifact's slab `S11` max: `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].max_mag_abs_diff = 0.0707`
-- this artifact's slab `S11` mean: `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].mean_mag_abs_diff = 0.043976`
-- the artifact's own tolerance, which `0.0707` sits inside: `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::max_mag_abs_tol = 0.1`
-- the August rebuild this artifact is stale against: `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::provenance.staleness_2026_08_31.summary_max_mag_abs_diff.rebuilt_from_main_baseline_stdout = 0.0186`
+- historical slab `S11` max: `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::provenance.historical_artifact_2026_06_16.pairs[3].max_mag_abs_diff = 0.0707`
+- historical slab `S11` mean: `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::provenance.historical_artifact_2026_06_16.pairs[3].mean_mag_abs_diff = 0.043976`
+- unchanged artifact tolerance: `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::max_mag_abs_tol = 0.1`
+- August pre-#931 rebuild: `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::provenance.staleness_2026_08_31.summary_max_mag_abs_diff.rebuilt_from_main_baseline_stdout = 0.0186`
+- refreshed current-main slab `S11` max: `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].max_mag_abs_diff = 0.0193`
+- refreshed current-main slab `S11` mean: `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].mean_mag_abs_diff = 0.007767`
 
 The §1.1 rebuild census is bound the same way: `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::provenance.settled_chain.rebuild_result_2026_08_31.numeric_fields = 54`
 numeric fields compared, `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::provenance.settled_chain.rebuild_result_2026_08_31.bit_identical = 52`
@@ -290,7 +293,9 @@ producer, not evidence of a port-extractor regression.
 The producer now constructs the slab faces as explicit lattice coordinates
 `95*DX_M` and `105*DX_M` and refuses a slab length that is not an integer number
 of `DX_M` cells. A build-only contract asserts ten occupied material nodes.
-The current-main pre-fix stdout and both terminal/provider logs are retained
-with their SHA-256 records; the post-fix VESSL stdout will be the only source
-used to rebuild the refreshed artifact. The `0.1`/`0.07` tolerances are not
-changed.
+The current-main pre-fix stdout and terminal/provider logs are retained with
+their SHA-256 records. The post-fix VESSL run `369367260736` on commit
+`8206031de9923dfaddc17f7060def466a7906915` is now the artifact source: its
+Palace slab `S11` max/mean are `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].max_mag_abs_diff = 0.0193`
+and `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].mean_mag_abs_diff = 0.007767`,
+inside the unchanged `0.1`/`0.07` tolerances.
