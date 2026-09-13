@@ -9,6 +9,13 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
+### Fixed — cv11 realized dielectric slab geometry (#812)
+
+- Align the analytic slab fixture's dielectric Box faces to explicit lattice
+  nodes, preventing a one-ulp high-face inclusion from solving an 11-node slab
+  while the reference describes 10 mm. Add a build-only ten-cell contract and
+  retain the VESSL failure evidence that identified the mismatch.
+
 ### Fixed — cv02 retained verdict exit contract (#946)
 
 - Add a source contract that requires the persisted `exit_code` and every

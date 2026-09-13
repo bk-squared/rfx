@@ -1,0 +1,44 @@
+name: rfx-cv11-current-main-refresh
+description: "Refresh the cv11 WR-90 broad-E4 producer from an exact origin/main checkout; retain stdout, exit code and provenance for artifact rebuilding."
+tags: [rfx, cv11, waveguide, broad-e4, stale-artifact]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: C.UTF-8
+  JAX_PLATFORMS: cpu
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -u
+  COMMIT=3fa534d17c35463fc5e0082bc9159eaec1ec5b37
+  REPO=/tmp/rfx-cv11-${COMMIT:0:12}
+  OUT=/root/workspace/byungkwan-workspace/research/rfx-cv11-refresh-${COMMIT:0:12}
+  rm -rf "$REPO"
+  mkdir -p "$OUT"
+  echo "=== cv11 refresh on exact origin/main ==="
+  date -u
+  git clone --quiet https://github.com/bk-squared/rfx.git "$REPO"
+  git -C "$REPO" checkout --quiet "$COMMIT"
+  git -C "$REPO" rev-parse HEAD | tee "$OUT/commit.txt"
+  git -C "$REPO" status --short | tee "$OUT/checkout_status.txt"
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  export RFX_REPO_ROOT="$REPO"
+  export PYTHONPATH="$REPO"
+  export MPLBACKEND=Agg
+  "$PY" -c "import jax, rfx, os; print('probe jax', jax.__version__, jax.default_backend(), 'rfx', getattr(rfx, '__version__', '?'), 'from', os.path.dirname(rfx.__file__))" | tee "$OUT/dependency_probe.txt"
+  set +e
+  timeout 7200 "$PY" -u "$REPO/validation/crossval/11_waveguide_port_wr90.py" > "$OUT/cv11.stdout" 2>&1
+  RC=$?
+  set -e
+  echo "$RC" | tee "$OUT/cv11.rc"
+  tail -n 120 "$OUT/cv11.stdout" || true
+  echo "CV11_REFRESH_COMMIT=$COMMIT RC=$RC OUT=$OUT"
+  exit "$RC"

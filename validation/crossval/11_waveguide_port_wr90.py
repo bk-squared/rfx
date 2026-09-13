@@ -437,6 +437,35 @@ def analytic_slab_s(freqs_hz: np.ndarray, eps_r: float, slab_length_m: float,
 # =============================================================================
 # Geometry-specific rfx runs
 # =============================================================================
+def _lattice_slab_bounds(slab_length_m: float) -> tuple[float, float]:
+    """Return node-aligned x bounds for the dielectric slab fixture.
+
+    Dielectric ``Box`` sampling remains node/half-open under the #931
+    ownership contract.  A decimal expression such as ``center + L/2`` can
+    land one float64 ulp above the intended node and include the hi node,
+    changing a nominal 10-cell slab into an 11-node material region.  The
+    analytic reference in this case is for the declared length, so this
+    fixture spells its lattice coordinates explicitly and refuses lengths
+    that cannot be represented by ``DX_M``.
+    """
+    n_cells = int(round(float(slab_length_m) / DX_M))
+    if n_cells <= 0 or not np.isclose(n_cells * DX_M, slab_length_m,
+                                      rtol=0.0, atol=1e-15):
+        raise ValueError(
+            "cv11 dielectric slab length must be an integer number of DX_M "
+            f"cells, got {slab_length_m!r} at DX_M={DX_M!r}"
+        )
+    center = 0.5 * (PORT_LEFT_X + PORT_RIGHT_X)
+    lo_cell = int(round((center - 0.5 * n_cells * DX_M) / DX_M))
+    lo = float(lo_cell * DX_M)
+    hi = float((lo_cell + n_cells) * DX_M)
+    if not np.isclose(hi - lo, slab_length_m, rtol=0.0, atol=1e-15):
+        raise AssertionError(
+            f"cv11 lattice slab bounds changed length: {lo!r}..{hi!r}"
+        )
+    return lo, hi
+
+
 def _build_sim(
     freqs: np.ndarray,
     *,
@@ -694,9 +723,9 @@ def run_rfx_pec_short() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 
 def run_rfx_slab(eps_r: float, slab_length_m: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    slab_center = 0.5 * (PORT_LEFT_X + PORT_RIGHT_X)
-    lo = (slab_center - 0.5 * slab_length_m, 0.0, 0.0)
-    hi = (slab_center + 0.5 * slab_length_m, DOMAIN_Y, DOMAIN_Z)
+    slab_lo_x, slab_hi_x = _lattice_slab_bounds(slab_length_m)
+    lo = (slab_lo_x, 0.0, 0.0)
+    hi = (slab_hi_x, DOMAIN_Y, DOMAIN_Z)
     sim = _build_sim(FREQS_HZ, obstacles=[(lo, hi, eps_r)])
     return _s_params(sim)
 
