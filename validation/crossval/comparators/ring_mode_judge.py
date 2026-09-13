@@ -377,9 +377,9 @@ def q_window(ref_freq: float, ref_Q: float, record_length: float
     The rfx-vs-Meep Q gap on cv02 does not shrink with ``T``, and WHAT
     produces it is UNRESOLVED -- including whether any of it is the two
     estimators rather than the two discretizations, since rfx's matrix pencil
-    and Meep's filter diagonalisation have different and unmodelled error
-    laws. This paragraph used to assert a staircased ring
-    boundary and subpixel treatment as the cause; #907 (2026-09-10) retracted
+    and Meep's filter diagonalisation have different and unmodelled error laws.
+    This paragraph used to assert a staircased ring boundary and subpixel
+    treatment as the cause; #907 (2026-09-10) retracted
     that as an overclaim, on a counterexample that moves Q while keeping all
     three frequencies inside the two solvers' observed mutual agreement, so
     the frequency agreement cannot pin the geometry and the log decomposition
