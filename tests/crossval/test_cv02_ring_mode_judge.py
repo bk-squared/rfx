@@ -292,9 +292,11 @@ def test_b2_scan_every_displacement_past_the_window_is_now_caught(
 
 
 def test_b3_wrong_q_on_the_gated_mode_passes_the_shipped_judge_and_fails() -> None:
-    """Mode 2's Q is five times too low -- a radiation-loss error a staircased
-    curved boundary can produce. The shipped judge gates no Q at all; the
-    corrected transformed interval rejects this low-Q side."""
+    """Mode 2's Q is five times too low -- the size of radiation-loss error a
+    curved boundary's discretization can produce. (Which discretization detail
+    produces the REAL cv02 gap is unresolved; this one is injected, so nothing
+    here rests on that.) The shipped judge gates no Q at all; the corrected
+    transformed interval rejects this low-Q side."""
     defect = [
         rmj.SolverMode(0.147213, 357.6 / 5.0),
         rmj.SolverMode(0.175298, 1864.1),
@@ -809,14 +811,25 @@ def test_the_staircasing_attribution_is_withdrawn_everywhere() -> None:
         "script comment": SCRIPT_PATH.read_text(encoding="utf-8"),
         "characterization test": Path(__file__).read_text(encoding="utf-8"),
     }
-    # Assembled from fragments on purpose: one of the surfaces checked is this
-    # file, so a literal would match its own assertion and never fail.
-    withdrawn = ("is a " + "discretization offset",
-                 "staircased " + "ring boundary")
+    # Markers are assembled from fragments on purpose: one of the surfaces
+    # checked is this file, so a literal would match its own assertion.
+    # And the check is a WINDOW, not an exact phrase: the attribution can be
+    # rewritten ("(a discretization offset) stays put") and a fixed-string
+    # search would miss it. Every mention has to sit next to a word that marks
+    # it as history.
+    markers = ("discretization " + "offset", "stairc" + "as")
+    history = ("retract", "withdraw", "UNRESOLVED", "used to", "overclaim",
+               "unresolved")
     for name, text in surfaces.items():
-        assert "UNRESOLVED" in text, name
-        for phrase in withdrawn:
-            assert phrase not in text, (name, phrase)
+        assert "UNRESOLVED" in text or "unresolved" in text, name
+        lines = text.splitlines()
+        for marker in markers:
+            for i, line in enumerate(lines):
+                if marker not in line:
+                    continue
+                window = "\n".join(lines[max(0, i - 6):i + 7])
+                assert any(h in window for h in history), (
+                    name, marker, i + 1, line.strip())
     # and the judge no longer prescribes the floor that was refused
     assert "encoding the expected" not in rmj.q_window.__doc__
     assert "certify the agreement" in rmj.q_window.__doc__
