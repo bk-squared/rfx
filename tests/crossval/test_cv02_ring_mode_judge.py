@@ -30,6 +30,13 @@ JUDGE_PATH = REPO_ROOT / "validation/crossval/comparators/ring_mode_judge.py"
 TRIALS_PATH = REPO_ROOT / "scripts/diagnostics/cv02_judge_tautology_trials.py"
 TRIALS_JSON = REPO_ROOT / "tests/fixtures/cv02_ring_judge/tautology_trials_200k.json"
 LADDER_JSON = REPO_ROOT / "tests/fixtures/cv02_ring_judge/harminv_decimation_ladder.json"
+
+#: Ceiling for the LIVE decimation re-measurement (relative Q error). Not a
+#: physics gate: it separates "orders of magnitude below the withdrawn claim"
+#: from "anywhere near it", loosely enough that a different LAPACK cannot red
+#: it. Committed ladder values are ~1e-12 to ~1e-13; the smallest figure the
+#: withdrawn claim asserted is 2.4e-3.
+LIVE_ERROR_CEILING = 1e-8
 SCRIPT_PATH = REPO_ROOT / "validation/crossval/02_ring_resonator.py"
 
 
@@ -747,6 +754,14 @@ def test_the_decimation_penalty_claim_does_not_reproduce() -> None:
 
     # (e) live, on the two rungs the claim named: the artifact is reproducible
     #     from today's rfx, not just a file somebody committed once.
+    #
+    #     The decimation PLAN is integer and deterministic, so it is compared
+    #     exactly. The Q error is not: it is a ~1e-12 residue of an SVD, and a
+    #     different LAPACK reds an exact comparison for no physical reason
+    #     (the cross-machine-float class from the PR #119 slow-suite fixes).
+    #     What the claim turns on is the ORDER, so that is what is asserted --
+    #     LIVE_ERROR_CEILING sits four decades above anything measured here and
+    #     three below the smallest figure the withdrawn claim asserted.
     dt = doc["signal"]["dt_s"]
     freq = doc["signal"]["freq_hz"]
     q_true = doc["signal"]["Q"]
@@ -766,9 +781,9 @@ def test_the_decimation_penalty_claim_does_not_reproduce() -> None:
         assert modes
         best = min(modes, key=lambda m: abs(m.freq - freq))
         measured = abs(best.Q - q_true) / q_true
-        assert measured == pytest.approx(stored["auto"]["relative_q_error"],
-                                         rel=1e-6, abs=1e-15)
-        assert measured * 1e6 < claimed[key]
+        assert measured < LIVE_ERROR_CEILING, (key, measured)
+        assert stored["auto"]["relative_q_error"] < LIVE_ERROR_CEILING
+        assert LIVE_ERROR_CEILING < claimed[key] / 1e3
 
 
 def test_q_window_docstring_withdraws_the_decimation_penalty_claim() -> None:
@@ -802,9 +817,9 @@ def test_the_staircasing_attribution_is_withdrawn_everywhere() -> None:
     geometry, and the log decomposition cannot settle it either.
 
     The retraction has to hold on all three surfaces that carried it, not only
-    in the docstring that was being rewritten at the time. The forbidden
-    wordings are not spelled out here -- see ``withdrawn`` below, which builds
-    them at runtime so this docstring does not trip its own check.
+    in the docstring that was being rewritten at the time. The markers are not
+    spelled out in this docstring: ``markers`` below builds them at runtime, so
+    the check cannot match its own source and pass for the wrong reason.
     """
     surfaces = {
         "q_window docstring": rmj.q_window.__doc__,
@@ -812,11 +827,12 @@ def test_the_staircasing_attribution_is_withdrawn_everywhere() -> None:
         "characterization test": Path(__file__).read_text(encoding="utf-8"),
     }
     # Markers are assembled from fragments on purpose: one of the surfaces
-    # checked is this file, so a literal would match its own assertion.
-    # And the check is a WINDOW, not an exact phrase: the attribution can be
-    # rewritten ("(a discretization offset) stays put") and a fixed-string
-    # search would miss it. Every mention has to sit next to a word that marks
-    # it as history.
+    # checked is this file, so a spelled-out literal would match its own
+    # assertion. The check is a WINDOW rather than an exact phrase because the
+    # first version of it was an exact phrase and a rephrasing of the
+    # attribution -- same claim, parenthesised, different verb -- walked
+    # straight past it. Every mention now has to sit next to a word marking it
+    # as history.
     markers = ("discretization " + "offset", "stairc" + "as")
     history = ("retract", "withdraw", "UNRESOLVED", "used to", "overclaim",
                "unresolved")
