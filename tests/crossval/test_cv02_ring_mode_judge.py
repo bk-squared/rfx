@@ -714,6 +714,46 @@ def test_the_persisted_ingredient_payload_round_trips_through_json() -> None:
     assert unbounded
     assert all(r["q_log_upper"] == math.inf for r in unbounded)
 
+CV02_RECORD = REPO_ROOT / "validation/crossval/_02_ring_resonator_results/crossval.json"
+
+
+def test_the_committed_record_reproduces_its_own_verdict_through_the_judge(
+) -> None:
+    """The #945 transform must not move a verdict that is already committed.
+
+    The retained record carries both mode lists, the band, the record length
+    and the gate table it was written with. Re-driving today's judge on those
+    stored inputs has to return the same five gates. This is the falsifier for
+    "widening the high-Q side changed a committed answer": if it ever fires,
+    the record is NOT to be regenerated to make it green -- the divergence is
+    the finding.
+    """
+    doc = json.loads(CV02_RECORD.read_text(encoding="utf-8"))
+    f_min, f_max = doc["rig"]["band_c_over_a"]
+    verdict = rmj.judge(
+        [rmj.ReferenceMode(m["freq_c_over_a"], m["Q"])
+         for m in doc["measured"]["meep_modes"]],
+        [rmj.SolverMode(m["freq_c_over_a"], m["Q"], m["amplitude"])
+         for m in doc["measured"]["rfx_modes"]],
+        doc["rig"]["record_length_meep_units"],
+        f_min=f_min, f_max=f_max,
+    )
+    assert verdict.gates == doc["gates"]
+    assert verdict.passed is doc["verdict"]["judge_passed"]
+    # per row, too -- a gate table can agree while a row's reason changed
+    stored = doc["measured"]["assignment"]
+    assert len(verdict.rows) == len(stored)
+    for row, was in zip(verdict.rows, stored):
+        assert row.ref_freq == pytest.approx(was["ref_freq"])
+        assert row.q_gated is was["q_gated"]
+        assert row.q_pass is was["q_pass"]
+        assert row.q_window == pytest.approx(was["q_window"])
+        if was["q_log_ratio"] is not None:
+            assert row.q_log_ratio == pytest.approx(was["q_log_ratio"])
+    # and the record really does exercise the s >= 1 branch this PR is about,
+    # so the check above is not vacuous
+    assert any(r.q_gated and r.q_window >= 1.0 for r in verdict.rows)
+
 def test_script_persists_the_ingredient_split_and_drops_the_old_claim(
 ) -> None:
     """Revert-proof, on the script: the retained artifact must carry the named
