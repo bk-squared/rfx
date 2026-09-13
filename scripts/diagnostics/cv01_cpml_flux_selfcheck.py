@@ -23,6 +23,7 @@ cpml_full        cpml      full padded plane (cv01 as committed) -- #813
 upml_interior    upml      ``size=(sy, dx)`` -> interior cells only
 cpml_interior    cpml      ``size=(sy, dx)`` -> interior cells only
 cpml_aperture    cpml      ``size=(2*w_wg, dx)`` about the guide centre
+upml_aperture    upml      ``size=(2*w_wg, dx)`` -- control for the row above
 ===============  ========  ===========================================
 
 ``size=None`` is cv01's registration today and keeps the legacy full padded
@@ -240,7 +241,15 @@ ARMS = (
     ("upml_interior", "upml", (sy, dx)),
     ("cpml_interior", "cpml", (sy, dx)),
     ("cpml_aperture", "cpml", (2 * w_wg, dx)),
+    # Added after the first five-arm run, and labelled as such in the
+    # artifact: without it the aperture comparison has no UPML control, so
+    # `cpml_aperture` alone could not say whether an aperture-sized plane
+    # conserves under BOTH boundaries or only under CPML. It changes no
+    # pre-declared gate and no pre-declared falsifier.
+    ("upml_aperture", "upml", (2 * w_wg, dx)),
 )
+
+ARMS_ADDED_POST_HOC = ("upml_aperture",)
 
 # The committed UPML run this driver's control must reproduce.
 COMMITTED_UPML_MEAN_SELF = 0.9891610388008335
@@ -269,6 +278,7 @@ def main() -> int:
         "n_steps_is_cv01_value": bool(args.n_steps == n_steps),
         "gate": "pass = mean_self in [0.95, 1.05] (cv01 G2, 01:356)",
         "rig_fidelity_check": rig,
+        "arms_added_after_the_first_run": list(ARMS_ADDED_POST_HOC),
         "committed_upml_reference": {
             "path": "validation/crossval/_01_waveguide_bend_results/crossval.json",
             "mean_self_smoothed_over_band": COMMITTED_UPML_MEAN_SELF,
