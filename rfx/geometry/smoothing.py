@@ -226,15 +226,17 @@ def _yee_coords(grid: Grid):
     the NU coordinates node-based the subtraction put every smoothed voxel half
     a cell off (review F1). Derive centres FROM nodes, never the reverse.
     """
-    nx, ny, nz = grid.shape
-    dx = grid.dx
-    pad_x, pad_y, pad_z = grid.axis_pads
+    # Keep the coordinate construction in the shared host-float64 node
+    # builder.  Constructing ``jnp.arange`` here made the Kottke SDF sample
+    # positions depend on ``jax_enable_x64`` (the subtraction and multiply
+    # rounded in different precisions), even though the binary rasterizer
+    # used the exact node spine.  The returned arrays are converted only
+    # after the exact node line has been formed; this is a constant geometry
+    # input, not a traced design variable.
+    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
 
-    x = (jnp.arange(nx) - pad_x) * dx
-    y = (jnp.arange(ny) - pad_y) * dx
-    z = (jnp.arange(nz) - pad_z) * dx
-
-    return x, y, z
+    coords = coords_from_uniform_grid(grid)
+    return tuple(jnp.asarray(axis) for axis in (coords.x, coords.y, coords.z))
 
 
 # ---------------------------------------------------------------------------

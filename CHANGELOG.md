@@ -9,6 +9,12 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
+### Fixed — shared coordinates for Kottke smoothing (#833)
+
+- Build uniform-grid smoothing coordinates from the same exact host-float64
+  node spine used by rasterization, removing a separate `jnp.arange` path
+  whose positions varied with the active JAX precision setting.
+
 ### Fixed — MSL geometry and historical Z0 provenance (#752)
 
 - Distinguish the validated conductor-plane gap from dielectric material
