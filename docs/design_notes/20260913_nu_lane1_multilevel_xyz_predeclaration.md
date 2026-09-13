@@ -540,10 +540,14 @@ Every JSON records `rfx_file` under `/Users/byungkwankim/Documents/rfx-nu-full/r
 and `git_sha ea208024` (the tests commit, the last before any FDTD).
 `git_dirty` is true in every measurement JSON: the flag is `git status
 --porcelain` at the START of the call, and the results JSON the previous
-sub-lane had just written was still untracked at that moment (the L1-0
-call's own flag is carried by the resumed z file; nothing under `rfx/`,
+sub-lane had just written was still untracked at that moment. The L1-0
+call's own provenance block was overwritten by the resumed L1-Z call
+(only its `started_utc 15:55:38Z` survives in `resumed_from`); the tree
+was clean at the `ea208024` commit ten seconds earlier (`git status`
+empty, 00:55:28 KST) and nothing ran in between. Nothing under `rfx/`,
 `validation/` code or `tests/` was modified between `ea208024` and the
-measurements — `git diff --stat` at `b4646528` on those paths is empty).
+measurements — `git diff --stat` on those paths across the lane's
+commits is empty for `rfx/` and the five reused files.
 Sub-lanes ran in the declared order (L1-0, L1-R, L1-Z, L1-X, pin bridge,
 L1-Y), one attempt each. FDTD runs executed: z 7 (L1-0) + 37 (L1-Z, a new
 process, so the S single and `B_1.96` ran again) = 44, x 42, y 42, L1-R 6,
