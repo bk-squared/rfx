@@ -7,10 +7,12 @@ Inventory taken at `5c6a9816` (2026-09-13). Every claim below is a file:line or 
 you can re-run; where a number is measured, the command and the machine are given with it.
 
 Line numbers into `.github/workflows/validation.yml` are read at `94b56afe`, this branch's
-own change to that file, not at `5c6a9816` — `94b56afe` inserted comment lines and pushed the
-later refs down. Everything else is at `5c6a9816`. Each `validation.yml` reference below also
-names or quotes what it points at (`numpy>=1.26,<2`, `scheduled_external_order`, the four
-`--ignore`s, the 95-min shard comment), so grep for that if the file moves again.
+own change to that file and the last commit here that touches it, not at `5c6a9816` —
+`94b56afe` inserted comment lines and pushed the later refs down by 9. Everything else is at
+`5c6a9816`. Each `validation.yml` reference below also names the job, step or literal it
+points at (`crossval-external`, the `Install Meep from conda-forge` step, `numpy>=1.26,<2`,
+`scheduled_external_order`, the four `--ignore`s, the 95-min shard comment), so grep for that
+anchor if the file moves again — that is what the line number is checkable against.
 
 ---
 
@@ -32,7 +34,7 @@ explicit `--ignore`:
 
 | lane | selection | the four `--ignore`s |
 |---|---|---|
-| `.github/workflows/pr-tests.yml` fast shards | default addopts (`pyproject.toml:78`) | `:129-132` |
+| `.github/workflows/pr-tests.yml` fast shards | default addopts (`pyproject.toml:78`) | `pr-tests.yml:129-132` |
 | `.github/workflows/validation.yml` slow shards | `-m "not gpu and not highmem"` | `:134-137` |
 | `.github/workflows/regen-durations.yml` fast / slow | default / `not gpu and not highmem` | `:33-36`, `:66-69` |
 | `scripts/vessl_validation_lane_a6000.yaml` weekly GPU | `-m gpu` (`:44`) and `-m "highmem and not gpu"` (`:40`) | `:37` (`$IGN`) |
@@ -124,10 +126,11 @@ That is the whole of #741's remaining item: the largest declared tier has no exe
 It is narrower than it sounds, because two other things already cover most of it.
 
 **8 of the 17 already run weekly.** `validation.yml`'s `crossval-external` job reads
-`scheduled_external_order` straight out of the manifest (`:270-295`) and runs 01, 02, 03, 04,
-09, 10, 22, 23 against a real conda-forge Meep (`:247`). Those are the Meep-dependent cases,
-and they run there *better* than a bare CPU runner could — with the reference present instead
-of ENV-SKIPped.
+`scheduled_external_order` straight out of the manifest (`:279-304`, the heredoc opening
+`if ! scheduled_output="$(python - <<'PY'`) and runs 01, 02, 03, 04, 09, 10, 22, 23 against a
+real conda-forge Meep (the `Install Meep from conda-forge` step, `:255-256`). Those are the
+Meep-dependent cases, and they run there *better* than a bare CPU runner could — with the
+reference present instead of ENV-SKIPped.
 
 **9 have a `cpu-runner` tier and no recurring executor**: 07, 11, 14, 15, 16, 17, 18, 20, 21.
 Of these, 11 has an on-demand VESSL lane (`scripts/vessl_crossval_external.yaml`), and 07,
@@ -199,10 +202,11 @@ than effort.
 So (b) means either a third image carrying jax-GPU **and** openEMS **and** a pymeep prefix, or
 a per-run conda solve on a lab GPU seat.
 
-**Minutes**: on top of the lane's current 7200 s highmem + 13800 s gpu ceilings (`:40`, `:44`),
-the four files' own runtime (7.6 min on CPU here, GPU time unmeasured) plus a pymeep conda
-solve every Monday unless a new image is built. It also holds one of the two lab GPU seats
-longer each week.
+**Minutes**: on top of the lane's current 7200 s highmem + 13800 s gpu ceilings
+(`vessl_validation_lane_a6000.yaml:40`, `:44` — the two `timeout N python -m pytest` lines,
+not the Dockerfile cited just above), the four files' own runtime (7.6 min on CPU here, GPU
+time unmeasured) plus a pymeep conda solve every Monday unless a new image is built. It also
+holds one of the two lab GPU seats longer each week.
 
 ### (c) On-demand VESSL only, with the coverage claim corrected
 
