@@ -11,6 +11,8 @@ features and PML clearance. It then reads the native XML's material/metal
 boxes back against the transferred record. The second arm moves both sheet
 planes by one node while leaving the laminate fixed; the resulting air gaps
 and shifted material bounds must survive the transfer and the mesh.
+The default CPU tests also replay the retained XML against a fresh rfx build,
+including the resistor, excitation and voltage-probe terminal bounds.
 
 Default native board, in mm:
 

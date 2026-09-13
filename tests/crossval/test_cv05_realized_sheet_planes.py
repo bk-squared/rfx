@@ -225,11 +225,30 @@ def test_external_ground_at_the_domain_floor_is_rejected(realized):
         module.assert_external_absorber_clearance(old, lines, pml_layers=8)
 
 
+def _check_native_xml(path, board):
+    import xml.etree.ElementTree as ET
+    tree = ET.parse(path)
+    for property_name, geometry_name in (
+        ("FR4", "substrate"), ("ground", "ground"), ("patch", "patch"),
+        ("port_resist_1", "feed"), ("port_excite_1", "feed"), ("port_ut_1", "feed"),
+    ):
+        boxes = tree.findall(f".//*[@Name='{property_name}']/Primitives/Box")
+        assert len(boxes) == 1
+        for xml_corner, corner in (("P1", "lo"), ("P2", "hi")):
+            point = boxes[0].find(xml_corner)
+            assert [float(point.attrib[axis]) for axis in "XYZ"] == pytest.approx(
+                board[geometry_name][corner], abs=1e-10, rel=0)
+
+
+def test_retained_native_board_and_feed_match_the_current_realization(realized):
+    path = REPO_ROOT / "docs/research_notes/issue959/native_369367260761/cv05-delta0.xml"
+    _check_native_xml(path, realized["external_board_mm"])
+
+
 @pytest.mark.parametrize("sheet_delta", [0, 1])
 def test_native_openems_keeps_the_transferred_board(tmp_path, realized, monkeypatch, sheet_delta):
     """Optional native constructor/XML check; no electromagnetic time stepping."""
     import numpy as np
-    import xml.etree.ElementTree as ET
 
     pytest.importorskip("CSXCAD")
     pytest.importorskip("openEMS")
@@ -260,14 +279,7 @@ def test_native_openems_keeps_the_transferred_board(tmp_path, realized, monkeypa
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"cv05-delta{sheet_delta}.xml"
     csx.Write2XML(str(path))
-    tree = ET.parse(path)
-    for property_name, geometry_name in (("FR4", "substrate"), ("ground", "ground"), ("patch", "patch")):
-        boxes = tree.findall(f".//*[@Name='{property_name}']/Primitives/Box")
-        assert len(boxes) == 1
-        for xml_corner, corner in (("P1", "lo"), ("P2", "hi")):
-            point = boxes[0].find(xml_corner)
-            assert [float(point.attrib[axis]) for axis in "XYZ"] == pytest.approx(
-                board[geometry_name][corner], abs=1e-10, rel=0)
+    _check_native_xml(path, board)
 
 
 def test_openems_receives_the_inspected_board_and_rejects_a_detached_feed(realized):
@@ -358,6 +370,9 @@ def test_sheet_plane_falsifier_moves_the_cavity(tmp_path):
     """
     record = _run(tmp_path, delta=1)
     _assert_mesh_contains_every_board_feature(record)
+    _check_native_xml(
+        REPO_ROOT / "docs/research_notes/issue959/native_369367260761/cv05-delta1.xml",
+        record["external_board_mm"])
     st = record["no_port"]
     assert st["substrate_cells_between"] == N_SUB + 2
     assert st["cavity_node_to_node_mm"] > H_SUB_MM + DZ_SUB_MM, (
