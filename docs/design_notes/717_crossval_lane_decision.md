@@ -9,7 +9,8 @@ you can re-run; where a number is measured, the command and the machine are give
 Line numbers into `.github/workflows/validation.yml` are read at `94b56afe`, this branch's
 own change to that file, not at `5c6a9816` — `94b56afe` inserted comment lines and pushed the
 later refs down. Everything else is at `5c6a9816`. Each `validation.yml` reference below also
-quotes the string it points at, so grep for the quoted text if the file moves again.
+names or quotes what it points at (`numpy>=1.26,<2`, `scheduled_external_order`, the four
+`--ignore`s, the 95-min shard comment), so grep for that if the file moves again.
 
 ---
 
