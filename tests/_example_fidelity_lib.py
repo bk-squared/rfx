@@ -594,6 +594,13 @@ CLASSIFICATION: dict[str, Entry] = {
         "E4 differentiable-stackup prototype (2026-09-07 lane, PR #962): "
         "MaterialArrays built by hand on make_nonuniform_grid and driven "
         "through run_nonuniform under jax.grad -- no Simulation"),
+    "validation/research/multiband_nu/adq_designvar.py": Entry(
+        "no_simulation",
+        "AD-Q design-variable autodiff witness (2026-09-13 lane): Taylor-"
+        "remainder order and FD error-bar judges over the E4 stackup map; "
+        "every solve goes through e4._run / w7._ad3_loss (MaterialArrays by "
+        "hand on make_nonuniform_grid + run_nonuniform under jax.grad) -- "
+        "no Simulation"),
     "validation/research/multiband_nu/w7_accuracy_ad.py": Entry(
         "builder_fused_with_solve",
         "W7 accuracy + autodiff witness (2026-09-07 lane): the A1 ladder and "
