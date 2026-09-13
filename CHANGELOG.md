@@ -42,6 +42,11 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
 
 ### Fixed — TMTT paper settling witnesses (#918)
 
+- Retain concrete probe traces, their settling verdict and the same-run NTFF
+  pattern or plane-extracted S21 for reported paper observations. Reporting
+  stays outside the differentiated objective; a probe registration alone is
+  no longer treated as retained truncation evidence.
+
 - Add passive Ex, Ez and Hy point records to the beam-steering and MSL-notch
   paper builders so NTFF and field-DFT results carry the shared ring-down
   witness without changing their solve or AD observables.

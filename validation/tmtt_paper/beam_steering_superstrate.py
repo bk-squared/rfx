@@ -79,6 +79,7 @@ from rfx.optimize import DesignRegion
 from rfx.farfield import compute_far_field
 
 from validation.crossval.comparators import realized_conductors as RC
+from validation.tmtt_paper._settling_record import retain_observation
 
 C0 = 299_792_458.0
 SMOKE = os.environ.get("SMOKE", "1") == "1"
@@ -245,7 +246,7 @@ def make_pattern_fn(sim, grid, plate, lo, hi, n_steps):
     si, sj, sk = lo
     ei, ej, ek = hi
 
-    def pattern(eps_slab):
+    def pattern(eps_slab, *, return_result=False):
         eps_override = base_eps_r.at[si:ei + 1, sj:ej + 1, sk:ek + 1].set(
             jnp.clip(jnp.asarray(eps_slab, dtype=jnp.float32), 1.0, 10.0))
         res = sim.forward(
@@ -257,7 +258,8 @@ def make_pattern_fn(sim, grid, plate, lo, hi, n_steps):
         ff = compute_far_field(res.ntff_data, res.ntff_box, res.grid, THETA, PHI)
         # Rescale by a large constant so the float32 backward stays in range.
         power = jnp.abs(ff.E_theta) ** 2 + jnp.abs(ff.E_phi) ** 2
-        return power[0] * 1e27       # (n_theta, n_phi), f-index 0
+        value = power[0] * 1e27       # (n_theta, n_phi), f-index 0
+        return (value, res) if return_result else value
 
     return pattern, plate["realized"]
 
@@ -301,6 +303,8 @@ def main():
           f"(dipole lambda/4 = {lam/4*1e3:.3f} mm above it)")
 
     pattern, _ = make_pattern_fn(sim, grid, plate, lo, hi, n_steps)
+    diagnostic_dir = os.environ.get(
+        "RFX_PAPER_DIAGNOSTICS_DIR", os.path.join(SCRIPT_DIR, "_beam_steering_results"))
 
     # Preflight once (surfaces NTFF/Huygens clearance + PEC-plate placement
     # issues -- and since #931 the plate is a declared sheet on the sim, so
@@ -326,7 +330,8 @@ def main():
 
     # --- Reference: bare plate-backed dipole (superstrate -> air) ---
     t0 = time.time()
-    p_bare = pattern(np.ones(design_shape, dtype=np.float32))
+    p_bare, result_bare = pattern(np.ones(design_shape, dtype=np.float32), return_result=True)
+    retain_observation(diagnostic_dir, "bare", result_bare, p_bare)
     d_bare = directivity_dbi(p_bare, I_T0, I_P0)
     print(f"[ref ] bare plate-backed dipole: D({THETA0_DEG:.0f} deg) "
           f"= {d_bare:+.2f} dBi  ({time.time()-t0:.0f}s/forward)")
@@ -338,7 +343,8 @@ def main():
     frac = np.clip((eps0 - 1.0) / 9.0, 1e-4, 1 - 1e-4)
     psi = jnp.asarray(np.log(frac / (1.0 - frac)), dtype=jnp.float32)
 
-    p_init = pattern(eps_of_psi(psi))
+    p_init, result_init = pattern(eps_of_psi(psi), return_result=True)
+    retain_observation(diagnostic_dir, "initial", result_init, p_init)
     d_init = directivity_dbi(p_init, I_T0, I_P0)
     print(f"[init] dielectric-wedge ramp 2->9: D({THETA0_DEG:.0f} deg) "
           f"= {d_init:+.2f} dBi")
@@ -359,7 +365,9 @@ def main():
 
     # --- Report the optimized pattern ---
     eps_opt = np.asarray(eps_of_psi(psi))
-    p_opt = np.asarray(pattern(eps_opt))
+    p_opt, result_opt = pattern(eps_opt, return_result=True)
+    diagnostic_opt = retain_observation(diagnostic_dir, "optimized", result_opt, p_opt)
+    p_opt = np.asarray(p_opt)
     d_map = 4.0 * np.pi * p_opt / np.sum(p_opt * np.asarray(_W))
     d_steer = 10.0 * np.log10(max(d_map[I_T0, I_P0], 1e-12))
     i_pk = np.unravel_index(np.argmax(d_map), d_map.shape)
@@ -370,7 +378,9 @@ def main():
           f"(bare {d_bare:+.2f} dBi)")
     print(f"[done] realized peak {d_pk:+.2f} dBi at theta={th_pk:.1f} deg; "
           f"broadside {d_bs:+.2f} dBi")
-    if th_pk > 12.0:
+    if diagnostic_opt["settling_verdict"] != "pass":
+        print("[done] ring-down witness did not pass; the pattern is a truncation-unguarded diagnostic")
+    elif th_pk > 12.0:
         print(f"[done] main lobe is OFF broadside (peak at {th_pk:.1f} deg) "
               f"-> beam steering demonstrated")
     else:

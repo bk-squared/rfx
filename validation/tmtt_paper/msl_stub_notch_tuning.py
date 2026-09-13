@@ -129,6 +129,7 @@ from rfx.probes.msl_wave_decomp import (
 )
 
 from validation.crossval.comparators import realized_conductors as RC
+from validation.tmtt_paper._settling_record import retain_observation
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 C0 = 2.998e8
@@ -528,6 +529,43 @@ def _multistart_adam(
 # ---------------------------------------------------------------------------
 # Cost + Adam
 # ---------------------------------------------------------------------------
+def make_s21_fn(sim, grid, trace_y_hi, d_set, p_set, f_target_arr, *,
+                n_steps, checkpoint_segments):
+    """The paper's plane-extracted S21, optionally with its concrete field record."""
+    def s21_at_f_target(L_stub, *, return_result=False):
+        occ = build_stub_occ(grid, trace_y_hi, L_stub)
+        fr = sim.forward(
+            pec_occupancy_override=occ,
+            n_steps=n_steps,
+            checkpoint_segments=checkpoint_segments,
+            skip_preflight=True,
+        )
+        # Assemble plane-integrated V phasors and I phasor for each port,
+        # then call the canonical N-probe least-squares extractor.
+        freqs_arr = f_target_arr
+        beta0 = (2.0 * jnp.pi * freqs_arr * jnp.sqrt(jnp.asarray(EPS_EFF, dtype=jnp.float32))
+                 / jnp.asarray(C0, dtype=jnp.float32))
+        x_probes = jnp.array([0.0, d_set.delta, 2.0 * d_set.delta], dtype=jnp.float32)
+        v_d = jnp.stack([
+            _v_from_plane(fr, d_set.ez1_name, d_set),
+            _v_from_plane(fr, d_set.ez2_name, d_set),
+            _v_from_plane(fr, d_set.ez3_name, d_set),
+        ], axis=-1)  # (n_freqs, 3)
+        i1_d = _i_from_plane(fr, d_set.hy_name, d_set)
+        v_p = jnp.stack([
+            _v_from_plane(fr, p_set.ez1_name, p_set),
+            _v_from_plane(fr, p_set.ez2_name, p_set),
+            _v_from_plane(fr, p_set.ez3_name, p_set),
+        ], axis=-1)  # (n_freqs, 3)
+        i1_p = _i_from_plane(fr, p_set.hy_name, p_set)
+        res_d = extract_msl_nprobe(v_d, x_probes, i1_d, beta0)
+        res_p = extract_msl_nprobe(v_p, x_probes, i1_p, beta0)
+        # S21 = alpha_passive / alpha_driven (forward wave amplitude ratio)
+        s21 = res_p["alpha"] / (res_d["alpha"] + 1e-30)
+        return (s21[0], fr) if return_result else s21[0]
+    return s21_at_f_target
+
+
 def main() -> int:
     # Defaults sized for ~12-15 min wall on this dev box.  The cost
     # landscape over L_stub ∈ [4, 12] mm is MULTIMODAL (in-band λ/4
@@ -586,37 +624,9 @@ def main() -> int:
           f"{n_steps_use // K_segments} steps each); "
           f"raw={n_steps_raw} → rounded up to be divisible by K_segments")
 
-    def s21_at_f_target(L_stub):
-        occ = build_stub_occ(grid, trace_y_hi, L_stub)
-        fr = sim.forward(
-            pec_occupancy_override=occ,
-            n_steps=n_steps_use,
-            checkpoint_segments=K_segments,
-            skip_preflight=True,
-        )
-        # Assemble plane-integrated V phasors and I phasor for each port,
-        # then call the canonical N-probe least-squares extractor.
-        freqs_arr = f_target_arr
-        beta0 = (2.0 * jnp.pi * freqs_arr * jnp.sqrt(jnp.asarray(EPS_EFF, dtype=jnp.float32))
-                 / jnp.asarray(C0, dtype=jnp.float32))
-        x_probes = jnp.array([0.0, d_set.delta, 2.0 * d_set.delta], dtype=jnp.float32)
-        v_d = jnp.stack([
-            _v_from_plane(fr, d_set.ez1_name, d_set),
-            _v_from_plane(fr, d_set.ez2_name, d_set),
-            _v_from_plane(fr, d_set.ez3_name, d_set),
-        ], axis=-1)  # (n_freqs, 3)
-        i1_d = _i_from_plane(fr, d_set.hy_name, d_set)
-        v_p = jnp.stack([
-            _v_from_plane(fr, p_set.ez1_name, p_set),
-            _v_from_plane(fr, p_set.ez2_name, p_set),
-            _v_from_plane(fr, p_set.ez3_name, p_set),
-        ], axis=-1)  # (n_freqs, 3)
-        i1_p = _i_from_plane(fr, p_set.hy_name, p_set)
-        res_d = extract_msl_nprobe(v_d, x_probes, i1_d, beta0)
-        res_p = extract_msl_nprobe(v_p, x_probes, i1_p, beta0)
-        # S21 = alpha_passive / alpha_driven (forward wave amplitude ratio)
-        s21 = res_p["alpha"] / (res_d["alpha"] + 1e-30)
-        return s21[0]
+    s21_at_f_target = make_s21_fn(
+        sim, grid, trace_y_hi, d_set, p_set, f_target_arr,
+        n_steps=n_steps_use, checkpoint_segments=K_segments)
 
     def cost_from_latent(latent):
         L_stub = L_MIN + (L_MAX - L_MIN) * jax.nn.sigmoid(latent)
@@ -703,6 +713,14 @@ def main() -> int:
     i_min = int(np.argmin(scan_costs))
     L_ref = float(L_scan[i_min])
     print(f"\nScan done in {time.time()-t0:.1f}s  →  L_ref={L_ref*1e3:.3f} mm")
+
+    # Score a concrete forward at the reported optimum; host diagnostics stay
+    # outside the optimization's traced objective.
+    s21_final, result_final = s21_at_f_target(jnp.asarray(L_opt), return_result=True)
+    diagnostic_dir = os.environ.get(
+        "RFX_PAPER_DIAGNOSTICS_DIR", os.path.join(SCRIPT_DIR, "_msl_stub_results"))
+    diagnostic_final = retain_observation(
+        diagnostic_dir, "optimized_forward", result_final, s21_final)
 
     # ---- Cross-solver gate: imperative compute_msl_s_matrix at L_opt ----
     print("\n" + "=" * 70)
@@ -822,6 +840,8 @@ def main() -> int:
     print(f"  G4  L_opt strictly interior:             "
           f"{L_opt*1e3:.3f} mm  ({'PASS' if g4 else 'FAIL'})")
     all_ok = g1 and g2 and g3 and g4
+    print(f"  Forward ring-down witness: {diagnostic_final['settling_verdict']} "
+          "(reported separately from G1-G4)")
     print(f"\n  Overall: {'PASS' if all_ok else 'FAIL'}")
     # Informational diagnostics — NOT gates (flat-null / mesh-staircase
     # properties, not AD-pipeline quality; see the G2 note above).
