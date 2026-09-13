@@ -370,13 +370,25 @@ def aux_echo_arrival(*, n_aux: int, src_idx: int, aux_n_cpml: int,
 
 
 def slab_aux_echo(nx_interior: int, dt: float, *, dx_div: int = 1,
-                  n_steps: int | None = None) -> dict:
+                  n_steps: int | None = None,
+                  aux_n_cpml: int | None = None,
+                  aux_n_margin: int | None = None,
+                  aux_src_offset: int | None = None,
+                  reflector_depth_cells: float | None = None) -> dict:
     """``aux_echo_arrival`` at the slab family's own rig (cv04, cv22, cv23).
 
     The auxiliary layout is ``rfx/sources/tfsf.py``'s:
     ``n_1d = 2 n_cpml + 2 margin + (x_hi - x_lo + 2)``, source at
     ``n_cpml + 3``, ``i0`` at ``n_cpml + margin`` mapping to the 3-D ``x_lo``;
     its constants do NOT scale with ``dx_div``.
+
+    The four ``aux_*`` / ``reflector_depth_cells`` arguments default to the
+    SHIPPED layout and exist for one purpose: replaying a committed artifact
+    against the layout THAT artifact declares, so an artifact produced before
+    #888 deepened the absorber can still be checked for internal arithmetic
+    consistency instead of only reported as different. A producer must never
+    pass them -- writing a record under a layout the source does not have is
+    exactly the drift the witness is here to prevent.
 
     The speed is ``v_cells = c dt/dx``, the Courant cell speed
     ``derive_record_length`` already uses. On the 1-D Yee lattice that is the
@@ -385,29 +397,34 @@ def slab_aux_echo(nx_interior: int, dt: float, *, dx_div: int = 1,
     earlier than this says. ``echo_arrival_steps`` is the earlier of the two
     probes: the record is bounded by whichever is contaminated first.
     """
+    n_cpml = AUX_N_CPML_1D if aux_n_cpml is None else int(aux_n_cpml)
+    margin = AUX_N_MARGIN_1D if aux_n_margin is None else int(aux_n_margin)
+    src_off = AUX_SRC_OFFSET_1D if aux_src_offset is None else int(aux_src_offset)
+    depth = (AUX_REFLECTOR_DEPTH_CELLS if reflector_depth_cells is None
+             else float(reflector_depth_cells))
     K = int(dx_div)
     dx = DX_M / K
     cells = rig_cells(nx_interior, K)
     x_lo = cells["x_lo"]
     x_hi = cells["nx"] - x_lo - 1          # rfx/sources/tfsf.py: x_hi = nx - offset - 1
-    n_1d = 2 * AUX_N_CPML_1D + 2 * AUX_N_MARGIN_1D + (x_hi - x_lo + 2)
-    src_idx = AUX_N_CPML_1D + AUX_SRC_OFFSET_1D
+    n_1d = 2 * n_cpml + 2 * margin + (x_hi - x_lo + 2)
+    src_idx = n_cpml + src_off
     v_cells = C0 * float(dt) / dx
     tau = 1.0 / (math.pi * TFSF_F0_HZ * TFSF_BW)
     lead = SRC_T0_OVER_TAU * tau / float(dt)
     probes = {}
     for name, px in (("refl", cells["probe_refl"]), ("trans", cells["probe_trans"])):
         probes[name] = aux_echo_arrival(
-            n_aux=n_1d, src_idx=src_idx, aux_n_cpml=AUX_N_CPML_1D,
-            reflector_depth_cells=AUX_REFLECTOR_DEPTH_CELLS,
-            probe_aux_index=AUX_I0_1D + (px - x_lo),
+            n_aux=n_1d, src_idx=src_idx, aux_n_cpml=n_cpml,
+            reflector_depth_cells=depth,
+            probe_aux_index=(n_cpml + margin) + (px - x_lo),
             v_cells=v_cells, lead_steps=lead)
     first = min(probes, key=lambda k: probes[k]["arrival_steps"])
     out = {
         "schema": AUX_ECHO_SCHEMA, "issue": 888,
         "nx_interior": int(nx_interior) * K, "dx_div": K,
-        "aux_n_1d": int(n_1d), "aux_n_cpml": AUX_N_CPML_1D, "aux_src_idx": int(src_idx),
-        "aux_reflector_depth_cells": AUX_REFLECTOR_DEPTH_CELLS,
+        "aux_n_1d": int(n_1d), "aux_n_cpml": n_cpml, "aux_src_idx": int(src_idx),
+        "aux_reflector_depth_cells": depth,
         "aux_reflector_index": probes["trans"]["reflector_index"],
         "v_cells": float(v_cells), "pulse_lead_steps": float(lead),
         "echo_arrival_probe": first,
