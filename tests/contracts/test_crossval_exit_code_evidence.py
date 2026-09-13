@@ -24,9 +24,15 @@ Two halves:
   test is the #967 defect that PR #977 closed, and this test must not
   reintroduce it under a different name.
 * STATIC -- the mechanism only holds if every writer actually routes through
-  it. No crossval script may put ``"exit_code"`` into a document by hand, and
+  it. No crossval script may put ``"exit_code"`` into a document by hand,
   every script that calls ``write_record`` must leave through ``sys.exit``,
-  which is the only exit the finalizer can observe.
+  which is the only exit the finalizer can observe, and the set of files that
+  call ``write_record`` must be exactly the set of case scripts -- a shared
+  helper doing the write on a case's behalf persists the record unarmed.
+
+The two boundaries the mechanism cannot cover -- ``os._exit`` skipping
+``atexit``, and a ``sys.exit`` the script catches itself -- are asserted here
+rather than left to the reader, so the guarantee is not read wider than it is.
 """
 
 from __future__ import annotations
@@ -113,7 +119,11 @@ def test_late_exit_path_rewrites_the_persisted_exit_code(tmp_path: Path) -> None
     # see what the gate stage decided and what the process then did.
     assert doc["verdict"]["exit_code_declared"] == 0
     assert doc["verdict"]["summary_declared"] == "SUMMARY FOR EXIT 0"
-    assert doc["verdict"]["summary"] == "SUMMARY FOR EXIT 2"
+    # NOT "SUMMARY FOR EXIT 2": the case's own code->text mapping spells the
+    # verdicts its gate stage reached, and 2 is not one of them here. Running
+    # it on the new code would state a verdict the run never produced.
+    assert "SUMMARY FOR EXIT" not in doc["verdict"]["summary"]
+    assert doc["verdict"]["summary"].startswith("EXIT 2 --")
     reconciliation = doc["verdict"]["exit_code_reconciliation"]
     assert reconciliation["declared"] == 0
     assert reconciliation["actual"] == 2
@@ -121,6 +131,86 @@ def test_late_exit_path_rewrites_the_persisted_exit_code(tmp_path: Path) -> None
     # Nothing else in the record is touched.
     assert doc["measured"] == {"modes": [1.0, 2.0]}
     assert doc["verdict"]["judge_passed"] is True
+
+
+# A gate stage's own code->text mapping, verbatim in shape from cv01 and cv02
+# (01_waveguide_bend.py:_summary, 02_ring_resonator.py:_summary): every exit
+# code it knows about gets a sentence describing a verdict THAT STAGE reached.
+GATE_MAPPING_FIXTURE = '''\
+import sys
+
+sys.path.insert(0, {crossval_dir!r})
+import _exit_evidence
+
+
+def _summary(code):
+    if code == 0:
+        return "ALL CHECKS PASSED"
+    if code == 2:
+        return "[SKIP] Meep reference unavailable - crossval inconclusive (exit 2)"
+    return "SOME CHECKS FAILED"
+
+
+doc = {{"verdict": {{"all_gates_ok": {all_gates_ok}, "meep_present": {meep_present}}}}}
+rc = _exit_evidence.write_record({record!r}, doc, exit_code={declared},
+                                 summary=_summary)
+print("declared", rc)
+sys.exit({late})
+'''
+
+
+def _run_gate_mapping(tmp_path: Path, declared: int, late: int,
+                      all_gates_ok: bool, meep_present: bool):
+    record = tmp_path / "crossval.json"
+    script = tmp_path / "cv_gate_mapping.py"
+    script.write_text(GATE_MAPPING_FIXTURE.format(
+        crossval_dir=str(CROSSVAL_DIR), record=str(record), declared=declared,
+        late=late, all_gates_ok=all_gates_ok, meep_present=meep_present))
+    proc = subprocess.run([sys.executable, str(script)], cwd=str(tmp_path),
+                          capture_output=True, text=True)
+    assert record.is_file(), proc.stdout + proc.stderr
+    return proc.returncode, json.loads(record.read_text())
+
+
+def test_an_amended_record_never_manufactures_a_pass_headline(
+        tmp_path: Path) -> None:
+    """cv01's shape: declared 1 with gates failed, late exit 0.
+
+    Regenerating the summary from the case's own mapping would put
+    "ALL CHECKS PASSED" next to ``all_gates_ok: false`` in the same document.
+    The amended record states what happened instead, and keeps the gate
+    stage's own sentence under ``summary_declared``.
+    """
+    returncode, doc = _run_gate_mapping(
+        tmp_path, declared=1, late=0, all_gates_ok=False, meep_present=True)
+
+    assert returncode == 0
+    verdict = doc["verdict"]
+    assert verdict["exit_code"] == 0
+    assert verdict["all_gates_ok"] is False
+    assert "ALL CHECKS PASSED" not in verdict["summary"]
+    assert verdict["summary_declared"] == "SOME CHECKS FAILED"
+    assert verdict["summary"].startswith("EXIT 0 --")
+
+
+def test_an_amended_record_never_manufactures_a_skip_reason(
+        tmp_path: Path) -> None:
+    """cv02's shape, the #907 one: declared 0 with Meep present, late exit 2.
+
+    The case's mapping spells exit 2 as "Meep reference unavailable", which is
+    a reason, not a status -- and it is false here, in the same document that
+    records ``meep_present: true``.
+    """
+    returncode, doc = _run_gate_mapping(
+        tmp_path, declared=0, late=2, all_gates_ok=True, meep_present=True)
+
+    assert returncode == 2
+    verdict = doc["verdict"]
+    assert verdict["exit_code"] == 2
+    assert verdict["meep_present"] is True
+    assert "Meep reference unavailable" not in verdict["summary"]
+    assert verdict["summary_declared"] == "ALL CHECKS PASSED"
+    assert verdict["summary"].startswith("EXIT 2 --")
 
 
 def test_a_failing_optional_stage_is_not_reported_as_a_pass(tmp_path: Path) -> None:
@@ -204,6 +294,105 @@ def test_os_underscore_exit_is_the_documented_uncoverable_path(
     assert returncode == 3
     assert doc["verdict"]["exit_code"] == 0  # the boundary, stated
     assert "exit_code_reconciliation" not in doc["verdict"]
+
+
+# A sys.exit the script catches itself, after which it finishes normally.
+SWALLOWED_EXIT_FIXTURE = '''\
+import sys
+
+sys.path.insert(0, {crossval_dir!r})
+import _exit_evidence
+
+doc = {{"verdict": {{"judge_passed": True}}}}
+rc = _exit_evidence.write_record({record!r}, doc, exit_code=0,
+                                 summary="DECLARED EXIT 0")
+try:
+    sys.exit(2)
+except SystemExit:
+    pass
+print("the exit was swallowed; this process returns 0")
+'''
+
+
+def test_a_swallowed_sys_exit_is_the_documented_last_call_boundary(
+        tmp_path: Path) -> None:
+    """The wrapper records the last ``sys.exit`` CALL, not the exit status.
+
+    A ``sys.exit`` that something catches and does not re-raise still counts,
+    so this process returns 0 while its record is amended to 2. The five
+    migrated cases cannot reach this -- each one's last act is
+    ``sys.exit(rc)``, and last-call-wins is then the right reading -- but the
+    helper is offered as the road for future cases, so the boundary is pinned
+    here the same way ``os._exit`` is, instead of living only in prose.
+    """
+    record = tmp_path / "crossval.json"
+    script = tmp_path / "cv_swallowed.py"
+    script.write_text(SWALLOWED_EXIT_FIXTURE.format(
+        crossval_dir=str(CROSSVAL_DIR), record=str(record)))
+
+    proc = subprocess.run([sys.executable, str(script)], cwd=str(tmp_path),
+                          capture_output=True, text=True)
+    doc = json.loads(record.read_text())
+
+    assert proc.returncode == 0
+    assert doc["verdict"]["exit_code"] == 2  # the boundary, stated
+    assert doc["verdict"]["exit_code_declared"] == 0
+    assert "EXIT-CODE RECONCILED" in proc.stderr
+
+
+# A case that hands its write to a module it imports. The record is persisted
+# UNARMED -- the pre-#946 state. The notice on stderr is what keeps that from
+# being silent.
+WRITE_THROUGH_HELPER_MODULE = '''\
+import sys
+
+sys.path.insert(0, {crossval_dir!r})
+import _exit_evidence
+
+
+def persist(record, code):
+    return _exit_evidence.write_record(
+        record, {{"verdict": {{"judge_passed": True}}}}, exit_code=code,
+        summary="DECLARED EXIT %d" % code)
+'''
+
+CASE_WRITING_THROUGH_A_HELPER = '''\
+import sys
+
+sys.path.insert(0, {tmp!r})
+import case_write_helper
+
+rc = case_write_helper.persist({record!r}, 0)
+print("declared", rc)
+sys.exit(2)
+'''
+
+
+def test_a_record_persisted_unarmed_says_so_on_stderr(tmp_path: Path) -> None:
+    """Unarmed is the pre-#946 state; it must not also be the silent one.
+
+    ``write_record`` arms only when its caller is the program, so a case that
+    routes the write through a module it imports gets a record nothing will
+    amend. One line on stderr, naming the module that called from outside
+    ``__main__``; the static half below keeps that shape out of
+    ``validation/crossval/`` in the first place.
+    """
+    (tmp_path / "case_write_helper.py").write_text(
+        WRITE_THROUGH_HELPER_MODULE.format(crossval_dir=str(CROSSVAL_DIR)))
+    record = tmp_path / "crossval.json"
+    script = tmp_path / "cv_case.py"
+    script.write_text(CASE_WRITING_THROUGH_A_HELPER.format(
+        tmp=str(tmp_path), record=str(record)))
+
+    proc = subprocess.run([sys.executable, str(script)], cwd=str(tmp_path),
+                          capture_output=True, text=True)
+    doc = json.loads(record.read_text())
+
+    assert proc.returncode == 2
+    assert doc["verdict"]["exit_code"] == 0          # unarmed: never amended
+    assert "exit_code_reconciliation" not in doc["verdict"]
+    assert "EXIT-CODE EVIDENCE UNARMED" in proc.stderr
+    assert "case_write_helper" in proc.stderr
 
 
 CV23 = CROSSVAL_DIR / "23_lossy_slab_fresnel.py"
@@ -296,6 +485,9 @@ def test_a_host_process_exit_status_never_stamps_an_embedded_case(
     assert doc["verdict"]["exit_code"] == 0  # what the case itself returned
     assert "exit_code_reconciliation" not in doc["verdict"]
     assert "EXIT-CODE RECONCILED" not in proc.stderr
+    # ...and the host is told the record is unarmed, so "nothing happened"
+    # and "the mechanism is off here" are not the same silence.
+    assert "EXIT-CODE EVIDENCE UNARMED" in proc.stderr
 
 
 def _load_helper():
@@ -404,6 +596,25 @@ def test_every_exit_code_writer_is_migrated() -> None:
         "_exit_evidence.write_record: %s" % sorted(MIGRATED_WRITERS - names))
 
 
+def test_write_record_is_only_called_from_the_case_scripts_themselves() -> None:
+    """No shared helper may do a case's write for it.
+
+    ``write_record`` arms the finalizer only when its caller is running as the
+    program, so a case that routes its write through a module it imports gets
+    a record nothing will amend -- the pre-#946 state, and the call site is
+    then in a file the per-file scan above would happily accept. Keeping this
+    set EXACT is the static half of that guard (the runtime half is the
+    ``EXIT-CODE EVIDENCE UNARMED`` notice). A new case joins by being added to
+    MIGRATED_WRITERS; a helper cannot join without someone reading this.
+    """
+    callers = {rel for rel, tree in _crossval_sources()
+               if _calls_write_record(tree)}
+    names = {Path(rel).name for rel in callers}
+    assert names == set(MIGRATED_WRITERS), (
+        "files under validation/crossval/ calling write_record that are not "
+        "declared case writers: %s" % sorted(names - set(MIGRATED_WRITERS)))
+
+
 def test_writers_leave_through_sys_exit_only() -> None:
     """The finalizer sees ``sys.exit`` and uncaught exceptions, nothing else.
 
@@ -440,6 +651,58 @@ def test_writers_leave_through_sys_exit_only() -> None:
     assert problems == {}, (
         "these scripts persist an exit code but can leave by a door the "
         "finalizer cannot see: %s" % problems)
+
+
+CV24_RESULTS = CROSSVAL_DIR / "_24_nu_cavity_results"
+
+
+def test_reserved_verdict_slots_keep_the_committed_key_order(
+        tmp_path: Path) -> None:
+    """cv24's records carry exit_code/summary BEFORE the rest of the block.
+
+    ``write_record`` fills a key in place when it exists and appends it
+    otherwise, so the position is the caller's. cv01/cv02 let it append,
+    matching their records; cv24 reserves the slots first. Getting this wrong
+    costs no gate -- and produces a re-run diff nobody can explain, which is
+    the evidence problem this whole file is about.
+    """
+    helper = _load_helper()
+    record = tmp_path / "rfx.json"
+    doc = {"arms": {}, "verdict": helper.reserve_verdict(arms=["uniform"])}
+    try:
+        helper.write_record(str(record), doc, exit_code=0,
+                            summary="SMOKE OK", arm=False)
+    finally:
+        helper._reset_for_tests()
+    produced = list(json.loads(record.read_text())["verdict"])
+
+    assert produced == ["exit_code", "summary", "arms"]
+    committed = sorted(CV24_RESULTS.glob("*.json"))
+    assert committed, "no committed cv24 record to compare the order against"
+    for path in committed:
+        assert list(json.loads(path.read_text())["verdict"]) == produced, path
+
+
+def test_the_case_that_commits_that_order_is_the_one_that_reserves() -> None:
+    """cv24 must still go through ``reserve_verdict``.
+
+    The test above pins what the helper produces; this pins that cv24 asks
+    for it. Without the reservation cv24 emits arms/exit_code/summary and
+    every committed record under _24_nu_cavity_results/ reads
+    exit_code/summary/arms.
+    """
+    tree = ast.parse((CROSSVAL_DIR / "24_nu_rect_cavity_pozar.py").read_text())
+    reserved = [
+        node.lineno for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and ((isinstance(node.func, ast.Attribute)
+              and node.func.attr == "reserve_verdict")
+             or (isinstance(node.func, ast.Name)
+                 and node.func.id == "reserve_verdict"))
+    ]
+    assert reserved, (
+        "24_nu_rect_cavity_pozar.py no longer reserves its verdict slots, so "
+        "a re-run reorders the block against its committed records")
 
 
 def test_the_helper_is_not_itself_a_crossval_case() -> None:

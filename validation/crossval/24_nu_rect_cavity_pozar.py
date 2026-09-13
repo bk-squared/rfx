@@ -408,7 +408,10 @@ def main(argv=None) -> int:
     if a.falsifier and not a.smoke:
         ok_decl = doc["evaluations"][a.falsifier]["falsifier"]["as_declared"]
         summary += f"  [falsifier {a.falsifier}: {'as pre-declared' if (rc == 1 and ok_decl) else 'NOT as declared'}]"
-    doc["verdict"] = {"arms": arms}
+    # reserve_verdict keeps exit_code and summary AHEAD of arms, which is the
+    # key order every committed record under _24_nu_cavity_results/ already
+    # has; write_record fills the reserved slots in place (#946).
+    doc["verdict"] = _exit_evidence.reserve_verdict(arms=arms)
     out_path = os.path.join(out_dir, f"rfx__{a.tag}.json" if a.tag else G.rfx_json_name(a.falsifier, a.arm and a.arm.replace(",", "_")))
     # write_record puts exit_code and summary INTO the verdict block and arms
     # the finalizer that amends them if this process ends with a different

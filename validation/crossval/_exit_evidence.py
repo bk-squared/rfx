@@ -26,10 +26,21 @@ re-run reproduces them bit-identically.
 What the finalizer can see:
 
 ===========================  ==================================================
-``sys.exit(code)``           a wrapper installed on ``sys.exit`` records it
+``sys.exit(code)``           a wrapper on ``sys.exit`` records the CALL
 uncaught exception           a ``sys.excepthook`` wrapper records status 1
 normal completion            status 0
 ===========================  ==================================================
+
+The first row says CALL, and the distinction is not pedantry: the wrapper
+records the last ``sys.exit`` it saw, not the status the process hands back.
+A ``sys.exit(2)`` that something catches and does not re-raise still leaves 2
+behind as the last thing observed, so a script that swallows its own exit and
+then finishes normally returns 0 while the record is amended to 2. Last call
+wins is the right reading for the shape every migrated case has -- decide,
+persist, optional stage, ``sys.exit(rc)`` as the script's last act -- and the
+wrong reading for a case that catches its own ``SystemExit``. Asserted rather
+than left implicit, beside the two boundaries below:
+``test_a_swallowed_sys_exit_is_the_documented_last_call_boundary``.
 
 Two paths no in-process mechanism can see, stated rather than implied:
 ``os._exit()`` and a fatal signal skip ``atexit`` entirely; and a bare
@@ -46,7 +57,12 @@ because the pytest process's exit status is not that case's verdict, and a
 ``pytest.raises(SystemExit)`` in an unrelated test would otherwise be read as
 this run's outcome. The consequence for a future case: call ``write_record``
 from the case script's own body, not from a helper module it imports, or the
-record is persisted unarmed.
+record is persisted unarmed -- which is the pre-#946 state with no signal that
+it happened. So there is a signal: outside pytest, ``write_record`` prints one
+``EXIT-CODE EVIDENCE UNARMED`` line on stderr whenever it persists a record it
+could not arm, and the contract test keeps the set of files under
+``validation/crossval/`` that call ``write_record`` equal to the set of case
+scripts, so a shared helper taking over the write is a red test, not a shrug.
 
 Usage -- the caller no longer holds a second copy of the code or the summary,
 because ``write_record`` is what puts both into the document:
@@ -60,6 +76,10 @@ because ``write_record`` is what puts both into the document:
     )
     ...
     sys.exit(rc)
+
+A case whose committed records carry ``exit_code``/``summary`` before the rest
+of the verdict block reserves those slots with ``reserve_verdict()`` first, so
+a re-run reproduces the key order it already has on disk.
 """
 
 from __future__ import annotations
@@ -90,14 +110,13 @@ _RECONCILED_NOTE = (
 class _Armed:
     """One persisted record whose exit code is still open."""
 
-    __slots__ = ("path", "verdict_key", "declared", "summary", "indent")
+    __slots__ = ("path", "verdict_key", "declared", "indent")
 
     def __init__(self, path: str, verdict_key: str, declared: int,
-                 summary: Any, indent: int) -> None:
+                 indent: int) -> None:
         self.path = path
         self.verdict_key = verdict_key
         self.declared = declared
-        self.summary = summary
         self.indent = indent
 
 
@@ -122,6 +141,16 @@ def normalize_exit_code(code: Any) -> int:
     if isinstance(code, int):
         return code % 256
     return 1
+
+
+def _running_under_pytest() -> bool:
+    """Whether this interpreter is a pytest run.
+
+    Only used to keep the unarmed notice out of test output: a test that
+    drives a case's ``main()`` in process is EXPECTED to leave the record
+    unarmed, because the pytest process's status is not that case's verdict.
+    """
+    return "pytest" in sys.modules
 
 
 def _observe(code: Any, via: str) -> None:
@@ -176,8 +205,10 @@ def write_record(path: str, doc: dict, *, exit_code: Any,
     ``exit_code`` is written into ``doc[verdict_key]["exit_code"]`` by this
     function, so the record's field and the value the script exits with cannot
     be two copies that drift. ``summary`` may be a string (stored as-is) or a
-    callable taking the exit code, in which case it is also what regenerates
-    the summary if the record has to be amended.
+    callable taking the exit code; the callable is invoked ONCE, here, with
+    the declared code, and never again -- an amended record gets neutral text,
+    because the case's own code->text mapping only spells verdicts its gate
+    stage reached (see ``_reconcile``).
 
     ``arm`` defaults to "the caller is running as the program" -- see the
     module docstring; pass it explicitly only in a test of this module.
@@ -185,8 +216,10 @@ def write_record(path: str, doc: dict, *, exit_code: Any,
     Returns the normalized exit code, for the caller to ``sys.exit()`` or
     ``return``.
     """
+    arm_was_explicit = arm is not None
+    caller_module = sys._getframe(1).f_globals.get("__name__")
     if arm is None:
-        arm = sys._getframe(1).f_globals.get("__name__") == "__main__"
+        arm = caller_module == "__main__"
     code = normalize_exit_code(exit_code)
     verdict = doc.setdefault(verdict_key, {})
     if not isinstance(verdict, dict):
@@ -206,8 +239,36 @@ def write_record(path: str, doc: dict, *, exit_code: Any,
     if arm:
         _install()
         _armed[os.path.abspath(path)] = _Armed(
-            os.path.abspath(path), verdict_key, code, summary, indent)
+            os.path.abspath(path), verdict_key, code, indent)
+    elif not arm_was_explicit and not _running_under_pytest():
+        _warn(
+            "EXIT-CODE EVIDENCE UNARMED: %s was persisted declaring exit %d, "
+            "but write_record was called from module %r, not from the program "
+            "(__main__), so nothing will amend that code if this process ends "
+            "with a different status (issue #946). Call write_record from the "
+            "case script's own body."
+            % (os.path.abspath(path), code, caller_module))
     return code
+
+
+def reserve_verdict(**rest: Any) -> "dict[str, Any]":
+    """A verdict block whose ``exit_code`` / ``summary`` slots come FIRST.
+
+    Key order inside a committed record is not cosmetic: several cases commit
+    their records to the repo, and a re-run that reorders a block produces a
+    diff nobody asked for and nobody can explain. ``write_record`` fills a key
+    in place when it already exists and appends it otherwise, so the position
+    is the caller's to choose. A case whose committed records carry
+    ``exit_code``/``summary`` LAST (cv01, cv02) simply lets write_record
+    append; a case whose records carry them FIRST (cv24) reserves the slots
+    here and passes the remainder as keyword arguments.
+
+    Pass a ``summary`` to ``write_record`` as well, or the reserved summary
+    slot stays ``null``.
+    """
+    block: "dict[str, Any]" = {EXIT_CODE_KEY: None, SUMMARY_KEY: None}
+    block.update(rest)
+    return block
 
 
 def armed_records() -> "dict[str, int]":
@@ -242,12 +303,20 @@ def _reconcile(arm: _Armed, actual: int, via: str) -> None:
         verdict[DECLARED_SUMMARY_KEY] = verdict[SUMMARY_KEY]
     verdict[DECLARED_EXIT_CODE_KEY] = arm.declared
     verdict[EXIT_CODE_KEY] = actual
-    if callable(arm.summary):
-        verdict[SUMMARY_KEY] = arm.summary(actual)
-    else:
-        verdict[SUMMARY_KEY] = (
-            "EXIT %d -- the verdict stage declared exit %d, the process "
-            "returned %d" % (actual, arm.declared, actual))
+    # The summary is NEVER regenerated from the case's own code->text mapping.
+    # That mapping spells the verdicts the GATE STAGE can reach; the new code
+    # is one it did not reach, so feeding it the process's status manufactures
+    # a claim the run never made. cv01's mapping turns a late exit 0 into
+    # "ALL CHECKS PASSED" beside ``all_gates_ok: false``, which is the
+    # direction #946 calls the one that matters; cv02's turns the #907 shape's
+    # late exit 2 into "[SKIP] Meep reference unavailable" beside
+    # ``meep_present: true``. Neutral text, and the declared summary kept
+    # verbatim beside it under summary_declared.
+    verdict[SUMMARY_KEY] = (
+        "EXIT %d -- the verdict stage declared exit %d, the process returned "
+        "%d; what the verdict stage decided is kept under %r / %r"
+        % (actual, arm.declared, actual,
+           DECLARED_EXIT_CODE_KEY, DECLARED_SUMMARY_KEY))
     verdict[RECONCILIATION_KEY] = {
         "declared": arm.declared,
         "actual": actual,

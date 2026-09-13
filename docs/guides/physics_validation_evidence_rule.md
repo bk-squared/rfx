@@ -48,6 +48,11 @@ record therefore has to be kept honest about an outcome it states early:
 - when those differ the record keeps both — `exit_code` is the process's,
   `exit_code_declared` and `summary_declared` are the gate stage's, and
   `exit_code_reconciliation` says how the difference was observed;
+- the amended `summary` is neutral text naming both codes. It is never the
+  case's own pass/fail wording re-run on the new code: that wording spells
+  verdicts the gate stage reached, so applied to a code it did not reach it
+  states a verdict the run never produced — "ALL CHECKS PASSED" beside
+  `all_gates_ok: false`, or a skip reason beside `meep_present: true`;
 - a case gets this by writing through
   `validation/crossval/_exit_evidence.py::write_record`, which is also what
   puts the code into the document, so a script cannot hold a second copy that
