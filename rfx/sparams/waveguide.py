@@ -12,9 +12,12 @@ They are MODULE-LEVEL FUNCTIONS whose first parameter is still ``self``: it is
 the ``Simulation`` instance, exactly as before. ``rfx.api._sparams`` binds them
 back onto ``_SparamMixin`` as class attributes at the same place in the class
 body, so ``sim.compute_waveguide_s_matrix(...)`` keeps its name, signature,
-``__doc__`` and bound-method behaviour, and ``_compute_waveguide_s_matrix_nu``
-keeps writing ``self._waveguide_ports`` on that same instance. A class wrapper
-may follow in a later step.
+docstring and bound-method behaviour, and ``_compute_waveguide_s_matrix_nu``
+keeps writing ``self._waveguide_ports`` on that same instance. (``__qualname__``
+is restored at the foot of this module; ``inspect.getdoc`` is byte-identical to
+the pre-move value, while the raw ``__doc__`` differs by exactly the four-space
+dedent, which is what dedenting a class body costs.) A class wrapper may follow
+in a later step.
 
 Import contract, inherited from ``rfx.api._sparams``: import ONLY
 ``rfx.api._spec`` plus external ``rfx.*`` / stdlib / jax / numpy, never the
