@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """MSL thru |S11| floor vs mesh, post-#511/#507 corrected extractor (issue #487).
 
+CURRENT STATUS (#752): this is a historical experiment, not a current
+accuracy benchmark. Its numerical recipe and recorded verdicts below are
+retained, but generation is retired: the former command would overwrite
+the frozen source JSON after solving a different board with today's code.
+Use --show-archive to inspect the original record without a solve or writes.
+A new accuracy claim requires newly designed, matched geometry/field records;
+neither the historical 0.4% anchor nor this sweep supplies that claim.
+
 PRE-DECLARATION (written before this script was run — R2-tight, one campaign)
 -------------------------------------------------------------------------------
 Issue #487's original 0.16-0.22 "Yee-staircase floor" envelope was measured on
@@ -194,6 +202,8 @@ here, i.e. one background job, not a GPU-lane errand.
 
 from __future__ import annotations
 
+import argparse
+import hashlib
 import json
 import sys
 import time
@@ -229,6 +239,8 @@ DX_GRID = [
 ]
 
 OUT_DIR = REPO / "scripts" / "diagnostics" / "msl_z0_bias_floor_sweep"
+SOURCE_JSON = OUT_DIR / "msl_z0_bias_floor_sweep.json"
+_SOURCE_SHA256 = "f56f6b17691613d8782c1d5ce1241c1cd9bc10ef61715b203ed5cd6d4ab18362"
 
 
 def run_one(label: str, dx: float) -> dict:
@@ -339,46 +351,28 @@ def _check_expectations(rows: list[dict]) -> dict:
     }
 
 
-def main() -> int:
-    rows = []
-    for label, dx in DX_GRID:
-        row = run_one(label, dx)
-        rows.append(row)
-        print(
-            f"{label:18s} dx={row['dx_um']:7.2f}um n_z_sub={row['n_z_sub_exact']:.3f} "
-            f"frac={row['frac']:.3f}{'*' if row['mixed_cell_danger_zone'] else ' '} "
-            f"Z0={row['z0_measured_ohm']:6.2f}ohm Gamma={row['gamma_implied']:+.4f} "
-            f"|S11|raw={row['mean_s11_raw']:.4f} ({row['mean_s11_raw_db']:+.1f}dB) "
-            f"|S11|default={row['mean_s11_default_projected']:.4f} "
-            f"ratio={row['ratio_floor_over_gamma']:.3f} "
-            f"settling={row['settling_db']} ({row['wallclock_s']}s)",
-            flush=True,
-        )
-
-    verdict = _check_expectations(rows)
-    print("\nEXPECTATION VERDICTS")
-    print(f"  (a) floor ~ |Gamma_implied| within 1.3x at every point: "
-          f"{verdict['a_floor_matches_gamma_within_1p3x']}  ratios={verdict['a_ratios']}")
-    print(f"  (b) refinement reduces |Gamma_implied| within aligned class: "
-          f"{verdict['b_refinement_reduces_gamma_in_aligned_class']}  "
-          f"gammas(coarse->fine)={verdict['b_aligned_gammas_coarse_to_fine']}")
-    print(f"  (c) misalignment shifts floor at comparable cell count: "
-          f"{verdict['c_misalignment_shifts_floor_at_comparable_cells']}  "
-          f"witness={verdict['c_witness_pair']}")
-
-    if not verdict["a_floor_matches_gamma_within_1p3x"]:
-        print(
-            "\nSTOP: expectation (a) failed at at least one point -- the "
-            "Z0-bias mechanism does NOT fully explain the floor everywhere in "
-            "this grid. Do not write the Leg-2 preflight advisory from this "
-            "sweep; report the dump above instead."
-        )
-
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUT_DIR / "msl_z0_bias_floor_sweep.json"
-    out_path.write_text(json.dumps({"rows": rows, "verdict": verdict}, indent=2) + "\n")
-    print(f"\nwrote {out_path}", flush=True)
-    return 0 if verdict["a_floor_matches_gamma_within_1p3x"] else 1
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description="Inspect the frozen historical MSL floor sweep.")
+    parser.add_argument("--show-archive", action="store_true",
+                        help="verify and print the original measurements and verdicts; no solve")
+    args = parser.parse_args(argv)
+    if not args.show_archive:
+        parser.error(
+            "This historical sweep is retired as a current benchmark. Its old "
+            "generation path would overwrite the frozen experiment record. "
+            "Use --show-archive to inspect that record; new validation needs "
+            "matched field/geometry provenance and a separate output location.")
+    source_bytes = SOURCE_JSON.read_bytes()
+    if hashlib.sha256(source_bytes).hexdigest() != _SOURCE_SHA256:
+        parser.error("The frozen source record changed; restore its recorded bytes before inspection.")
+    print(json.dumps({
+        "record_kind": "historical_msl_floor_sweep",
+        "current_solver_validation": False,
+        "new_field_solves": 0,
+        "source_json_sha256": _SOURCE_SHA256,
+        "historical_record": json.loads(source_bytes),
+    }, indent=2))
+    return 0
 
 
 if __name__ == "__main__":
