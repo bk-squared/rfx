@@ -373,6 +373,10 @@ CLASSIFICATION: dict[str, Entry] = {
         "cv05/cv15's explicit galvanic-feed contract (#929): reads the "
         "registered source span and realized conductor planes of a built "
         "Simulation; constructs no Simulation and performs no solve"),
+    "validation/crossval/_patch_external_geometry.py": Entry(
+        "no_simulation",
+        "cv05 external board/mesh/reference helpers (#959): consume realized "
+        "records and a supplied openEMS object; construct no rfx Simulation"),
     "validation/crossval/comparators/realized_conductors.py": Entry(
         "no_simulation",
         "crossval-side build-time realized-conductor gate (#931): takes a "
