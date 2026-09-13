@@ -9,6 +9,12 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
+### Fixed — cv02 retained verdict exit contract (#946)
+
+- Add a source contract that requires the persisted `exit_code` and every
+  `sys.exit` path in the ring-resonator crossval to use the same `_rc` value,
+  preventing a later exit branch from contradicting retained evidence.
+
 ### Fixed — shared coordinates for Kottke smoothing (#833)
 
 - Build uniform-grid smoothing coordinates from the same exact host-float64
