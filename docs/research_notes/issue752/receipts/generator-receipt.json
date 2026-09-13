@@ -1,0 +1,12 @@
+{
+  "kind": "currentmain generator exercised with output redirected; no FDTD",
+  "status": 0,
+  "preserved_original_hashes": {
+    "/root/rfx-752/scripts/diagnostics/msl_z0_bias_floor_sweep/msl_z0_bias_floor_sweep.json": "f56f6b17691613d8782c1d5ce1241c1cd9bc10ef61715b203ed5cd6d4ab18362",
+    "/root/rfx-752/scripts/diagnostics/msl_z0_bias_floor_sweep/msl_z0_bias_floor_sweep_realized_anchor.json": "fbf7985d970a3976652f53a9a0fe1b65e7e7dd9e733041c04b94430b3db6863c"
+  },
+  "output_sha256": "5cbed9a6615178d264f2692197e0cbc62e4915f94b623340f14f38e484d04fad",
+  "geometry_and_measurement_different_eras": true,
+  "reported_max_dev_pct": 8.6234,
+  "source_file_sha256": "f8591f52d649f74b2122d7eef53e8abaa10609953c4ab16e7cd42c022f5b70ba"
+}

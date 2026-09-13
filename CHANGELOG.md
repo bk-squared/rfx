@@ -9,6 +9,16 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
+### Fixed — MSL geometry and historical Z0 provenance (#752)
+
+- Distinguish the validated conductor-plane gap from dielectric material
+  extent in preflight, without predicting Z0 accuracy from either metric.
+- Locate declared faces on canonical absolute coordinates independently of
+  material availability; use both absolute faces in offset/graded-grid advice.
+- Retire legacy sweep/anchor generation that could overwrite frozen records
+  or combine old Z0 with current geometry. `--show-archive` provides explicit,
+  hash-verified historical inspection; the original data remain unchanged.
+
 ### Fixed — weekly fixture and verdict regressions (#940)
 
 - Address the two-slab guide's material override on the padded grid so the

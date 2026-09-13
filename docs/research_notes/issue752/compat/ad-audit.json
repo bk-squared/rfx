@@ -1,0 +1,38 @@
+{
+  "pytest_exit_code": 0,
+  "python": "3.11.9 (main, Aug 14 2024, 05:07:28) [Clang 18.1.8 ]",
+  "jax": "0.10.2",
+  "backend": "cpu",
+  "x64": false,
+  "records": [
+    {
+      "kind": "public synthetic S-assembly, same raw objective for AD and FD",
+      "theta": 0.699999988079071,
+      "autodiff": -0.006964697036892176,
+      "finite_differences": [
+        {
+          "step": 0.01,
+          "plus": 0.008980855345726013,
+          "minus": 0.009120136499404907,
+          "finite_difference": -0.006964057683944702,
+          "relative_difference": 9.179910397923374e-05
+        },
+        {
+          "step": 0.005,
+          "plus": 0.009015653282403946,
+          "minus": 0.009085307829082012,
+          "finite_difference": -0.006965454667806625,
+          "relative_difference": 0.0001087697717639823
+        }
+      ]
+    }
+  ],
+  "source_sha256": {
+    "rfx/api/_preflight.py": "0bac79f7528efe60a7035c1ab703c4727b98e8c7fc6ace5af714fb5d86d2d152",
+    "rfx/api/_sparams.py": "7526c0a0bcfbd36547ff74da31eb1f18796df97d3d1f2a0e3476499731a7abea",
+    "rfx/sources/msl_port.py": "3a84f7627ebf4cba34fee04179c38cdbb41673e4da473f19e498825f2fb402e9",
+    "tests/unit/ports/test_msl_source_fixture_static.py": "762a5afcb8e56046c1ca0e6d19b1a1db3e19e9feb89d71f97ecf91f5b9a41564",
+    "tests/unit/autodiff/test_msl_sparam_ad.py": "6b78a26b91fc352bf8b9e46011126a8a48feda96dbf17b6c980a7d4dfde69301",
+    "tests/unit/ports/test_msl_source_work.py": "fdb50dca3f160f5613625e1a9a95140c138d80958beb78cad918931095adf7d9"
+  }
+}

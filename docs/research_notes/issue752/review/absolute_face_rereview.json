@@ -1,0 +1,19 @@
+{
+  "recorded_at_utc": "2026-09-13T04:09:59.777746+00:00",
+  "base": "19aa9e0630d302a4244b23746f68679dc495c082",
+  "source_sha256": {
+    "rfx/api/_preflight.py": "0bac79f7528efe60a7035c1ab703c4727b98e8c7fc6ace5af714fb5d86d2d152",
+    "tests/unit/ports/test_msl_preflight_conductor_gap.py": "71fc1c74af44afcbcfc1d263e9e12afc9f7db7a0b9a129b59b413645f46bb8c7",
+    "tests/unit/ports/test_msl_port_preflight.py": "074a46bf44c8b8dfb922ad488311aa4aefac3a101c1cff368675ba416a3ad3d8",
+    "scripts/diagnostics/msl_z0_bias_floor_sweep.py": "460ef252ce4a18a8e7d510fc409c8623be9161710e6bca1c5cf6ba12f060fa91",
+    "scripts/diagnostics/msl_z0_bias_floor_sweep_realized_anchor.py": "b4880a0955891ba65010329035dbeda9415f80c8d647fddda9db455f027b337e",
+    "tests/unit/sparams/test_msl_z0_bias_floor_sweep_realized_anchor.py": "c54e03e8d5e9945f56884a1c09c2c7174a2f31fc28eb681c986dc14f0618c929",
+    "tests/data/example_fidelity_snapshot.json": "8a7c9e8f22460baed5f6f07ee9369fcff026b0c4dbd69537f126b1d0a4f18f66",
+    "docs/guides/msl_geometry_diagnostics.md": "6a646a1f9607129d1b0fa0049500acef9de8962a9f420499e14541d625c9544f"
+  },
+  "original_counterexamples_closed": 2,
+  "additional_pure_face_cases": 150,
+  "snapshot_changed_message_leaves": 2,
+  "reviewer_FDTD_runs": 0,
+  "verdict": "no remaining material blocker in working source; exact head and required checks pending"
+}

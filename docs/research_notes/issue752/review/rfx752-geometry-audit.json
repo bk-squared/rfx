@@ -1,0 +1,290 @@
+[
+  {
+    "label": "aligned h_sub/3",
+    "dx_um": 84.66666666666666,
+    "dielectric_bbox_h_um": 254.0,
+    "pec_body_w_um": 592.6666666666667,
+    "ports": [
+      {
+        "direction": "+x",
+        "normal_nodes": [
+          0,
+          3
+        ],
+        "source_gap_um": 254.0,
+        "trace_wall_um": [
+          254.0,
+          338.66666666666663
+        ],
+        "longitudinal_edge_width_nodes": [
+          22,
+          29
+        ],
+        "longitudinal_edge_span_um": 592.6666666666667,
+        "source_width_nodecount": 8,
+        "source_width_node_extent_um": 592.6666666666667,
+        "validation": "valid"
+      },
+      {
+        "direction": "-x",
+        "normal_nodes": [
+          0,
+          3
+        ],
+        "source_gap_um": 254.0,
+        "trace_wall_um": [
+          254.0,
+          338.66666666666663
+        ],
+        "longitudinal_edge_width_nodes": [
+          22,
+          29
+        ],
+        "longitudinal_edge_span_um": 592.6666666666667,
+        "source_width_nodecount": 8,
+        "source_width_node_extent_um": 592.6666666666667,
+        "validation": "valid"
+      }
+    ]
+  },
+  {
+    "label": "aligned h_sub/4",
+    "dx_um": 63.5,
+    "dielectric_bbox_h_um": 254.0,
+    "pec_body_w_um": 571.5,
+    "ports": [
+      {
+        "direction": "+x",
+        "normal_nodes": [
+          0,
+          4
+        ],
+        "source_gap_um": 254.0,
+        "trace_wall_um": [
+          254.0,
+          317.49999999999994
+        ],
+        "longitudinal_edge_width_nodes": [
+          24,
+          33
+        ],
+        "longitudinal_edge_span_um": 571.5,
+        "source_width_nodecount": 10,
+        "source_width_node_extent_um": 571.5,
+        "validation": "valid"
+      },
+      {
+        "direction": "-x",
+        "normal_nodes": [
+          0,
+          4
+        ],
+        "source_gap_um": 254.0,
+        "trace_wall_um": [
+          254.0,
+          317.49999999999994
+        ],
+        "longitudinal_edge_width_nodes": [
+          24,
+          33
+        ],
+        "longitudinal_edge_span_um": 571.5,
+        "source_width_nodecount": 10,
+        "source_width_node_extent_um": 571.5,
+        "validation": "valid"
+      }
+    ]
+  },
+  {
+    "label": "aligned h_sub/5",
+    "dx_um": 50.800000000000004,
+    "dielectric_bbox_h_um": 254.0,
+    "pec_body_w_um": 609.5999999999999,
+    "ports": [
+      {
+        "direction": "+x",
+        "normal_nodes": [
+          0,
+          5
+        ],
+        "source_gap_um": 254.0,
+        "trace_wall_um": [
+          254.0,
+          304.8
+        ],
+        "longitudinal_edge_width_nodes": [
+          26,
+          38
+        ],
+        "longitudinal_edge_span_um": 609.5999999999999,
+        "source_width_nodecount": 13,
+        "source_width_node_extent_um": 609.5999999999999,
+        "validation": "valid"
+      },
+      {
+        "direction": "-x",
+        "normal_nodes": [
+          0,
+          5
+        ],
+        "source_gap_um": 254.0,
+        "trace_wall_um": [
+          254.0,
+          304.8
+        ],
+        "longitudinal_edge_width_nodes": [
+          26,
+          38
+        ],
+        "longitudinal_edge_span_um": 609.5999999999999,
+        "source_width_nodecount": 13,
+        "source_width_node_extent_um": 609.5999999999999,
+        "validation": "valid"
+      }
+    ]
+  },
+  {
+    "label": "aligned h_sub/6",
+    "dx_um": 42.33333333333333,
+    "dielectric_bbox_h_um": 254.0,
+    "pec_body_w_um": 592.6666666666667,
+    "ports": [
+      {
+        "direction": "+x",
+        "normal_nodes": [
+          0,
+          6
+        ],
+        "source_gap_um": 254.0,
+        "trace_wall_um": [
+          254.0,
+          296.3333333333333
+        ],
+        "longitudinal_edge_width_nodes": [
+          28,
+          42
+        ],
+        "longitudinal_edge_span_um": 592.6666666666667,
+        "source_width_nodecount": 15,
+        "source_width_node_extent_um": 592.6666666666667,
+        "validation": "valid"
+      },
+      {
+        "direction": "-x",
+        "normal_nodes": [
+          0,
+          6
+        ],
+        "source_gap_um": 254.0,
+        "trace_wall_um": [
+          254.0,
+          296.3333333333333
+        ],
+        "longitudinal_edge_width_nodes": [
+          28,
+          42
+        ],
+        "longitudinal_edge_span_um": 592.6666666666667,
+        "source_width_nodecount": 15,
+        "source_width_node_extent_um": 592.6666666666667,
+        "validation": "valid"
+      }
+    ]
+  },
+  {
+    "label": "misaligned 80um",
+    "dx_um": 80.0,
+    "dielectric_bbox_h_um": 320.0,
+    "pec_body_w_um": 640.0,
+    "ports": [
+      {
+        "direction": "+x",
+        "normal_nodes": [
+          0,
+          3
+        ],
+        "source_gap_um": 240.00000000000003,
+        "trace_wall_um": [
+          240.00000000000003,
+          320.0
+        ],
+        "longitudinal_edge_width_nodes": [
+          22,
+          30
+        ],
+        "longitudinal_edge_span_um": 640.0,
+        "source_width_nodecount": 9,
+        "source_width_node_extent_um": 640.0,
+        "validation": "valid"
+      },
+      {
+        "direction": "-x",
+        "normal_nodes": [
+          0,
+          3
+        ],
+        "source_gap_um": 240.00000000000003,
+        "trace_wall_um": [
+          240.00000000000003,
+          320.0
+        ],
+        "longitudinal_edge_width_nodes": [
+          22,
+          30
+        ],
+        "longitudinal_edge_span_um": 640.0,
+        "source_width_nodecount": 9,
+        "source_width_node_extent_um": 640.0,
+        "validation": "valid"
+      }
+    ]
+  },
+  {
+    "label": "misaligned 60um",
+    "dx_um": 60.0,
+    "dielectric_bbox_h_um": 300.0,
+    "pec_body_w_um": 600.0,
+    "ports": [
+      {
+        "direction": "+x",
+        "normal_nodes": [
+          0,
+          4
+        ],
+        "source_gap_um": 240.0,
+        "trace_wall_um": [
+          240.0,
+          300.0
+        ],
+        "longitudinal_edge_width_nodes": [
+          24,
+          34
+        ],
+        "longitudinal_edge_span_um": 600.0,
+        "source_width_nodecount": 11,
+        "source_width_node_extent_um": 600.0,
+        "validation": "valid"
+      },
+      {
+        "direction": "-x",
+        "normal_nodes": [
+          0,
+          4
+        ],
+        "source_gap_um": 240.0,
+        "trace_wall_um": [
+          240.0,
+          300.0
+        ],
+        "longitudinal_edge_width_nodes": [
+          24,
+          34
+        ],
+        "longitudinal_edge_span_um": 600.0,
+        "source_width_nodecount": 11,
+        "source_width_node_extent_um": 600.0,
+        "validation": "valid"
+      }
+    ]
+  }
+]

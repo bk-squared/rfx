@@ -1,0 +1,46 @@
+[
+  {
+    "ground_in_U": 4,
+    "declared_ground_in_U": 4.5,
+    "source_ground_array_index": 8,
+    "generic_position_array_index": 8,
+    "gap": {
+      "n": 4,
+      "h": 0.00048828125,
+      "ground": 0.00048828125,
+      "trace": 0.0009765625
+    },
+    "material": {
+      "n": 1,
+      "h_real": 0.0001220703125,
+      "frac": 0.0,
+      "declared_n_above": 5,
+      "d_iface": 0.0001220703125,
+      "nonuniform": false,
+      "ground_cells": 0
+    },
+    "correct_first_dielectric_slot_count": 1
+  },
+  {
+    "ground_in_U": 5,
+    "declared_ground_in_U": 5.5,
+    "source_ground_array_index": 9,
+    "generic_position_array_index": 10,
+    "gap": {
+      "n": 3,
+      "h": 0.0003662109375,
+      "ground": 0.0006103515625,
+      "trace": 0.0009765625
+    },
+    "material": {
+      "n": 2,
+      "h_real": 0.000244140625,
+      "frac": 0.0,
+      "declared_n_above": 4,
+      "d_iface": 0.0001220703125,
+      "nonuniform": false,
+      "ground_cells": 0
+    },
+    "correct_first_dielectric_slot_count": 1
+  }
+]

@@ -1,35 +1,11 @@
-"""Issue #752: guards for the msl_z0_bias_floor_sweep realized-board anchor.
+"""Preserve the historical #752 record without treating it as a current oracle.
 
-The pre-declared sweep script (scripts/diagnostics/msl_z0_bias_floor_sweep.py)
-and its committed JSON score Z0 against Hammerstad-Jensen on the DECLARED
-600/254um board at every dx, even though the misaligned points (dx=80,
-60um) rasterize a thicker substrate (320, 300um -- the half-open
-rasterizer rounds h_sub/dx UP). The sibling script
-scripts/diagnostics/msl_z0_bias_floor_sweep_realized_anchor.py adds
-Hammerstad-Jensen on each point's REALIZED h/W (via
-sim.fidelity_report(), no solve) as an ADDITIONAL column, without
-touching the pre-declared script or its JSON.
-
-This test module:
-  1. Freezes the pre-declared JSON's sha256 -- it must never be edited
-     (auditable-because-criteria-predate-the-data property).
-  2. Re-derives the realized h/W directly via fidelity_report() (fast,
-     no FDTD solve) and checks it agrees with the committed sibling
-     artifact to a stated tolerance -- catching drift between the two
-     without re-running the (expensive) FDTD sweep.
-  3. Locks the two summary tolerances RECORDED IN THE FROZEN ARTIFACT
-     (0.4% over all six points, 0.25% over the misaligned pair) so the
-     committed file cannot silently drift (the #494->#502 coverage-hole
-     class named in test_msl_port_preflight.py).
-
-     AUDIT 2026-09-02 (finding A1): those two numbers are NOT quoted by
-     the preflight advisories any more, and this module must not say
-     they are. Both passes of A1 retired the numeric claims from
-     rfx/api/_preflight.py -- the realized-board "within 0.4%" figure
-     first, then the declared-board -7.9%/-3.8%/-1.2%/+0.7% sequence and
-     the ">5% below 4 cells" prediction. The advisories now make only the
-     qualitative claim plus a re-solve pointer, so item 3 is a
-     frozen-artifact regression lock and nothing more.
+The source measurements and original realized-anchor JSON remain frozen.
+Live fidelity-report checks measure geometric material/body extent drift,
+not an RF conductor gap or current Z0 accuracy. The recorded 0.4%/0.25%
+summaries below describe only the archived table. CLI generation is retired;
+explicit archive inspection verifies hashes and never rebuilds geometry,
+re-evaluates the model, evolves fields or overwrites these records.
 """
 
 from __future__ import annotations
@@ -103,13 +79,13 @@ def test_pre_declared_sweep_json_is_frozen():
 
 def test_realized_anchor_json_exists_and_cites_source():
     assert ANCHOR_JSON.exists(), (
-        f"{ANCHOR_JSON} missing -- regenerate with "
-        "python3 scripts/diagnostics/msl_z0_bias_floor_sweep_realized_anchor.py"
+        f"{ANCHOR_JSON} missing -- restore the frozen historical record from git; "
+        "current-geometry regeneration is retired"
     )
     out = json.loads(ANCHOR_JSON.read_text(encoding="utf-8"))
     assert out["source_json_sha256"] == _SOURCE_SHA256, (
         "the sibling artifact's recorded source sha256 no longer matches "
-        "the live pre-declared JSON -- regenerate the sibling artifact"
+        "the frozen pre-declared JSON -- restore the recorded artifact"
     )
     assert len(out["rows"]) == 6
 
@@ -328,18 +304,17 @@ def test_committed_aligned_rows_are_a_pre802_record_not_live():
             f"{label}: live realized W {w_live_um}um is neither the "
             f"committed pre-#802 {w_committed_um}um nor the recorded "
             f"#931 §1.1 width {w_expected_um}um -- the rasterizer moved this "
-            "point AGAIN; re-solve the sweep "
-            "(scripts/diagnostics/msl_z0_bias_floor_sweep.py), refresh the "
-            "anchor artifact, and update the preflight staleness "
-            "disclosure before anything quotes a bound from it"
+            "point AGAIN; preserve the frozen records and update this geometry "
+            "drift witness. A current accuracy bound needs a separately "
+            "qualified measurement with matching geometry provenance"
         )
         # (b) and it still differs from the committed artifact, i.e. that
         # column really is a stale record.
         assert abs(w_live_um - w_committed_um) > 1.0, (
             f"{label}: live realized W {w_live_um}um now equals the "
-            f"committed {w_committed_um}um -- if the sweep has been "
-            "re-solved on main's rasterization, refresh this test and "
-            "restore a live 'within X%' bound in the preflight advisories"
+            f"committed {w_committed_um}um -- reassess the geometry drift witness; "
+            "agreement with an old width alone does not establish a live "
+            "solver accuracy bound"
         )
 
 
@@ -373,12 +348,89 @@ def test_preflight_advisories_make_no_stale_absolute_realized_bound():
         assert retired not in src, (
             f"retired A1 overclaim phrasing {retired!r} is back in "
             "rfx/api/_preflight.py -- the realized-board 0.4% figure is a "
-            "pre-#802 frozen record and must be re-solved "
-            "(scripts/diagnostics/msl_z0_bias_floor_sweep.py) before being "
-            "quoted as a live extractor bound"
+            "pre-#802 frozen record; a live extractor bound requires separate "
+            "field data with matched geometry and model provenance"
         )
     # The honest replacement must be present: qualitative anchor language
-    # plus an explicit re-solve pointer.
+    # plus an explicit requirement for new matched measurement evidence.
     assert "realized-board Hammerstad-Jensen anchor" in src
-    assert "re-solve" in src.lower()
+    assert "new matched-geometry measurement" in src
     assert "pre-#802" in src
+
+
+def _load_historical_script(stem):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        f"history_{stem}", REPO / "scripts" / "diagnostics" / f"{stem}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_HISTORICAL_SCRIPTS = (
+    "msl_z0_bias_floor_sweep",
+    "msl_z0_bias_floor_sweep_realized_anchor",
+)
+
+
+def _forbid_generation(*args, **kwargs):
+    pytest.fail("historical inspection attempted geometry/model/field generation or a file write")
+
+
+@pytest.mark.parametrize("stem", _HISTORICAL_SCRIPTS)
+def test_historical_cli_refuses_implicit_generation_before_work(monkeypatch, stem):
+    """A legacy command must not silently overwrite the auditable record."""
+    mod = _load_historical_script(stem)
+    monkeypatch.setattr(mod, "run_one", _forbid_generation, raising=False)
+    monkeypatch.setattr(mod, "realized_h_w_um", _forbid_generation, raising=False)
+    monkeypatch.setattr(Path, "write_text", _forbid_generation)
+    monkeypatch.setattr(Path, "write_bytes", _forbid_generation)
+    with pytest.raises(SystemExit) as exc:
+        mod.main([])
+    assert exc.value.code == 2
+
+
+@pytest.mark.parametrize("stem", _HISTORICAL_SCRIPTS)
+def test_explicit_archive_inspection_preserves_records_without_live_geometry(
+    monkeypatch, capsys, stem,
+):
+    """The old field record is never paired with the current rasterizer."""
+    mod = _load_historical_script(stem)
+    paths = (SOURCE_JSON, ANCHOR_JSON)
+    before = {path: path.read_bytes() for path in paths}
+    expected_path = ANCHOR_JSON if stem.endswith("realized_anchor") else SOURCE_JSON
+    monkeypatch.setattr(mod, "run_one", _forbid_generation, raising=False)
+    monkeypatch.setattr(mod, "realized_h_w_um", _forbid_generation, raising=False)
+    monkeypatch.setattr(Path, "write_text", _forbid_generation)
+    monkeypatch.setattr(Path, "write_bytes", _forbid_generation)
+    assert mod.main(["--show-archive"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["current_solver_validation"] is False
+    assert out["record_kind"].startswith("historical_")
+    assert out["historical_record"] == json.loads(before[expected_path])
+    assert {path: path.read_bytes() for path in paths} == before
+    assert out["source_json_sha256"] == hashlib.sha256(before[SOURCE_JSON]).hexdigest()
+    if expected_path == ANCHOR_JSON:
+        assert out["current_geometry_or_model_recomputed"] is False
+        assert out["anchor_json_sha256"] == hashlib.sha256(before[ANCHOR_JSON]).hexdigest()
+    else:
+        assert out["new_field_solves"] == 0
+
+
+@pytest.mark.parametrize("stem,attribute,original", [
+    ("msl_z0_bias_floor_sweep", "SOURCE_JSON", SOURCE_JSON),
+    ("msl_z0_bias_floor_sweep_realized_anchor", "SOURCE_JSON", SOURCE_JSON),
+    ("msl_z0_bias_floor_sweep_realized_anchor", "ANCHOR_JSON", ANCHOR_JSON),
+])
+def test_archive_inspection_rejects_changed_provenance(monkeypatch, tmp_path, capsys,
+                                                     stem, attribute, original):
+    mod = _load_historical_script(stem)
+    changed = tmp_path / "changed.json"
+    # Even parse-equivalent bytes are not the recorded immutable artifact.
+    changed.write_bytes(original.read_bytes() + b"\n")
+    monkeypatch.setattr(mod, attribute, changed)
+    with pytest.raises(SystemExit) as exc:
+        mod.main(["--show-archive"])
+    assert exc.value.code == 2
+    assert capsys.readouterr().out == ""

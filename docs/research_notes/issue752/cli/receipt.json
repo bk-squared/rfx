@@ -1,0 +1,36 @@
+{
+  "records": [
+    {
+      "script": "scripts/diagnostics/msl_z0_bias_floor_sweep.py",
+      "mode": "default",
+      "returncode": 2,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "bb1ae254f814fba298406a7b940b5c619e411ce5a87ecabc052d3b7a46c54def"
+    },
+    {
+      "script": "scripts/diagnostics/msl_z0_bias_floor_sweep.py",
+      "mode": "archive",
+      "returncode": 0,
+      "stdout_sha256": "f3bee09479bcc79568d648cec52b785de636f668d52903aef1e0603097f48e54",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "script": "scripts/diagnostics/msl_z0_bias_floor_sweep_realized_anchor.py",
+      "mode": "default",
+      "returncode": 2,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "d037b71ae29bd609e8d088fa1b4ee27690ae004f974e3d1a1c5298da249c9de2"
+    },
+    {
+      "script": "scripts/diagnostics/msl_z0_bias_floor_sweep_realized_anchor.py",
+      "mode": "archive",
+      "returncode": 0,
+      "stdout_sha256": "4936dd0981c1eb93a3d60a9c9b9abcf100d212c20272912e1c07f3a0fda956f0",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "unchanged_frozen_artifacts": {
+    "scripts/diagnostics/msl_z0_bias_floor_sweep/msl_z0_bias_floor_sweep.json": "f56f6b17691613d8782c1d5ce1241c1cd9bc10ef61715b203ed5cd6d4ab18362",
+    "scripts/diagnostics/msl_z0_bias_floor_sweep/msl_z0_bias_floor_sweep_realized_anchor.json": "fbf7985d970a3976652f53a9a0fe1b65e7e7dd9e733041c04b94430b3db6863c"
+  }
+}

@@ -273,37 +273,15 @@ _OFF_LATTICE_EDGE_TOL = 5e-3
 _CAMPAIGN_MAX_OFFENDERS = 5
 
 # ---------------------------------------------------------------------------
-# MSL check 2c (#752 / #766 review B2): how far the REALIZED substrate may
-# drift from the DECLARED one before the run is solving a different board
-# than the user asked for and preflight must say so.
-#
-# DERIVATION (physical, not a round number):
-#   * The quantity that matters to an MSL user is Z0, and Z0 depends on the
-#     substrate thickness the solver actually rasterized. This PR's own
-#     realized-board artifact measures that sensitivity:
-#     ``scripts/diagnostics/msl_z0_bias_floor_sweep/
-#     msl_z0_bias_floor_sweep_realized_anchor.json``, row "misaligned 60um"
-#     — the ONE row whose realized trace width equals the declared 600.0 µm,
-#     so substrate thickness is the only variable in it. There h goes
-#     254.0 -> 300.0 µm (+18.11%) and the Hammerstad-Jensen Z0 of the board
-#     goes 47.895 -> 53.106 ohm (+10.88%). Chord sensitivity
-#         S = (dZ0/Z0) / (dh/h) = 10.88 / 18.11 = 0.601
-#     (re-evaluating ``rfx.sources.msl_eigenmode.hammerstad_jensen_z0_eps_eff``
-#     across h/h_declared = 1.05 .. 1.33 keeps S in 0.57 .. 0.63, so the
-#     constant is not an artifact of one step size).
-#   * The error budget is check 2's OWN published contract, quoted in its
-#     message: "<5% Z0 bias". Board-thickening alone must not be allowed to
-#     eat that whole budget in silence.
-#   * Threshold = budget / sensitivity = 0.05 / 0.601 = 0.0832 -> 8.3%.
-#     Direct check: Hammerstad-Jensen at h = 1.083*254 µm, W = 600 µm,
-#     eps_r 3.66 gives +5.14% Z0, i.e. the threshold sits right on the 5%
-#     contour, as intended.
-# This is a NEW advisory. It widens no existing gate: checks 2 (<4 realized
-# cells) and 2b (interface in the [0.10, 0.40] mixed-cell zone) keep their
-# exact gates, and 2c only speaks about geometry neither of them reported.
-_MSL_REALIZED_THICKNESS_Z0_SENSITIVITY = 0.601   # (dZ0/Z0) per (dh/h)
-_MSL_REALIZED_THICKNESS_Z0_BUDGET = 0.05         # check 2's own <5% promise
-_MSL_REALIZED_THICKNESS_TOL = 0.083              # = budget / sensitivity
+# MSL check 2c retains its existing 8.3% geometry-advisory threshold.
+# Its historical derivation used 0.05 / 0.601 from a Hammerstad-Jensen
+# comparison of dielectric-mask extents. That extent is not the conductor
+# gap under #931 PEC-volume ownership (#752). Keep the heuristic unchanged,
+# but neither the old sensitivity nor the threshold is a current Z0 bound.
+# The two legacy constants remain available to existing internal consumers.
+_MSL_REALIZED_THICKNESS_Z0_SENSITIVITY = 0.601
+_MSL_REALIZED_THICKNESS_Z0_BUDGET = 0.05
+_MSL_REALIZED_THICKNESS_TOL = 0.083
 
 
 def _sorted_box_corners(shape):
@@ -7297,8 +7275,42 @@ class _PreflightMixin:
         except Exception:
             return None
 
+    def _msl_declared_face_geometry(self, pe, grid):
+        """Locate declared absolute port faces without inspecting materials.
+
+        The fraction belongs to position_normal + height, not to height
+        measured from a snapped ground. The bracket count is relative to
+        the same canonical ground node the port uses; it is not a count of
+        epsilon samples and does not assert conductor attachment.
+        """
+        from rfx.nonuniform import NonUniformGrid
+        from rfx.sources.msl_port import (
+            _msl_grid_geometry, _msl_normal_bounds, msl_port_from_entry,
+        )
+        port = msl_port_from_entry(pe)
+        axes, _ = _msl_grid_geometry(grid)
+        nodes = axes[2]  # the supported MSL substrate normal is z
+        ground_index, _ = _msl_normal_bounds(grid, port)
+        if not nodes[0] <= port.z_hi <= nodes[-1]:
+            raise ValueError("declared MSL trace face has no bracketing mesh interval")
+        k = int(np.searchsorted(nodes, port.z_hi, side="right") - 1)
+        k = min(max(k, 0), len(nodes) - 2)
+        d_iface = float(nodes[k + 1] - nodes[k])
+        frac = float((port.z_hi - nodes[k]) / d_iface)
+        if frac > 1.0 - 1e-9:  # aligned face just below the next node
+            frac = 0.0
+        return dict(frac=frac, d_iface=d_iface,
+                    nonuniform=isinstance(grid, NonUniformGrid),
+                    declared_n_above=max(1, k + 1 - ground_index),
+                    ground=port.z_lo, trace=port.z_hi)
+
     def _msl_realized_substrate(self, pe, inr, assembled=None):
-        """Substrate under an MSL port as the RUN GRID realizes it, or None.
+        """Same-permittivity material-column extent under a port, or None.
+
+        This is NOT the conductor-plane gap. The material walk can include
+        sample slots also owned by the trace PEC volume; #931 uses different
+        samplers for dielectric material and PEC volume ownership. Keep its
+        count/extent separate from the validated normal source interval.
 
         Issue #752 review (#766 BLOCK): the substrate checks below used to
         derive "realized" thickness as ``n_cells * dx`` with the UNIFORM
@@ -7315,16 +7327,18 @@ class _PreflightMixin:
         sum the ACTUAL cell sizes of the cells that carry the substrate's
         permittivity. Returns a dict with
 
-          n          realized substrate cell count under the port,
-          h_real     their summed thickness (m),
+          n          same-permittivity sample-slot count under the port,
+          h_real     their summed material-column extent (m),
           frac       where the DECLARED top face sits inside the cell that
                      contains it, as a fraction of that cell (0 = on a node),
+          declared_n_above  upper face-bracket count relative to the port's
+                     canonical ground node (independent of material n),
           d_iface    that cell's size (m),
           nonuniform whether a mesh profile was in force,
 
-        or None when it cannot be derived (no substrate permittivity at the
-        ground plane, or the build raised) -- callers then use the scalar
-        estimate and SAY so in the message.
+        or None when the material column cannot be derived. Declared-face
+        geometry is available independently through _msl_declared_face_geometry;
+        the compatibility frac/bracket fields here delegate to that helper.
 
         ``assembled`` is the per-check cache from :meth:`_msl_assemble_once`
         (grid, materials, per-axis cell sizes, nonuniform flag) so N MSL
@@ -7361,6 +7375,11 @@ class _PreflightMixin:
                 idx = list(_nu_p2i(grid, pos))
             else:
                 idx = list(grid.position_to_index(pos))
+            # Keep propagation/width lookup unchanged, but use the source's
+            # #931 lower-tie normal plane. Generic uniform banker's rounding
+            # can start a half-cell-offset ground in the next dielectric layer.
+            from rfx.sources.msl_port import _msl_normal_bounds, msl_port_from_entry
+            idx[inr] = _msl_normal_bounds(grid, msl_port_from_entry(pe))[0]
             eps = np.asarray(mats.eps_r, dtype=float)
             k0 = int(idx[inr])  # the port's own ground plane, NOT pads[inr]
             ground_cells = 0
@@ -7382,19 +7401,40 @@ class _PreflightMixin:
                 n += 1
             ax_sizes = sizes[inr][k0:]
             h_real = float(np.sum(ax_sizes[:n]))
-            nodes = np.concatenate([[0.0], np.cumsum(ax_sizes)])
-            h_sub = float(pe.height)
-            k = int(np.searchsorted(nodes, h_sub, side="right") - 1)
-            k = min(max(k, 0), len(ax_sizes) - 1)
-            d_iface = float(ax_sizes[k])
-            frac = (h_sub - float(nodes[k])) / d_iface if d_iface > 0 else 0.0
-            if frac > 1.0 - 1e-9:  # numerical dust just below the next node
-                frac = 0.0
-            return dict(n=int(n), h_real=h_real, frac=float(frac),
-                        d_iface=d_iface, nonuniform=bool(nonuniform),
+            try:
+                face = self._msl_declared_face_geometry(pe, grid)
+            except (ValueError, TypeError, NotImplementedError):
+                face = {}
+            return dict(n=int(n), h_real=h_real, frac=face.get("frac"),
+                        declared_n_above=face.get("declared_n_above"),
+                        d_iface=face.get("d_iface"), nonuniform=bool(nonuniform),
                         ground_cells=int(ground_cells))
         except Exception:
             return None
+
+    def _msl_conductor_gap(self, pe, assembled):
+        """Validated conductor planes from the caller's existing assembly.
+
+        No wall search or automatic repair: #729 must accept the declared
+        port interval before it can be reported as a conductor-plane gap.
+        This geometry-only diagnostic never consumes material overrides.
+        """
+        from rfx.sources.msl_port import (
+            _msl_grid_geometry, msl_cross_section_span, msl_port_from_entry,
+            validate_msl_port_geometry,
+        )
+        grid, _materials, _sizes, _nonuniform, realized = assembled
+        port = msl_port_from_entry(pe)
+        validate_msl_port_geometry(
+            grid, port, pec_edge_masks=realized.edges,
+            sheet_specs=realized.sheet_specs, periodic=realized.periodic,
+            pec_faces=self._boundary_spec.pec_faces(), name=pe.name)
+        span = msl_cross_section_span(grid, port)
+        nodes, _ = _msl_grid_geometry(grid)
+        normal_nodes = nodes[span["normal_idx"]]
+        lo, hi = span["n_lo"], span["n_hi"]
+        return dict(n=hi - lo, h=float(normal_nodes[hi] - normal_nodes[lo]),
+                    ground=float(normal_nodes[lo]), trace=float(normal_nodes[hi]))
 
     def _check_msl_port_geometry(
         self,
@@ -7451,143 +7491,27 @@ class _PreflightMixin:
            ``tests/unit/ports/test_msl_port_preflight.py`` fixture: 3 advisories at
            base (pre-drop), 0 on the buffer-dropped branch.
 
-        2. **Substrate resolution** n_z_sub = h_sub/dx ≥ 4 cells, on an
-           ALIGNED mesh (h_sub/dx integer). Yee staircase at the
-           dielectric interface is O(dx) (not O(dx²)) for inhomogeneous
-           ε, so Z0 accuracy degrades LINEARLY as the substrate is
-           under-resolved; the check's stated accuracy target is "<5% Z0
-           bias" (that phrase is check 2c's error budget — see the
-           threshold derivation near the top of this module — so it is a
-           target this check publishes, not a measurement). Alignment is
-           the second half of the requirement because S is normalized to
-           the DECLARED-board Hammerstad-Jensen anchor (issue #723): a
-           misaligned mesh rasterizes a THICKER substrate, so the board
-           the user is handed S for is not the board they declared.
+        2. **Normal source resolution**: recommend at least four intervals
+           between the validated ground and trace conductor planes. Check 2b
+           retains the declared-interface fraction in [0.10, 0.40]; check 2c
+           reports a validated gap differing from the declared height by more
+           than the existing 8.3% geometry threshold. These are screening
+           heuristics, not quantitative Z0 accuracy guarantees.
 
-           AUDIT 2026-09-02 (finding A1, second pass) — RETIRED NUMBERS.
-           This item used to add: "<4 cells gives Z0 staircase error >5%.
-           Re-verified post-#511/#507 by msl_z0_bias_floor_sweep.py
-           (2026-08-02): aligned dx=h_sub/{3,4,5,6} measured Z0 deviation
-           -7.9%/-3.8%/-1.2%/+0.7% FROM THE DECLARED-board
-           Hammerstad-Jensen anchor ... this deviation is real and
-           user-facing". Those four percentages are the DECLARED-board
-           column of the SAME frozen 2026-08-02 rows whose realized-board
-           reading ("within 0.4%") was retired in the first pass of this
-           finding, and the same argument retires them: the lattice
-           ownership contract's centre-sampled PEC volume (#931 §1.1;
-           before it, the #802/#834 exact-coordinate node sampler) moves
-           the realized TRACE WIDTH against the as-solved rows at h_sub/3
-           (677.3→592.7µm), h_sub/4 (635.0→571.5µm) and dx=80µm
-           (560→640µm), so those rows' measured Z0 is not this tree's.
-           The declared-board column is in fact MORE exposed to that move
-           than the realized-board one, because the declared anchor does
-           not follow W. h_sub/5, h_sub/6 and 60µm happen to realize the
-           committed width again under the centre sampler (they did not
-           under the node sampler), and three unmoved points are not a
-           sequence.
+           #752: the same-permittivity material-column extent is reported
+           separately. At dx=80/60um on the historical 600/254um fixture,
+           that extent is 320/300um while the PEC trace's substrate-facing
+           plane and the normal source interval both end at 240um. The PEC
+           volume and the dielectric use different #931 samplers. A material
+           bbox therefore cannot stand in for the conductor-plane gap or an
+           electrical-width correction to Hammerstad-Jensen.
 
-           EVIDENCE THAT THE OLD FIGURES ARE STALE (spot check, NOT a
-           replacement bound): re-solving aligned dx=h_sub/3 on this
-           branch (2026-09-02, jax_enable_x64=False, CPU; ring-down
-           settling -110.0/-113.1 dB, i.e. well past the -40 dB
-           open-domain floor; mean|S11|raw=0.00686) reads Z0=48.162 Ω
-           against the declared-board anchor 47.895 Ω = +0.56% — where
-           the retired sequence claimed -7.9% and the runtime message
-           claimed ">5% expected". A single point cannot replace a sweep,
-           so NO specific percentage is quoted here any more, and the
-           monotone "refinement reduces the bias" narrative the sequence
-           supported is withdrawn with it. A live "<X%" figure for this
-           check requires RE-SOLVING all six points on main's
-           rasterization
-           (``scripts/diagnostics/msl_z0_bias_floor_sweep.py``) and
-           regenerating the realized-board anchor beside it. What needs no
-           re-measurement, and is all this check now asserts, is the O(dx)
-           convergence order above plus the alignment/board-fidelity
-           argument, which check 2c gates on its own axis.
-
-           ISSUE #752 CORRECTION (2026-08-27): this docstring, and check
-           2b below, used to also report that a misaligned mesh (h_sub/dx
-           fractional part in [0.10, 0.40]) measured "+20.2%/+11.0% Z0
-           bias, 2.56-2.94x worse than the aligned case" at dx=80/60µm —
-           implying the misalignment class itself, independent of board
-           identity, degrades extraction. That framing compared the
-           misaligned run's DECLARED-board deviation against the aligned
-           run's DECLARED-board deviation, but the misaligned mesh's
-           half-open rasterizer rule (``rfx/geometry/csg.py``) ALSO
-           thickens the realized substrate to 320µm/300µm at dx=80/60µm
-           (+26%/+18% vs the declared 254µm; ``sim.fidelity_report()``
-           confirms this) — a genuinely different physical board, not a
-           worse extraction of the same one. Scored against the board
-           each mesh point actually solves (Hammerstad-Jensen on the
-           REALIZED h/W from ``fidelity_report()``; see the sibling
-           ``msl_z0_bias_floor_sweep_realized_anchor.json`` artifact next
-           to the pre-declared sweep JSON), the extractor tracks the
-           realized-board Hammerstad-Jensen anchor closely at every point
-           in the sweep, aligned or misaligned alike (that sibling
-           artifact carries the per-point deviations). NOTE (audit
-           2026-09-02, re-derived at #931 §1.1 on 2026-09-07): the
-           artifact's rows are the pre-#802 f32 as-solved record — the
-           centre-sampled PEC volume this tree solves realizes a
-           different trace width at h_sub/3 (677.3→592.7µm), h_sub/4
-           (635.0→571.5µm) and dx=80µm (560→640µm; the 2026-09-02
-           re-solve of that point ran on the 7-cell trace), so those
-           rows' realized-board deviations are
-           RE-SOLVE-OWED before any specific "within X%" bound may be
-           quoted as a LIVE extractor property; run
-           ``scripts/diagnostics/msl_z0_bias_floor_sweep.py`` to refresh
-           them. The "2.56-2.94x worse" ratio and
-           the "+20.2%/+11.0% Z0 bias" framing are RETRACTED as
-           extractor-bias claims (the pre-declared sweep JSON and its
-           as-run verdict block are left untouched — they remain the
-           auditable record of what was measured; only this prose
-           reading of them is corrected). See check 2b for what
-           alignment advice survives on other grounds.
-
-           The same sweep also asked whether alignment class shifts the
-           |S11| floor itself, not just Z0 (issue #487). |S11|_floor
-           tracks |Gamma_implied| = |(Z0-Z0_HJ)/(Z0+Z0_HJ)| within ~1.3x
-           over 5 of 6 points (ratio 0.95-1.27), but BREAKS at the finest
-           aligned point (h_sub/6, ratio 1.96), where Gamma_implied =
-           0.0033 is nearly zero (the rasterized Z0 crosses the analytic
-           anchor between n=5 and n=6) while mean|S11| stays at order
-           0.006. Below that scale this sweep cannot RESOLVE whether the
-           floor~=headroom*|Gamma_implied| mechanism still holds (headroom
-           being that same ~0.95-1.27x ratio: floor / |Gamma_implied|),
-           for three reasons, so this is reported as a resolution limit of
-           the sweep, not a confirmed second mechanism: (1) Gamma_implied
-           is one BAND-MEAN Z0 compared against a band-MEAN |S11|(f); the
-           artifact has no per-bin Z0(f), and whenever Gamma(f) changes
-           sign inside the band — exactly this case — mean|S11(f)|
-           generically exceeds |Gamma(mean Z0)| by Jensen's inequality
-           alone; (2) the two sides come from different estimators — the
-           fitted-Z0's own honesty guard (``strict_extractor``, the
-           documented +/-10% fitted-Z0 health bound) only calls Z0 healthy
-           to that tolerance, and at the COARSEST MISALIGNED mesh (80um,
-           not n=6) the two per-port Z0 reads — each that port's own
-           max-deviation frequency bin, not the same frequency, so this
-           is an order-of-magnitude reference, not a same-mesh
-           measurement — differ by 0.17 ohm, already over half of the
-           ENTIRE n=6 signal (Z0-Z0_HJ = 0.315 ohm). A coarser, misaligned
-           mesh plausibly has MORE estimator noise than the much finer,
-           aligned n=6 point, so 0.17 ohm likely OVERSTATES the true n=6
-           noise floor — using it anyway is the conservative (cautious)
-           choice for an argument that only needs to show noise CANNOT be
-           excluded, not that it explains n=6 exactly; (3) only ONE point
-           departs — h_sub/5 (Gamma_implied=0.0063) is fully consistent
-           with floor=|Gamma_implied| (ratio 0.95). This single-point
-           ratio breakdown is why no derived-dB formula ships from this
-           sweep.
-
-           No MEASURED-dB advisory ships either, for a separate reason:
-           even where the mechanism DOES hold, the measured floors
-           (-26.0 dB at 3 aligned cells, -33.0 dB at 4) are specific to
-           THIS thru fixture, and the support matrix explicitly forbids
-           generalizing thru/matched/notch evidence to other structures
-           — quoting those numbers as an engineer-facing dB promise for
-           an arbitrary MSL port would be exactly that overclaim. They
-           are cited here as fixture-specific informational context only.
-           The sweep JSON (``scripts/diagnostics/msl_z0_bias_floor_sweep/
-           msl_z0_bias_floor_sweep.json``) is the artifact of record.
+           The old declared-board percentages and realized-board
+           Hammerstad-Jensen anchor are pre-#802 historical records. Their
+           extraction and geometry changed later; neither an old percentage
+           nor a live geometry rebuild paired with frozen Z0 establishes a
+           current bound. Preserve the artifacts; any quantitative re-solve
+           needs a new, consistently qualified geometry/measurement record.
 
         3. **Port-to-CPML distance** in propagation direction ≥ 2·h_sub.
            Source-side CPML reflection inflates |S11| if the port is
@@ -7675,25 +7599,21 @@ class _PreflightMixin:
                     source="_check_msl_port_geometry"), stacklevel=3)
 
         for pe in _probe_entries:
+            _gap = None
             if _msl_assembled is None:
                 _w.warn(PreflightWarning(
                     f"MSL port {pe.name!r}: conductor attachment could not be "
-                    "validated because the run geometry could not be assembled.",
+                    "validated because the run geometry could not be assembled; "
+                    "the conductor-plane gap is unavailable.",
                     code="msl_port_conductor_planes", severity="error",
                     source="_check_msl_port_geometry"))
             else:
-                from rfx.sources.msl_port import validate_msl_port_geometry
-                _geometry = _msl_assembled[4]
                 try:
-                    validate_msl_port_geometry(
-                        _msl_assembled[0], _msl_port_from_entry(pe),
-                        pec_edge_masks=_geometry.edges,
-                        sheet_specs=_geometry.sheet_specs,
-                        periodic=_geometry.periodic,
-                        pec_faces=self._boundary_spec.pec_faces(), name=pe.name)
+                    _gap = self._msl_conductor_gap(pe, _msl_assembled)
                 except ValueError as exc:
                     _w.warn(PreflightWarning(
-                        str(exc), code="msl_port_conductor_planes", severity="error",
+                        f"{exc} The conductor-plane gap is unavailable.",
+                        code="msl_port_conductor_planes", severity="error",
                         source="_check_msl_port_geometry"))
             # A blocking attachment finding does not hide independent
             # clearance/reflection diagnostics useful for repairing the model.
@@ -7713,6 +7633,19 @@ class _PreflightMixin:
             y_centre = float(pe.position[_iw])
             w_trace = float(pe.width)
             h_sub = float(pe.height)
+            _declared_ground = float(pe.position[_inr])
+            _declared_trace = _declared_ground + h_sub
+            _absolute_faces = (
+                f"declared ground {_norm_ax}={_declared_ground*1e6:.1f}µm and "
+                f"trace {_norm_ax}={_declared_trace*1e6:.1f}µm"
+            )
+            _face = None
+            _face_grid = _msl_assembled[0] if _msl_assembled is not None else _msl_grid
+            if _face_grid is not None:
+                try:
+                    _face = self._msl_declared_face_geometry(pe, _face_grid)
+                except (ValueError, TypeError, NotImplementedError):
+                    pass  # no invented fraction or uniform fallback on a known grid
             recommended = 2.0 * h_sub
 
             # ---- 1. Lateral (trace-width axis) clearance ----
@@ -7754,117 +7687,56 @@ class _PreflightMixin:
                         stacklevel=3,
                     )
 
-            # ---- 2. Substrate cells ----
-            # Issue #752 (#766 review): the cell count and any "realized"
-            # thickness come from the RUN grid's assembled permittivity
-            # (uniform or profiled), never from n * scalar dx -- see
-            # _msl_realized_substrate. The scalar estimate is used only
-            # when that cannot be derived, and the message says so.
-            _real = self._msl_realized_substrate(pe, _inr, assembled=_msl_assembled)
-            if _real is not None:
-                n_z_sub = max(1, int(_real["n"]))
-            else:
-                n_z_sub = max(1, int(round(h_sub / dx)))
-            # Realized-vs-declared substrate thickness, derived ONCE and
-            # shared by checks 2, 2b and 2c so the three can never disagree
-            # about the same geometry (#766 review B2). ``_thick_disclosed``
-            # records whether 2 or 2b already told the user about it; 2c
-            # covers exactly the geometries neither of them reaches.
-            if _real is not None:
-                _h_real_m = float(_real["h_real"])
-                _n_real = int(_real["n"])
-                _thick_is_estimate = False
-            else:
-                # Run grid unavailable: fall back to the same half-open
-                # rasterizer arithmetic the other two branches use, and say
-                # it is an estimate.
-                _n_real = max(1, int(np.ceil(h_sub / dx - 1e-9)))
-                _h_real_m = _n_real * float(dx)
-                _thick_is_estimate = True
-            _rel_thick = (_h_real_m - h_sub) / h_sub if h_sub > 0 else 0.0
-            _thick_disclosed = False
-            if n_z_sub < 4:
-                _extra = ""
-                if _real is not None:
-                    _h_real_um = _real["h_real"] * 1e6
-                    if abs(_real["h_real"] - h_sub) > 0.005 * h_sub:
-                        _pct_thick = (
-                            (_h_real_um - h_sub * 1e6) / (h_sub * 1e6) * 100.0
-                        )
-                        _extra = (
-                            f" On the grid this run uses the substrate "
-                            f"actually realizes {_real['n']} cell(s) = "
-                            f"{_h_real_um:.0f}µm ({_pct_thick:+.0f}% vs the "
-                            f"declared {h_sub*1e6:.0f}µm) — read off the "
-                            f"assembled permittivity under the port, not "
-                            f"n*dx; the half-open rasterizer rule "
-                            f"(rfx/geometry/csg.py) rounds a face that is "
-                            f"not on a node UP to the next cell. A "
-                            f"substrate-thickening effect, separate from "
-                            f"staircase resolution; sim.fidelity_report() "
-                            f"reports the same number, and see the "
-                            f"mixed-cell-danger-zone check below."
-                        )
-                        _thick_disclosed = True
-                    _dx_note = (
-                        f"base dx={dx*1e6:.0f}µm, mesh profile in force"
-                        if _real["nonuniform"] else f"dx={dx*1e6:.0f}µm"
-                    )
-                else:
-                    _frac_here = (h_sub / dx) - int(h_sub / dx)
-                    if _frac_here > 1e-9:
-                        _n_ceil = int(h_sub / dx) + 1
-                        _h_real_um = _n_ceil * dx * 1e6
-                        _pct_thick = (
-                            (_h_real_um - h_sub * 1e6) / (h_sub * 1e6) * 100.0
-                        )
-                        _extra = (
-                            f" SCALAR-dx ESTIMATE (the run grid could not "
-                            f"be assembled for this check): h_sub/dx="
-                            f"{h_sub/dx:.3f} is not an integer, so the "
-                            f"half-open rasterizer rule would realize "
-                            f"{_n_ceil} substrate cell(s) = {_h_real_um:.0f}µm "
-                            f"({_pct_thick:+.0f}% vs the declared "
-                            f"{h_sub*1e6:.0f}µm) on a uniform mesh; "
-                            f"confirm with sim.fidelity_report()."
-                        )
-                        _thick_disclosed = True
-                    _dx_note = f"dx={dx*1e6:.0f}µm, scalar estimate"
+            # ---- 2. Validated conductor-plane source intervals ----
+            # Preserve the material-column walk and declared-face fraction;
+            # neither is a substitute for the independently validated gap.
+            _real = (self._msl_realized_substrate(pe, _inr, assembled=_msl_assembled)
+                     if _msl_assembled is not None else None)
+            _material_txt = (
+                f" Separately, the declared-material column has {_real['n']} "
+                f"same-permittivity sample slot(s), extent {_real['h_real']*1e6:.1f}µm. "
+                "This material extent is not the conductor-plane gap."
+                if _real is not None else
+                " The declared-material column extent is unavailable."
+            )
+            _gap_txt = (
+                f"Validated conductor-plane gap={_gap['h']*1e6:.1f}µm over "
+                f"{_gap['n']} normal interval(s), from {_norm_ax}="
+                f"{_gap['ground']*1e6:.1f}µm to {_gap['trace']*1e6:.1f}µm "
+                f"(declared height={h_sub*1e6:.1f}µm)."
+                if _gap is not None else
+                "The conductor-plane gap is unavailable because attachment was not validated."
+            )
+            _rel_gap = ((_gap["h"] - h_sub) / h_sub
+                        if _gap is not None and h_sub > 0 else None)
+            _gap_disclosed = False
+            if _gap is not None and _gap["n"] < 4:
                 _w.warn(
                     PreflightWarning(
-                        f"MSL port '{pe.name}': only {n_z_sub} substrate cell(s) "
-                        f"in z (h_sub={h_sub*1e6:.0f}µm, {_dx_note}). "
-                        f"Yee staircase at the dielectric interface is "
-                        f"O(dx), not O(dx²), for inhomogeneous ε, so Z0 "
-                        f"accuracy degrades linearly as the substrate is "
-                        f"under-resolved. Refine to dx ≤ "
-                        f"{h_sub*1e6/4:.1f}µm (4+ substrate cells) AND keep "
-                        f"h_sub/dx an integer (aligned); this check's "
-                        f"accuracy target is <5% Z0 bias against the "
-                        f"DECLARED-board Hammerstad-Jensen anchor (S is "
-                        f"normalized to that anchor, issue #723). No "
-                        f"specific measured bias percentage is quoted here "
-                        f"(audit 2026-09-02): the 2026-08-02 sweep's "
-                        f"aligned rows are a pre-#802 as-solved record — "
-                        f"the exact-coordinate rasterizer (#802/#834) moved "
-                        f"three of their realized trace widths, and a "
-                        f"re-solve of aligned h_sub/3 on the current "
-                        f"rasterizer contradicted the retired figure — so "
-                        f"re-run scripts/diagnostics/"
-                        f"msl_z0_bias_floor_sweep.py before quoting one as "
-                        f"a live bound.{_extra}",
+                        f"MSL port '{pe.name}': only {_gap['n']} normal interval(s) "
+                        "between the validated ground and trace planes. "
+                        f"{_gap_txt}{_material_txt} The existing resolution "
+                        "recommendation is at least 4 normal intervals and an "
+                        "aligned declared substrate interface. On a uniform mesh, "
+                        f"refine to dx ≤ {h_sub*1e6/4:.1f}µm and align the "
+                        f"{_absolute_faces} with nodes; on a profiled mesh, place "
+                        "sufficient nodes between those faces. Geometry screening "
+                        "does not quantify Z0 error. The historical sweep and its "
+                        "realized-board Hammerstad-Jensen anchor are pre-#802 "
+                        "records; a new matched-geometry measurement is needed "
+                        "before quoting a current accuracy bound.",
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),
                     stacklevel=3,
                 )
+                _gap_disclosed = True
 
-            # ---- 2b. Substrate-boundary cell alignment for
-            # ``pec_occupancy_override`` users.  When h_sub/dx has a
-            # fractional part in [0.10, 0.40], the substrate-air
-            # interface lands in the lower portion of a Yee cell that
-            # ALSO contains the trace at z=h_sub..h_sub+dx; the cell is
-            # mixed substrate + PEC.  A hard-PEC ``Box(material="pec")``
+            # ---- 2b. Declared trace-face alignment ----
+            # The absolute declared trace face has a fractional position
+            # in the normal mesh. The historical mixed-cell witness also
+            # required substrate/trace overlap, which this fraction alone
+            # does not establish. A hard-PEC ``Box(material="pec")``
             # VOLUME avoids the specific bug below ON THE DEFAULT RUN
             # PATH: under the lattice ownership contract (#931 §1.2) it
             # occupies WHOLE primal cells with walls on BOTH faces and
@@ -7898,56 +7770,17 @@ class _PreflightMixin:
             # produces unphysical |S21| (cited, not remeasured on this
             # checkout: 2026-05-08, runs #563/#567: |S21|² > 1 across all
             # stub lengths at dx ∈ [75, 82]µm with h_sub=254µm; no
-            # committed artifact, no regression test). Snap dx so
-            # h_sub/dx is integer or its fractional part is > 0.6 to
-            # stay in a safe alignment window.
+            # committed artifact, no regression test). The existing
+            # declared-face alignment heuristic is retained; it does not
+            # certify an arbitrary material/occupancy realization.
             #
-            # ISSUE #752 CORRECTION (2026-08-27): this check used to also
-            # say Hard PEC is "NOT" exempt from Z0 bias, quoting "+20.2%
-            # vs -7.9% at ~3 cells, +11.0% vs -3.8% at ~4 cells ...
-            # 2.56-2.94x worse". Those four percentages are all measured
-            # against the DECLARED 600/254µm board's Hammerstad-Jensen
-            # anchor, but the +20.2%/+11.0% (misaligned, dx=80/60µm) rows
-            # and the -7.9%/-3.8% (aligned, dx≈84.7/63.5µm) rows are NOT
-            # the same physical board: the half-open rasterizer rule
-            # thickens the misaligned meshes' realized substrate to
-            # 320µm/300µm (+26%/+18% vs declared) while the aligned
-            # meshes realize h_sub exactly. Comparing declared-board
-            # deviations across different realized boards measures board
-            # rasterization, not extractor bias. Scored against the board
-            # each point actually solves (Hammerstad-Jensen on the
-            # REALIZED h/W; see the sibling
-            # ``msl_z0_bias_floor_sweep_realized_anchor.json`` next to
-            # the pre-declared sweep JSON), the extractor tracks the
-            # realized-board Hammerstad-Jensen anchor closely at every one
-            # of the six sweep points, aligned or misaligned (that sibling
-            # artifact carries the per-point deviations; audit 2026-09-02:
-            # its aligned rows are the pre-#802 f32 as-solved record and
-            # are re-solve-owed before a specific "within X%" bound may be
-            # quoted live — main's #802/#834 rasterizer moves three aligned
-            # points' realized trace width). The "2.56-2.94x worse"
-            # / "+20.2%/+11.0%" framing is RETRACTED as an extractor-bias
-            # claim (the pre-declared JSON and its as-run verdict are
-            # left untouched as the auditable record; only this reading
-            # of them is corrected). What survives, on separate grounds:
-            # (i) the |S21|² > 1 override risk above (cited, not
-            # remeasured here), and (ii) the substrate-thickening effect
-            # itself is real and measured (+26%/+18% at dx=80/60µm) — it
-            # is a genuine board-fidelity change from what was declared,
-            # even though it is not the "worse Z0 extraction" the old
-            # text claimed. The alignment advice below is kept on those
-            # two grounds, downgraded from a Z0-bias-magnitude claim.
-            # Issue #752 (#766 review): the interface position and the
-            # realized thickness come from the run grid (see
-            # _msl_realized_substrate); on a uniform grid frac reduces to
-            # the old (h_sub/dx) fractional part exactly.
-            if _real is not None:
-                frac = _real["frac"]
-                _nu_here = _real["nonuniform"]
-            else:
-                frac = (h_sub / dx) - int(h_sub / dx)
-                _nu_here = False
-            if 0.10 <= frac <= 0.40:
+            # The declared-interface fraction retains its original meaning.
+            # Computing it from snapped conductor planes would force it to
+            # zero and erase this alignment advisory. The material-column
+            # extent is a separate observation, not a board-thickening or
+            # Z0-bias explanation for the frozen historical sweep.
+            frac = _face["frac"] if _face is not None else None
+            if frac is not None and 0.10 <= frac <= 0.40:
                 # Snap suggestions come from the SAME grid ``frac`` came
                 # from (#766 review B1). They used to be derived from
                 # ``int(h_sub / dx)`` on the SCALAR dx while ``frac`` came
@@ -7957,57 +7790,47 @@ class _PreflightMixin:
                 # then raised ZeroDivisionError out of preflight, i.e.
                 # out of run()/compute_msl_s_matrix(), aborting the solve
                 # (the uniform-dx half of that crash predates this PR).
-                # ``_msl_realized_substrate`` already returns the realized
-                # count, so use it and treat "one cell below" as the only
-                # coarser aligned option, which does not exist once the
-                # substrate is down to a single cell.
-                if _real is not None:
-                    n_above = max(1, int(_real["n"]))
-                else:
-                    n_above = max(1, int(h_sub / dx) + 1)
+                # The declared-face bracket is separate from the material
+                # count: the same epsilon can continue above the trace.
+                # Use the bracket that produced frac, and suppress the
+                # coarser suggestion when there is no lower interval.
+                n_above = max(1, int(_face["declared_n_above"]))
                 n_below = n_above - 1
                 dx_low = h_sub / n_above                        # frac=0
                 dx_high = h_sub / n_below if n_below >= 1 else None
-                if _real is not None:
-                    h_real_um = _real["h_real"] * 1e6
-                    _iface_txt = (
-                        f"the declared substrate top sits {frac:.3f} of a "
-                        f"cell above the nearest mesh node (that cell is "
-                        f"{_real['d_iface']*1e6:.1f}µm)"
-                    )
-                else:
-                    h_real_um = n_above * dx * 1e6
-                    _iface_txt = (
-                        f"h_sub/dx = {h_sub/dx:.3f} (fractional part "
-                        f"{frac:.3f}; scalar estimate, run grid unavailable)"
-                    )
-                pct_thick = (h_real_um - h_sub * 1e6) / (h_sub * 1e6) * 100.0
+                _iface_txt = (
+                    f"the declared trace plane at {_norm_ax}={_face['trace']*1e6:.1f}µm "
+                    f"sits {frac:.3f} of a cell above its lower mesh node "
+                    f"(that cell is {_face['d_iface']*1e6:.1f}µm)"
+                )
                 _snap_txt = (
-                    f"On a non-uniform profile, place a mesh node exactly "
-                    f"at h_sub={h_sub*1e6:.1f}µm (the substrate top) instead "
-                    f"of grading through it."
-                    if _nu_here else
+                    f"On the non-uniform profile, place mesh nodes at the "
+                    f"{_absolute_faces}."
+                    if _face["nonuniform"] else
+                    f"For this translated board, place mesh nodes at the "
+                    f"{_absolute_faces}. A height/n spacing alone does not "
+                    "ensure that both absolute faces are on nodes."
+                    if _declared_ground != 0.0 else
                     f"To snap onto a mesh matching the DECLARED board "
                     f"instead, set dx = {dx_low*1e6:.1f}µm (= h_sub/"
                     f"{n_above}) or {dx_high*1e6:.1f}µm "
-                    f"(= h_sub/{n_below})."
+                    f"(= h_sub/{n_below}), aligning the {_absolute_faces}."
                     if dx_high is not None else
                     f"To snap onto a mesh matching the DECLARED board "
                     f"instead, set dx = {dx_low*1e6:.1f}µm (= h_sub/"
-                    f"{n_above}); there is no coarser aligned option — "
-                    f"the substrate already realizes a single cell, and "
-                    f"h_sub/dx cannot drop below 1. Check 2 above asks "
-                    f"for dx ≤ {h_sub*1e6/4:.1f}µm (4+ substrate cells) "
-                    f"anyway."
+                    f"{n_above}), aligning the {_absolute_faces}; there is "
+                    "no coarser positive-interval candidate. Check 2 still "
+                    "recommends at least four normal intervals."
                 )
                 _w.warn(
                     PreflightWarning(
                         f"MSL port '{pe.name}': {_iface_txt} — this lands "
-                        f"in the [0.10, 0.40] mixed-cell danger zone. The "
-                        f"substrate-air interface bisects the same Yee cell "
-                        f"that holds the trace; AD-traceable "
-                        f"``pec_occupancy_override`` zeros the whole cell "
-                        f"and produces unphysical |S21|² > 1 in this regime "
+                        f"in the [0.10, 0.40] mixed-cell danger zone of the "
+                        f"existing declared-face alignment heuristic. The "
+                        f"fraction alone does not establish material/PEC "
+                        f"overlap. Historical substrate-air/trace mixed-cell "
+                        f"runs with AD-traceable ``pec_occupancy_override`` "
+                        f"reported unphysical |S21|² > 1 "
                         f"(cited, not remeasured on this checkout: runs "
                         f"#563/#567, 2026-05-08, dx∈[75,82]µm h_sub=254µm). "
                         f"A hard ``Box(material='pec')`` avoids that "
@@ -8032,114 +7855,33 @@ class _PreflightMixin:
                         f"enters the smoother as vacuum and stays "
                         f"whole-cell through pec_mask. The alignment advice "
                         f"below still applies on the two lanes that do. "
-                        f"Separately: the half-open rasterizer rule rounds "
-                        f"that face UP, so this mesh actually realizes "
-                        f"{n_above} cell(s) of substrate = {h_real_um:.0f}µm "
-                        f"({pct_thick:+.0f}% THICKER than the declared "
-                        f"{h_sub*1e6:.0f}µm — read off the run grid's "
-                        f"assembled permittivity; sim.fidelity_report() "
-                        f"reports the same number). That board-thickening, "
-                        f"not extractor bias, is most of what a naive "
-                        f"declared-board Z0 comparison used to attribute "
-                        f"to 'misalignment' (retracted: see "
-                        f"msl_z0_bias_floor_sweep_realized_anchor.json — "
-                        f"scored against the board each mesh point actually "
-                        f"solves rather than the declared board, the "
-                        f"extractor tracks the realized-board Hammerstad-"
-                        f"Jensen anchor closely; that artifact carries the "
-                        f"per-point deviations, which must be re-solved "
-                        f"(scripts/diagnostics/msl_z0_bias_floor_sweep.py) "
-                        f"after any rasterization change — its aligned rows "
-                        f"are the pre-#802 as-solved record). {_snap_txt}",
+                        f"{_gap_txt}{_material_txt} The declared-face fraction "
+                        "and material extent describe geometry; neither predicts "
+                        "a Z0 error. The frozen sweep cannot establish a current "
+                        f"extractor accuracy bound. {_snap_txt}",
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),
                     stacklevel=3,
                 )
-                _thick_disclosed = True
+                _gap_disclosed = _gap is not None
 
-            # ---- 2c. Realized-vs-declared substrate THICKNESS ----
-            # Issue #752 / #766 review B2. Checks 2 and 2b are both proxies
-            # for the thing the user actually cares about: is the board the
-            # solver rasterized the board they declared? Check 2 gates on
-            # the realized CELL COUNT (< 4) and 2b on where the declared top
-            # face lands INSIDE its cell (frac in [0.10, 0.40]) -- and those
-            # two proxies do not cover each other. For h_sub/dx in
-            # (3.00, 3.10) or (3.40, 3.50) the substrate realizes 4 cells
-            # (check 2 silent) while frac sits at 0.00-0.10 / 0.40-0.50
-            # (check 2b silent), so a board realized 14-33% thicker than
-            # declared drew ZERO substrate advisories -- measured at
-            # dx = 83.28 / 74.27 / 73.62 / 72.78 um on the 600/254um
-            # RO4350B fixture (fidelity_report: 333.1 / 297.1 / 294.5 /
-            # 291.1 um realized against 254.0 declared). That is exactly
-            # the declared-vs-realized silence #752 was filed against.
-            #
-            # So gate on the PHYSICAL quantity instead of either proxy: the
-            # realized substrate thickness itself, against the threshold
-            # derived at _MSL_REALIZED_THICKNESS_TOL (5% Z0 budget divided
-            # by the artifact-measured 0.601 dZ0/dh sensitivity = 8.3%).
-            # It speaks only when neither 2 nor 2b already disclosed the
-            # thickening (``_thick_disclosed``), so the three checks give
-            # one consistent account of one geometry and cannot disagree --
-            # all three read the SAME _msl_realized_substrate result.
-            if not _thick_disclosed and abs(_rel_thick) > _MSL_REALIZED_THICKNESS_TOL:
-                _pct_r = _rel_thick * 100.0
-                _z0_pct = abs(_rel_thick) * _MSL_REALIZED_THICKNESS_Z0_SENSITIVITY * 100.0
-                _prov = (
-                    f"read off the run grid's assembled permittivity under "
-                    f"the port ({_n_real} cell(s)); sim.fidelity_report() "
-                    f"reports the same number"
-                    if not _thick_is_estimate else
-                    f"SCALAR-dx ESTIMATE ({_n_real} cell(s) of dx="
-                    f"{dx*1e6:.1f}µm) — the run grid could not be assembled "
-                    f"for this check; confirm with sim.fidelity_report()"
-                )
-                _fix = (
-                    f"Place a mesh node exactly at h_sub={h_sub*1e6:.1f}µm "
-                    f"so the profile stops grading through the substrate top"
-                    if (_real is not None and _real["nonuniform"]) else
-                    f"Choose dx so h_sub/dx is an integer (e.g. dx = "
-                    f"{h_sub*1e6/max(4, _n_real):.1f}µm = h_sub/"
-                    f"{max(4, _n_real)}), or place a mesh node at "
-                    f"h_sub={h_sub*1e6:.1f}µm on a non-uniform profile"
-                )
+            # ---- 2c. Declared height vs validated conductor-plane gap ----
+            # Keep the existing 8.3% heuristic, but apply it to the conductor
+            # separation rather than an epsilon-column bbox. It is a geometry
+            # advisory, not a prediction from the historical 0.601 sensitivity.
+            if (not _gap_disclosed and _rel_gap is not None
+                    and abs(_rel_gap) > _MSL_REALIZED_THICKNESS_TOL):
                 _w.warn(
                     PreflightWarning(
-                        f"MSL port '{pe.name}': the board this run solves is "
-                        f"not the board you declared — the substrate under "
-                        f"the port realizes {_h_real_m*1e6:.1f}µm against a "
-                        f"declared h_sub={h_sub*1e6:.1f}µm ({_pct_r:+.1f}%; "
-                        f"{_prov}). The half-open rasterizer rule "
-                        f"(rfx/geometry/csg.py) rounds a substrate face that "
-                        f"is not on a mesh node UP to the next cell. This is "
-                        f"a DIFFERENT PHYSICAL BOARD, not an extraction "
-                        f"error: Hammerstad-Jensen Z0 moves about "
-                        f"{_MSL_REALIZED_THICKNESS_Z0_SENSITIVITY:.2f}% per "
-                        f"1% of substrate thickness (measured on this repo's "
-                        f"own scripts/diagnostics/msl_z0_bias_floor_sweep/"
-                        f"msl_z0_bias_floor_sweep_realized_anchor.json, row "
-                        f"'misaligned 60um' — the one row whose realized "
-                        f"trace width equals the declared 600.0µm, so h is "
-                        f"the only variable: h 254.0→300.0µm, +18.1%, moves "
-                        f"Z0_HJ 47.895→53.106Ω, +10.9%), so this board is "
-                        f"worth roughly {_z0_pct:.0f}% in Z0 versus the one "
-                        f"you specified. This advisory's "
-                        f"{_MSL_REALIZED_THICKNESS_TOL*100:.1f}% threshold is "
-                        f"that sensitivity carried back from check 2's own "
-                        f"<5% Z0-bias contract: "
-                        f"{_MSL_REALIZED_THICKNESS_Z0_BUDGET*100:.0f}%/"
-                        f"{_MSL_REALIZED_THICKNESS_Z0_SENSITIVITY:.3f} = "
-                        f"{_MSL_REALIZED_THICKNESS_TOL*100:.1f}%; it is NOT "
-                        f"a claim about extractor bias (scored against the "
-                        f"board it actually solves rather than the declared "
-                        f"board, the extractor tracks the realized-board "
-                        f"Hammerstad-Jensen anchor closely; see "
-                        f"msl_z0_bias_floor_sweep_realized_anchor.json for "
-                        f"the per-point deviations, re-solve-owed after a "
-                        f"rasterization change). {_fix}; or "
-                        f"accept the realized board and quote its "
-                        f"{_h_real_m*1e6:.1f}µm thickness rather than the "
-                        f"declared one.",
+                        f"MSL port '{pe.name}': conductor-plane separation differs "
+                        f"from the declared height by {_rel_gap*100:+.1f}%, beyond "
+                        f"the existing {_MSL_REALIZED_THICKNESS_TOL*100:.1f}% "
+                        f"geometry-advisory threshold. {_gap_txt}{_material_txt} "
+                        f"Place mesh nodes at the {_absolute_faces} "
+                        "or refine the normal mesh. This geometry difference "
+                        "does not predict a Z0 change or establish an extractor "
+                        "accuracy bound.",
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),

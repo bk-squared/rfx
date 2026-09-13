@@ -65,6 +65,10 @@ def _msl_warnings(sim: Simulation) -> list[str]:
     return [m for m in sim.preflight() if "MSL port" in m]
 
 
+def _normal_interval_warnings(messages):
+    return [message for message in messages if "only " in message and "normal interval(s)" in message]
+
+
 def test_clearance_warning_fires_on_narrow_ly():
     sim = _build_sim(dx=80e-6, ly=W_TRACE + 6 * 80e-6)
     msgs = _msl_warnings(sim)
@@ -84,35 +88,26 @@ def test_clearance_silent_on_wide_ly():
 
 
 def test_substrate_resolution_warning_at_3_cells():
-    """dx=100um REALIZES 3 substrate cells (254um rounds up to 300um).
-
-    This used to build at dx=80um and expect "only 3 substrate cell(s)" --
-    but at dx=80 the solve has FOUR cells of substrate (320um); "3" was the
-    declared-board round(h_sub/dx), the exact confusion #752 is about
-    (#766 review). Check 2 now counts the cells the run grid has, so the
-    genuine 3-cell case is dx=100um, and the dx=80 case is covered by
-    test_substrate_checks_count_realized_cells_at_dx_80 below."""
+    """At dx=100um both the validated gap and material extent are300um."""
     sim = _build_sim(dx=100e-6, ly=W_TRACE + 8 * H_SUB)
-    msgs = _msl_warnings(sim)
-    sub = [m for m in msgs if "substrate cell" in m]
-    assert len(sub) == 1, f"expected 1 substrate-cell warning, got: {sub}"
-    assert "only 3 substrate cell(s)" in sub[0], sub[0]
-    assert "Refine to dx" in sub[0]
+    sub = _normal_interval_warnings(_msl_warnings(sim))
+    assert len(sub) == 1, sub
+    assert "only 3 normal interval(s)" in sub[0]
+    assert "gap=300.0µm" in sub[0]
+    assert "refine to dx" in sub[0]
 
 
 def test_substrate_checks_count_realized_cells_at_dx_80():
-    """At dx=80um the substrate REALIZES 4 cells = 320um (fidelity_report
-    says the same), so check 2 ("< 4 cells") must be silent and only the
-    mixed-cell check may speak -- carrying the realized 320um, read off the
-    assembled permittivity rather than n*dx (issue #752 / #766 review)."""
-    sim = _build_sim(dx=80e-6, ly=W_TRACE + 8 * H_SUB)
-    msgs = _msl_warnings(sim)
-    sub = [m for m in msgs if "substrate cell(s) in z" in m]
-    assert sub == [], f"check 2 must not call a 4-cell board '3 cells': {sub}"
+    """Four epsilon slots do not extend the three-interval source gap."""
+    msgs = _msl_warnings(_build_sim(dx=80e-6, ly=W_TRACE + 8 * H_SUB))
+    sub = _normal_interval_warnings(msgs)
+    assert len(sub) == 1 and "only 3 normal interval(s)" in sub[0], msgs
     mixed = [m for m in msgs if "danger zone" in m]
     assert len(mixed) == 1, msgs
-    assert "4 cell(s) of substrate = 320µm" in mixed[0], mixed[0]
-    assert "+26% THICKER" in mixed[0], mixed[0]
+    for message in (sub[0], mixed[0]):
+        assert "gap=240.0µm over 3 normal interval(s)" in message
+        assert "4 same-permittivity sample slot(s), extent 320.0µm" in message
+        assert "THICKER" not in message and "Z0 moves about" not in message
 
 
 def test_substrate_checks_read_the_run_grid_on_a_dz_profile():
@@ -126,24 +121,22 @@ def test_substrate_checks_read_the_run_grid_on_a_dz_profile():
     dz = np.concatenate([np.full(4, H_SUB / 4), np.full(12, 80e-6)])
     sim = _build_sim(dx=80e-6, ly=W_TRACE + 8 * H_SUB, dz_profile=dz)
     msgs = _msl_warnings(sim)
-    noisy = [m for m in msgs if "substrate cell" in m or "danger zone" in m]
+    noisy = [m for m in msgs if ("only " in m and "normal interval(s)" in m) or "danger zone" in m]
     assert noisy == [], f"exact NU substrate must not trip either check: {noisy}"
 
 
 def test_substrate_checks_report_realized_thickness_on_a_dz_profile():
-    """A dz_profile of uniform 80um cells puts the declared top 0.175 of a
-    cell above a node: the mixed-cell check must fire, and its realized
-    thickness (320um, 4 cells) must come from the run grid's permittivity,
-    with the non-uniform remedy (place a node at h_sub), not a dx snap."""
+    """A profiled80um grid reports both observations and a profile remedy."""
     sim = _build_sim(dx=80e-6, ly=W_TRACE + 8 * H_SUB,
                      dz_profile=np.full(15, 80e-6))
     msgs = _msl_warnings(sim)
     mixed = [m for m in msgs if "danger zone" in m]
     assert len(mixed) == 1, msgs
-    assert "sits 0.175 of a cell above the nearest mesh node" in mixed[0], mixed[0]
-    assert "4 cell(s) of substrate = 320µm" in mixed[0], mixed[0]
-    assert "place a mesh node exactly at h_sub=254.0µm" in mixed[0], mixed[0]
-    assert "set dx =" not in mixed[0], mixed[0]
+    assert "sits 0.175 of a cell above its lower mesh node" in mixed[0]
+    assert "gap=240.0µm over 3 normal interval(s)" in mixed[0]
+    assert "4 same-permittivity sample slot(s), extent 320.0µm" in mixed[0]
+    assert "place mesh nodes at the declared ground z=0.0µm and trace z=254.0µm" in mixed[0]
+    assert "set dx =" not in mixed[0]
 
 
 def test_substrate_walk_starts_at_the_ports_own_ground_plane():
@@ -176,16 +169,17 @@ def test_substrate_walk_starts_at_the_ports_own_ground_plane():
     msgs = _msl_warnings(sim)
     mixed = [m for m in msgs if "danger zone" in m]
     assert len(mixed) == 1, msgs
-    assert "4 cell(s) of substrate = 320µm" in mixed[0], mixed[0]
-    assert "10 cell(s)" not in mixed[0] and "800µm" not in mixed[0], mixed[0]
-    sub = [m for m in msgs if "substrate cell(s) in z" in m]
-    assert sub == [], f"4 realized cells must not trip check 2: {sub}"
+    assert "4 same-permittivity sample slot(s), extent 320.0µm" in mixed[0], mixed[0]
+    assert "10 same-permittivity sample slot(s)" not in mixed[0], mixed[0]
+    assert "gap=240.0µm over 3 normal interval(s), from z=800.0µm to 1040.0µm" in mixed[0]
+    sub = _normal_interval_warnings(msgs)
+    assert len(sub) == 1 and "only 3 normal interval(s)" in sub[0], msgs
 
 
 def test_substrate_resolution_silent_at_6_cells():
     sim = _build_sim(dx=40e-6, ly=W_TRACE + 8 * H_SUB)
     msgs = _msl_warnings(sim)
-    sub = [m for m in msgs if "substrate cell" in m]
+    sub = _normal_interval_warnings(msgs)
     assert len(sub) == 0, f"expected no substrate-cell warning, got: {sub}"
 
 
@@ -218,102 +212,27 @@ def test_mixed_cell_warning_fires_at_dx_80():
 
 
 # ---------------------------------------------------------------------------
-# Issue #487: the "<5% Z0 bias at 4+ cells" promise (check 2) and the
-# mixed-cell danger zone (check 2b) both got a sweep-grounded correction —
-# the promise holds only on an ALIGNED mesh. Numbers came from the committed
-# scripts/diagnostics/msl_z0_bias_floor_sweep.py artifact, NOT a derived
-# per-mesh formula (leg-1 expectation (a) broke at the finest aligned point,
-# so no continuous dB advisory was added — see that script's docstring and
-# _check_msl_port_geometry's class docstring).
-#
-# AUDIT 2026-09-02 (finding A1, second pass): check 2's message no longer
-# quotes ANY of those artifact numbers. The declared-board deviations
-# -7.9%/-3.8%/-1.2%/+0.7% and the ">5% expected below 4 cells" prediction
-# were the DECLARED-board column of the same frozen pre-#802 rows whose
-# realized-board "within 0.4%" reading was retired first; #802/#834 moved
-# the realized trace width at three of the four aligned points, so their
-# measured Z0 is not main's. A re-solve of aligned h_sub/3 on this branch
-# (settling -110.0/-113.1 dB, mean|S11|raw=0.00686) read Z0=48.162 Ω =
-# +0.56% vs the declared-board anchor 47.895 Ω, where the retired sequence
-# said -7.9% and the message said ">5%". The tests below therefore assert
-# the QUALITATIVE claim (O(dx) order, aligned-refinement target, the
-# re-solve pointer) and positively assert the retired percentages are gone;
-# they must NOT be re-pinned until the six-point sweep is re-solved.
-#
-# Issue #752 (#766 review N2): this header used to read "misalignment is
-# 2.56-2.94x worse in Z0-bias magnitude than refinement alone predicts",
-# quoting the same "+20.2% / +11.0%" framing that
-# test_mixed_cell_warning_names_z0_bias_magnitude below RETRACTS by name.
-# It is retracted here too, for the same reason: those percentages compare
-# DECLARED-board deviations across points that rasterize DIFFERENT boards
-# (the misaligned dx=80/60µm points realize a 320µm/300µm substrate, not
-# the declared 254µm), so they measure board rasterization, not extractor
-# bias. Scored against the board each point actually solves, the extractor
-# tracks the realized-board Hammerstad-Jensen anchor closely across the
-# sweep (msl_z0_bias_floor_sweep_realized_anchor.json). Audit 2026-09-02
-# (finding A1): the specific "within 0.4%" figure the advisory used to
-# quote is RETIRED as a live bound -- the anchor's aligned rows are the
-# pre-#802 as-solved record and are re-solve-owed. What survives is the
-# board-thickening effect itself, which is real, measured, and now gated on
-# its own axis by check 2c (realized-vs-declared substrate thickness).
-#
-# Every numeric constant quoted in these messages gets its own assertion
-# below (adversarial-review finding: an unbound constant can drift silently
-# — the #494->#502 coverage-hole class).
+# #752: historical Z0 claims are retired. Current messages describe a
+# validated conductor gap and a separate material-column extent. Refinement
+# and alignment recommendations do not establish a Z0 accuracy percentage.
 # ---------------------------------------------------------------------------
 def test_substrate_resolution_warning_names_alignment_requirement():
-    """Check 2's fix must fire only for an ALIGNED refinement target, and
-    must state WHY (O(dx) staircase order + declared-board normalization),
-    without quoting any measured Z0-bias percentage.
-
-    Issue #752 (2026-08-27) retired the "+11% (h_sub/dx=4.233)" comparison
-    this message used to add: that number was the misaligned dx=60um
-    point's declared-board deviation, cited here to claim refining
-    without alignment "does not reach" the aligned-class figure -- but
-    the misaligned point realizes a DIFFERENT, thicker board (300um vs
-    the declared 254um), so the comparison conflated board rasterization
-    with extraction quality.
-
-    AUDIT 2026-09-02 (finding A1, second pass) retired the rest of the
-    numbers in this message for the reason given in the header comment
-    above: -3.8%/-1.2%/+0.7% and ">5% expected" are the declared-board
-    column of pre-#802 rows, and a re-solve of aligned h_sub/3 on the
-    current rasterizer read +0.56% where they predicted -7.9%/">5%".
-    This test used to PIN those three percentages; it now asserts they are
-    ABSENT, together with the qualitative replacement and the re-solve
-    pointer. Re-pinning a percentage here requires re-solving the sweep
-    first. The fix target (:.1f, not :.0f -- 63.5um is h_sub/4, not 64um)
-    stays pinned: it is computed from h_sub at runtime, not measured."""
-    sim = _build_sim(dx=100e-6, ly=W_TRACE + 8 * H_SUB)
-    msgs = _msl_warnings(sim)
-    sub = [m for m in msgs if "substrate cell" in m]
-    assert len(sub) == 1, f"expected 1 substrate-cell warning, got: {sub}"
-    assert "an integer (aligned)" in sub[0], sub[0]
-    # Qualitative replacement (audit A1 second pass): the convergence ORDER
-    # and the normalization anchor, not a measured deviation.
-    assert "O(dx), not O(dx²)" in sub[0], sub[0]
-    assert "63.5µm" in sub[0], sub[0]  # h_sub/4 = 63.5, not the old "64µm"
-    assert "DECLARED-board Hammerstad-Jensen anchor" in sub[0], sub[0]
-    assert "msl_z0_bias_floor_sweep.py" in sub[0], sub[0]
-    # ... and the staleness disclosure that replaces the retired numbers.
-    assert "pre-#802" in sub[0], sub[0]
-    assert "No specific measured bias percentage is quoted" in sub[0], sub[0]
-    # RETIRED (audit A1 second pass): the pre-#802 declared-board column and
-    # the ">5% expected" prediction a re-solve of aligned h_sub/3 (+0.56%)
-    # contradicts. These must not come back without a six-point re-solve.
-    for retired in ("-3.8%", "-1.2%", "+0.7%", "-7.9%", ">5%"):
-        assert retired not in sub[0], (retired, sub[0])
-    # This mesh (dx=100) is misaligned (h_sub/dx=2.54): the realized-board
-    # disclosure must be present and must state the cell count/height READ
-    # OFF THE RUN GRID (3 cells = 300um, +18%), which here coincides with
-    # the "only 3 substrate cell(s)" figure above because both now count
-    # realized cells (#766 review).
-    assert "actually realizes 3 cell(s) = 300µm" in sub[0], sub[0]
-    assert "+18%" in sub[0], sub[0]
-    assert "read off the assembled permittivity" in sub[0], sub[0]
-    # Retired: the old "+11% (h_sub/dx=4.233)" board-mismatched comparison.
-    assert "+11%" not in sub[0], sub[0]
-    assert "4.233" not in sub[0], sub[0]
+    """Geometry recommendations must not imply a solver accuracy bound."""
+    msgs = _msl_warnings(_build_sim(dx=100e-6, ly=W_TRACE + 8 * H_SUB))
+    sub = _normal_interval_warnings(msgs)
+    assert len(sub) == 1, sub
+    hit = sub[0]
+    assert "at least 4 normal intervals" in hit
+    assert "aligned declared substrate interface" in hit
+    assert "63.5µm" in hit  # h_sub/4, not a rounded64um grid recommendation
+    assert "gap=300.0µm over 3 normal interval(s)" in hit
+    assert "3 same-permittivity sample slot(s), extent 300.0µm" in hit
+    assert "pre-#802" in hit
+    assert "new matched-geometry measurement" in hit
+    assert "does not quantify Z0 error" in hit
+    for retired in ("-3.8%", "-1.2%", "+0.7%", "-7.9%", ">5%", "<5% Z0 bias",
+                    "board-thickening", "actually realizes", "O(dx), not O(dx²)"):
+        assert retired not in hit, (retired, hit)
 
 
 def test_substrate_resolution_warning_silent_wording_at_6_cells():
@@ -324,67 +243,31 @@ def test_substrate_resolution_warning_silent_wording_at_6_cells():
     aligned control (adversarial-review finding)."""
     sim = _build_sim(dx=H_SUB / 6, ly=W_TRACE + 8 * H_SUB)
     msgs = _msl_warnings(sim)
-    sub = [m for m in msgs if "an integer (aligned)" in m]
+    sub = _normal_interval_warnings(msgs)
     assert len(sub) == 0, f"expected no alignment-caveat text, got: {sub}"
 
 
-def test_mixed_cell_warning_names_z0_bias_magnitude():
-    """Issue #752 (2026-08-27) CORRECTION: check 2b used to claim Hard PEC
-    is exempt from the |S21|² bug but NOT from a larger Z0 bias -- quoting
-    "+20.2%/+11.0% misaligned vs -7.9%/-3.8% aligned ... 2.56-2.94x worse".
-    Those four percentages are declared-board deviations measured on
-    DIFFERENT realized boards (the misaligned points rasterize a 320um/
-    300um substrate, not the declared 254um), so the "2.56-2.94x worse"
-    framing conflated board mismatch with extractor bias. This test pins
-    the retraction (those figures must NOT appear) and the replacement
-    board-thickening figures (which ARE real and measured), enumerating
-    both sides so a partial revert cannot silently pass."""
+def test_mixed_cell_warning_separates_geometry_from_unvalidated_z0_bias():
+    """Keep conditional occupancy guidance, but no bbox-derived Z0 claim."""
     sim = _build_sim(dx=80e-6, ly=W_TRACE + 8 * H_SUB, port_x=2e-3)
-    msgs = _msl_warnings(sim)
-    mixed = [m for m in msgs if "mixed-cell danger zone" in m]
-    assert len(mixed) >= 1, f"expected mixed-cell warning at dx=80, got: {msgs}"
-    # Retired extractor-bias framing -- must not reappear.
-    assert "2.56-2.94x worse" not in mixed[0], mixed[0]
-    assert "+20.2%" not in mixed[0], mixed[0]
-    assert "-7.9%" not in mixed[0], mixed[0]
-    assert "+11.0%" not in mixed[0], mixed[0]
-    assert "-3.8%" not in mixed[0], mixed[0]
-    # What survives: the (cited, not remeasured) |S21|^2 > 1 override risk,
-    # the measured board-thickening figure, and a pointer to the sibling
-    # realized-board artifact. Audit 2026-09-02 (finding A1): the specific
-    # "within 0.4% at every point" figure was RETIRED from the advisory --
-    # its only evidence (the anchor JSON) is stale for three aligned points
-    # post-#802, so the advisory now makes the qualitative realized-board
-    # claim and points at the owed re-solve instead.
-    assert "pec_occupancy_override" in mixed[0], mixed[0]
-    # #766 review B3: this used to pin "no subpixel eps assembly", which is
-    # false -- 'kottke_pec' builds the inv-eps tensor over PEC shapes and the
-    # Stage-1 conformal lane replaces pec_mask with fractional weights
-    # (rfx/runners/uniform.py). The FIRST repair over-corrected the other way
-    # (it named plain subpixel_smoothing=True as a fractional-occupancy lane
-    # too); that is also false, because MATERIAL_LIBRARY['pec'] carries
-    # eps_r=1.0, so a PEC box enters compute_smoothed_eps as vacuum and stays
-    # whole-cell through pec_mask on that branch. What must be pinned is the
-    # default-path qualification, the non-exemption, and the exact two lanes.
-    assert "ON THE DEFAULT RUN PATH" in mixed[0], mixed[0]
-    assert "subpixel_smoothing=False and no conformal PEC face" in mixed[0], mixed[0]
-    assert "NOT a blanket exemption" in mixed[0], mixed[0]
-    assert "two opt-in lanes" in mixed[0], mixed[0]
-    assert "kottke_pec" in mixed[0], mixed[0]
-    assert "Plain subpixel_smoothing=True does NOT" in mixed[0], mixed[0]
-    assert "eps_r=1.0" in mixed[0], mixed[0]
-    assert "rfx/runners/uniform.py" in mixed[0], mixed[0]
-    assert "no subpixel eps assembly" not in mixed[0], mixed[0]
-    assert "realizes 4 cell(s) of substrate = 320µm" in mixed[0], mixed[0]
-    assert "+26%" in mixed[0], mixed[0]
-    assert "msl_z0_bias_floor_sweep_realized_anchor.json" in mixed[0], mixed[0]
-    # Audit A1: qualitative realized-board claim replaces the stale 0.4%
-    # figure, and the owed re-solve is named.
-    assert "within 0.4%" not in mixed[0], mixed[0]
-    assert "realized-board Hammerstad-Jensen anchor closely" in mixed[0], mixed[0]
-    assert "must be re-solved" in mixed[0], mixed[0]
-    assert "pre-#802 as-solved record" in mixed[0], mixed[0]
-    assert "msl_z0_bias_floor_sweep.py" in mixed[0], mixed[0]
+    mixed = [m for m in _msl_warnings(sim) if "mixed-cell danger zone" in m]
+    assert len(mixed) == 1, mixed
+    hit = mixed[0]
+    for retired in ("2.56-2.94x worse", "+20.2%", "-7.9%", "+11.0%", "-3.8%",
+                    "THICKER", "board-thickening", "anchor closely", "within 0.4%"):
+        assert retired not in hit, (retired, hit)
+    for qualification in ("pec_occupancy_override", "ON THE DEFAULT RUN PATH",
+                          "subpixel_smoothing=False and no conformal PEC face",
+                          "NOT a blanket exemption", "two opt-in lanes", "kottke_pec",
+                          "Plain subpixel_smoothing=True does NOT", "eps_r=1.0",
+                          "rfx/runners/uniform.py"):
+        assert qualification in hit, (qualification, hit)
+    assert "no subpixel eps assembly" not in hit
+    assert "gap=240.0µm over 3 normal interval(s)" in hit
+    assert "4 same-permittivity sample slot(s), extent 320.0µm" in hit
+    assert "material extent is not the conductor-plane gap" in hit
+    assert "neither predicts a Z0 error" in hit
+    assert "frozen sweep cannot establish a current extractor accuracy bound" in hit
 
 
 def test_mixed_cell_silent_wording_at_clean_alignment():
@@ -392,7 +275,7 @@ def test_mixed_cell_silent_wording_at_clean_alignment():
     alignment -- mirrors test_mixed_cell_silent_at_dx_127_clean_alignment."""
     sim = _build_sim(dx=127e-6, ly=W_TRACE + 8 * H_SUB, port_x=2e-3)
     msgs = _msl_warnings(sim)
-    mixed = [m for m in msgs if "2.6-2.9x worse" in m]
+    mixed = [m for m in msgs if "mixed-cell danger zone" in m]
     assert len(mixed) == 0, f"expected no Z0-bias-magnitude text, got: {mixed}"
 
 
@@ -926,8 +809,8 @@ def test_mixed_cell_snap_survives_a_base_dx_coarser_than_the_substrate_nu():
     msgs = _msl_warnings(sim)          # must not raise ZeroDivisionError
     mixed = [m for m in msgs if "danger zone" in m]
     assert len(mixed) == 1, msgs
-    assert "4 cell(s) of substrate = 320µm" in mixed[0], mixed[0]
-    assert "place a mesh node exactly at h_sub=254.0µm" in mixed[0], mixed[0]
+    assert "4 same-permittivity sample slot(s), extent 320.0µm" in mixed[0], mixed[0]
+    assert "place mesh nodes at the declared ground z=0.0µm and trace z=254.0µm" in mixed[0], mixed[0]
     assert "set dx =" not in mixed[0], mixed[0]
 
 
@@ -942,52 +825,39 @@ def test_mixed_cell_snap_degrades_when_the_substrate_is_one_cell_uniform():
     mixed = [m for m in msgs if "danger zone" in m]
     assert len(mixed) == 1, msgs
     assert "set dx = 254.0µm (= h_sub/1)" in mixed[0], mixed[0]
-    assert "no coarser aligned option" in mixed[0], mixed[0]
+    assert "no coarser positive-interval candidate" in mixed[0], mixed[0]
     assert "h_sub/0" not in mixed[0], mixed[0]
 
 
-@pytest.mark.parametrize(
-    "dx_um, h_real_um, pct",
-    [
-        # window (3.00, 3.10): 4 realized cells, frac 0.00-0.10
-        (83.28, 333.1, 31.1),
-        # window (3.40, 3.50): 4 realized cells, frac 0.40-0.50
-        (74.27, 297.1, 17.0),
-        (73.62, 294.5, 15.9),
-        (72.78, 291.1, 14.6),
-    ],
-)
-def test_realized_thickness_advisory_closes_the_cell_count_coverage_hole(
-    dx_um, h_real_um, pct
+@pytest.mark.parametrize("dx_um,material_extent_um", [
+    (83.28, 333.1), (74.27, 297.1), (73.62, 294.5), (72.78, 291.1),
+])
+def test_material_coverage_hole_is_counted_from_the_conductor_interval(
+    dx_um, material_extent_um,
 ):
-    """B2: at these dx the substrate realizes FOUR cells (so check 2, which
-    gates on the realized count < 4, is silent) and the declared top face
-    lands outside [0.10, 0.40] of its cell (so check 2b is silent) -- yet
-    the solved board is 14.6-31.1% thicker than declared. Pre-fix this was
-    ZERO substrate advisories; the merge base printed one (it counted
-    round(h_sub/dx) = 3 cells). Check 2c fires on the physical quantity."""
-    dx = dx_um * 1e-6
-    sim = _build_sim(dx=dx, ly=W_TRACE + 8 * H_SUB)
+    """Old bbox-thickening cases actually have three normal intervals.
+
+    The dielectric mask has four slots, but the sheet snaps to the lower
+    third node. Resolution must be reported from that conductor gap.
+    """
+    sim = _build_sim(dx=dx_um * 1e-6, ly=W_TRACE + 8 * H_SUB)
     msgs = _msl_warnings(sim)
-    # The two proxy checks really are both silent on this geometry --
-    # asserted positively so the test cannot pass for the wrong reason.
-    assert [m for m in msgs if "substrate cell(s) in z" in m] == [], msgs
-    assert [m for m in msgs if "danger zone" in m] == [], msgs
-    board = [m for m in msgs if "not the board you declared" in m]
-    assert len(board) == 1, msgs
-    assert f"realizes {h_real_um:.1f}µm" in board[0], board[0]
-    assert f"declared h_sub=254.0µm ({pct:+.1f}%" in board[0], board[0]
-    assert "read off the run grid's assembled permittivity" in board[0], board[0]
+    assert not [m for m in msgs if "danger zone" in m], msgs
+    sub = _normal_interval_warnings(msgs)
+    assert len(sub) == 1 and "only 3 normal interval(s)" in sub[0], msgs
+    assert f"gap={3*dx_um:.1f}µm" in sub[0]
+    assert f"4 same-permittivity sample slot(s), extent {material_extent_um:.1f}µm" in sub[0]
+    assert "THICKER" not in sub[0]
+    assert not [m for m in msgs if "geometry-advisory threshold" in m], msgs
 
 
-def test_realized_thickness_advisory_threshold_is_derived_not_invented():
-    """The 8.3% gate is 5%/0.601: check 2's own published <5% Z0-bias
-    budget divided by the substrate-thickness sensitivity MEASURED in this
-    repo's realized-board artifact (misaligned-60µm row -- the one row
-    whose realized W equals the declared 600.0µm, so h is the only
-    variable: 254.0->300.0µm, +18.11%, moves Z0_HJ 47.895->53.106 ohm,
-    +10.88%). Re-derived here from the artifact and from Hammerstad-Jensen
-    itself so neither the constant nor its justification can drift."""
+def test_gap_advisory_preserves_its_historical_heuristic_value():
+    """Preserve the historical8.3% trigger and its single-HJ-model arithmetic.
+
+    This calculation explains the retained heuristic value. It is not a
+    physical error guarantee for a current port or a bbox-thickness metric.
+    The runtime warning makes that distinction explicit.
+    """
     import json
     from pathlib import Path
 
@@ -1011,8 +881,9 @@ def test_realized_thickness_advisory_threshold_is_derived_not_invented():
            / row["z0_hj_declared_board_ohm"]) - 1.0
     assert dz0 / dh == pytest.approx(SENS, abs=5e-4)
     assert TOL == pytest.approx(BUDGET / SENS, abs=5e-4)
-    assert BUDGET == 0.05, "the budget is check 2's own published <5% promise"
-    # And the threshold really does sit on the 5% Z0 contour for this board.
+    assert BUDGET == 0.05, "preserve the historical dimensionless budget input"
+    # This historical analytic reference lies near its 5% contour; it
+    # is not a bound on the current solver or arbitrary microstrip geometry.
     z0_dec, _ = hj(W_TRACE, H_SUB, EPS_R)
     z0_tol, _ = hj(W_TRACE, H_SUB * (1.0 + TOL), EPS_R)
     assert 0.045 <= (z0_tol - z0_dec) / z0_dec <= 0.055
@@ -1028,26 +899,18 @@ def test_realized_thickness_advisory_is_silent_on_an_exact_board():
                        [np.full(4, H_SUB / 4), np.full(12, 80e-6)])),
     ):
         msgs = _msl_warnings(sim)
-        board = [m for m in msgs if "not the board you declared" in m]
+        board = [m for m in msgs if "geometry-advisory threshold" in m]
         assert board == [], f"exact realized board must be silent: {board}"
 
 
-def test_realized_thickness_advisory_does_not_double_report():
-    """Checks 2, 2b and 2c must give ONE account of one geometry -- 2c
-    stays quiet wherever 2 or 2b already disclosed the thickening. dx=100µm
-    (3 realized cells, +18%) is check 2's case; dx=80µm (frac 0.175, +26%)
-    is check 2b's."""
-    for dx in (100e-6, 80e-6):
+def test_gap_mismatch_does_not_add_a_third_warning_after_disclosure():
+    """Check2c stays quiet once resolution/alignment has disclosed the gap."""
+    for dx, expected_disclosures in ((100e-6, 1), (80e-6, 2)):
         msgs = _msl_warnings(_build_sim(dx=dx, ly=W_TRACE + 8 * H_SUB))
-        disclosed = [
-            m for m in msgs
-            if "actually realizes" in m or "cell(s) of substrate =" in m
-            or "not the board you declared" in m
-        ]
-        assert len(disclosed) == 1, (
-            f"dx={dx*1e6:.0f}µm: exactly one check may report the realized "
-            f"board, got {len(disclosed)}: {disclosed}"
-        )
+        assert not [m for m in msgs if "geometry-advisory threshold" in m], msgs
+        disclosed = [m for m in msgs if "Validated conductor-plane gap=" in m]
+        assert len(disclosed) == expected_disclosures, msgs
+        assert all("material extent is not the conductor-plane gap" in m for m in disclosed)
 
 def test_open_stub_is_galvanically_joined_to_the_trace():
     """Build-time witness (no solve): two abutting sheets are ONE conductor.
