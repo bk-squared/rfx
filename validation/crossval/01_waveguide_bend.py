@@ -60,6 +60,9 @@ from rfx import Simulation, Box, GaussianPulse, flux_spectrum
 from rfx.boundaries.spec import BoundarySpec
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SCRIPT_DIR)
+import _exit_evidence  # noqa: E402  (SCRIPT_DIR on sys.path)
+
 C0 = 2.998e8
 
 # ---------------------------------------------------------------------------
@@ -384,11 +387,19 @@ def _exit_code(rfx_ok: bool, meep_present: bool) -> int:
     return 0 if rfx_ok else 1
 
 
+def _summary(code: int) -> str:
+    """The one spelling of the summary, keyed on the code it describes (#946)."""
+    if code == 0:
+        return "ALL CHECKS PASSED"
+    if code == 2:
+        return "[SKIP] Meep reference unavailable — crossval inconclusive (exit 2)"
+    return "SOME CHECKS FAILED"
+
+
 _rfx_self_ok = bool(0.3 <= mean_T <= 1.0 and 0.95 <= mean_self <= 1.05)
 _gate_meep = None if meep_mean is None else bool(abs(mean_T - meep_mean) < 0.10)
-_rc = _exit_code(PASS, meep_mean is not None)
+_rc_declared = _exit_code(PASS, meep_mean is not None)
 
-_json = __import__("json")
 _dt = __import__("datetime")
 _platform = __import__("platform")
 _subprocess = __import__("subprocess")
@@ -513,17 +524,15 @@ _doc = {
         "rfx_self_ok": _rfx_self_ok,
         "meep_present": meep_mean is not None,
         "all_gates_ok": bool(PASS),
-        "exit_code": _rc,
-        "summary": ("ALL CHECKS PASSED" if _rc == 0 else
-                    ("[SKIP] Meep reference unavailable — crossval inconclusive (exit 2)"
-                     if _rc == 2 else "SOME CHECKS FAILED")),
     },
 }
 _out_dir = os.path.join(SCRIPT_DIR, "_01_waveguide_bend_results")
-os.makedirs(_out_dir, exist_ok=True)
 _artifact = os.path.join(_out_dir, "crossval.json")
-with open(_artifact, "w") as _fh:
-    _json.dump(_doc, _fh, indent=1)
+# write_record puts exit_code and summary INTO the verdict block and arms the
+# finalizer that amends them if this process ends with a different status
+# (#946) -- the plot below this write is an exit path like any other.
+_rc = _exit_evidence.write_record(_artifact, _doc, exit_code=_rc_declared,
+                                  summary=_summary)
 print(f"\n  artifact: {_artifact}")
 
 # =============================================================================
@@ -609,5 +618,7 @@ elif PASS:
 else:
     print("\nSOME CHECKS FAILED")
 # Same prints, same codes; the value comes from _exit_code() above so the
-# retained artifact records the code this script actually returns (#928).
+# retained artifact records the code this script actually returns (#928), and
+# _exit_evidence amends the record if any exit path below that write ever
+# returns a different one (#946).
 sys.exit(_rc)
