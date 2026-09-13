@@ -9,6 +9,12 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
+### Fixed — cv05 external geometry handoff (#959)
+
+- Transfer complete realized sheet edges, substrate bounds and wire terminals
+  to openEMS with one coordinate translation. Check finite-sheet contact before
+  solving; the 28×37 mm patch and its feed now describe the same realized board.
+
 ### Fixed — cv11 realized dielectric slab geometry (#812)
 
 - Align the analytic slab fixture's dielectric Box faces to explicit lattice
