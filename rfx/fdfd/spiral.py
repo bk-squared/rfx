@@ -1,0 +1,685 @@
+"""Differentiable rectangular spiral inductor on the 3-D Yee FDFD pipeline:
+body-fitted (r_out, spacing, width) parameterisation, lumped ports on
+vertical lead columns, open/short de-embedding, L and Q.
+
+What is built (``build_spiral``, host numpy, once)
+--------------------------------------------------
+1. Geometry at the NOMINAL parameters ``theta = (r_out, spacing, width)``:
+   :func:`rfx.fdfd.gds.rect_spiral` polygons (strip on the top metal, a
+   straight underpass on the lower metal, the via square), x/y grid lines
+   from :func:`rfx.fdfd.gds.mesh_lines` (every axis-aligned polygon edge is
+   a grid line) and z lines from :func:`rfx.fdfd.gds.z_lines` on a small
+   stack: PEC ground at z = 0 (the outer wall of the Yee box), a silicon
+   slab, oxide with the two metal layers and the via, air above, PEC lid.
+   The polygons are rasterised into static conductor cell masks and those
+   into PEC edge masks (:func:`rfx.fdfd.yee3d.pec_edges_from_cells`). This
+   fixes the TOPOLOGY: cell counts, masks and sparsity patterns never change.
+2. Two lumped ports (:class:`rfx.fdfd.ports3d.LumpedElement`) between the
+   spiral terminals and the ground: each terminal gets a vertical lead
+   column of PEC cells (footprint one strip width square at the terminal
+   centre) from its metal layer down to ``port_gap_cells`` cells above the
+   ground; the port is the Ez-edge box of the remaining gap cells under the
+   column footprint. Three fixtures share the grid: DUT (spiral + columns),
+   OPEN (columns only) and SHORT (columns + a PEC bar on each terminal's
+   metal level from the lead's DUT-side end to a common PEC post between
+   the columns that runs from the ground up through both metal levels).
+   See "the short standard" below for why it is built that way.
+
+What is traced (``solve_spiral``, jax.numpy, differentiable)
+------------------------------------------------------------
+Only the METRIC moves. :func:`rect_spiral_edge_coordinates` mirrors the
+polygon construction analytically and returns the x and y coordinates of
+every axis-aligned polygon edge as a function of ``theta``; these are the
+breakpoints. Every nominal grid line is then moved by piecewise-linear
+interpolation between the breakpoints it lies between (the outer walls are
+fixed breakpoints), i.e. ``x(theta) = interp(x_nominal, bps_nominal,
+bps(theta))`` -- the body-fitted stretch of :mod:`rfx.fdfd.hplane` in 3-D.
+It is written in delta form ``x_nom + d_lo + frac (d_hi - d_lo)`` with
+``d = bps(theta) - bps_nominal`` so the nominal grid is reproduced exactly
+(to the bit). Steps ``dx = diff(x)``, ``dy = diff(y)`` feed
+:func:`rfx.fdfd.ports3d.s_matrix` (one LU per fixture), the three
+S-matrices go through :func:`rfx.fdfd.deembed.open_short_deembed` and
+:func:`rfx.fdfd.deembed.inductor_metrics`. Losses are optional: a
+Leontovich surface impedance on every metal cell of the fixture
+(:mod:`rfx.fdfd.conductor`, traced ``sigma_metal``) and a bulk silicon
+conductivity folded into the permittivity of the silicon cells as
+``-j sigma_si / (omega eps0)``. Everything downstream of the build is
+differentiable in ``theta``, ``sigma_metal``, ``sigma_si`` and ``freq``.
+
+Topological constraint (the feasibility check)
+----------------------------------------------
+The breakpoints must keep their nominal ORDER: a strip edge may not cross
+another strip edge, the port line or a wall. With ``pitch = width +
+spacing`` and apothems ``c_j = r_out - width/2 - j pitch`` this means
+``spacing > 0`` (adjacent turns keep a gap), ``r_out`` inside the box,
+``-c_0 - width/2 - lead`` (the port line) above the lower wall, plus the
+generator's own validity rules (``a_in > width/2``, last side >= width).
+:func:`breakpoint_gaps` returns the signed gaps between consecutive
+breakpoints (all must be positive); :func:`check_feasible` raises on a
+violation. Inside the feasible region every derivative is smooth; the
+masks never change so there is no staircase jump anywhere.
+
+Inductor conventions (2-port with both terminals to ground)
+-----------------------------------------------------------
+``L_diff = Im(Z11 - Z12 - Z21 + Z22) / omega`` of the de-embedded Z is the
+SERIES inductance between the two terminals (the differential drive; the
+shunt parasitics enter only as the series combination of the two terminal
+capacitances). ``L_se`` is reported from ``1/Y11`` (port 2 GROUNDED,
+:func:`rfx.fdfd.deembed.l_from_y11`): the ``Z11`` (port 2 OPEN) definition
+is capacitive for a floating inductor -- with port 2 open the only path to
+ground is the terminal capacitance -- and is exposed separately as
+``L_z11_open`` for completeness. ``L_raw`` is ``L_diff`` of the raw DUT
+S-matrix (leads and ports included).
+
+The short standard
+------------------
+Open/short de-embedding (Koolen) needs ``Y_short - Y_open`` to be the
+admittance of the two lead impedances, i.e. each lead shorted to ground at
+the DUT reference plane. Joining the two leads by a bar alone is a THRU,
+whose ``Y_short - Y_open`` is singular; the post to ground makes each lead
+a short. The bars sit on each terminal's own metal level and cover the
+cell where the DUT's current leaves the lead (the column top, or the last
+stub cell), so the short's current traverses exactly the lead the DUT's
+current does (a bar exiting the outer column at the lower metal level
+would miss the column's upper segment and any stub: measured as a 2 %
+error on the de-embedded L when a one-cell stub was added). Because both
+shorts share the post, its residual impedance appears in every entry of
+``Z_short'`` and cancels exactly in the differential combination
+``Z11 - Z12 - Z21 + Z22``: the only residual on ``L_diff`` is the partial
+inductance of the two bar halves (one cell of strip each). ``L_se`` from
+``1/Y11`` does carry the post's residual, which is why ``L_diff`` is the
+primary metric.
+
+Leontovich validity (a frequency FLOOR, not a ceiling)
+------------------------------------------------------
+The sheet model replaces each metal cell by a surface impedance and is
+valid only when the skin depth ``delta = sqrt(2 / (omega mu0 sigma))`` is
+well below the metal thickness (``t_m1``, ``t_m2``, ``t_via``: 2 um in the
+default stack). Below that the sheet over-estimates the internal
+inductance and the resistance: copper at 100 MHz has ``delta = 6.6 um >
+2 um`` and gives ``L_diff`` 42 % ABOVE the PEC value and ``Q_diff = 3.5``
+for a 2 um strip (measured; unphysical). With ``sigma = 1e14`` S/m the
+sheet reproduces the PEC ``L_diff`` to 3.5e-4, so the model itself is
+consistent; it is the ``delta << t`` condition that is violated. Copper on
+2 um reaches ``delta = t`` at 1.1 GHz and ``delta = t / 2`` at 4.4 GHz;
+the 2.4 GHz used in the tests (``delta / t = 0.67``) is marginal.
+:func:`leontovich_validity` returns ``delta / t_min`` for a model, and
+``solve_spiral`` does not check it (``sigma_metal`` and ``freq`` may be
+traced): the CALLER must keep it well below 1. Nothing here resolves the
+current distribution inside the metal.
+
+Scope fence. Closed PEC box (no PML; fine below the first box resonance);
+staircase PEC or Leontovich metal, no finite-thickness skin effect (see
+above for the frequency floor that implies); grid resolution is a cost
+choice (``base_dx``), the accuracy of L at a given resolution is NOT
+validated here -- what is validated is the discrete model's
+self-consistency (reciprocity, passivity, de-embedding invariance) and its
+derivatives against finite differences. Sizes are CPU-SuperLU sizes (see
+the tests for the measured factorisation times).
+"""
+from __future__ import annotations
+
+import time
+import warnings
+from dataclasses import dataclass, field
+from typing import Any, NamedTuple, Sequence
+
+import jax
+import jax.numpy as jnp
+import numpy as np
+
+from rfx.fdfd import conductor as cd
+from rfx.fdfd import deembed as de
+from rfx.fdfd import gds
+from rfx.fdfd import ports3d as p3
+from rfx.fdfd import yee3d as y
+
+__all__ = [
+    "SmallStack", "SpiralSpec", "SpiralModel", "SpiralResult", "LineMap",
+    "rect_spiral_edge_coordinates", "build_spiral", "spiral_lines", "breakpoint_gaps",
+    "check_feasible", "solve_spiral", "nominal_record", "skin_depth", "leontovich_validity",
+    "KEY_M2", "KEY_M1", "KEY_VIA",
+]
+
+KEY_M2 = (134, 0)      # top metal: the spiral strip (rect_spiral default ``layer``)
+KEY_M1 = (126, 0)      # lower metal: the underpass
+KEY_VIA = (133, 0)     # via square joining them
+
+
+# ----------------------------------------------------------------------------
+# specification
+
+@dataclass(frozen=True)
+class SmallStack:
+    """Small vertical stack (metres, bottom up): PEC ground at z = 0, silicon
+    ``t_si``, oxide ``t_ox_low``, metal M1 ``t_m1``, via ``t_via``, metal M2
+    ``t_m2``, oxide ``t_ox_high``, air ``t_air``, PEC lid. ``base_dz`` is
+    the largest z cell, ``metal_cells`` the minimum number of cells across
+    each metal / via slab. The silicon's conductivity is NOT part of the
+    stack: it is the traced ``sigma_si`` of :func:`solve_spiral`."""
+    t_si: float = 30e-6
+    t_ox_low: float = 1e-6
+    t_m1: float = 2e-6
+    t_via: float = 2e-6
+    t_m2: float = 2e-6
+    t_ox_high: float = 3e-6
+    t_air: float = 20e-6
+    eps_si: float = 11.9
+    eps_ox: float = 4.1
+    base_dz: float = 10e-6
+    metal_cells: int = 2
+
+    @property
+    def z_m1(self) -> float:
+        return self.t_si + self.t_ox_low
+
+    @property
+    def z_via(self) -> float:
+        return self.z_m1 + self.t_m1
+
+    @property
+    def z_m2(self) -> float:
+        return self.z_via + self.t_via
+
+    @property
+    def z_ox_top(self) -> float:
+        return self.z_m2 + self.t_m2 + self.t_ox_high
+
+    @property
+    def z_top(self) -> float:
+        return self.z_ox_top + self.t_air
+
+    def layer_stack(self) -> gds.LayerStack:
+        return gds.LayerStack((
+            gds.Layer("silicon", "dielectric", 0.0, self.t_si, eps_r=self.eps_si),
+            gds.Layer("oxide", "dielectric", self.t_si, self.z_ox_top - self.t_si, eps_r=self.eps_ox),
+            gds.Layer("M1", "conductor", self.z_m1, self.t_m1, gds=KEY_M1, sigma=5.8e7),
+            gds.Layer("VIA", "via", self.z_via, self.t_via, gds=KEY_VIA, sigma=5.8e7),
+            gds.Layer("M2", "conductor", self.z_m2, self.t_m2, gds=KEY_M2, sigma=5.8e7),
+        ), name="spiral-small")
+
+
+@dataclass(frozen=True)
+class SpiralSpec:
+    """Nominal spiral and grid. ``theta = (r_out, spacing, width)`` are the
+    continuous parameters; ``n_turns`` (integer), ``lead`` (the straight
+    outer lead, >= ``width`` recommended so the outer lead column sits on
+    the lead and not on the first side) and the stack are static.
+    ``base_dx`` defaults to ``width`` -- ONE cell across the strip -- which
+    with ``spacing = width`` keeps the grid uniform inside the spiral and
+    the unknown count near 1e4 (12739 for the defaults); ``width / 2`` is
+    the design resolution and costs 3.7x the unknowns (47742) and ~13x the
+    SuperLU/COLAMD factorisation time (17 s vs 1.3 s per fixture, measured).
+    ``margin`` is the distance from the outermost polygon edge to the PEC
+    side walls; ``port_gap_cells`` the number of z cells between the ground
+    and the bottom of the lead columns (the port spans them);
+    ``lead_stub_cells`` moves each column that many cells outward (-y,
+    into the margin below the port line) and joins it to the terminal by a
+    PEC stub on the terminal's metal layer -- a longer lead with the spiral
+    and the ground plane untouched. This is NOT a valid de-embedding
+    configuration and ``build_spiral`` warns when it is used: the stub is
+    collinear with the lead strip / underpass and couples to the DUT by
+    mutual inductance, which open/short de-embedding cannot represent, and
+    it OVER-corrects -- with one 10 um cell the de-embedded L_diff moves
+    by +2.3 % while the raw L moves by only +0.76 % (+6.2 % de-embedded
+    for two cells; measured at 100 MHz on the defaults). It is kept only
+    to reproduce that measurement."""
+    n_turns: int = 2
+    r_out: float = 60e-6
+    spacing: float = 10e-6
+    width: float = 10e-6
+    lead: float = 20e-6
+    base_dx: float | None = None
+    margin: float = 20e-6
+    stack: SmallStack = field(default_factory=SmallStack)
+    port_gap_cells: int = 1
+    lead_stub_cells: int = 0
+    z0: float = 50.0
+
+    @property
+    def theta(self) -> tuple[float, float, float]:
+        return (float(self.r_out), float(self.spacing), float(self.width))
+
+    @property
+    def dx(self) -> float:
+        return float(self.width if self.base_dx is None else self.base_dx)
+
+
+# ----------------------------------------------------------------------------
+# analytic edge coordinates (the breakpoints)
+
+def _edge_coordinates_unsorted(theta, n_turns: int, lead: float):
+    """Unsorted breakpoints ``(x (4 n + 2,), y (4 n + 2,))`` in a FIXED
+    analytic order (used by the line map); see
+    :func:`rect_spiral_edge_coordinates` for the sorted public version."""
+    theta = jnp.asarray(theta, dtype=jnp.float64)
+    r_out, spacing, width = theta[0], theta[1], theta[2]
+    hw = 0.5 * width
+    pitch = width + spacing
+    a0 = r_out - hw
+    a_in = a0 - pitch * n_turns
+    c = a0 - pitch * jnp.arange(n_turns, dtype=jnp.float64)     # apothems of turns 0..n-1
+    x = jnp.concatenate([c + hw, c - hw, -c + hw, -c - hw,
+                         jnp.stack([a_in + hw, a_in - hw])])
+    y_port = -a0 - lead
+    ext = width + hw * jnp.tan(0.5 * (2.0 * jnp.pi / 4.0))
+    end_y = -c[-1] + ext
+    yv = jnp.concatenate([c + hw, c - hw, -c + hw, -c - hw, jnp.stack([y_port, end_y])])
+    return x, yv
+
+
+def rect_spiral_edge_coordinates(theta, n_turns: int, lead: float = 0.0):
+    """Sorted x and y coordinates of every axis-aligned edge of the polygons
+    :func:`rfx.fdfd.gds.rect_spiral` emits for ``theta = (r_out, spacing,
+    width)``, as ``jax.numpy`` functions of ``theta`` (mirrors the generator:
+    the strip edges sit at ``+-c_j +- width/2`` for the apothems ``c_j =
+    r_out - width/2 - j (width + spacing)``, the inner extension / underpass
+    / via at ``a_in +- width/2`` with ``a_in = c_0 - n_turns pitch``; the y
+    lines add the port line ``-c_0 - lead`` and the extension's end
+    ``-c_{n-1} + 1.5 width``). The via's lower edge coincides analytically
+    with the last side's upper strip edge (``-c_{n-1} + width/2``) and is
+    not listed twice. Returns ``(x (4 n + 2,), y (4 n + 2,))``."""
+    x, yv = _edge_coordinates_unsorted(theta, int(n_turns), float(lead))
+    return jnp.sort(x), jnp.sort(yv)
+
+
+# ----------------------------------------------------------------------------
+# line map: nominal grid lines -> (segment, fraction) between breakpoints
+
+class LineMap(NamedTuple):
+    """Static bookkeeping of one axis: ``bp_nom (K,)`` sorted nominal
+    breakpoints including the two walls, ``perm`` (K-2,) the argsort of the
+    analytic (unsorted) breakpoints, ``seg (n+1,)`` / ``frac (n+1,)`` the
+    segment index and position of every nominal grid line."""
+    bp_nom: np.ndarray
+    perm: np.ndarray
+    seg: np.ndarray
+    frac: np.ndarray
+
+
+def _line_map(lines: np.ndarray, bps_unsorted: np.ndarray) -> LineMap:
+    lines = np.asarray(lines, dtype=np.float64)
+    perm = np.argsort(bps_unsorted, kind="stable")
+    inner = bps_unsorted[perm]
+    if np.any(np.diff(inner) <= 0):
+        raise ValueError("nominal breakpoints are not strictly increasing")
+    bp = np.concatenate([[lines[0]], inner, [lines[-1]]])
+    if not (inner[0] > lines[0] and inner[-1] < lines[-1]):
+        raise ValueError("breakpoints must lie strictly inside the box")
+    span = lines[-1] - lines[0]
+    tol = 1e-9 * span
+    # every breakpoint must be a grid line (mesh_lines(snap=True) guarantees it)
+    hit = np.abs(lines[:, None] - bp[None, :]) <= tol          # (n+1, K)
+    if not np.all(hit.sum(axis=0) == 1):
+        raise ValueError("a breakpoint is not on the nominal grid (or hits two lines)")
+    seg = np.clip(np.searchsorted(bp, lines, side="right") - 1, 0, len(bp) - 2)
+    on_bp = hit.any(axis=1)
+    bp_index = np.argmax(hit, axis=1)
+    seg = np.where(on_bp, np.minimum(bp_index, len(bp) - 2), seg)
+    lo, hi = bp[seg], bp[seg + 1]
+    frac = np.where(on_bp, np.where(bp_index == len(bp) - 1, 1.0, 0.0), (lines - lo) / (hi - lo))
+    return LineMap(bp_nom=bp, perm=perm, seg=seg.astype(np.int64), frac=frac)
+
+
+def _traced_lines(lm: LineMap, lines_nom: np.ndarray, bps_unsorted) -> jax.Array:
+    """``x_nom + d_lo + frac (d_hi - d_lo)`` with ``d = bps(theta) - bps_nom``
+    (zero at the walls): exact at the nominal parameters."""
+    inner = jnp.asarray(bps_unsorted, dtype=jnp.float64)[lm.perm] - lm.bp_nom[1:-1]
+    delta = jnp.concatenate([jnp.zeros((1,)), inner, jnp.zeros((1,))])
+    d_lo, d_hi = delta[lm.seg], delta[lm.seg + 1]
+    return jnp.asarray(lines_nom) + d_lo + lm.frac * (d_hi - d_lo)
+
+
+# ----------------------------------------------------------------------------
+# static model
+
+@dataclass(frozen=True)
+class Column:
+    """Lead column footprint: cell index ranges ``[i0, i1) x [j0, j1)`` and
+    the z cells ``[k0, k1)`` of the PEC column; the port is the Ez box on
+    the nodes ``[i0, i1] x [j0, j1]`` over the z cells ``[0, k0)``. With
+    ``lead_stub_cells > 0`` the footprint sits that many cells below the
+    terminal and a PEC stub on the terminal's metal layer joins them."""
+    i0: int
+    i1: int
+    j0: int
+    j1: int
+    k0: int
+    k1: int
+
+
+@dataclass(frozen=True)
+class SpiralModel:
+    """Everything static: grid, masks, patterns, ports, line maps."""
+    spec: SpiralSpec
+    stack: gds.LayerStack
+    spiral: gds.Spiral
+    yee: y.Yee3DModel
+    x_nom: np.ndarray
+    y_nom: np.ndarray
+    z: np.ndarray
+    xmap: LineMap
+    ymap: LineMap
+    cells: dict[str, np.ndarray]                 # fixture -> (nx, ny, nz) bool metal cells
+    pec: dict[str, tuple]                        # fixture -> (Ex, Ey, Ez) bool PEC edge masks
+    geo: dict[str, cd.ConductorGeometry]         # fixture -> Leontovich geometry
+    ports: tuple[p3.LumpedElement, p3.LumpedElement]
+    columns: tuple[Column, Column]
+    eps_static: np.ndarray                       # (nx, ny, nz) complex, lossless
+    si_cells: np.ndarray                         # (nx, ny, nz) bool, silicon (non-metal) cells
+    theta_nominal: tuple[float, float, float]
+    build_seconds: float
+
+    @property
+    def n_unknowns(self) -> int:
+        return self.yee.n_unknowns
+
+    @property
+    def shape(self) -> tuple[int, int, int]:
+        return self.yee.shape
+
+    @property
+    def fixtures(self) -> tuple[str, ...]:
+        return ("dut", "open", "short")
+
+
+def _footprint(lines: np.ndarray, lo: float, hi: float) -> tuple[int, int]:
+    """Cell index range whose centres lie in ``[lo, hi]``."""
+    centres = 0.5 * (lines[:-1] + lines[1:])
+    idx = np.nonzero((centres >= lo - 1e-12 * (hi - lo)) & (centres <= hi + 1e-12 * (hi - lo)))[0]
+    if len(idx) == 0:
+        raise ValueError("empty column footprint")
+    if not np.all(np.diff(idx) == 1):
+        raise AssertionError("footprint cells not contiguous")
+    return int(idx[0]), int(idx[-1]) + 1
+
+
+def _z_cell_range(z: np.ndarray, z0: float, z1: float) -> tuple[int, int]:
+    centres = 0.5 * (z[:-1] + z[1:])
+    idx = np.nonzero((centres > z0) & (centres < z1))[0]
+    return int(idx[0]), int(idx[-1]) + 1
+
+
+def build_spiral(spec: SpiralSpec) -> SpiralModel:
+    """Static model at the nominal ``theta`` (see the module doc)."""
+    t0 = time.time()
+    if not jax.config.read("jax_enable_x64"):
+        raise RuntimeError("build_spiral needs x64: the nominal breakpoints are evaluated by the "
+                           "same float64 jnp function the solve traces")
+    st = spec.stack
+    stack = st.layer_stack()
+    sp = gds.rect_spiral(spec.n_turns, spec.r_out, spec.width, spec.spacing, spec.lead,
+                         layer=KEY_M2, underpass_layer=KEY_M1, via_layer=KEY_VIA)
+    polys = [p for ps in sp.polygons.values() for p in ps]
+    allp = np.concatenate(polys)
+    xlo, ylo = allp.min(axis=0) - spec.margin
+    xhi, yhi = allp.max(axis=0) + spec.margin
+    x_nom, y_nom = gds.mesh_lines(sp.polygons, (xlo, ylo, xhi, yhi), spec.dx, snap=True)
+    z = gds.z_lines(stack, st.base_dz, metal_cells=st.metal_cells, z_min=0.0, z_max=st.z_top)
+    nx, ny, nz = len(x_nom) - 1, len(y_nom) - 1, len(z) - 1
+    if spec.port_gap_cells < 1:
+        raise ValueError("port_gap_cells must be >= 1")
+    if spec.lead_stub_cells < 0:
+        raise ValueError("lead_stub_cells must be >= 0")
+    if spec.lead_stub_cells > 0:
+        warnings.warn("lead_stub_cells > 0: a collinear lead stub couples to the DUT by mutual "
+                      "inductance and open/short de-embedding over-corrects it (+2.3 % on L_diff "
+                      "per 10 um cell, measured); not a valid de-embedding configuration",
+                      stacklevel=2)
+
+    # breakpoints and line maps (nominal analytic breakpoints from the SAME
+    # jnp function the solve uses, so the delta form is exactly zero there)
+    bx, by = (np.asarray(v, dtype=np.float64) for v in
+              _edge_coordinates_unsorted(np.asarray(spec.theta), spec.n_turns, spec.lead))
+    xmap = _line_map(x_nom, bx)
+    ymap = _line_map(y_nom, by)
+
+    # materials (lossless): eps per cell from the stack, conductor cells
+    ras = gds.rasterise(sp.polygons, stack, x_nom, y_nom, z, freq=None)
+    spiral_cells = np.asarray(ras.conductor_mask, dtype=bool)
+    zc = 0.5 * (z[:-1] + z[1:])
+    si_cells = np.broadcast_to((zc < st.t_si)[None, None, :], (nx, ny, nz)).copy()
+
+    # lead columns and ports
+    hw = 0.5 * spec.width
+    y_port = sp.ports[0][1]
+    k_m1 = _z_cell_range(z, st.z_m1, st.z_m1 + st.t_m1)
+    k_m2 = _z_cell_range(z, st.z_m2, st.z_m2 + st.t_m2)
+    gap = spec.port_gap_cells
+    stub = spec.lead_stub_cells
+    cols = []
+    stub_cells = np.zeros((nx, ny, nz), dtype=bool)
+    for (xc, _yc), k_metal in zip(sp.ports, (k_m2, k_m1)):
+        i0, i1 = _footprint(x_nom, xc - hw, xc + hw)
+        jt0, jt1 = _footprint(y_nom, y_port, y_port + spec.width)     # terminal cell(s)
+        if gap >= k_metal[0]:
+            raise ValueError("port gap reaches the metal layer; fewer port_gap_cells")
+        j0, j1 = jt0 - stub, jt1 - stub
+        if j0 < 1:
+            raise ValueError("lead_stub_cells exceeds the margin cells below the port line")
+        cols.append(Column(i0, i1, j0, j1, gap, k_metal[0]))
+        if stub:
+            stub_cells[i0:i1, j0:jt0, k_metal[0]:k_metal[1]] = True
+    columns = (cols[0], cols[1])
+    ports = tuple(p3.LumpedElement(2, (c.i0, c.j0, 0), (c.i1 + 1, c.j1 + 1, gap)) for c in columns)
+
+    col_cells = np.zeros((nx, ny, nz), dtype=bool)
+    for c in columns:
+        col_cells[c.i0:c.i1, c.j0:c.j1, c.k0:c.k1] = True
+    col_cells |= stub_cells
+    si_cells &= ~(spiral_cells | col_cells)
+
+    # short standard: each lead shorted to ground where the DUT begins -- a
+    # bar on the terminal's OWN metal level (M2 for the outer, M1 for the
+    # inner terminal) covering the column top / the last stub cell and
+    # running to a common post between the columns; the post goes from
+    # the ground up through both levels. The short's current then leaves
+    # each lead at the same cell the DUT's current does.
+    outer, inner = columns
+    if inner.i1 >= outer.i0:
+        raise AssertionError("column order: the inner terminal must be left of the outer one")
+    post_i0, post_i1 = inner.i1 + 1, outer.i0 - 1
+    if post_i1 <= post_i0:
+        raise ValueError("no room for the short's ground post between the lead columns "
+                         "(need >= 3 cells between them); larger n_turns * pitch or finer base_dx")
+    jb0 = max(outer.j0, jt0 - 1)                 # bar row: the DUT-side end of the lead
+    jb1 = jb0 + (outer.j1 - outer.j0)
+    bar_cells = np.zeros((nx, ny, nz), dtype=bool)
+    bar_cells[post_i0:outer.i1, jb0:jb1, k_m2[0]:k_m2[1]] = True
+    bar_cells[inner.i0:post_i1, jb0:jb1, k_m1[0]:k_m1[1]] = True
+    post_cells = np.zeros((nx, ny, nz), dtype=bool)
+    post_cells[post_i0:post_i1, jb0:jb1, 0:k_m2[1]] = True
+
+    cells = {
+        "dut": spiral_cells | col_cells,
+        "open": col_cells.copy(),
+        "short": col_cells | bar_cells | post_cells,
+    }
+    if np.any(cells["open"] & spiral_cells):
+        raise AssertionError("lead columns / stubs overlap the spiral metal")
+    yee = y.build(y.Yee3DSpec(nx, ny, nz))
+    pec = {k: y.pec_edges_from_cells(yee.spec, v) for k, v in cells.items()}
+    # the port edges must be free in every fixture
+    for k, masks in pec.items():
+        for port in ports:
+            ids = p3.element_edges(yee, port)
+            if np.any(np.concatenate([m.ravel() for m in masks])[ids]):
+                raise AssertionError(f"port edges are PEC in fixture {k}")
+    geo = {k: cd.conductor_geometry(yee, cd.Conductor(cells=v)) for k, v in cells.items()}
+    return SpiralModel(
+        spec=spec, stack=stack, spiral=sp, yee=yee, x_nom=x_nom, y_nom=y_nom, z=z,
+        xmap=xmap, ymap=ymap, cells=cells, pec=pec, geo=geo, ports=(ports[0], ports[1]),
+        columns=columns, eps_static=np.asarray(ras.eps_r, dtype=np.complex128), si_cells=si_cells,
+        theta_nominal=spec.theta, build_seconds=time.time() - t0)
+
+
+# ----------------------------------------------------------------------------
+# traced grid
+
+def spiral_lines(model: SpiralModel, theta=None):
+    """Traced grid lines ``(x (nx+1,), y (ny+1,), z (nz+1,))`` at ``theta``
+    (nominal if ``None``); ``z`` is static."""
+    if theta is None:
+        theta = model.theta_nominal
+    bx, by = _edge_coordinates_unsorted(theta, model.spec.n_turns, model.spec.lead)
+    return (_traced_lines(model.xmap, model.x_nom, bx),
+            _traced_lines(model.ymap, model.y_nom, by),
+            jnp.asarray(model.z, dtype=jnp.float64))
+
+
+def breakpoint_gaps(model: SpiralModel, theta):
+    """Signed gaps between consecutive breakpoints (walls included) on x and
+    y, concatenated; the parameterisation is valid iff all are positive
+    (use as an optimiser constraint)."""
+    bx, by = _edge_coordinates_unsorted(theta, model.spec.n_turns, model.spec.lead)
+    out = []
+    for lm, b in ((model.xmap, bx), (model.ymap, by)):
+        inner = jnp.asarray(b)[lm.perm]
+        full = jnp.concatenate([lm.bp_nom[:1], inner, lm.bp_nom[-1:]])
+        out.append(jnp.diff(full))
+    return jnp.concatenate(out)
+
+
+def check_feasible(model: SpiralModel, theta) -> None:
+    """Raise ``ValueError`` if ``theta`` breaks the breakpoint order or the
+    generator's validity rules (host check, concrete values only)."""
+    r_out, spacing, width = (float(v) for v in np.asarray(theta, dtype=np.float64))
+    if min(r_out, spacing, width) <= 0:
+        raise ValueError("r_out, spacing, width must be > 0")
+    n = model.spec.n_turns
+    pitch = width + spacing
+    a0 = r_out - 0.5 * width
+    a_in = a0 - pitch * n
+    if a_in <= 0.5 * width:
+        raise ValueError("infeasible: the inner end reaches the axis (a_in <= width/2)")
+    last_side = 2.0 * (a0 - pitch * (n - 1)) - pitch
+    if last_side < width:
+        raise ValueError("infeasible: last side shorter than the width")
+    gaps = np.asarray(breakpoint_gaps(model, np.asarray(theta, dtype=np.float64)))
+    if np.any(gaps <= 0):
+        raise ValueError(f"infeasible: breakpoint order violated (min gap {gaps.min():.3g} m)")
+
+
+def skin_depth(freq, sigma):
+    """``delta = sqrt(2 / (omega mu0 sigma))`` in metres (jnp; traced inputs
+    allowed): copper (5.8e7 S/m) gives 6.6 um at 100 MHz, 1.35 um at
+    2.4 GHz."""
+    omega = 2.0 * jnp.pi * jnp.asarray(freq, dtype=jnp.float64)
+    return jnp.sqrt(2.0 / (omega * y.MU0 * jnp.asarray(sigma, dtype=jnp.float64)))
+
+
+def leontovich_validity(model: SpiralModel, freq, sigma) -> float:
+    """``delta / t_min``: the skin depth over the thinnest metal slab of the
+    stack (M1, via, M2). The Leontovich sheet of ``solve_spiral`` is valid
+    for values well below 1 (host float; see the module doc for the
+    measured consequences of violating it)."""
+    st = model.spec.stack
+    t_min = min(st.t_m1, st.t_via, st.t_m2)
+    return float(skin_depth(freq, sigma)) / t_min
+
+
+# ----------------------------------------------------------------------------
+# solve
+
+class SpiralResult(NamedTuple):
+    """One frequency. S-matrices are ``(2, 2)``; ``z_dut`` the de-embedded
+    impedance matrix; the metrics scalars (see the module doc for the
+    conventions); ``x_lines`` / ``y_lines`` / ``z_lines`` the traced grid."""
+    freq: jax.Array
+    s_raw: jax.Array
+    s_open: jax.Array
+    s_short: jax.Array
+    z_dut: jax.Array
+    s_dut: jax.Array
+    L_diff: jax.Array
+    Q_diff: jax.Array
+    L_se: jax.Array
+    Q_se: jax.Array
+    L_z11_open: jax.Array
+    L_raw: jax.Array
+    x_lines: jax.Array
+    y_lines: jax.Array
+    z_lines: jax.Array
+
+
+def _fixture_s(model: SpiralModel, name: str, freq, eps_r, dx, dy, dz, z0, sigma_metal):
+    if sigma_metal is None:
+        return p3.s_matrix(model.yee, freq, eps_r, dx, dy, dz, list(model.ports), z0,
+                           pec=model.pec[name])
+    cond = cd.Conductor(cells=model.cells[name])
+    terms = cd.surface_terms(model.yee, freq, cond, sigma_metal, dx, dy, dz,
+                             eps_r=eps_r, geo=model.geo[name])
+    return p3.s_matrix(model.yee, freq, eps_r, dx, dy, dz, list(model.ports), z0, terms=terms)
+
+
+def solve_spiral(model: SpiralModel, freq, theta=None, sigma_metal=None, sigma_si=0.0,
+                 z0=None, fixtures: Sequence[str] = ("dut", "open", "short")) -> SpiralResult:
+    """Solve the three fixtures at ``freq`` (Hz) and ``theta`` (nominal if
+    ``None``), de-embed and evaluate the metrics. ``sigma_metal`` (S/m,
+    traced) switches the metal from PEC to Leontovich; ``sigma_si`` (S/m,
+    traced) is the silicon bulk conductivity. ``fixtures`` restricts the
+    solves (e.g. ``("dut",)`` for the raw S only; the de-embedded fields are
+    then ``nan``). Differentiable in ``theta``, ``sigma_metal``, ``sigma_si``
+    and ``freq``; jit-able. A finite ``sigma_metal`` is only meaningful
+    when the skin depth is well below the metal thickness
+    (:func:`leontovich_validity` << 1; copper on the default 2 um metal
+    needs f >> 1.1 GHz) -- this is not checked here because both inputs
+    may be traced."""
+    freq = jnp.asarray(freq, dtype=jnp.float64)
+    z0 = model.spec.z0 if z0 is None else z0
+    if theta is None:
+        theta = model.theta_nominal
+    dx_lines, dy_lines, dz_lines = spiral_lines(model, theta)
+    dx, dy, dz = jnp.diff(dx_lines), jnp.diff(dy_lines), jnp.diff(dz_lines)
+    omega = 2.0 * jnp.pi * freq
+    eps_r = jnp.asarray(model.eps_static) + jnp.asarray(model.si_cells, dtype=jnp.float64) * (
+        -1j * jnp.asarray(sigma_si, dtype=jnp.float64) / (omega * y.EPS0))
+    nan2 = jnp.full((2, 2), jnp.nan + 0j, dtype=jnp.complex128)
+    s = {name: _fixture_s(model, name, freq, eps_r, dx, dy, dz, z0, sigma_metal)
+         if name in fixtures else nan2 for name in ("dut", "open", "short")}
+    f1 = freq[None]
+    z_raw = de.s_to_z(s["dut"][:, :, None], z0)
+    l_raw = de.l_diff(z_raw, f1)[0]
+    z_dut = de.open_short_deembed(s["dut"][:, :, None], s["open"][:, :, None],
+                                  s["short"][:, :, None], z0)
+    m = de.inductor_metrics(z_dut, f1)
+    s_dut = de.z_to_s(z_dut, z0)
+    return SpiralResult(
+        freq=freq, s_raw=s["dut"], s_open=s["open"], s_short=s["short"],
+        z_dut=z_dut[:, :, 0], s_dut=s_dut[:, :, 0],
+        L_diff=m["L_diff"][0], Q_diff=m["Q_diff"][0], L_se=m["L_y11"][0], Q_se=m["Q_y11"][0],
+        L_z11_open=m["L_se"][0], L_raw=l_raw,
+        x_lines=dx_lines, y_lines=dy_lines, z_lines=dz_lines)
+
+
+# ----------------------------------------------------------------------------
+# record
+
+def _c2(a) -> list:
+    a = np.asarray(a)
+    return np.stack([a.real, a.imag], axis=-1).tolist()
+
+
+def nominal_record(model: SpiralModel, res: SpiralResult, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+    """JSON-serialisable summary of a solve (theta, grid, N, L, Q, S)."""
+    rec: dict[str, Any] = {
+        "theta": {"r_out": model.theta_nominal[0], "spacing": model.theta_nominal[1],
+                  "width": model.theta_nominal[2]},
+        "n_turns": model.spec.n_turns, "lead": model.spec.lead, "base_dx": model.spec.dx,
+        "margin": model.spec.margin, "port_gap_cells": model.spec.port_gap_cells,
+        "lead_stub_cells": model.spec.lead_stub_cells,
+        "z0": model.spec.z0,
+        "grid": {"nx": model.shape[0], "ny": model.shape[1], "nz": model.shape[2],
+                 "z_lines": model.z.tolist()},
+        "n_unknowns": model.n_unknowns,
+        "freq": float(res.freq),
+        "L_diff": float(res.L_diff), "Q_diff": float(res.Q_diff),
+        "L_se_y11": float(res.L_se), "Q_se_y11": float(res.Q_se),
+        "L_z11_open": float(res.L_z11_open), "L_raw": float(res.L_raw),
+        "S": {"raw": _c2(res.s_raw), "open": _c2(res.s_open), "short": _c2(res.s_short),
+              "dut": _c2(res.s_dut)},
+        "Z_dut": _c2(res.z_dut),
+    }
+    if extra:
+        rec.update(extra)
+    return rec

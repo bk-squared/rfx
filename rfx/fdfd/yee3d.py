@@ -71,7 +71,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.fdfd.linear_solve import sparse_matvec, sparse_solve
+from rfx.fdfd.linear_solve import sparse_solve
 
 __all__ = [
     "Yee3DSpec", "Yee3DModel", "BoundaryTerms", "merge_terms",
@@ -578,7 +578,14 @@ def curl_h(model: Yee3DModel, freq, h, dx, dy, dz, terms: BoundaryTerms | None =
                                for a in (hx, hy, hz)])
     else:
         vec = jnp.concatenate([jnp.asarray(a, jnp.complex128).ravel() for a in (hx, hy, hz)])
-    return sparse_matvec(ch, model.ch_rows, model.ch_cols, vec)
+    # Ch is RECTANGULAR (n_edges x n_faces, n_edges > n_faces): the output must
+    # be allocated on the edges. ``sparse_matvec`` assumes a square matrix and
+    # would silently drop the rows with edge id >= n_faces (JAX scatter
+    # out-of-bounds semantics), i.e. the last Ez edges -- a port there would
+    # read a wrong current.
+    d = ch if vec.ndim == 1 else ch[:, None]
+    out = jnp.zeros((model.n_edges,) + tuple(vec.shape[1:]), dtype=jnp.complex128)
+    return out.at[model.ch_rows].add(d * vec[model.ch_cols])
 
 
 def h_from_e(model: Yee3DModel, freq, e, dx, dy, dz):
@@ -592,7 +599,13 @@ def h_from_e(model: Yee3DModel, freq, e, dx, dy, dz):
                                for a in (ex, ey, ez)])
     else:
         vec = flatten_edges(model, ex, ey, ez)
-    curl = sparse_matvec(ce, model.ce_rows, model.ce_cols, vec)
+    # Ce is RECTANGULAR (n_faces x n_edges): allocate the output on the faces
+    # explicitly (``sparse_matvec`` would return an n_edges-long vector whose
+    # tail is zero; ``split_faces`` slices that off, so this is a clarity
+    # change, not a behavioural one -- see curl_h for the case that mattered).
+    d = ce if vec.ndim == 1 else ce[:, None]
+    curl = jnp.zeros((model.n_faces,) + tuple(vec.shape[1:]), dtype=jnp.complex128)
+    curl = curl.at[model.ce_rows].add(d * vec[model.ce_cols])
     return split_faces(model, curl / (-1j * omega * MU0))
 
 
