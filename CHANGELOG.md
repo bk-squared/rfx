@@ -32,7 +32,8 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
 
 - Transform the declared decay-rate interval into its exact asymmetric log-Q
   bounds, including an unbounded high-Q side when the rate interval reaches
-  zero. Keep the existing record-resolution policy and public scalar window,
+  zero and the frequency ratio when the matched frequencies differ.
+  Keep the existing record-resolution policy and public scalar window,
   while removing the false symmetric upper restriction.
 
 ### Fixed — TMTT paper settling witnesses (#918)

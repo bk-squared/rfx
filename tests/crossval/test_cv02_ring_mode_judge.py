@@ -411,6 +411,28 @@ def test_q_rate_interval_maps_to_asymmetric_q_bounds() -> None:
     assert low_q.gates["q"] is False
 
 
+@pytest.mark.parametrize("freq_ratio", [0.96, 1.04])
+@pytest.mark.parametrize("s", [0.003, 0.5, 1.0, 2.0])
+def test_q_gate_matches_the_independent_decay_rate_interval(freq_ratio, s):
+    """Unequal frequencies must not reverse acceptance of a rate interval."""
+    f_ref, q_ref = 1.0, 10.0
+    record = q_ref / (math.pi * f_ref * s)
+    # Includes the false PASS/FAIL pair from review, plus both rate edges.
+    ratios = [1.0, freq_ratio, 1 + 0.99*s, 1 + 1.01*s,
+              max(1e-5, 1 - 0.99*s), max(1e-5, 1 - 1.01*s)]
+    for alpha_ratio in ratios:
+        f_rfx = f_ref * freq_ratio
+        q_rfx = q_ref * freq_ratio / alpha_ratio
+        verdict = rmj.judge(
+            [rmj.ReferenceMode(f_ref, q_ref)],
+            [rmj.SolverMode(f_rfx, q_rfx)], record,
+            f_min=0.5, f_max=1.5, min_matched=1)
+        # Compute alpha independently from the two frequencies and Qs.
+        relative_rate = (math.pi * f_rfx / q_rfx) / (math.pi * f_ref / q_ref)
+        assert verdict.rows[0].q_pass == (abs(relative_rate - 1) <= s)
+        assert verdict.gates["max_err"]
+
+
 def test_reference_side_carries_the_same_q_floor_as_rfx() -> None:
     """The shipped script filtered rfx modes (Q > 1) and the reference not at
     all, so a Meep harminv artefact used to enter as a full-weight mode -- and,

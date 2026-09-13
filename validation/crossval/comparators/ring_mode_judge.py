@@ -246,13 +246,16 @@ def q_window(ref_freq: float, ref_Q: float, record_length: float
 
 def q_log_bounds(ref_freq: float, ref_Q: float, record_length: float
                  ) -> tuple[float, float]:
-    """Return the exact log-Q bounds implied by a rate interval.
+    """Return the log-Q bounds implied by a rate interval at fixed frequency.
 
     With ``s = tau_ref/T``, the stated rate uncertainty is
     ``alpha_rfx/alpha_ref ∈ [1-s, 1+s]``.  Since ``Q`` is inversely
-    proportional to ``alpha``, the admissible ratio is
+    proportional to ``alpha`` at fixed frequency, the admissible ratio is
     ``Q_rfx/Q_ref ∈ [1/(1+s), 1/(1-s)]``.  In log space this is
     ``[-log1p(s), -log1p(-s)]``; the upper side is unbounded when ``s >= 1``.
+
+    For distinct matched frequencies, :func:`judge` shifts both bounds by
+    ``log(f_rfx/f_ref)`` because ``Q = pi*f/alpha``.
 
     A non-positive record has no usable rate interval and returns an
     unrestrictive pair.  Such a row is not Q-gated by :func:`judge` because
@@ -311,7 +314,12 @@ def judge(
                 q_lower, q_upper = q_log_bounds(
                     ref_mode.freq, ref_mode.Q, record_length
                 )
-                row.q_pass = q_lower <= signed_log_ratio <= q_upper
+                # Q = pi*f/alpha: transforming a RATE interval into Q
+                # requires the measured frequency ratio, even when the
+                # frequency difference passed its independent tolerance.
+                log_freq_ratio = math.log(partner.freq / ref_mode.freq)
+                row.q_pass = (q_lower + log_freq_ratio <= signed_log_ratio
+                              <= q_upper + log_freq_ratio)
             elif row.q_gated:
                 row.q_pass = False
         verdict.rows.append(row)
