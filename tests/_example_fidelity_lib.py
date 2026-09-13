@@ -368,6 +368,11 @@ CLASSIFICATION: dict[str, Entry] = {
         "cv18/cv19's shared realized-geometry reader (#931 crossval-D): takes "
         "a built Simulation and reads realized_pec_edge_masks / "
         "realized_wall_planes -- constructs no Simulation"),
+    "validation/crossval/_exit_evidence.py": Entry(
+        "no_simulation",
+        "shared exit-code evidence helper (#946): persists a record and "
+        "amends its exit code if the process ends with a different status -- "
+        "json/atexit only, imports no rfx and constructs no Simulation"),
     "validation/crossval/_patch_feed_contract.py": Entry(
         "no_simulation",
         "cv05/cv15's explicit galvanic-feed contract (#929): reads the "

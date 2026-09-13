@@ -36,6 +36,32 @@ validation.
 Missing external reference data or missing solver dependencies must be reported
 as **SKIP / unknown**, not PASS.
 
+## Retained records: the exit code is the run's, not the verdict stage's
+
+A crossval case that retains a record (`validation/crossval/manifest.json`,
+`evidence_status: committed`) writes it before the run ends, so that a failure
+in the plotting stage that follows cannot take the measurement with it. The
+record therefore has to be kept honest about an outcome it states early:
+
+- the exit code in the record is the status the **process returned**, not the
+  one the gate stage decided;
+- when those differ the record keeps both — `exit_code` is the process's,
+  `exit_code_declared` and `summary_declared` are the gate stage's, and
+  `exit_code_reconciliation` says how the difference was observed;
+- the amended `summary` is neutral text naming both codes. It is never the
+  case's own pass/fail wording re-run on the new code: that wording spells
+  verdicts the gate stage reached, so applied to a code it did not reach it
+  states a verdict the run never produced — "ALL CHECKS PASSED" beside
+  `all_gates_ok: false`, or a skip reason beside `meep_present: true`;
+- a case gets this by writing through
+  `validation/crossval/_exit_evidence.py::write_record`, which is also what
+  puts the code into the document, so a script cannot hold a second copy that
+  drifts (issue #946).
+
+A record whose `exit_code` can disagree with the run defeats the retained-
+evidence rule in the one direction that matters: it manufactures a success.
+`tests/contracts/test_crossval_exit_code_evidence.py` compares the two.
+
 ## Port / S-parameter-specific requirement
 
 For any port extractor promoted beyond experimental status, prefer E3 before
