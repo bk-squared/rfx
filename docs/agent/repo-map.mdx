@@ -18,7 +18,7 @@ before writing any new simulation code.
 | `rfx/probes/` | Probe and monitor implementations (point probes, DFT-plane, flux monitors, NTFF) |
 | `rfx/materials/` | Material helpers including Debye, Lorentz, and nonlinear dispersion models |
 | `rfx/boundaries/` | Boundary condition implementations (CPML, UPML, PEC, PMC, Floquet/Bloch) |
-| `rfx/sources/`, `rfx/api/_sparams.py`, `rfx/sparams/` | Port implementations and S-parameter extraction. `rfx/api/_sparams.py` holds the `Simulation` `compute_*` methods; `rfx/sparams/_common.py` holds the module-level helpers they share (issue #980 split — grep both). Production lumped/wire driver: `rfx/probes/sparam_driver.py` |
+| `rfx/sources/`, `rfx/api/_sparams.py`, `rfx/sparams/` | Port implementations and S-parameter extraction. `rfx/api/_sparams.py` holds the `Simulation` `compute_*` methods, except the coaxial ones, which now live in `rfx/sparams/coax.py` and are bound back onto the class; `rfx/sparams/_common.py` holds the module-level helpers they share (issue #980 split — grep both). Production lumped/wire driver: `rfx/probes/sparam_driver.py` |
 | `rfx/observables.py` | Differentiable accessor/objective factories on registered DFT-plane probes (`dft_field`, `field_energy`, `field_softmax`) — same factory style as `rfx/optimize_objectives.py` — plus `jacobian_fwd`, a batched forward-mode Jacobian wrapper for any `sim_fn(params) -> value` |
 | `tests/` | Canonical usage examples for every API surface — start here |
 | `validation/crossval/` | Claims-bearing cases and deliberate diagnostic reporters — roles are pinned in `validation/crossval/manifest.json`; check it before citing any script as validation |
@@ -52,7 +52,7 @@ command is verified to return at least one hit on the current tree.
 | Materials / dispersion | `grep "def add_material" rfx/api/__init__.py` | `rfx/materials/` |
 | Boundaries | `grep -rl "cpml\|upml\|pec\|floquet" rfx/boundaries/` | `rfx/boundaries/` |
 | Post-processing (flux, Harminv) | `grep "def flux_spectrum\|def harminv" rfx/probes/probes.py rfx/harminv.py` | `rfx/probes/probes.py`, `rfx/harminv.py` |
-| S-parameters and port-family calculators (high-level, use these first) | `grep -rn "def compute_.*_s_matrix\|def compute_coaxial_line_reflection\|def compute_coaxial_two_port\|def compute_coax_msl_transition" rfx/api/` | `rfx/api/_sparams.py`, `rfx/sources/`, `rfx/probes/sparam_driver.py` |
+| S-parameters and port-family calculators (high-level, use these first) | `grep -rn "def compute_.*_s_matrix\|def compute_coaxial_line_reflection\|def compute_coaxial_two_port\|def compute_coax_msl_transition" rfx/api/ rfx/sparams/` | `rfx/api/_sparams.py`, `rfx/sparams/coax.py`, `rfx/sources/`, `rfx/probes/sparam_driver.py` |
 | S-parameter module-level helpers shared by those calculators (MSL modal voltage / wave solve, settling, passivity, reciprocity and geometry advisories, mixed and coaxial power-wave assemblers) | `grep -rn "^def " rfx/sparams/_common.py` | `rfx/sparams/` — re-exported from `rfx.api._sparams` for backward compatibility, so import either spelling |
 | S-parameter low-level helpers | `grep "extract_waveguide_s_matrix\|extract_s_matrix\|extract_s11" rfx/sources/waveguide_port.py rfx/probes/probes.py` | `rfx/sources/waveguide_port.py`, `rfx/probes/probes.py` |
 | DFT-plane observables / objectives (differentiable) | `grep "def dft_field\|def field_energy\|def field_softmax" rfx/observables.py` | `rfx/observables.py` |
