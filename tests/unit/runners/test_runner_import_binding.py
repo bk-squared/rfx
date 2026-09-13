@@ -117,4 +117,22 @@ def test_coax_then_refplane_order_does_not_leak_fake_run():
         "the order-dependent #628 repro reappeared:\n"
         f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
     )
-    assert "failed" not in result.stdout, result.stdout
+    # Pytest's exit code owns the verdict. Passing tests can deliberately
+    # emit a warning containing "failed" (e.g. a degenerate-drive control);
+    # searching all stdout turned 83 passing tests into a false red (#940).
+
+
+@pytest.mark.parametrize("returncode", [0, 1, 5])
+def test_import_order_verdict_uses_pytest_status_not_warning_words(monkeypatch, returncode):
+    """No child process: warning prose cannot change the exit-status verdict."""
+    result = subprocess.CompletedProcess(
+        args=[], returncode=returncode,
+        stdout="UserWarning: one drive that failed to excite\n83 passed\n",
+        stderr="",
+    )
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: result)
+    if returncode == 0:
+        test_coax_then_refplane_order_does_not_leak_fake_run()
+    else:
+        with pytest.raises(AssertionError, match="order-dependent #628"):
+            test_coax_then_refplane_order_does_not_leak_fake_run()

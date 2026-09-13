@@ -1,0 +1,34 @@
+{
+  "kind": "build-only input audit; no FDTD",
+  "grid_shape": [
+    67,
+    13,
+    7
+  ],
+  "pad_x_lo": 8,
+  "dx": 0.002,
+  "slabs": [
+    {
+      "intended_x_lower_m": 0.04,
+      "array_index": 20,
+      "actual_x_lower_m": 0.024,
+      "actual_x_upper_m": 0.028
+    },
+    {
+      "intended_x_lower_m": 0.056,
+      "array_index": 28,
+      "actual_x_lower_m": 0.04,
+      "actual_x_upper_m": 0.044
+    }
+  ],
+  "ports": [
+    {
+      "x_m": 0.024,
+      "array_x": 20
+    },
+    {
+      "x_m": 0.07600000000000001,
+      "array_x": 46
+    }
+  ]
+}
