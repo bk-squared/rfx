@@ -6,6 +6,11 @@ answer, so this file is the inventory and the options, not a lane.
 Inventory taken at `5c6a9816` (2026-09-13). Every claim below is a file:line or a command
 you can re-run; where a number is measured, the command and the machine are given with it.
 
+Line numbers into `.github/workflows/validation.yml` are read at `94b56afe`, this branch's
+own change to that file, not at `5c6a9816` — `94b56afe` inserted comment lines and pushed the
+later refs down. Everything else is at `5c6a9816`. Each `validation.yml` reference below also
+quotes the string it points at, so grep for the quoted text if the file moves again.
+
 ---
 
 ## 1. What the four gpu-marked crossval test files do today
@@ -172,15 +177,16 @@ timing out. Measure before putting it on the cron.
 
 ### (b) The weekly VESSL a6000 lane with meep and openEMS installed
 
-**What**: drop `$IGN` at `scripts/vessl_validation_lane_a6000.yaml:37` and add the solvers so
-the external legs run for real.
+**What**: drop `$IGN` from `scripts/vessl_validation_lane_a6000.yaml` — the `IGN=` definition
+at `:37` **and its two expansions at `:40` and `:44`**, see §4 item 1 for why all three go
+together — and add the solvers so the external legs run for real.
 
 **Setup cost**: this is the expensive option, and the reason is a dependency conflict rather
 than effort.
 
 - The lane's image is `nvcr.io/nvidia/jax:24.10-py3` (`:7`).
 - Meep has no working pip wheel; conda-forge `pymeep` only, pinned `numpy>=1.26,<2`
-  (`validation.yml:247`), while rfx/JAX want numpy ≥ 2. `run_crossval_cpu.py:136-141` exists
+  (`validation.yml:256`), while rfx/JAX want numpy ≥ 2. `run_crossval_cpu.py:136-141` exists
   precisely because that ABI split is a recurring fact. pymeep therefore needs its own conda
   prefix inside the pod, and the tests would have to run under it.
 - openEMS is a source build. The repo already amortizes it into
@@ -278,6 +284,6 @@ external solvers inside pytest — is already covered outside pytest by two lane
 | importorskip fails on a broken import under pytest 9.1.1 | two-test probe in §1 |
 | 17/21 cases declare `cpu-runner` | the one-liner in §2 |
 | nothing calls the CPU runner | `grep -rn run_crossval_cpu . --exclude-dir=.git` |
-| which cases the weekly external lane runs | `validation.yml:270-295` reading `scheduled_external_order` |
+| which cases the weekly external lane runs | `validation.yml:279-304` reading `scheduled_external_order` |
 | `$IGN` unset aborts an `set -eu` run block | `sh -c 'set -eu; echo "using: $IGN"'` → exit 2 |
 | the fixture note has non-`*.py` readers | `grep -rn v173a_pre_t7_phase2 . --exclude-dir=.git` |
