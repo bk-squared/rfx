@@ -1053,6 +1053,38 @@ def test_script_persists_the_ingredient_split_and_drops_the_old_claim(
     assert "not a chosen number" not in source
     assert "consistency heuristic" in source
 
+
+def test_the_retained_record_keeps_its_superseded_note_and_a_pointer_to_that(
+) -> None:
+    """The one surface the withdrawal could not reach, and the pointer that
+    stands in for reaching it.
+
+    ``_02_ring_resonator_results/crossval.json`` still carries the framing this
+    PR withdraws -- its ``gate_limits.note`` calls the window "not a chosen
+    number" -- and it CANNOT be regenerated to fix that: the record is pinned
+    (:data:`CV02_RECORD_PIN`) because it is the only copy predating the
+    transform, so re-driving today's judge on it is the falsifier for "the
+    transform moved a committed verdict". Regenerating would void the
+    falsifier to fix a sentence.
+
+    So the correction lives beside the record instead, on the surface a reader
+    arrives from: the manifest entry that points at it. This test keeps the two
+    tied together -- if the record's note is ever fixed at the source, the
+    pointer can go with it; while the note stands, the pointer must too.
+    """
+    record = json.loads(CV02_RECORD.read_text(encoding="utf-8"))
+    note = record["gate_limits"]["note"]
+    manifest = json.loads(
+        (REPO_ROOT / "validation/crossval/manifest.json").read_text(
+            encoding="utf-8"))
+    case = next(c for c in manifest["cases"] if c["id"] == "02_ring_resonator")
+    if "not a chosen number" in note:
+        assert "superseded by ring_mode_judge.Q_GATE_INGREDIENTS" in (
+            case["claim_scope"]), (
+            "the retained record still calls the Q window 'not a chosen "
+            "number'; the manifest must say that wording is superseded")
+
+
 def test_reference_side_carries_the_same_q_floor_as_rfx() -> None:
     """The shipped script filtered rfx modes (Q > 1) and the reference not at
     all, so a Meep harminv artefact used to enter as a full-weight mode -- and,

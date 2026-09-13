@@ -367,10 +367,11 @@ pinned as-is by `CV02_RECORD_PIN` and
 the record moves.
 
 The cost is that the withdrawn framing survives in the reader-facing artifact:
-that record's `gate_limits.note` still reads "the Q window is tau_ref/T per
-mode, derived from the reference Q and THIS record length — not a chosen
-number". Read it as **superseded** by `ring_mode_judge.Q_GATE_INGREDIENTS`,
-which records written after 2026-09-13 carry instead. The half about the
+that record's `gate_limits.note` still reads, verbatim, "the Q window is
+tau_ref/T per mode, derived from the reference Q and THIS record length -- not
+a chosen number". Read it as **superseded** by
+`ring_mode_judge.Q_GATE_INGREDIENTS`, which every record written after
+2026-09-13 carries instead. The half about the
 window's *arguments* stands — no measured rfx quantity enters it. The half
 about its *form* does not: `tau_ref/T` is declared policy with #812's bracket
 behind it, not a derived bound. No number in that record is affected; the note
