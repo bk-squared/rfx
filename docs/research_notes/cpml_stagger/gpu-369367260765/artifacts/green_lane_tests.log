@@ -1,0 +1,4 @@
+/root/work/green/conftest.py:48: UserWarning: [conftest] Only 1 JAX device(s) visible. The distributed-NU composition tests will be skipped. Expected XLA_FLAGS=--xla_force_host_platform_device_count=2 to produce 2 virtual CPU devices. Check that nothing imported jax before this conftest was loaded.
+  warnings.warn(
+..............                                                           [100%]
+14 passed in 12.82s

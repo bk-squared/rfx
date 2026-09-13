@@ -1,0 +1,20 @@
+{
+  "run_id": 369367260765,
+  "run_name": "cpml-stagger-witness-r1",
+  "provider": "vessl",
+  "project": "byungkwan",
+  "cluster": "remilab-c0",
+  "preset": "gpu-rtx4090",
+  "image": "nvcr.io/nvidia/jax:24.10-py3",
+  "spec": "scripts/vessl_cpml_stagger_witness.yaml",
+  "started_kst": "2026-09-14T01:02",
+  "finished_kst": "2026-09-14T01:03",
+  "red_commit": "fa3929136159e0a644783b56012b21c1bce21340",
+  "green_commit": "47a586b136c7a2cf68595f6058bd3e456354d013",
+  "comparator": "scripts/diagnostics/cpml_dipole_waveform_witness.py",
+  "comparator_sha256": "c48933f56f26a5057f90365dd151f6cfe91b79b6f432d420a0b9b5fc82279834",
+  "comparator_held_fixed": "the GREEN comparator was copied into the RED tree; both digests in artifacts/comparator.sha256 are identical",
+  "out_dir": "/root/workspace/claude-workspace/rfx/runs/cpml-stagger-20260913T160213Z",
+  "purpose": "two-arm same-GPU same-comparator witness for the CPML Yee half-cell magnetic-profile fix",
+  "scope": "bounded total-waveform observation only; no bulk/source/CPML error separation, no reflection-coefficient certification, no qualification of any other mesh, angle or material"
+}

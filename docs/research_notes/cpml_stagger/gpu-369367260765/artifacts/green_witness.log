@@ -1,0 +1,34 @@
+  [PREFLIGHT] All checks passed (NTFF advisory tier; the PEC-overlap error check runs on forward()/preflight()).
+{
+  "label": "green",
+  "passed": true,
+  "source_pass": true,
+  "full_tolerance": 0.05,
+  "late_tolerance": 0.01,
+  "channels": {
+    "middle_ez": {
+      "full_relative_max": 0.004306818791454897,
+      "late_relative_max": 3.6869210110449874e-05,
+      "full_pass": true,
+      "late_pass": true
+    },
+    "middle_hy": {
+      "full_relative_max": 0.0014839422669070356,
+      "late_relative_max": 5.4104167607714074e-05,
+      "full_pass": true,
+      "late_pass": true
+    },
+    "far_ez": {
+      "full_relative_max": 0.00044227548742210144,
+      "late_relative_max": 0.0001738278620396941,
+      "full_pass": true,
+      "late_pass": true
+    },
+    "far_hy": {
+      "full_relative_max": 0.0003881940106090643,
+      "late_relative_max": 0.0001160693688845472,
+      "full_pass": true,
+      "late_pass": true
+    }
+  }
+}

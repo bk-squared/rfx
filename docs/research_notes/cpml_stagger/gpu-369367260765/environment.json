@@ -1,0 +1,17 @@
+{
+  "red_source_sha": "fa3929136159e0a644783b56012b21c1bce21340",
+  "green_source_sha": "47a586b136c7a2cf68595f6058bd3e456354d013",
+  "jax": "0.4.33.dev20241023+e3c6d6430",
+  "python": "3.10.12",
+  "machine": "x86_64",
+  "rfx_version": "1.8.0",
+  "rfx_path_red": "/root/work/red/rfx",
+  "rfx_path_green": "/root/work/green/rfx",
+  "backend": "gpu",
+  "x64": false,
+  "devices": [
+    "NVIDIA GeForce RTX 4090"
+  ],
+  "install": "pip install -e . per arm (editable, one arm at a time)",
+  "note": "numpy/scipy versions were not recorded by the witness or the job log; only the values above are read back from the receipts."
+}

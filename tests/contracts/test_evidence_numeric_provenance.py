@@ -311,6 +311,12 @@ CV19_WITNESS_NOTE = "docs/design_notes/20260903_cv19_fdfd_unitarity_witness.md"
 # falsifier argument is "no committed rung is near 1.0" -- exactly the shape that
 # is worthless if the numbers stop resolving. Opted in with its section 3.
 AUX_ECHO_NOTE = "docs/design_notes/20260904_aux_echo_record_invariant.md"
+# 2026-09-14: the CPML Yee half-cell stagger note. Its GPU-witness section is
+# the whole evidence for "the fix holds on GPU, and the pre-fix solver fails the
+# same requirement on the same GPU with the same comparator": eight per-channel
+# residuals plus the three predeclared tolerances, every one of them read out of
+# the two committed receipts of VESSL run 369367260765.
+CPML_STAGGER_NOTE = "docs/design_notes/2026-09-13_cpml_yee_stagger_correction.md"
 # 2026-09-06 (#928): the public benchmarks page is the single largest carrier of
 # measured numbers in the repository (93 references) and was NOT under this gate.
 # Every public "Validated comparison" row quotes an artifact value; a page that
@@ -359,6 +365,10 @@ MARKDOWN_SITES: dict[str, str] = {
     "docs/design_notes/20260908_docs_truth_audit.md": r"^#+\s+(.*\S)\s*$",
     "docs/design_notes/chain_closure_contract.md": r"^#+\s+(.*\S)\s*$",
     "docs/design_notes/20260911_harminv_record_support.md": r"^#+\s+(.*\S)\s*$",
+    # 2026-09-14 (CPML Yee half-cell stagger, Lane A): the note's GPU-witness
+    # section is a two-arm residual table read out of the two committed
+    # receipts of VESSL run 369367260765. See CLASSIFICATION below.
+    CPML_STAGGER_NOTE: r"^#+\s+(.*\S)\s*$",
 }
 
 DOCUMENTS = (MANIFEST, *MARKDOWN_SITES)
@@ -429,6 +439,11 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # keep resolving. 93 references parse there; 91 of them carry a value,
     # which is what this floor counts (the other two are existence-only).
     (BENCHMARKS, "Reference cases"): 85,
+    # 2026-09-14: the CPML stagger witness section. Its floor is the eight
+    # per-channel full/late residuals it argues from plus the three predeclared
+    # tolerances and the source-check residual it says both arms share: a
+    # rewrite that drops them leaves the RED/GREEN separation unevidenced.
+    (CPML_STAGGER_NOTE, "GPU witness (2026-09-14, remilab-c0)"): 12,
 }
 
 # Anti-vacuity census. A green gate must mean the references are right, not that
@@ -441,9 +456,13 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # 2026-09-06 (#928): +benchmarks.mdx (93) and +8 design notes, all green at the
 # commit that opted them in; the population went 566 -> 1147 references (+581)
 # over 60 -> 64 distinct artifacts. Raised here in the same commit, as above.
-MIN_REFERENCES = 1140
-MIN_VALUE_CHECKED = 1095
-MIN_DISTINCT_ARTIFACTS = 60
+# 2026-09-14: +12, the CPML Yee half-cell stagger note's GPU-witness section,
+# and +2 distinct artifacts (the red/green witness receipts of VESSL run
+# 369367260765, cited here for the first time). Raised in the same commit that
+# adds them.
+MIN_REFERENCES = 1152
+MIN_VALUE_CHECKED = 1107
+MIN_DISTINCT_ARTIFACTS = 62
 
 
 # --------------------------------------------------------------------------
@@ -597,15 +616,19 @@ CLASSIFICATION: dict[str, str] = {
     # resolve.
     "docs/design_notes/717_crossval_lane_decision.md": NO_ARTIFACT_REFERENCE,
     # 2026-09-14 (Lane A port of research 7b6c33d5, CPML Yee half-cell
-    # sampling): the note carries no `::` span at all (parses and others both
-    # empty). Its Experiment68/69 numbers come from GPU runs on the research
-    # branch `accel/pod-distributed-usable-20260912` and are cited by input
-    # manifest SHA256 and solver-source SHA in the note's own header; no
-    # in-repo artifact holds them, so there is nothing for this gate to
-    # resolve. The operator-placement claim itself is gated by
-    # tests/unit/boundaries/test_cpml_yee_stagger.py (exact mirror residual),
-    # not by a quoted number.
-    "docs/design_notes/2026-09-13_cpml_yee_stagger_correction.md": NO_ARTIFACT_REFERENCE,
+    # sampling). Until the GPU witness ran, this note was
+    # NO_ARTIFACT_REFERENCE: its Experiment68/69 numbers came from GPU runs on
+    # the research branch `accel/pod-distributed-usable-20260912`, cited by
+    # input manifest SHA256 and solver-source SHA in the note's own header,
+    # with no in-repo artifact for this gate to resolve. VESSL run
+    # 369367260765 changed that -- both arms' receipts are now committed under
+    # docs/research_notes/cpml_stagger/gpu-369367260765/, and the note's
+    # per-channel residuals are read out of them. Opted in rather than left
+    # as a table of numbers nobody re-resolves, which is what this gate is
+    # for. (The operator-placement claim itself stays gated by
+    # tests/unit/boundaries/test_cpml_yee_stagger.py, an exact mirror
+    # residual, not by a quoted number.)
+    "docs/design_notes/2026-09-13_cpml_yee_stagger_correction.md": GATED,
     # 2026-09-10 (#931 lattice-ownership merge): 591e296e added a resolvable
     # citation to this note (cv18's Richardson envelope); opted in rather than
     # left failing NO_ARTIFACT_REFERENCE's own vacuity check.
