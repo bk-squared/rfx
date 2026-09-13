@@ -125,9 +125,87 @@ def test_port_does_not_open_a_hole_in_either_sheet(realized):
     a, b = realized["no_port"], realized["with_port"]
     for name in ("ground", "patch"):
         for key in ("k", "x_edge_cells", "y_edge_cells",
-                    "x_index_range", "y_index_range"):
+                    "x_index_range", "y_index_range",
+                    "realized_x_lo_mm", "realized_x_hi_mm",
+                    "realized_y_lo_mm", "realized_y_hi_mm"):
             assert a[name][key] == b[name][key], (
                 f"the port changed {name}.{key}: {a[name][key]} -> {b[name][key]}")
+
+
+def _external_geometry_module():
+    import importlib.util
+    path = CV05.with_name("_patch_external_geometry.py")
+    spec = importlib.util.spec_from_file_location("cv05_external_geometry", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_external_sheet_edges_retain_the_complete_realized_extent(realized):
+    board = realized["external_board_mm"]
+    assert board["ground"]["lo"] == pytest.approx([50, 50, 0])
+    assert board["ground"]["hi"] == pytest.approx([110, 105, 0])
+    assert board["patch"]["lo"] == pytest.approx([66, 59, 1.5])
+    assert board["patch"]["hi"] == pytest.approx([94, 96, 1.5])
+    assert board["substrate"]["lo"] == pytest.approx([50, 50, 0])
+    assert board["substrate"]["hi"] == pytest.approx([110, 105, 1.5])
+    for name in ("ground", "patch"):
+        for axis, key in enumerate(("realized_x_mm", "realized_y_mm")):
+            assert board[name]["hi"][axis] - board[name]["lo"][axis] == pytest.approx(
+                realized["with_port"][name][key])
+    # Relative feed-to-edge distances must survive the solver-frame change.
+    for terminal, source in (("lo", "realized_start_m"), ("hi", "realized_end_m")):
+        assert board["feed"][terminal] == pytest.approx([
+            v * 1000 + shift for v, shift in zip(
+                realized["feed_check"][source], board["translation_mm"])])
+
+
+def test_external_air_margin_translates_every_object_together(realized):
+    module = _external_geometry_module()
+    moved = module.external_patch_board(
+        realized["with_port"], realized["feed_check"], margin_mm=75.0)
+    for name in ("ground", "patch", "substrate", "feed"):
+        for corner in ("lo", "hi"):
+            old = realized["external_board_mm"][name][corner]
+            assert moved[name][corner] == pytest.approx([old[0]+25, old[1]+25, old[2]])
+
+
+def test_openems_receives_the_inspected_board_and_rejects_a_detached_feed(realized):
+    from copy import deepcopy
+    module = _external_geometry_module()
+    boxes, properties, ports = {}, {}, []
+
+    class Property:
+        def __init__(self, name):
+            self.name = name
+
+        def AddBox(self, lo, hi, **kwargs):
+            boxes[self.name] = {"lo": lo, "hi": hi}
+
+        def SetMaterialProperty(self, **kwargs):
+            properties[self.name] = kwargs
+
+    class CSX:
+        AddMaterial = staticmethod(Property)
+        AddMetal = staticmethod(Property)
+
+    class FDTD:
+        @staticmethod
+        def AddLumpedPort(**kwargs):
+            ports.append(kwargs)
+            return kwargs
+
+    board = realized["external_board_mm"]
+    module.add_openems_patch_board(CSX(), FDTD(), board, eps_r=4.3)
+    assert boxes == {"FR4": board["substrate"], "ground": board["ground"],
+                     "patch": board["patch"]}
+    assert properties == {"FR4": {"epsilon": 4.3}}
+    assert ports[0]["start"] == board["feed"]["lo"]
+    assert ports[0]["stop"] == board["feed"]["hi"]
+    detached = deepcopy(board)
+    detached["feed"]["lo"][0] -= 40
+    with pytest.raises(ValueError, match="feed misses ground"):
+        module.add_openems_patch_board(CSX(), FDTD(), detached, eps_r=4.3)
 
 
 def test_registered_port_reaches_the_measured_sheets(realized):
@@ -158,10 +236,8 @@ def test_patch_footprint_is_the_half_cell_debt_and_says_so(realized, leg):
     """The patch realizes 28 x 37 mm from a 29.5 x 38.0 mm declaration.
 
     Not a defect the contract fixes: L and W are the antenna's design
-    dimensions and the openEMS leg builds them exactly, so moving the corners
-    onto the 1 mm lattice would change the antenna both tools are meant to
-    share. The gap is mesh resolution and it is carried in the result JSON
-    instead of being absorbed.
+    dimensions; openEMS now consumes the measured footprint. The declared
+    design remains in the record, separately from the antenna actually solved.
     """
     p = realized[leg]["patch"]
     assert (p["declared_x_mm"], p["declared_y_mm"]) == pytest.approx(PATCH_DECLARED_MM)

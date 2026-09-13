@@ -227,9 +227,8 @@ gy_hi = gy_lo + gy
 # 1 mm lattice. That is a mesh-resolution debt of this case, not a
 # realization rule: the closed footprint rule realizes 28.0 x 37.0 mm from
 # a 29.5 x 38.0 mm declaration. It is REPORTED by assert_realized_sheets
-# and carried in the result JSON; moving the corners onto nodes would
-# change the antenna the openEMS leg also builds, which this migration
-# does not do.
+# and carried in the result JSON. The external leg now consumes these
+# measured bounds and the realized feed, with one common frame translation.
 patch_x_lo = dom_x / 2 - L / 2
 patch_x_hi = dom_x / 2 + L / 2
 patch_y_lo = dom_y / 2 - W / 2
@@ -290,6 +289,7 @@ import jax.numpy as jnp
 import sys as _sys_mid
 _sys_mid.path.insert(0, SCRIPT_DIR)
 from _patch_feed_contract import assert_galvanic_patch_feed as assert_galvanic_feed  # noqa: E402
+from _patch_external_geometry import external_patch_board, add_openems_patch_board  # noqa: E402
 
 _sys_mid.path.insert(0, os.path.join(SCRIPT_DIR, "comparators"))
 from patch_mode_identification import (            # noqa: E402
@@ -505,6 +505,9 @@ def assert_realized_sheets(sim, grid):
     # In-plane realized extents, from the realized edge set (not the drawn Box).
     ex = np.asarray(edges[0])
     ey = np.asarray(edges[1])
+    node_coords = coords_from_nonuniform_grid(grid)
+    x_nodes = np.asarray(node_coords.x, dtype=np.float64)
+    y_nodes = np.asarray(node_coords.y, dtype=np.float64)
     out = {
         "sheet_plane_delta": SHEET_PLANE_DELTA,
         "ground": {"declared_z_mm": z_gnd_sheet * 1e3, "k": int(k_gnd_arr)},
@@ -521,8 +524,26 @@ def assert_realized_sheets(sim, grid):
         out[name]["y_edge_cells"] = int(jj.size)
         out[name]["x_index_range"] = [int(ii[0]), int(ii[-1])] if ii.size else []
         out[name]["y_index_range"] = [int(jj[0]), int(jj[-1])] if jj.size else []
-        out[name]["realized_x_mm"] = float(ii.size) * dx * 1e3
-        out[name]["realized_y_mm"] = float(jj.size) * dx * 1e3
+        out[name]["realized_z_mm"] = float(z_built[k] * 1e3)
+        out[name]["realized_x_lo_mm"] = float(x_nodes[ii[0]] * 1e3) if ii.size else None
+        out[name]["realized_x_hi_mm"] = float(x_nodes[ii[-1] + 1] * 1e3) if ii.size else None
+        out[name]["realized_y_lo_mm"] = float(y_nodes[jj[0]] * 1e3) if jj.size else None
+        out[name]["realized_y_hi_mm"] = float(y_nodes[jj[-1] + 1] * 1e3) if jj.size else None
+        out[name]["realized_x_mm"] = float(x_nodes[ii[-1] + 1] - x_nodes[ii[0]]) * 1e3
+        out[name]["realized_y_mm"] = float(y_nodes[jj[-1] + 1] - y_nodes[jj[0]]) * 1e3
+    # The dielectric owns node-sampled cells; read their complete intervals.
+    eps = np.asarray(mats.eps_r)
+    material_xy = eps[:, :, (K_GND + K_PATCH) // 2] > 1.01
+    si = np.flatnonzero(material_xy.any(axis=1))
+    sj = np.flatnonzero(material_xy.any(axis=0))
+    out["substrate"] = {
+        "realized_x_lo_mm": float(x_nodes[si[0]] * 1e3),
+        "realized_x_hi_mm": float(x_nodes[si[-1] + 1] * 1e3),
+        "realized_y_lo_mm": float(y_nodes[sj[0]] * 1e3),
+        "realized_y_hi_mm": float(y_nodes[sj[-1] + 1] * 1e3),
+        "realized_z_lo_mm": float(z_built[K_GND] * 1e3),
+        "realized_z_hi_mm": float(z_built[K_PATCH] * 1e3),
+    }
     out["ground"]["declared_x_mm"] = gx * 1e3
     out["ground"]["declared_y_mm"] = gy * 1e3
     out["patch"]["declared_x_mm"] = L * 1e3
@@ -674,6 +695,9 @@ REALIZED_PORT = assert_realized_sheets(sim, _port_grid)
 FEED_CHECK = assert_galvanic_feed(
     sim, _port_grid, ground_node=REALIZED_PORT["ground"]["k"],
     patch_node=REALIZED_PORT["patch"]["k"])
+OPENEMS_MARGIN_MM = 50.0
+EXTERNAL_BOARD = external_patch_board(
+    REALIZED_PORT, FEED_CHECK, margin_mm=OPENEMS_MARGIN_MM)
 
 # RFX_CV05_BUILD_ONLY=1 stops here: both builds, both realization assertions,
 # no FDTD. This is the case's cheap smoke — it exercises exactly the thing the
@@ -691,6 +715,7 @@ if os.environ.get("RFX_CV05_BUILD_ONLY"):
             json.dump({"source": True, "with_port": REALIZED_PORT,
                        "no_port": REALIZED,
                        "feed_check": FEED_CHECK,
+                       "external_board_mm": EXTERNAL_BOARD,
                        "dz_sub_mm": dz_sub * 1e3, "dx_mm": dx * 1e3,
                        "n_sub": n_sub, "h_sub_mm": h_sub * 1e3}, _f, indent=2)
         print(f"  realized-stack JSON: {_rj}")
@@ -824,7 +849,7 @@ inset_mm = probe_inset * 1000
 # Domain: ground plane + ≥λ/2 air margin + radiation air above the patch.
 # The previous version used MUR at ~λ/4 margin which caused reflections
 # that corrupted the resonance frequency by ~8 % (see research note).
-margin_mm = 50.0
+margin_mm = OPENEMS_MARGIN_MM
 air_above_mm = 40.0
 dom_x_mm = gx_mm + 2 * margin_mm
 dom_y_mm = gy_mm + 2 * margin_mm
@@ -845,33 +870,11 @@ FDTD.SetCSX(CSX)
 mesh_oe = CSX.GetGrid()
 mesh_oe.SetDeltaUnit(UNIT)
 
-# FR4 substrate
-sub_mat = CSX.AddMaterial('FR4')
-sub_mat.SetMaterialProperty(epsilon=eps_r)
-sub_lo = [x_c - gx_mm / 2, y_c - gy_mm / 2, 0]
-sub_hi = [x_c + gx_mm / 2, y_c + gy_mm / 2, h_sub_mm]
-sub_mat.AddBox(sub_lo, sub_hi, priority=1)
-
-# Ground plane (2D PEC at z=0)
-gnd = CSX.AddMetal('gnd')
-gnd.AddBox([sub_lo[0], sub_lo[1], 0],
-           [sub_hi[0], sub_hi[1], 0], priority=10)
-
-# Patch (2D PEC at z=h_sub)
-patch_lo_oe = [x_c - L_mm / 2, y_c - W_mm / 2, h_sub_mm]
-patch_hi_oe = [x_c + L_mm / 2, y_c + W_mm / 2, h_sub_mm]
-patch = CSX.AddMetal('patch')
-patch.AddBox(patch_lo_oe, patch_hi_oe, priority=10)
-
-# Lumped 50 Ω port: vertical, ground-to-patch at feed inset
-feed_x_mm = patch_lo_oe[0] + inset_mm
-feed_y_mm = y_c
-port = FDTD.AddLumpedPort(
-    port_nr=1, R=50.0,
-    start=[feed_x_mm, feed_y_mm, 0.0],
-    stop=[feed_x_mm, feed_y_mm, h_sub_mm],
-    p_dir='z', excite=1.0,
-)
+# The same measured/translated record controls material, metal, feed and mesh.
+sub_lo, sub_hi = (EXTERNAL_BOARD["substrate"][key] for key in ("lo", "hi"))
+patch_lo_oe, patch_hi_oe = (EXTERNAL_BOARD["patch"][key] for key in ("lo", "hi"))
+feed_x_mm, feed_y_mm = EXTERNAL_BOARD["feed"]["lo"][:2]
+port = add_openems_patch_board(CSX, FDTD, EXTERNAL_BOARD, eps_r=eps_r)
 
 # --- Mesh lines (λ_min/20 everywhere, no edge refinement) ---
 # Aim: ≥ 10 cells across the patch L dimension so the TM010 half-wave
@@ -1261,6 +1264,7 @@ if json_out:
         ),
         "realized_stack": REALIZED,
         "realized_stack_with_port": REALIZED_PORT,
+        "external_board_mm": EXTERNAL_BOARD,
         "sheet_plane_delta": SHEET_PLANE_DELTA,
         "analytic_resonance_hz": float(f_resonance_an),
         "openems_harminv_hz": float(f_res_oe),

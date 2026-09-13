@@ -81,6 +81,10 @@ def assert_galvanic_patch_feed(sim, grid, *, ground_node, patch_node):
             f"{expected}; another conductor cannot substitute for either terminal")
     return dict(
         port_z0=float(pe.position[2]), port_extent=float(pe.extent),
+        realized_start_m=[float(coords.x[ij[0]]), float(coords.y[ij[1]]),
+                          float(z_nodes[lower])],
+        realized_end_m=[float(coords.x[ij[0]]), float(coords.y[ij[1]]),
+                        float(z_nodes[upper])],
         z0_node_k=lower, z1_node_k=upper,
         z0_on_realized_plane=True, z1_on_realized_plane=True, galvanic=True,
     )
