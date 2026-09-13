@@ -365,8 +365,7 @@ ports are required. `run()` provides only per-port diagnostics.
   main maximum and mean linear-magnitude differences are `0.0193` and
   `0.00195`.
   > **Historical record — 2026-06-16 numbers; quote them with their date
-  > (2026-08-31, issue #812 Phase 0).
-  > issue #812 Phase 0).** They come from
+  > (2026-08-31, issue #812 Phase 0).** Those historical values come from
   > `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json`,
   > which was committed at `b0322c1` (2026-06-16, PR #181) and never
   > regenerated. Its **provenance is settled**: feeding
@@ -390,7 +389,7 @@ ports are required. `run()` provides only per-port diagnostics.
   > August looks like.
   >
   > **Direction matters: that historical record understated the family.** Every
-  > pre-fix/current run cited there was
+  > August run cited there was
   > *better*, and `0.0707` is inside the artifact's own `max_mag_abs_tol` of
   > `0.1`. No gate is at risk and no rectangular-waveguide physics verdict is
   > challenged. Two minor warts remain: `source_cv11_stdout` records a `/tmp`
@@ -403,11 +402,15 @@ ports are required. `run()` provides only per-port diagnostics.
   > run of its own producing script". That is withdrawn — it rebuilt only from
   > the working-tree revision of those stdouts, never from their content at the
   > artifact's commit. Settling this needed `git show`, not an FDTD run. The
-  > later refresh is recorded in `provenance.refresh_2026_09_13` and explains
-  > the June→August and August→current-main changes rather than silently
-  > re-pinning a value. Full record: the
+  > later refresh is recorded in `provenance.refresh_2026_09_13`. Its material
+  > A/B explains the September pre-fix→post-fix change. The June→August 3.7x
+  > improvement remains unattributed; CPML and aperture changes are candidates.
+  > Full record: the
   > artifact's own `provenance` key and
   > `docs/design_notes/20260831_cv11_broad_e4_artifact_provenance.md`.
+- The pinned producer uses `normalize=True` for empty/slab and `False` for
+  PEC short. These refreshed magnitudes do not validate the `"flux"` extractor
+  or its AD path; the normalization audit is retained in the artifact.
 - The refreshed artifact is sourced from current-main VESSL run `369367260736`
   (producer commit `8206031d`) and is reproduced by the committed stdout. Its
   load-bearing slab S11 values are
