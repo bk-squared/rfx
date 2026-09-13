@@ -526,6 +526,51 @@ def test_runpy_as_main_looks_like_a_direct_run_in_argv_and_sys_modules(
     assert seen["main_module_is_me"] is True   # not the host's module
 
 
+# Two wrappers that DO hand the case's own status back to the shell and still
+# do not arm, because they run the case under their own frames.
+WRAPPED_CASE_FIXTURE = '''\
+import sys
+
+sys.path.insert(0, {crossval_dir!r})
+import _exit_evidence
+
+rc = _exit_evidence.write_record({record!r}, {{"verdict": {{}}}}, exit_code=0,
+                                 summary="DECLARED EXIT 0")
+print("declared", rc)
+sys.exit(rc)
+'''
+
+
+@pytest.mark.parametrize("how", ["profiler", "dash_m"])
+def test_a_wrapper_below_the_case_does_not_arm(tmp_path: Path,
+                                               how: str) -> None:
+    """The conservative side of the predicate, checked instead of promised.
+
+    ``python -m cProfile case.py`` and ``python -m case`` both end with the
+    case's own status, so arming them would be right -- but both run the case
+    under their own frames, which is what an embedding host also does, and the
+    predicate cannot tell the two apart. Both are refused, and both say so. No
+    crossval evidence is produced either way; if that ever changes, this test
+    is where the decision gets revisited.
+    """
+    case = tmp_path / "cv_wrapped_case.py"
+    record = tmp_path / "crossval.json"
+    case.write_text(WRAPPED_CASE_FIXTURE.format(
+        crossval_dir=str(CROSSVAL_DIR), record=str(record)))
+    if how == "profiler":
+        argv = [sys.executable, "-m", "cProfile", "-o",
+                str(tmp_path / "profile.out"), str(case)]
+    else:
+        argv = [sys.executable, "-m", "cv_wrapped_case"]
+
+    proc = subprocess.run(argv, cwd=str(tmp_path), capture_output=True,
+                          text=True)
+
+    assert proc.returncode == 0, proc.stdout[-2000:] + proc.stderr[-2000:]
+    assert json.loads(record.read_text())["verdict"]["exit_code"] == 0
+    assert "EXIT-CODE EVIDENCE UNARMED" in proc.stderr
+
+
 # The same case driven as a LIBRARY: imported under its own module name and
 # called by a host whose exit status has nothing to do with the case. This is
 # how tests/crossval/test_cv23_lossy_slab_gates.py drives it.
