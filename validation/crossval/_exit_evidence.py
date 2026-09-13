@@ -184,6 +184,10 @@ def _entry_globals() -> "dict[str, Any]":
     module can tell an embedded case from a run one -- measured, not assumed
     (``runpy._run_module_code``: ``_TempModule(mod_name)`` and
     ``_ModifiedArgv0(fname)``).
+
+    A call from a worker thread walks to that thread's bootstrap frame rather
+    than the program's, so it does not arm either. No case writes its record
+    off the main thread, and refusing is the conservative side.
     """
     frame = sys._getframe(1)
     while frame.f_back is not None:
