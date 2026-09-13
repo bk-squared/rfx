@@ -33,6 +33,9 @@ Two halves:
 The two boundaries the mechanism cannot cover -- ``os._exit`` skipping
 ``atexit``, and a ``sys.exit`` the script catches itself -- are asserted here
 rather than left to the reader, so the guarantee is not read wider than it is.
+And the guarantee it DOES make -- a host process's exit status never reaches
+an embedded case's record -- is asserted for both ways of embedding a case,
+``importlib`` + ``main()`` and ``runpy`` under ``run_name="__main__"``.
 """
 
 from __future__ import annotations
@@ -396,12 +399,46 @@ def test_a_record_persisted_unarmed_says_so_on_stderr(tmp_path: Path) -> None:
 
 
 CV23 = CROSSVAL_DIR / "23_lossy_slab_fresnel.py"
+# --smoke evaluates no gate and --out-dir keeps the write out of
+# validation/crossval (#967 / PR #977).
+CV23_SMOKE = ["--smoke", "--no-plots", "--arms", "tand1", "--out-dir"]
 
-# Runs the real case, swallows the exit it asked for, then exits 2 -- the
-# shape of an exit path added after the record was already persisted. The
-# case runs in --smoke with its own --out-dir, so it writes nothing into
-# validation/crossval (#967 / PR #977) and evaluates no gate.
-LATE_EXIT_WRAPPER = '''\
+
+def test_the_committed_case_arms_when_it_is_the_program(tmp_path: Path) -> None:
+    """cv23 in a subprocess, run the way evidence is produced: as the program.
+
+    The fixture tests above pin what arming DOES. This one pins that a
+    committed crossval case is wired into it end to end -- through its own
+    argument parsing and its own writer -- and that the arming predicate still
+    accepts the only shape that produces evidence. Arming is visible from
+    outside because an unarmed write announces itself on stderr, so the
+    absence of that line is the assertion.
+    """
+    out_dir = tmp_path / "cv23_out"
+    out_dir.mkdir()
+
+    proc = subprocess.run([sys.executable, str(CV23), *CV23_SMOKE,
+                           str(out_dir)],
+                          cwd=str(tmp_path), capture_output=True, text=True)
+    record = out_dir / "rfx.json"
+    assert record.is_file(), proc.stdout[-4000:] + proc.stderr[-4000:]
+    doc = json.loads(record.read_text())
+
+    assert proc.returncode == 0
+    assert doc["verdict"]["exit_code"] == proc.returncode
+    assert doc["verdict"]["summary"].startswith("SMOKE OK")
+    assert "EXIT-CODE EVIDENCE UNARMED" not in proc.stderr   # it armed,
+    assert "EXIT-CODE RECONCILED" not in proc.stderr         # and agreed
+    # The measurement the case wrote is still the case's own.
+    assert doc["arms"]["tand1"]["e2_ok"] in (True, False)
+
+
+# A host that runs the case as ``__main__`` through runpy -- handing over
+# sys.argv as well -- swallows the exit the case asked for, and then returns a
+# status of its own. This is the shape of
+# scripts/diagnostics/harminv_record_capture.py and of
+# scripts/diagnostics/cv0104_dielectric_control_witness.py.
+RUNPY_HOST = '''\
 import runpy
 import sys
 
@@ -415,32 +452,77 @@ sys.exit(2)
 '''
 
 
-def test_a_real_case_record_follows_a_forced_late_exit(tmp_path: Path) -> None:
-    """cv23 in a subprocess: the record on disk equals the return code.
+def test_a_case_run_as_main_by_runpy_is_not_armed(tmp_path: Path) -> None:
+    """runpy makes ``__name__ == "__main__"`` true; it must not be enough.
 
-    The fixture tests above pin the mechanism; this one pins that a committed
-    crossval case is actually wired into it, end to end, through its own
-    argument parsing and its own writer.
+    The host here returns 2 for a case that declared 0, so a mechanism that
+    armed on the module name alone would write the host's status into the
+    case's record -- a manufactured exit code, which is what #946 is about.
+    The record keeps what the case itself decided, and the host is told the
+    record is unarmed and why.
     """
     out_dir = tmp_path / "cv23_out"
     out_dir.mkdir()
-    wrapper = tmp_path / "late_exit_wrapper.py"
-    wrapper.write_text(LATE_EXIT_WRAPPER.format(
-        script=str(CV23), out_dir=str(out_dir)))
+    host = tmp_path / "runpy_host.py"
+    host.write_text(RUNPY_HOST.format(script=str(CV23), out_dir=str(out_dir)))
 
-    proc = subprocess.run([sys.executable, str(wrapper)], cwd=str(tmp_path),
+    proc = subprocess.run([sys.executable, str(host)], cwd=str(tmp_path),
                           capture_output=True, text=True)
     record = out_dir / "rfx.json"
     assert record.is_file(), proc.stdout[-4000:] + proc.stderr[-4000:]
     doc = json.loads(record.read_text())
 
     assert proc.returncode == 2
-    assert doc["verdict"]["exit_code"] == proc.returncode
-    assert doc["verdict"]["exit_code_declared"] == 0
-    assert doc["verdict"]["summary_declared"].startswith("SMOKE OK")
-    assert "EXIT-CODE RECONCILED" in proc.stderr
-    # The measurement the case wrote is still the case's own.
-    assert doc["arms"]["tand1"]["e2_ok"] in (True, False)
+    assert doc["verdict"]["exit_code"] == 0  # what the case itself returned
+    assert "exit_code_declared" not in doc["verdict"]
+    assert "exit_code_reconciliation" not in doc["verdict"]
+    assert "EXIT-CODE RECONCILED" not in proc.stderr
+    assert "EXIT-CODE EVIDENCE UNARMED" in proc.stderr
+    assert "EMBEDDED" in proc.stderr
+
+
+# Why the arming predicate walks the stack instead of reading sys.argv or
+# sys.modules: under runpy both report a direct run.
+RUNPY_LOOKALIKE_CASE = '''\
+import json
+import sys
+
+print(json.dumps(dict(argv0=sys.argv[0], name=__name__,
+                      main_module_is_me=sys.modules["__main__"].__dict__ is globals())))
+'''
+
+RUNPY_LOOKALIKE_HOST = '''\
+import runpy
+import sys
+
+sys.argv = [{case!r}]
+runpy.run_path({case!r}, run_name="__main__")
+'''
+
+
+def test_runpy_as_main_looks_like_a_direct_run_in_argv_and_sys_modules(
+        tmp_path: Path) -> None:
+    """The measurement behind the arming predicate, not an assumption.
+
+    ``runpy`` rewrites ``sys.argv[0]`` to the case's own path and installs the
+    case as ``sys.modules["__main__"]`` while it runs, so both cheap checks an
+    author might reach for report "this is the program". Pinned here so that a
+    later simplification to either one fails this test instead of quietly
+    reopening the hole the test above closes.
+    """
+    case = tmp_path / "lookalike_case.py"
+    case.write_text(RUNPY_LOOKALIKE_CASE)
+    host = tmp_path / "lookalike_host.py"
+    host.write_text(RUNPY_LOOKALIKE_HOST.format(case=str(case)))
+
+    proc = subprocess.run([sys.executable, str(host)], cwd=str(tmp_path),
+                          capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    seen = json.loads(proc.stdout)
+
+    assert seen["name"] == "__main__"
+    assert seen["argv0"] == str(case)          # not the host's path
+    assert seen["main_module_is_me"] is True   # not the host's module
 
 
 # The same case driven as a LIBRARY: imported under its own module name and

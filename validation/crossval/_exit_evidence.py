@@ -50,19 +50,44 @@ contract, not by this module: ``tests/contracts/test_crossval_exit_code_evidence
 requires every script that writes an exit-code record to leave through
 ``sys.exit`` and to route the write through ``write_record``.
 
-WHEN THE FINALIZER ARMS. Only when ``write_record``'s caller is running as
-the program -- its module ``__name__`` is ``"__main__"``. A test that imports
-a case and calls its ``main()`` gets the record written and nothing armed,
-because the pytest process's exit status is not that case's verdict, and a
-``pytest.raises(SystemExit)`` in an unrelated test would otherwise be read as
-this run's outcome. The consequence for a future case: call ``write_record``
-from the case script's own body, not from a helper module it imports, or the
-record is persisted unarmed -- which is the pre-#946 state with no signal that
-it happened. So there is a signal: outside pytest, ``write_record`` prints one
-``EXIT-CODE EVIDENCE UNARMED`` line on stderr whenever it persists a record it
-could not arm, and the contract test keeps the set of files under
-``validation/crossval/`` that call ``write_record`` equal to the set of case
-scripts, so a shared helper taking over the write is a red test, not a shrug.
+WHEN THE FINALIZER ARMS. Two conditions, both necessary. The caller's module
+``__name__`` must be ``"__main__"``, AND the caller's globals must be the
+globals this process started in -- the bottom frame of the stack. A test that
+imports a case and calls its ``main()`` fails the first condition: the pytest
+process's exit status is not that case's verdict, and a ``pytest.raises(
+SystemExit)`` in an unrelated test would otherwise be read as this run's
+outcome. A host that EMBEDS a case with ``runpy.run_path(case,
+run_name="__main__")`` passes the first condition and fails the second: the
+case's module body runs under the host's, one step of a longer job, so the
+host's status is not the case's verdict either. Two such harnesses live in
+this repo (``scripts/diagnostics/harminv_record_capture.py``,
+``scripts/diagnostics/cv0104_dielectric_control_witness.py``); the second
+condition is what keeps a future one from stamping cv01's or cv02's record.
+
+The second condition is a stack walk because the cheap checks do not work:
+``runpy`` rewrites ``sys.argv[0]`` to the case's path and installs a
+temporary ``__main__`` module while the case runs, so an embedded case and a
+run one are identical in both. Measured, not assumed --
+``test_runpy_as_main_looks_like_a_direct_run_in_argv_and_sys_modules`` pins
+that, so a later simplification to either check fails instead of quietly
+reopening the hole.
+
+What it refuses that a person might expect to work: a case run under
+``python -m cProfile case.py`` (or ``-m`` itself, or any other wrapper whose
+frames sit below the case's) does not arm, even though that process does end
+with the case's status. That is the conservative side -- an unarmed record
+keeps the code its verdict stage declared, and the notice below says so out
+loud -- and none of these is how a crossval case is run for evidence.
+
+The consequence for a future case: call ``write_record`` from the case
+script's own body, not from a helper module it imports, or the record is
+persisted unarmed -- which is the pre-#946 state with no signal that it
+happened. So there is a signal: outside pytest, ``write_record`` prints one
+``EXIT-CODE EVIDENCE UNARMED`` line on stderr naming WHICH condition failed,
+whenever it persists a record it could not arm, and the contract test keeps
+the set of files under ``validation/crossval/`` that call ``write_record``
+equal to the set of case scripts, so a shared helper taking over the write is
+a red test, not a shrug.
 
 Usage -- the caller no longer holds a second copy of the code or the summary,
 because ``write_record`` is what puts both into the document:
@@ -143,6 +168,51 @@ def normalize_exit_code(code: Any) -> int:
     return 1
 
 
+def _entry_globals() -> "dict[str, Any]":
+    """Globals of the frame this process started in.
+
+    ``python case.py`` starts the interpreter IN the case's module body, so
+    the bottom frame of the stack carries the case's own globals -- the same
+    dict a function defined in that file sees. Every way of embedding a case
+    leaves host frames below it: ``runpy.run_path(case, run_name="__main__")``
+    runs under the host's module body, ``importlib`` + ``main()`` the same,
+    and pytest the same.
+
+    Nothing cheaper distinguishes the two. ``runpy`` rewrites ``sys.argv[0]``
+    to the case's own path for the duration and installs a temporary module as
+    ``sys.modules["__main__"]``, so neither ``sys.argv`` nor the ``__main__``
+    module can tell an embedded case from a run one -- measured, not assumed
+    (``runpy._run_module_code``: ``_TempModule(mod_name)`` and
+    ``_ModifiedArgv0(fname)``).
+    """
+    frame = sys._getframe(1)
+    while frame.f_back is not None:
+        frame = frame.f_back
+    return frame.f_globals
+
+
+def _arming_refusal(caller: "dict[str, Any]") -> "str | None":
+    """Why this caller may not arm the finalizer -- ``None`` when it may.
+
+    See WHEN THE FINALIZER ARMS in the module docstring. The returned string
+    is the reason printed on stderr, so it names the condition that failed.
+    """
+    module = caller.get("__name__")
+    if module != "__main__":
+        return ("write_record was called from module %r, not from the program "
+                "(__main__)" % (module,))
+    entry = _entry_globals()
+    if caller is not entry:
+        return ("write_record was called from a module named __main__ that is "
+                "EMBEDDED in another program: this process started in %s, the "
+                "caller is %s. A host that runs a case (runpy, exec, an import "
+                "plus main()) and then ends with a status of its own must not "
+                "stamp that status onto the case's record"
+                % (entry.get("__file__", "<no file>"),
+                   caller.get("__file__", "<no file>")))
+    return None
+
+
 def _running_under_pytest() -> bool:
     """Whether this interpreter is a pytest run.
 
@@ -210,16 +280,17 @@ def write_record(path: str, doc: dict, *, exit_code: Any,
     because the case's own code->text mapping only spells verdicts its gate
     stage reached (see ``_reconcile``).
 
-    ``arm`` defaults to "the caller is running as the program" -- see the
+    ``arm`` defaults to "the caller is the program this process started in"
+    -- both halves of that, and what it deliberately refuses, are in the
     module docstring; pass it explicitly only in a test of this module.
 
     Returns the normalized exit code, for the caller to ``sys.exit()`` or
     ``return``.
     """
     arm_was_explicit = arm is not None
-    caller_module = sys._getframe(1).f_globals.get("__name__")
+    refusal = _arming_refusal(sys._getframe(1).f_globals)
     if arm is None:
-        arm = caller_module == "__main__"
+        arm = refusal is None
     code = normalize_exit_code(exit_code)
     verdict = doc.setdefault(verdict_key, {})
     if not isinstance(verdict, dict):
@@ -243,11 +314,10 @@ def write_record(path: str, doc: dict, *, exit_code: Any,
     elif not arm_was_explicit and not _running_under_pytest():
         _warn(
             "EXIT-CODE EVIDENCE UNARMED: %s was persisted declaring exit %d, "
-            "but write_record was called from module %r, not from the program "
-            "(__main__), so nothing will amend that code if this process ends "
-            "with a different status (issue #946). Call write_record from the "
-            "case script's own body."
-            % (os.path.abspath(path), code, caller_module))
+            "but %s, so nothing will amend that code if this process ends with "
+            "a different status (issue #946). Call write_record from the case "
+            "script's own body, and run that script as the program."
+            % (os.path.abspath(path), code, refusal))
     return code
 
 
