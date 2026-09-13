@@ -45,6 +45,30 @@ def _artifact(name: str) -> dict:
     return doc
 
 
+def _assert_compact_declaration(doc: dict, arm: str, expect_judged: dict) -> None:
+    """A compact-box arm's artifact must carry the whole verdict rule, not only its
+    PASS: the gates it was judged on with their values, and the gates DECLARED not
+    applicable shown as ``N/A`` rather than as bare Falses beside a PASS.
+
+    graze_pec and graze_te were moved onto this footing by the PI decision of
+    2026-09-13 (issue #905, pre-declaration section 18): they are judged on
+    G6 / G7 plus the tail witness, and G3_passivity / G3_closure are N/A because
+    their record is designed to contain the 20-cell absorber's echo.  graze_vac
+    keeps the four oracle gates it already declared.
+    """
+    ad = doc["arms"][arm]
+    na = list(O.COMPACT_GATES_NOT_JUDGED[arm])
+    assert ad["gates_not_applicable"] == na, (arm, ad["gates_not_applicable"])
+    assert ad["gates_not_applicable_reason"].strip(), arm
+    for g in na:
+        assert ad["gates_all"][g] == "N/A", (arm, g, ad["gates_all"][g])
+    rule = ad["verdict_rule"]
+    assert rule["judged_on"] == list(O.COMPACT_GATES_JUDGED_ON[arm]), (arm, rule["judged_on"])
+    assert rule["gate_values"] == expect_judged, (arm, rule["gate_values"])
+    # the stored verdict is what the rule gives when replayed on the stored gates
+    assert O.compact_arm_verdict(arm, rule["gate_values"])["ok"] is bool(ad["e2_ok"]), arm
+
+
 def _replay_arm(arm: str, ad: dict, *, oracle_pol=None, oracle_ky=None):
     spec = O.arm_spec(arm)
     run = ad["run"]
@@ -95,22 +119,30 @@ def test_baseline_replays_and_passes_on_every_arm():
     # The four oracle gates are DECLARED not-judged on the vacuum arm (no R/T
     # oracle), and shown as N/A rather than as False beside a PASS. A gate that
     # stopped being judged without this declaration is the failure mode this
-    # asserts against.
-    assert ad["gates_not_applicable"] == ["G1_R", "G1_T", "G2_R", "G2_T"]
-    for g in ad["gates_not_applicable"]:
-        assert ad["gates_all"][g] == "N/A", (g, ad["gates_all"][g])
+    # asserts against. (Checked below with the other two compact arms.)
     assert ad["gates_all"]["G_leak"] is True and ad["gates_all"]["G3_tail"] is True
     ad = doc["arms"]["graze_pec"]
     spec, run, cells, _ = _replay_arm("graze_pec", ad)
+    # the DECLARED absorber of the compact box is 20 cells, not the primary rig's 80
     pg = O.evaluate_grazing_pec(ad["freqs_hz"], ad["R_rfx"], spec, run["dt_s"],
-                                O.rig_cells(spec["nx_interior"], O.N_CPML, dx_div=run["dx_div"]), n_cpml=run["n_cpml"])
+                                O.rig_cells(spec["nx_interior"], O.N_CPML_COMPACT, dx_div=run["dx_div"]),
+                                n_cpml=run["n_cpml"])
+    assert run["n_cpml"] == O.N_CPML_COMPACT
     assert pg["G6_absorber"] and ad["grazing_pec"]["G6_absorber"]
     assert pg["max_abs_dev_gated"] == pytest.approx(ad["grazing_pec"]["max_abs_dev_gated"], rel=1e-9)
     assert pg["max_cpml3d_term_band"] > 0.1                     # the 3-D absorber term at 80-85 deg, a priori
+    # PI decision 2026-09-13 (issue #905), pre-declaration section 18: the measured
+    # excess sits on the a-priori absorber term -- that agreement is the reason the
+    # arm is judged on G6 rather than on passivity, so it is asserted, not assumed.
+    assert ad["grazing_pec"]["max_excess_meas_band"] == pytest.approx(
+        ad["grazing_pec"]["max_absorber_term_band"], rel=0.05)
     ad = doc["arms"]["graze_te"]
     spec, run, cells, _ = _replay_arm("graze_te", ad)
     gs = O.evaluate_grazing_slab(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], spec, run["dt_s"], cells, n_cpml=run["n_cpml"])
     assert gs["G7_R"] and gs["G7_T"] and ad["grazing_slab"]["G7_R"] and ad["grazing_slab"]["G7_T"]
+    _assert_compact_declaration(doc, "graze_pec", {"G6_absorber": True, "G3_tail": True})
+    _assert_compact_declaration(doc, "graze_te", {"G7_R": True, "G7_T": True, "G3_tail": True})
+    _assert_compact_declaration(doc, "graze_vac", {"G_leak": True, "G3_tail": True})
 
 
 @pytest.mark.parametrize("name", sorted(O.FALSIFIER_MUST_EXIT_1))
@@ -120,8 +152,15 @@ def test_each_falsifier_artifact_fails_for_its_declared_reason(name):
     arm, _, run_def, or_def = O.FALSIFIERS[name]
     ad = doc["arms"][arm]
     if arm == "graze_pec":
-        assert ad["run"]["n_cpml"] == run_def.get("n_cpml", O.N_CPML)
+        assert ad["run"]["n_cpml"] == run_def.get("n_cpml", O.N_CPML_COMPACT)
         assert ad["gates_all"]["G6_absorber"] is False
+        # The falsifier of the PI decision itself (issue #905, pre-declaration
+        # section 18): passivity and closure are N/A on this arm, and a defect that
+        # breaks the witness it IS judged on must still take the arm and the run
+        # down. An N/A that made the arm unfalsifiable would read green here.
+        assert ad["gates_all"]["G3_passivity"] == "N/A" and ad["gates_all"]["G3_closure"] == "N/A"
+        assert ad["verdict_rule"]["gate_values"]["G6_absorber"] is False
+        assert ad["e2_ok"] is False and doc["verdict"]["exit_code"] == 1
         return
     if "theta0_deg" in run_def:
         assert ad["run"]["theta0_run_deg"] == run_def["theta0_deg"]

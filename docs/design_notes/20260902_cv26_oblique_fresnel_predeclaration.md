@@ -820,3 +820,54 @@ the 60-degree nfft-convergence flags (re-measured at 80, not carried from 20).
 **Refuted by.** A primary arm whose band-mean gate still fails at 80 cells for a reason the
 absorber term does not explain; a compact-box G6 that stops firing on its depth_half
 falsifier; the 160-cell rung reading anything but the lattice floor.
+
+## 18. The verdict rule of the two compact grazing arms — PI decision 2026-09-13 (append-only)
+
+Round 3 closed with `graze_pec` and `graze_te` reading FAIL while their own witnesses
+passed, and put the rule question to the PI rather than changing it (close note §9.7). The
+decision is recorded on issue **#905**
+(<https://github.com/bk-squared/rfx/issues/905>), comment of **2026-09-13**, and is applied
+in this PR. Nothing above is edited; this section is the change.
+
+**What was asked.** §4.5 declares the compact box an ABSORBER witness: it is judged against
+the exact lattice model of the 20-cell absorber cv04 ships, not against Fresnel, and its
+record is *designed* to contain that absorber's echo. The verdict rule did not follow the
+declaration — it still required `G3_passivity` (`R + T ≤ 1.06` on the gated band), which on
+a rig built to hold a 7e-02 echo inside the record is the designed-in signature, not a
+defect. `graze_vac` had already been given the matching treatment for its four oracle gates
+(close note §5.1 B-2); the other two had not.
+
+**The decision.** On `graze_pec` and `graze_te`, `G3_passivity` and `G3_closure` are
+**N/A** — declared in the artifact the way `graze_vac`'s `G1_R`/`G1_T`/`G2_R`/`G2_T` are —
+and the arms are judged on **G6 / G7 and the tail settling witness**.
+
+**The evidence it rests on** (close note §9.7, the 80-cell primary rig):
+
+| arm | witness | measured | prediction / bar |
+|---|---|---|---|
+| `graze_pec` | G6 `max\|R − R_lat\|` | 1.26e-03 | window 8.7e-03 – 0.060 |
+| `graze_pec` | measured excess `\|R − 1\|` | 0.1152 | a-priori absorber term 0.1150 |
+| `graze_te` | G7 `max\|dR\|` / `max\|dT\|` | 1.1e-03 / 1.5e-04 | `W_bin + W_inj` |
+
+The absorber behaves as its own discrete model says, to 1 %, at 80–85°.
+
+**What the PASS therefore claims, and what it does not.** The 20-cell absorber reflects
+about **11.5 %** in R at 80–85° and rfx reproduces that. A PASS on these two arms is a
+statement about rfx matching the discrete model of its own absorber; it is **not** a
+grazing-angle Fresnel accuracy claim. The same sentence is in the case's `claim_scope` in
+`validation/crossval/manifest.json`, which is where a citation reads it.
+
+**Why this does not make the arms unfalsifiable.** The gates each compact arm is judged on
+live in one table (`oblique_fresnel.COMPACT_GATES_JUDGED_ON`) next to the gates declared
+N/A (`COMPACT_GATES_NOT_JUDGED`), and `compact_arm_verdict` raises rather than deciding when
+a judged gate is absent from the input, so a gate cannot be dropped by omission. The
+pre-declared §8 falsifiers still fire through the new rule: `graze_pec_depth_half` (10
+cells) and `graze_pec_sigma_half` (R_asym 1e-15 → 10^-7.5) break G6, and the arm FAILs (exit
+1) with `G3_passivity` reading `N/A`. Both directions are pinned in
+`tests/crossval/test_cv26_oblique_fresnel_comparator.py`
+(`test_the_grazing_na_declaration_does_not_make_the_arms_unfalsifiable` and its neighbours)
+and in the artifact replay in `tests/crossval/test_cv26_oblique_fresnel_gates.py`.
+
+**Refuted by.** A `graze_pec` or `graze_te` run that PASSes with its own witness failing; a
+`graze_pec` falsifier arm that stops exiting 1; a compact arm whose artifact carries a PASS
+without the `gates_not_applicable` declaration beside it.

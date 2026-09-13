@@ -306,6 +306,28 @@ def _plot_arm(arm: str, e2: dict, e4: dict | None, out_dir: str) -> None:
 # main
 # =============================================================================
 
+def _apply_compact_verdict(arm: str, e2: dict, gates_line: dict, witness: dict) -> bool:
+    """Decide a compact-box arm through the ONE rule in the comparator, and write
+    the declaration into the artifact.
+
+    PI decision 2026-09-13 (issue #905): graze_pec and graze_te are judged on
+    G6 / G7 against the exact lattice model of the 20-cell absorber they carry,
+    plus the tail witness; G3_passivity and G3_closure are N/A there, because a
+    record designed to contain that absorber's echo has R + T > 1 by
+    construction.  graze_vac keeps the treatment it already had.  The verdict
+    itself, the gates it read and the gates declared not-judged all land in the
+    artifact -- the raw booleans stay in ``e2["gates"]`` for the replay test.
+    """
+    v = O.compact_arm_verdict(arm, dict(e2["gates"], **witness))
+    for g in v["not_applicable"]:
+        gates_line[g] = "N/A"
+    e2["gates_not_applicable"] = v["not_applicable"]
+    e2["gates_not_applicable_reason"] = v["not_applicable_reason"]
+    e2["verdict_rule"] = {"judged_on": v["judged_on"], "gate_values": v["gate_values"]}
+    e2["e2_ok"] = bool(v["ok"])
+    return bool(v["ok"])
+
+
 def _serial(d):
     if isinstance(d, dict):
         return {k: _serial(v) for k, v in d.items()}
@@ -468,14 +490,7 @@ def main(argv=None) -> int:
             # NOT judged here -- and they are marked N/A, not left reading False
             # beside a PASS. The raw booleans stay in e2["gates"] for the replay
             # test; the DECLARED exclusion is what a reviewer must be able to see.
-            NOT_JUDGED = ("G1_R", "G1_T", "G2_R", "G2_T")
-            for g in NOT_JUDGED:
-                gates_line[g] = "N/A"
-            e2["gates_not_applicable"] = list(NOT_JUDGED)
-            e2["gates_not_applicable_reason"] = ("vacuum arm: no R/T oracle exists (R = 0, T = 1 trivially); "
-                                                 "declared as the injection witness alone, pre-declaration section 4.5")
-            arm_ok = lk["G_leak"] and e2["gates"]["G3_tail"]
-            e2["e2_ok"] = arm_ok
+            arm_ok = _apply_compact_verdict(arm, e2, gates_line, {"G_leak": lk["G_leak"]})
             print(f"  leakage witness: max |scat/inc| gated {lk['max_leak_gated']:.2e} vs {O.LEAK_BAR:g} -> {'ok' if lk['G_leak'] else 'FAIL'}")
         if arm == "graze_pec":
             decl_kw = None
@@ -484,8 +499,7 @@ def main(argv=None) -> int:
                                         n_cpml=run["n_cpml"], declared_cpml_kwargs=decl_kw)
             e2["grazing_pec"] = pg
             gates_line["G6_absorber"] = pg["G6_absorber"]
-            arm_ok = pg["G6_absorber"] and e2["gates"]["G3_tail"] and e2["gates"]["G3_passivity"]
-            e2["e2_ok"] = arm_ok
+            arm_ok = _apply_compact_verdict(arm, e2, gates_line, {"G6_absorber": pg["G6_absorber"]})
             print(f"  G6 absorber ({pg['n_bins_gated']} bins, theta {pg['theta_gated_deg']}): max|R - R_lat| {pg['max_abs_dev_gated']:.2e}; "
                   f"measured excess |R-1| max {pg['max_excess_meas_band']:.3e} vs a-priori absorber term max "
                   f"{pg['max_absorber_term_band']:.3e} -> {'ok' if pg['G6_absorber'] else 'FAIL'}")
@@ -493,13 +507,16 @@ def main(argv=None) -> int:
             gs = O.evaluate_grazing_slab(run["freqs_hz"], run["R_rfx"], run["T_rfx"], spec, run["dt_s"], cells, n_cpml=run["n_cpml"])
             e2["grazing_slab"] = gs
             gates_line.update({"G7_R": gs["G7_R"], "G7_T": gs["G7_T"]})
-            arm_ok = gs["G7_R"] and gs["G7_T"] and e2["gates"]["G3_tail"] and e2["gates"]["G3_passivity"]
-            e2["e2_ok"] = arm_ok
+            arm_ok = _apply_compact_verdict(arm, e2, gates_line, {"G7_R": gs["G7_R"], "G7_T": gs["G7_T"]})
             print(f"  G7 slab vs lattice-with-absorber: max|dR| {gs['max_dR_lattice_gated']:.3e} max|dT| {gs['max_dT_lattice_gated']:.3e}; "
                   f"excess over Fresnel max {gs['max_excess_over_fresnel_R_gated']:.3e} vs a-priori absorber term "
                   f"{gs['max_absorber_term_R_gated']:.3e} -> {'ok' if gs['G7_R'] and gs['G7_T'] else 'FAIL'}")
         e2["gates_all"] = gates_line
         print(f"  gates: {gates_line} -> {'PASS' if arm_ok else 'FAIL'}")
+        if spec["compact"]:
+            print(f"  verdict rule (#905, 2026-09-13): judged on {e2['verdict_rule']['judged_on']} = "
+                  f"{e2['verdict_rule']['gate_values']}; N/A {e2['gates_not_applicable']} -- "
+                  f"{e2['gates_not_applicable_reason']}")
 
         # --- E4 ---
         e4 = {"present": False}

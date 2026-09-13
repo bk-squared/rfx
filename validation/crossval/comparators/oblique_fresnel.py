@@ -1442,6 +1442,76 @@ def evaluate_grazing_slab(freqs_hz, R_rfx, T_rfx, spec: dict, dt: float, cells: 
             "G7_R": bool(np.all(dR[g] <= winR[g])), "G7_T": bool(np.all(dT[g] <= winT[g]))}
 
 
+# ---------------------------------------------------------------------------
+# The compact-box verdict rule (PI decision 2026-09-13, issue #905)
+# ---------------------------------------------------------------------------
+# The three compact-box arms are ABSORBER witnesses.  Pre-declaration section
+# 4.5 judges them against the exact lattice model of the 20-cell absorber cv04
+# ships -- not against Fresnel -- and their record is DESIGNED to contain that
+# absorber's echo.  Two consequences, and the reason this rule lives in one
+# named place instead of inline in the case:
+#
+#   * A gate the arm's declared scope does not judge is marked "N/A" in the
+#     artifact rather than left reading False beside a PASS.  On graze_vac
+#     that is the four oracle gates (there is no R/T oracle: R = 0, T = 1).
+#     On graze_pec and graze_te it is G3_passivity and G3_closure: R + T > 1
+#     is the quantity the box exists to measure.
+#   * The gates each arm IS judged on are listed here, so silently dropping
+#     one is a diff a reviewer sees rather than an inline boolean that got
+#     shorter.  ``compact_arm_verdict`` refuses to decide when a judged gate
+#     is missing, so an N/A declaration can never make an arm unfalsifiable.
+COMPACT_GATES_JUDGED_ON = {
+    "graze_vac": ("G_leak", "G3_tail"),
+    "graze_pec": ("G6_absorber", "G3_tail"),
+    "graze_te": ("G7_R", "G7_T", "G3_tail"),
+}
+COMPACT_GATES_NOT_JUDGED = {
+    "graze_vac": ("G1_R", "G1_T", "G2_R", "G2_T"),
+    "graze_pec": ("G3_passivity", "G3_closure"),
+    "graze_te": ("G3_passivity", "G3_closure"),
+}
+_COMPACT_ABSORBER_REASON = (
+    "compact absorber-witness box (pre-declaration sections 4.5 and 18): the record is "
+    "DESIGNED to hold the 20-cell absorber's echo, so R + T > 1 at 80-85 deg is the signal "
+    "this arm measures, not a defect. PI decision 2026-09-13 on issue #905: G3_passivity and "
+    "G3_closure are N/A here and the arm is judged on {judged} against the exact lattice model "
+    "of that same absorber, plus the tail settling witness. This arm's PASS is NOT a "
+    "grazing-angle Fresnel accuracy claim."
+)
+COMPACT_NOT_JUDGED_REASON = {
+    "graze_vac": ("vacuum arm: no R/T oracle exists (R = 0, T = 1 trivially); "
+                  "declared as the injection witness alone, pre-declaration section 4.5"),
+    "graze_pec": _COMPACT_ABSORBER_REASON.format(judged="G6 (PEC: the measured excess R - 1)"),
+    "graze_te": _COMPACT_ABSORBER_REASON.format(judged="G7 (slab: R and T)"),
+}
+
+
+def compact_arm_verdict(arm: str, gates: dict) -> dict:
+    """PASS / FAIL of one compact-box arm, and the declaration that goes with it.
+
+    ``gates`` must supply every gate the arm is judged on
+    (``COMPACT_GATES_JUDGED_ON``); a missing one raises, and is never a pass.
+    Returns the verdict, the gates it was read from with their values, and the
+    gates DECLARED not-judged with the reason -- the artifact carries all three,
+    so a reader can see what was asked and what was not.
+    """
+    if arm not in COMPACT_GATES_JUDGED_ON:
+        raise KeyError(f"{arm} is not a compact-box arm ({sorted(COMPACT_GATES_JUDGED_ON)})")
+    judged = COMPACT_GATES_JUDGED_ON[arm]
+    not_judged = COMPACT_GATES_NOT_JUDGED[arm]
+    both = sorted(set(judged) & set(not_judged))
+    if both:
+        raise ValueError(f"{arm}: {both} declared N/A and judged at the same time")
+    missing = [g for g in judged if g not in gates]
+    if missing:
+        raise KeyError(f"{arm}: no value for gates it is judged on: {missing} "
+                       f"(an N/A declaration must never make an arm unfalsifiable)")
+    values = {g: bool(gates[g]) for g in judged}
+    return {"arm": arm, "ok": all(values.values()), "judged_on": list(judged),
+            "gate_values": values, "not_applicable": list(not_judged),
+            "not_applicable_reason": COMPACT_NOT_JUDGED_REASON[arm]}
+
+
 def evaluate_e4(e2: dict, meep_doc: dict) -> dict:
     """E4 (note section 4.3): Meep at the same fixed k_y (its k_point mapped
     from the DECLARED theta0, verified in the leg's pre-check) against the

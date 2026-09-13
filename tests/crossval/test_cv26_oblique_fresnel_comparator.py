@@ -733,3 +733,96 @@ def test_the_records_the_table_cannot_vouch_for_say_so():
     for k, v in O.RECORD_DECLARED.items():
         if k not in flagged:
             assert "nfft_converged" not in v, k
+
+
+# ---------------------------------------------------------------------------
+# The compact-box verdict rule (PI decision 2026-09-13, issue #905)
+# ---------------------------------------------------------------------------
+# Pre-declaration section 18. The two grazing arms stopped being judged on
+# G3_passivity / G3_closure, so the question these tests answer is the one that
+# makes a scope declaration honest: can the arms still FAIL?
+
+_ALL_PASS = {
+    "graze_vac": {"G_leak": True, "G3_tail": True, "G3_passivity": False, "G3_closure": False,
+                  "G1_R": False, "G1_T": False, "G2_R": False, "G2_T": False},
+    "graze_pec": {"G6_absorber": True, "G3_tail": True, "G3_passivity": False, "G3_closure": False},
+    "graze_te": {"G7_R": True, "G7_T": True, "G3_tail": True, "G3_passivity": False, "G3_closure": False},
+}
+
+
+@pytest.mark.parametrize("arm", sorted(_ALL_PASS))
+def test_a_compact_arm_passes_on_its_own_witness_with_the_declared_gates_marked_na(arm):
+    """The decision itself: with every witness true, the arm PASSes even though the
+    gates its scope does not judge read False -- and the artifact says which ones
+    those are rather than leaving them as bare Falses beside a PASS."""
+    v = O.compact_arm_verdict(arm, _ALL_PASS[arm])
+    assert v["ok"] is True
+    assert v["not_applicable"] == list(O.COMPACT_GATES_NOT_JUDGED[arm])
+    assert v["judged_on"] == list(O.COMPACT_GATES_JUDGED_ON[arm])
+    assert set(v["gate_values"]) == set(v["judged_on"])
+    assert v["not_applicable_reason"].strip()
+
+
+def test_the_pi_decision_is_the_one_that_was_recorded():
+    """#905, 2026-09-13: G3_passivity and G3_closure N/A on graze_pec and graze_te,
+    judged on G6 / G7 plus the tail witness. graze_vac keeps what it had."""
+    for arm in ("graze_pec", "graze_te"):
+        assert set(O.COMPACT_GATES_NOT_JUDGED[arm]) == {"G3_passivity", "G3_closure"}
+        assert "G3_tail" in O.COMPACT_GATES_JUDGED_ON[arm]
+        assert "#905" in O.COMPACT_NOT_JUDGED_REASON[arm]
+        assert "NOT a grazing-angle Fresnel accuracy claim" in O.COMPACT_NOT_JUDGED_REASON[arm]
+    assert set(O.COMPACT_GATES_NOT_JUDGED["graze_vac"]) == {"G1_R", "G1_T", "G2_R", "G2_T"}
+    assert "G6_absorber" in O.COMPACT_GATES_JUDGED_ON["graze_pec"]
+    assert {"G7_R", "G7_T"} <= set(O.COMPACT_GATES_JUDGED_ON["graze_te"])
+    assert set(O.COMPACT_GATES_JUDGED_ON) == set(O.COMPACT_GATES_NOT_JUDGED) == set(O.GRAZE_ARMS)
+
+
+@pytest.mark.parametrize("arm", sorted(_ALL_PASS))
+def test_the_grazing_na_declaration_does_not_make_the_arms_unfalsifiable(arm):
+    """THE falsifier of the rule change. Break any single gate the arm IS judged
+    on -- G6 on the PEC box, G7_R or G7_T on the slab box, the leakage witness on
+    the vacuum arm, the tail witness on all three -- and the arm must still FAIL.
+    If marking two gates N/A had left an arm that cannot fail, this reads green
+    only when every one of these breaks flips the verdict."""
+    for gate in O.COMPACT_GATES_JUDGED_ON[arm]:
+        broken = dict(_ALL_PASS[arm], **{gate: False})
+        v = O.compact_arm_verdict(arm, broken)
+        assert v["ok"] is False, (arm, gate)
+        assert v["gate_values"][gate] is False
+
+
+@pytest.mark.parametrize("arm", sorted(_ALL_PASS))
+def test_a_gate_declared_na_cannot_also_be_a_gate_the_arm_is_judged_on(arm):
+    """A gate in both tables would be simultaneously excused and required -- the
+    drift this pair of tables exists to prevent."""
+    assert not (set(O.COMPACT_GATES_JUDGED_ON[arm]) & set(O.COMPACT_GATES_NOT_JUDGED[arm]))
+
+
+@pytest.mark.parametrize("arm", sorted(_ALL_PASS))
+def test_a_missing_witness_raises_instead_of_passing_vacuously(arm):
+    """Dropping a judged gate from the input must be an error, not a pass: that is
+    how an N/A declaration would quietly become an unfalsifiable arm."""
+    for gate in O.COMPACT_GATES_JUDGED_ON[arm]:
+        short = {k: v for k, v in _ALL_PASS[arm].items() if k != gate}
+        with pytest.raises(KeyError):
+            O.compact_arm_verdict(arm, short)
+
+
+def test_only_the_compact_arms_have_a_compact_verdict_rule():
+    for arm in O.ARM_ORDER:
+        with pytest.raises(KeyError):
+            O.compact_arm_verdict(arm, {"G3_tail": True})
+
+
+def test_the_grazing_pec_falsifiers_still_break_g6_through_the_new_rule():
+    """The two pre-declared grazing falsifiers (section 8, F5 / F5b) act on G6, and
+    G6 is what the arm is now judged on. Their analytic margins are re-derived here
+    from the lattice, then pushed through the verdict rule: a defect that breaks G6
+    must FAIL the arm even with passivity marked N/A."""
+    for name in ("graze_pec_depth_half", "graze_pec_sigma_half"):
+        pred = O.falsifier_prediction(name)
+        assert pred["arm"] == "graze_pec"
+        assert pred["predicted_fails_G6"] and pred["bins_beyond_window"] > 0, (name, pred)
+        v = O.compact_arm_verdict("graze_pec", dict(_ALL_PASS["graze_pec"], G6_absorber=False))
+        assert v["ok"] is False
+        assert v["not_applicable"] == ["G3_passivity", "G3_closure"]
