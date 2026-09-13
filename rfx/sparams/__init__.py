@@ -11,6 +11,8 @@ Modules:
   and wave solve, the settling / passivity / reciprocity witnesses, the
   ringdown and geometry advisories, the mixed and coaxial power-wave
   assemblers, and the shared constants.
+* :mod:`rfx.sparams.mixed` — ``compute_mixed_s_matrix``, the lumped/wire +
+  MSL two-family driver of issue #488.
 
 ``rfx.api._sparams`` still holds ``_SparamMixin`` and re-exports every name
 moved here, so existing imports and string monkeypatches keep resolving.
