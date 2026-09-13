@@ -249,3 +249,79 @@ displaced **-12%** from the 0.175 reference — a defect the shipped judge score
 as a clean 0.03% run — produces `mean = 4.02%`, which **passes** G3's published
 5%. Without G4 the decoupling alone would not have caught it. Recorded in
 `test_b2_displaced_mode_passes_the_shipped_judge_and_fails_the_new_one`.
+
+## Correction 4 (2026-09-13) — G5's gate form is superseded, and its "no chosen value" claim is withdrawn
+
+Two statements in this note about the Q gate were wrong. Both are corrected in
+code; this section is the record, and the sections above are left as written.
+
+**(a) The gate form in §2 G5 was wrong on one side (#945, fixed in PR #999).**
+G5 declared
+
+    | ln( Q_rfx / Q_ref ) |  <=  ln( 1 + tau_ref / T )
+
+i.e. `Q_rfx/Q_ref` in `[1/(1+s), 1+s]` with `s = tau_ref/T`. That is not the
+image of the rate interval G5 derives it from. `Q = pi f / alpha` is monotone
+**decreasing** in the decay rate, so `alpha/alpha_ref` in `[1-s, 1+s]` maps to
+
+    Q_rfx / Q_ref  in  [ 1/(1+s), 1/(1-s) ]
+
+The lower bound matched; the upper did not, since `(1+s)(1-s) = 1-s^2 < 1`. The
+symmetric form rejected a mode whose decay rate differed by exactly the `1/T`
+the note declares as the tolerance, and it imposed a finite ceiling in the
+`s >= 1` regime — where the declared rate interval reaches zero and the
+transformed interval has no finite upper bound at all. `s >= 1` is not
+hypothetical here: the committed live board's mode 2 runs at `s = 2.8295`
+(`validation/crossval/_02_ring_resonator_results/crossval.json`, the
+`q_window` field of the second assignment row).
+
+The shipped gate is now the exact transform, in
+`ring_mode_judge.rate_interval_to_log_q_bounds`. §4's factor-five statement
+still holds on the low-Q side (the admission cut still bounds `s <= 4`, so the
+tolerated over-damping is still at most `1+s = 5`); on the high-Q side the
+bound is `1/(1-s)` below `s = 1` and unbounded above it, so the phrase "every
+admitted mode rejects a 5x Q error" now applies to the over-damped direction
+only.
+
+**(b) §4's "The Q window carries no chosen value at all" is withdrawn (#907).**
+The sentence is true about the window's *arguments* — no measured rfx quantity
+enters it, so it is not fitted to the agreement it judges, and that property is
+retained. It is false about the window's *form*. The premise §2 G5 argues from,
+"a record of length `T` cannot resolve exponential decay rates finer than
+`1/T`", was measured and refuted for this estimator: a damped exponential fixes
+its exponent from adjacent-sample ratios, and there is no Fourier separation
+limit to import. rfx's matrix-pencil harminv with `decimate=False` returns Q to
+~3e-12 relative error at `T/tau = 0.0822`, a third of the `1/4` admission cut
+(#907, comment of 2026-09-10). What does degrade at short records is the
+decimated path cv02 actually runs, which is a configuration rather than a
+limit.
+
+So `tau_ref/T` is a **policy envelope with provenance**, not a derived bound.
+The `1/4` admission cut keeps its prior-provenance standing from #812 and is
+separately supported by that same measurement.
+
+**What replaces the claim.** The gate's inputs are now three named objects with
+an explicit epistemic status, in `ring_mode_judge.Q_GATE_INGREDIENTS`, printed
+with every report and persisted under `gate_limits.q_gate_ingredients`:
+
+| ingredient | kind | what it is |
+|---|---|---|
+| `estimator_uncertainty` | declared-policy | the scale `s = tau_ref/T` |
+| `rate_to_q_transform` | derived | the exact interval inversion, (a) above |
+| `discretization_budget` | absent | no permitted rfx-vs-Meep disagreement has ever been declared |
+
+Because the third does not exist, a cv02 `q` PASS is a two-solver **consistency
+heuristic**, not a bound on either solver's Q accuracy. That is the reading
+recorded when #907 was closed on 2026-09-13, with the three research items
+(the estimator's real SNR / model-order uncertainty, a source-free Meep
+reference record, and a discretization budget against the exact annulus)
+deferred to a pre-declared campaign rather than settled by choosing a floor —
+a floor taken from the observed gap would have made the gate certify the
+agreement it exists to test.
+
+**What did not change.** No gate moved. The verdict on the committed board is
+unchanged: re-driving the judge on that record's own mode pairs and record
+length reproduces all five gates PASS. The run-length contingency #907
+describes is still present and still pinned by
+`test_verdict_lane_q_gate_is_run_length_contingent`, which remains a
+characterization test of current behaviour.

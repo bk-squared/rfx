@@ -15,7 +15,9 @@ Pre-declaration:
 from __future__ import annotations
 
 import ast
+import dataclasses
 import importlib.util
+import json
 import math
 import sys
 from pathlib import Path
@@ -635,6 +637,32 @@ def test_gated_row_retains_the_signed_ratio_and_the_bounds_that_judged_it(
             assert row.q_log_ratio_signed is None
             assert row.q_log_lower is None and row.q_log_upper is None
 
+
+def test_the_persisted_ingredient_payload_round_trips_through_json() -> None:
+    """The script writes the ingredients and the per-row bounds into the
+    retained record with ``dataclasses.asdict`` + ``json.dump``. An
+    unserializable field would only surface on a live Meep host, so it is
+    checked here instead."""
+    verdict = _judge(RFX_TODAY)
+    payload = {
+        "q_gate_character": rmj.Q_GATE_CHARACTER,
+        "q_gate_ingredients": [dataclasses.asdict(item)
+                               for item in rmj.Q_GATE_INGREDIENTS],
+        "assignment": [dataclasses.asdict(row) for row in verdict.rows],
+    }
+    back = json.loads(json.dumps(payload, indent=1))
+    assert [i["kind"] for i in back["q_gate_ingredients"]] == [
+        "declared-policy", "derived", "absent"]
+    gated = [r for r in back["assignment"] if r["q_gated"]]
+    assert gated
+    for row in gated:
+        assert row["q_log_lower"] is not None
+        assert row["q_log_ratio_signed"] is not None
+    # the s >= 1 row keeps its unbounded high-Q side through the round trip
+    # (Python's json writes Infinity; other committed crossval records do too)
+    unbounded = [r for r in gated if r["q_window"] >= 1.0]
+    assert unbounded
+    assert all(r["q_log_upper"] == math.inf for r in unbounded)
 
 def test_script_persists_the_ingredient_split_and_drops_the_old_claim(
 ) -> None:

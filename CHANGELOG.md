@@ -15,6 +15,20 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   `sys.exit` path in the ring-resonator crossval to use the same `_rc` value,
   preventing a later exit branch from contradicting retained evidence.
 
+### Changed — cv02 Q gate states which of its inputs are derived (#907)
+
+- Split the ring-resonator Q gate into three named ingredients with an explicit
+  epistemic status (`Q_GATE_INGREDIENTS`): the `tau_ref/T` scale is declared
+  policy, the transform into log-Q bounds is derived, and a discretization
+  budget is absent. The report prints the split and the crossval record
+  persists it, so a `Q` PASS reads as two-solver consistency rather than as a
+  Q-accuracy guarantee. Withdraws the `1/T` resolution argument the window's
+  docstring made, which was measured false for this estimator. No gate value,
+  admission cut or verdict changed.
+- Expose the interval inversion as `rate_interval_to_log_q_bounds(s)`, a pure
+  function of the rate scale, and retain the signed log-Q ratio with the bounds
+  that judged it on every gated row.
+
 ### Fixed — cv02 Q-rate interval transform (#945)
 
 - Transform the declared decay-rate interval into its exact asymmetric log-Q
