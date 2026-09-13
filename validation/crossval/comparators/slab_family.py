@@ -266,7 +266,8 @@ def rig_cells(nx_interior: int, dx_div: int = 1):
 # (docs/design_notes/20260903_cv26_oblique_defect_diagnosis.md section 3).
 # Both absorbers are now derived from a reflection target
 # (docs/design_notes/20260904_aux_absorber_depth_derivation.md): 9.43e-06 on
-# the 1-D path, 2.3e-06 to 1.2e-04 over 0-70 deg on the 2-D one. The arrival
+# the 1-D path, and 2.3e-06 (0 deg) to 2.9e-05 (70 deg) in the gated-band mean
+# on the 2-D one, 1.2e-04 at its worst bin there. The arrival
 # guard below stays, because a smaller echo is still an echo and the bound
 # costs nothing.
 #
