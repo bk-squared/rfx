@@ -54,14 +54,14 @@ def ulp(x):
     return float(abs(np.spacing(np.float32(abs(x)))))
 
 
-def fit_order(points, loss0, ad):
+def fit_order(points, loss0, ad, sigma=None):
     """Choose one longest eligible monotone run, without slope selection."""
     eligible = []
     for p in points:
         h, lp, lm = p['h'], p['loss_plus'], p['loss_minus']
         r0 = abs(lp - loss0)
         r1 = abs(lp - loss0 - h * ad)
-        q = max(ulp(lp), ulp(lm), ulp(loss0))
+        q = sigma if sigma is not None else max(ulp(lp), ulp(lm), ulp(loss0))
         eligible.append((r0, r1, r1 > N_QUANTA * q and
                          abs(lp + lm - 2 * loss0) <= .25 * abs(lp - lm)))
     runs, run = [], []
@@ -93,7 +93,7 @@ def fit_order(points, loss0, ad):
     return out
 
 
-def fd_budget(points, ad, scale=1.):
+def fd_budget(points, ad, scale=1., sigma=None):
     """Central FD against its OWN estimated error, per step (note: FD error budget).
 
     HS is ascending with ratio exactly two. T(h) = 4|D(h)-D(h/2)|/3 (Richardson,
@@ -111,7 +111,8 @@ def fd_budget(points, ad, scale=1.):
         fine, coarse = (ds[neighbor], ds[i]) if i else (ds[i], ds[neighbor])
         rich = (4 * fine - coarse) / 3
         trunc = abs(ds[i] - rich)
-        rounding = (ulp(p['loss_plus']) + ulp(p['loss_minus'])) / (2 * p['h'])
+        rounding = (sigma / p['h'] if sigma is not None else
+                    (ulp(p['loss_plus']) + ulp(p['loss_minus'])) / (2 * p['h']))
         bar = trunc + rounding
         error = abs(ad - ds[i])
         rel_bar = bar / abs(ad) if ad else None
@@ -303,6 +304,62 @@ def measure_revert():
     return out
 
 
+FLOOR_HS = tuple(np.linspace(1e-5, 1e-4, 64))
+
+
+def measure_l2_floor():
+    """Second attempt, L2 thickness only (note: 'Second attempt ... declared BEFORE').
+
+    Measures the L2 loss's float32 noise floor per thickness control on a fresh
+    fine grid, then re-judges the STORED first-attempt ladders with that floor in
+    place of one ulp. Bands unchanged. First attempt stays recorded as is.
+    """
+    first = json.loads((ROOT / 'validation/research/multiband_nu/results/adq_stack_l2.json').read_text())
+    assert 'instrument_error' not in first
+    f_nom = e4.f_res(e4.PARAMS0)
+
+    def cell_loss(c):
+        dz, ec = c[:64], c[64:]
+        en = e4.dual_eps_from_cells(dz, ec)
+        ts, dt = e4._run(dz, en, e4.N2_STEPS, e4._drive(f_nom), e4.K_PRB_L2,
+                         e4.DOMAIN_XY, e4.DXY, e4.CHECKPOINT_EVERY)
+        phase = 2 * jnp.pi * jnp.float32(f_nom) * jnp.arange(e4.N2_STEPS, dtype=jnp.float32) * dt
+        return (dt * jnp.sum(ts * jnp.cos(phase))) ** 2 + (dt * jnp.sum(ts * jnp.sin(phase))) ** 2
+
+    loss = jax.jit(lambda q: cell_loss(stack_cells(q)))
+    loss0 = first['loss0']
+    assert float(loss(jnp.asarray(P0, jnp.float32))) == loss0, 'L2 not reproducible bit for bit'
+    out = {'first_attempt_key': 'adq_stack_l2', 'loss0': loss0, 'floor_hs': list(FLOOR_HS),
+           'directions': {}}
+    for i, name in enumerate(NAMES[:4]):
+        v = np.eye(8)[i] * P0[i]
+        ys = np.array([float(loss(jnp.asarray(P0 + h * v, jnp.float32))) for h in FLOOR_HS])
+        hs = np.asarray(FLOOR_HS)
+        res2 = ys - np.polyval(np.polyfit(hs, ys, 2), hs)
+        res3 = ys - np.polyval(np.polyfit(hs, ys, 3), hs)
+        sigma = float(np.sqrt(np.sum(res2 ** 2) / (len(hs) - 3)))
+        rms2, rms3 = float(np.sqrt(np.mean(res2 ** 2))), float(np.sqrt(np.mean(res3 ** 2)))
+        reliable = rms3 >= 0.9 * rms2
+        r1 = first['directions'][name]
+        pts = [{'h': s['h'], 'loss_plus': s['loss_plus'], 'loss_minus': s['loss_minus']}
+               for s in r1['fd']['steps']]
+        ad = r1['ad_relative']
+        order = fit_order(pts, loss0, ad, sigma=sigma)
+        fd = fd_budget(pts, ad, P0[i], sigma=sigma)
+        elig = [k for k, e in enumerate(order['eligible']) if e]
+        bound = min((order['r1'][k] / (pts[k]['h'] * abs(ad)) for k in elig), default=None)
+        out['directions'][name] = {
+            'sigma': sigma, 'sigma_in_ulp': sigma / ulp(loss0), 'rms_quadratic': rms2,
+            'rms_cubic': rms3, 'sigma_reliable': bool(reliable), 'floor_losses': ys.tolist(),
+            'order': order, 'fd': fd,
+            'lower_side_diagnostic': (None if 'R1' not in order else bool(order['R1']['slope'] >= 1.8)),
+            'empirical_rel_error_bound': bound,
+            'first_attempt_order': r1['order']['verdict'], 'first_attempt_fd': r1['fd']['verdict']}
+        print('l2_floor', name, f"sigma={sigma/ulp(loss0):.1f}ulp reliable={reliable}",
+              order['verdict'], order.get('R1', {}).get('slope'), fd['verdict'], f"bound={bound}", flush=True)
+    return out
+
+
 def measure_resolution():
     base = [np.asarray(d, float) for d in w7.a3_profiles()]
     sizes = [len(d) for d in base]
@@ -375,7 +432,7 @@ def measure_resolution():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--arm', choices=('stack_l1', 'stack_l2', 'resolution', 'revert_l1_nodt'), required=True)
+    parser.add_argument('--arm', choices=('stack_l1', 'stack_l2', 'resolution', 'revert_l1_nodt', 'stack_l2_floor'), required=True)
     args = parser.parse_args()
     assert str(Path(rfx.__file__).resolve()).startswith(str(ROOT) + '/')
     assert all(d.platform == 'cpu' for d in jax.devices())
@@ -399,6 +456,8 @@ def main():
             result = measure_resolution()
         elif args.arm == 'revert_l1_nodt':
             result = measure_revert()
+        elif args.arm == 'stack_l2_floor':
+            result = measure_l2_floor()
         else:
             result = measure_stack(args.arm)
         provenance.update(result)
