@@ -9818,5 +9818,90 @@
   ]
  },
  "fdtd_runs_new_this_call": 37,
- "wallclock_s": 21.095452070236206
+ "wallclock_s": 21.095452070236206,
+ "w4_control": {
+  "rows": [
+   {
+    "arm": "single",
+    "R_meas": 0.005730199918373753,
+    "R_meas_e1": 0.005730199918373753,
+    "R_model": 0.005790690104991265,
+    "R_model_e1": 0.005790690104993823,
+    "meas_rel": 0.0,
+    "model_rel": 4.4171760514725913e-13,
+    "meas_bit_identical": true,
+    "meas_fired": false,
+    "model_fired": false
+   },
+   {
+    "arm": "n_b=2",
+    "R_meas": 0.007436432071888371,
+    "R_meas_e1": 0.007436432071888371,
+    "R_model": 0.0074915700574564375,
+    "R_model_e1": 0.007491570057451336,
+    "meas_rel": 0.0,
+    "model_rel": 6.81008347211993e-13,
+    "meas_bit_identical": true,
+    "meas_fired": false,
+    "model_fired": false
+   },
+   {
+    "arm": "n_b=4",
+    "R_meas": 0.01006271249900852,
+    "R_meas_e1": 0.01006271249900852,
+    "R_model": 0.010140707009496446,
+    "R_model_e1": 0.0101407070094947,
+    "meas_rel": 0.0,
+    "model_rel": 1.7209173040880764e-13,
+    "meas_bit_identical": true,
+    "meas_fired": false,
+    "model_fired": false
+   },
+   {
+    "arm": "n_b=8",
+    "R_meas": 0.011164199503515876,
+    "R_meas_e1": 0.011164199503515876,
+    "R_model": 0.011295700174249777,
+    "R_model_e1": 0.011295700174241773,
+    "meas_rel": 0.0,
+    "model_rel": 7.085894627770837e-13,
+    "meas_bit_identical": true,
+    "meas_fired": false,
+    "model_fired": false
+   },
+   {
+    "arm": "n_b=16",
+    "R_meas": 0.0012559000028761838,
+    "R_meas_e1": 0.0012559000028761838,
+    "R_model": 0.0012101262938242225,
+    "R_model_e1": 0.001210126293816575,
+    "meas_rel": 0.0,
+    "model_rel": 6.319611831360578e-12,
+    "meas_bit_identical": true,
+    "meas_fired": false,
+    "model_fired": false
+   },
+   {
+    "arm": "n_b=32",
+    "R_meas": 0.0014248078745109632,
+    "R_meas_e1": 0.0014248078745109632,
+    "R_model": 0.0015111263026544564,
+    "R_model_e1": 0.001511126302657879,
+    "meas_rel": 0.0,
+    "model_rel": 2.26493934496561e-12,
+    "meas_bit_identical": true,
+    "meas_fired": false,
+    "model_fired": false
+   }
+  ],
+  "any_fired": false,
+  "c_model_diff_m": 2.6249987426785193e-13,
+  "c_meas_diff_m": 3.412500100205551e-12,
+  "e1_git_sha": "ec008eadc2a16f70f7e4184a9dd8c6c957f6f016"
+ },
+ "w4_control_recomputed_from_stored": {
+  "git_sha": "b46465286110415752396526507b3a087ec438a4",
+  "utc": "2026-09-13T16:10:11Z",
+  "reason": "the first --resume call (L1-Z) rebuilt the file from the previous cells and dropped the block"
+ }
 }

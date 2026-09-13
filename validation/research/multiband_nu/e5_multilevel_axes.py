@@ -47,6 +47,7 @@ import argparse
 import dataclasses
 import hashlib
 import json
+import pathlib
 import sys
 import time
 
@@ -895,6 +896,12 @@ def run_axis(axis: str, patterns: list[str], out_path: str, resume: bool, pinned
             with open(out_path) as fh:
                 prev = json.load(fh)
             results["cells"] = prev.get("cells", {})
+            # carry every block the earlier call wrote (the first L1-Z
+            # resume dropped `w4_control`; it was regenerated from the
+            # stored S cell by --refresh-w4, see the note's Results)
+            for k in ("w4_control", "w4_control_recomputed_from_stored"):
+                if k in prev:
+                    results[k] = prev[k]
             results["resumed_from"] = {"git_sha": prev.get("git_sha"), "started_utc": prev.get("started_utc"),
                                        "argv": prev.get("argv")}
         except (OSError, ValueError):
@@ -1139,6 +1146,110 @@ def note_tables(model_path: str) -> str:
     return "\n".join(lines)
 
 
+def results_tables(results_dir: str) -> str:
+    """Markdown tables of the measured lane from the five results JSONs
+    (a printer, not a judge: every verdict shown is the stored one)."""
+    d = pathlib.Path(results_dir)
+
+    def load(name):
+        with open(d / name) as fh:
+            return json.load(fh)
+
+    ax_json = {ax: load(f"e5_{ax}.json") for ax in ("z", "x", "y")}
+    rel = load("e5_relabel.json")
+    pb = load("e5_pinbridge.json")
+    L = []
+    L.append("### Table A — per-arm results, every axis (window `|R_meas - R_model| <= 0.20 R_model + 3e-5`, frozen)\n")
+    L.append("| axis | pattern | arm | cells | R_meas | dB | R_model | dev abs | dev rel (%) | window (frozen) | W2 bound | gates hold | dt_A - dt_B (s) | lead f32 identical | run reused | verdict |")
+    L.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    n_held = n_fired = 0
+    max_dev = {}
+    for ax in ("z", "x", "y"):
+        for p in PATTERNS:
+            c = ax_json[ax]["cells"][p]
+            arms = [(f"single {k}", r) for k, r in c["singles"].items()] + [(r["name"], r) for r in c["bands"]]
+            for name, r in arms:
+                m = r["meas"]
+                verdict = "FIRED" + (" (floor)" if m["fired_at_floor"] else "") if m["fired"] else "HELD"
+                n_fired += m["fired"]
+                n_held += not m["fired"]
+                max_dev[ax] = max(max_dev.get(ax, 0.0), m["deviation_rel"])
+                bound = (f"{m['bound_sum']:.4e} {'FIRED' if m['bound_fired'] else 'held'}"
+                         if r["kind"] == "band" else "—")
+                L.append(f"| {ax} | {p} | {name} | {r['n_cells']} | {m['R_meas']:.4e} | {m['R_meas_db']:.1f} | "
+                         f"{r['R_model']:.4e} | {m['deviation']:.2e} | {m['deviation_rel']*100:.2f} | "
+                         f"[{m['window'][0]:.4e}, {m['window'][1]:.4e}] | {bound} | {m['gates_hold']} | "
+                         f"{m['dt_diff_s']:.1e} | {m['lead_f32_identical']} | {m['fdtd_run_cached']} | {verdict} |")
+    L.append(f"\nArms: {n_held} HELD, {n_fired} FIRED of {n_held + n_fired}. Largest relative deviation per axis: "
+             + ", ".join(f"{ax} {v*100:.2f} %" for ax, v in max_dev.items()) + ".\n")
+    L.append("### Table B — law checks per (pattern, axis) cell and the validity-domain verdicts\n")
+    L.append("| axis | pattern | R_L meas / model (dev %) | R_R meas / model (dev %) | c_meas (mm) | c_model (mm) | dev (mm) | window +/- (mm) | W3 | W1 fired arms | W2 fired | gates hold (all) | law domain | -54 dB class | coarsest cells/lambda0 | relabel flag |")
+    L.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    for ax in ("z", "x", "y"):
+        flag = "identity FIRED: instrument class" if (ax != "z" and rel["compare"][ax]["w5_fired"]) else ("held" if ax != "z" else "—")
+        for p in PATTERNS:
+            c = ax_json[ax]["cells"][p]
+            v = c["verdicts"]
+            s = c["singles"]
+            sl = s["L" if p != "T" else "L1"]
+            sr = s.get("R") or s.get("L2")
+            def dev(x):
+                if x is None:      # S: the R side is the chain mirror only (no FDTD arm)
+                    return f"— (chain mirror {c['mirrors']['R']['R_model']:.4e})"
+                return f"{x['meas']['R_meas']:.4e} / {x['R_model']:.4e} ({x['meas']['deviation_rel']*100:.2f})"
+            if p in FP_PATTERNS:
+                cpart = (f"{v['c_meas_m']*1e3:.3f} | {v['c_model_m']*1e3:.3f} | {v['c_dev_m']*1e3:.3f} | "
+                         f"{v['c_window_m']*1e3:.3f} | {'FIRED' if v['w3_fired'] else 'HELD'}")
+            else:
+                cpart = "— | — | — | — | n/a"
+            L.append(f"| {ax} | {p} | {dev(sl)} | {dev(sr)} | {cpart} | {v['w1_fired_arms'] or 'none'} | "
+                     f"{'yes' if v['any_w2_fired'] else 'no'} | {v['all_gates_hold']} | "
+                     f"{'**inside**' if v['in_law_domain'] else '**OUTSIDE**'} | "
+                     f"{'inside' if c['in_accuracy_class'] else 'outside'} | "
+                     f"{c['runways']['coarsest_cells_per_lambda0']:.2f} | {flag} |")
+    L.append("\n### Table W4 — L1-0 control against E1 (`results/e1_band_law_sweep.json` N30_r1.4)\n")
+    w4 = ax_json["z"]["w4_control"]
+    L.append("| arm | R_meas (this lane) | R_meas (E1) | relative difference | bit-identical | R_model relative difference | verdict |")
+    L.append("|---|---|---|---|---|---|---|")
+    for r in w4["rows"]:
+        L.append(f"| {r['arm']} | {r['R_meas']:.16e} | {r['R_meas_e1']:.16e} | {r['meas_rel']:.1e} | {r['meas_bit_identical']} | "
+                 f"{r['model_rel']:.2e} | {'FIRED' if (r['meas_fired'] or r['model_fired']) else 'HELD'} |")
+    L.append(f"\n`c_model` difference {w4['c_model_diff_m']:.2e} m, `c_meas` difference {w4['c_meas_diff_m']:.2e} m "
+             f"(E1 JSON git_sha {w4['e1_git_sha'][:8]}). Windows 1e-6 (R_meas) / 1e-8 (R_model) relative.\n")
+    L.append("### Table W5 — relabel identity (pattern S, n_b = 4, unpinned, B_sym on every axis)\n")
+    L.append("| axis | comp | grid | dt (s) | R_meas | R_model | A trace rel max diff vs z | A bit-identical | B_sym trace rel max diff | B bit-identical | R_meas rel diff vs z | W5 (1e-6) |")
+    L.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
+    for ax in ("z", "x", "y"):
+        a = rel["arms"][ax]
+        if ax == "z":
+            L.append(f"| z | {a['comp']} | {a['grid_shape']} | {a['dt_s']:.6e} | {a['R_meas']:.6e} | {a['R_model']:.6e} | — | — | — | — | — | reference |")
+        else:
+            c = rel["compare"][ax]
+            L.append(f"| {ax} | {a['comp']} | {a['grid_shape']} | {a['dt_s']:.6e} | {a['R_meas']:.6e} | {a['R_model']:.6e} | "
+                     f"{c['trace_a_rel_maxdiff']:.3e} | {c['trace_a_bit_identical']} | {c['trace_b_rel_maxdiff']:.3e} | "
+                     f"{c['trace_b_bit_identical']} | {c['R_meas_rel_diff']:.3e} | {'**FIRED**' if c['w5_fired'] else 'HELD'} |")
+    zb = rel["z_bridge"]
+    L.append(f"\nz bridge: `R_meas` with E1's B {zb['R_meas_e1_b']:.10e} vs with B_sym {zb['R_meas_b_sym']:.10e} "
+             f"(relative {zb['rel_diff']:.1e}); the z A arm re-run in the relabel call bit-identical to L1-0: "
+             f"{zb['trace_a_rerun_bit_identical']}; E1-B vs B_sym traces before the gate, relative max difference "
+             f"{zb['trace_b_e1_vs_sym_rel_maxdiff_before_gate']:.1e}.\n")
+    L.append("### Table PB — pin bridge on z (pattern S pinned as on x/y vs the unpinned L1-0 arm; window 1.5e-4 absolute)\n")
+    L.append("| n_b | R_meas pinned | R_meas unpinned | abs diff | rel diff | R_model rel diff | verdict |")
+    L.append("|---|---|---|---|---|---|---|")
+    for r in pb["rows"]:
+        L.append(f"| {r['n_b']} | {r['R_meas_pinned']:.6e} | {r['R_meas_unpinned']:.6e} | {r['abs_diff']:.3e} | "
+                 f"{r['rel_diff']:.3e} | {r['R_model_rel_diff']:.1e} | {'FIRED' if r['fired'] else 'HELD'} |")
+    sp = pb["cell"]["singles"]["L"]["meas"]
+    L.append(f"\nPinned single on z: R_meas {sp['R_meas']:.6e} (model {pb['cell']['singles']['L']['R_model']:.6e}, "
+             f"dev {sp['deviation_rel']*100:.2f} %); pinned c_meas {pb['cell']['verdicts']['c_meas_m']*1e3:.3f} mm.\n")
+    runs = {ax: ax_json[ax].get("fdtd_runs_new_this_call") for ax in ("z", "x", "y")}
+    L.append(f"FDTD runs: z {runs['z']} (S call 7 + resumed call), x {runs['x']}, y {runs['y']}, relabel {rel['fdtd_runs_new']}, "
+             f"pin bridge {pb['fdtd_runs_new']}; wallclock z {ax_json['z']['wallclock_s']:.1f} s (resumed call), "
+             f"x {ax_json['x']['wallclock_s']:.1f} s, y {ax_json['y']['wallclock_s']:.1f} s, relabel {rel['wallclock_s']:.1f} s, "
+             f"pin bridge {pb['wallclock_s']:.1f} s.")
+    return "\n".join(L)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--model-only", action="store_true")
@@ -1149,10 +1260,32 @@ def main(argv=None):
     ap.add_argument("--pin-bridge", action="store_true")
     ap.add_argument("--z-json", default=None)
     ap.add_argument("--note-tables", default=None)
+    ap.add_argument("--results-tables", default=None, help="results directory")
+    ap.add_argument("--refresh-w4", default=None,
+                    help="e5_z.json path: regenerate the W4 control block from the STORED S cell "
+                         "and E1's JSON (no FDTD; same judge code)")
     ap.add_argument("--out", default=None)
     args = ap.parse_args(argv)
     if args.note_tables:
         print(note_tables(args.note_tables))
+        return
+    if args.results_tables:
+        print(results_tables(args.results_tables))
+        return
+    if args.refresh_w4:
+        with open(args.refresh_w4) as fh:
+            zres = json.load(fh)
+        with open(E1_JSON) as fh:
+            zres["w4_control"] = w4_control(zres["cells"]["S"], json.load(fh))
+        zres["w4_control_recomputed_from_stored"] = {
+            "git_sha": _git_sha(), "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "reason": "the first --resume call (L1-Z) rebuilt the file from the previous cells and dropped the block"}
+        with open(args.refresh_w4, "w") as fh:
+            json.dump(zres, fh, indent=1)
+        for r in zres["w4_control"]["rows"]:
+            print(f"W4 {r['arm']}: rel={r['meas_rel']:.1e} bit_identical={r['meas_bit_identical']} "
+                  f"model_rel={r['model_rel']:.2e} fired={r['meas_fired'] or r['model_fired']}")
+        print("any_fired", zres["w4_control"]["any_fired"], "wrote", args.refresh_w4)
         return
     if args.model_only:
         run_model_only(args.out or "validation/research/multiband_nu/results/e5_model.json")
