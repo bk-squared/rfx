@@ -875,3 +875,141 @@ held (correlation 0.977 against a 0.95 bar; backscatter +0.185 dB against 0.5).
 What is NOT closed by this: why a cleaner incident field makes the subtraction worse.
 The measurement above is the whole of what this lane knows. It belongs to #280, not to
 #888, and it wants its own lane.
+
+---
+
+## 14. Pre-declaration for the r2 merge (2026-09-13)
+
+PR #923 was closed unmerged on 2026-09-13 with two conditions: a fresh
+pre-declaration, and passing full checks. This section is the first. It is written
+BEFORE the r2 branch was opened for review and is append-only — nothing above it is
+edited, including the two arguments sections 11.1 and 13.3 carried, both of which
+this section narrows.
+
+The r2 branch is `fix/888-aux-absorber-r2`, rebased onto main at `fa392913`. It is
+NOT the #923 branch re-pushed: main moved 527 files between them (#931 lattice
+ownership, #928 evidence/calibration/expectation ownership, #974's cv04 settling
+extension, the 09-11..13 batch), and three of #923's nine commits are either
+superseded by that work or need a measurement this branch does not have. What is
+carried and what is dropped is listed in 14.3.
+
+### 14.1 What the merge CLAIMS
+
+1. **Both auxiliary absorbers are derived, not tuned.** `rfx/sources/tfsf.py` and
+   `rfx/sources/tfsf_2d.py` build their absorber through
+   `rfx.boundaries.cpml._cpml_profile` — the same law the 3-D absorber uses — from a
+   declared reflection target, instead of from a standalone `sigma_max = 0.8 (m+1) /
+   (eta dx) * kappa_max` heuristic. 1-D: 20 → 200 cells, `R_asym = 1e-6`, kappa 1.
+   2-D: 30 → 200 cells, `R_asym = 1e-28`, kappa 1, order 3.
+
+2. **The reflection is gated, per angle, at the amplitude the note measured.**
+   `tests/unit/sources/test_tfsf_aux_absorber_reflection.py` measures `|B/A|` on both
+   paths and asserts it against `LEAK_BAR = 1e-3`. The 2-D absorber meets the bar on
+   the gated band **through 80 degrees** (mean 2.29e-06 at 0, 4.37e-06 at 45,
+   2.92e-05 at 70, 2.875e-04 at 80) and **fails at 82 by design** (5.76e-04 mean,
+   1.228e-03 max, 0.81x the bar). The 1-D path measures 9.43e-06 against 4.427e-02
+   as it shipped. The failing angle is part of the claim, not an exception to it:
+   section 12.5's domain is asserted in both directions, so a future change that
+   quietly made 82 pass would red the test rather than pass it silently.
+
+3. **The layout is not restated anywhere without a pin.** `slab_family` still
+   carries the auxiliary layout as constants (it is a leaf: no rfx, no jax — see its
+   module docstring), and `tests/crossval/test_aux_echo_record_invariant.py` imports
+   `rfx.sources.tfsf` and recomputes the geometry from ITS constants, so a copy that
+   drifts reds. Before this branch there was no such pin, and the depth is exactly
+   the number that changed.
+
+4. **Every committed slab-family record is replayed against the layout IT declares,
+   and the ones the deeper absorber supersedes are named.** See 14.2.
+
+### 14.2 What the merge does NOT claim
+
+* **No oblique Fresnel accuracy at grazing incidence.** The absorber is fixed; the
+  cv26 arms at 82 degrees are outside its validity domain (12.5) and still answer
+  for a residual echo through their model terms. Nothing here says rfx's oblique
+  R/T is accurate at 82 degrees, only that the injected field's contamination there
+  is 1.2e-03 instead of 2.8e-02.
+
+* **cv26 stays where PR #924 left it.** The arm gate table (#928's proposal C) and
+  the section-5 defect are that PR's, and whether cv26's grazing arms are gated,
+  modelled or dropped is a separate PI decision. This branch touches no cv26 file.
+
+* **No crossval measurement is re-run here.** cv04, cv22 and cv23 carry records
+  produced with the 20-cell absorber. They are declared pending in
+  `_ABSORBER_RECOMPUTE_PENDING` (gated in both directions: an undeclared stale
+  artifact fails, and so does a declared one that has caught up) and in each
+  results directory's `RECOMPUTE.md`, folded into the post-#931 recompute those two
+  cases already owe. What IS shown is that keeping them is safe rather than
+  convenient: the shipped absorber's echo arrival is 19 to 20 steps EARLIER at every
+  one of the 13 rungs (a deeper absorber pushes the reflector out by 180 cells but
+  the source and both probe references in by 180 as well; the whole change is the
+  reflector bound going 6.88 cells → 0), and every record stays admissible under
+  the stricter bound — ratios 0.520-0.610 → 0.525-0.617 against a limit of 1.0.
+
+* **Section 11.1's gate is not turned on here, and no longer needs to be.** #923
+  proposed gating cv04's exact-lattice witness on R off the numbers in 11.1
+  (W_witness_R inside its ceiling, continuum falsifier separating 2.68 on 65 of 115
+  bins). Main reached that state first and by a different mechanism: #974's
+  settling-extension loop grows `nx_interior` until cv04's own tails clear the
+  family bar, and `_04_fresnel_results/lattice_witness.json::gated_here` is already
+  `true` on a 990-step record with the falsifier firing on 111 of 115 bins
+  (separation 8.35). Section 11.1's numbers stand as what the absorber alone did;
+  they are not the basis of any gate on main.
+
+* **Section 10's cv04 rig change (bw 0.5 → 0.8, `FRINGE_INC_POWER_MIN = 0.42`) is
+  not carried.** It is a #812 fringe-measurability change, it needs its own cv04
+  re-run to produce the artifact its tests replay, and cv04's artifacts are under
+  #928's ownership regime. It belongs in a cv04 PR, not this one.
+
+* **13.3 is not closed.** Why a cleaner incident field makes the #280 subtraction
+  agree WORSE with Mie is measured and unexplained. It belongs to #280.
+
+### 14.3 What r2 carries, and what it drops
+
+| #923 commit | r2 | why |
+|---|---|---|
+| `f65de83f` derive both absorbers + reflection gate | carried | the fix |
+| `20a6862d` re-derive the 2-D absorber at 82 deg | carried | the fix |
+| `134012e1` cv26 te_45 layout from the module | carried | anti-drift pin |
+| `68f8e58a` cv22/cv23 re-run | tests only, artifacts dropped | needs the #931 recompute |
+| `b27dc2bb` RCS fixtures | carried, RE-MEASURED here | see below |
+| `5fad571d` cv04 re-run | dropped (note text kept) | needs a cv04 re-run |
+| `5bff72b9` cv04 fringe measurability | dropped (note text kept) | #812, own PR |
+| `07bf47e3` gate cv04's lattice witness on R | dropped | main got there via #974 |
+| `f5288390` artifact citations | dropped | citations are main's now |
+
+Everything measured in r2 was measured on r2's tree, not carried from #923. Two
+numbers moved when re-measured, and both are recorded:
+
+* the CPML depth ladder for the RCS fixture reproduced #923's table to the last
+  printed digit (−24.8826 / −25.1685 / −25.2076 / −25.1971 / −25.1815 dBsm at
+  8 / 16 / 24 / 32 / 40 cells), and the regenerated monostatic agrees to 6
+  significant figures (3.795696 here, 3.795692 there);
+* the rcs280 corrected-pattern mean read **0.41 dB** on the first attempt, which
+  would have said "no gate needs to move". That was wrong, and the reason is worth
+  recording: `tests/fixtures/rcs280_reference_subtraction/generate.py` had no
+  repo-root pin, so running it as a script imported the SIBLING CHECKOUT's rfx
+  while reading this worktree's 24-cell CPML — a rig that exists nowhere, and whose
+  0.41 is the pre-#888 auxiliary row of 13.3's own table. The guard the sibling
+  generator has carried since #276 is now on this one too, and it raises rather
+  than measuring someone else's build. Re-run under the pin: 0.705, matching 13.3.
+
+### 14.4 The falsifiers the tests carry
+
+| falsifier | where | what it kills |
+|---|---|---|
+| `\|B/A\|` over the declared band, per angle | `test_tfsf_aux_absorber_reflection.py` | an absorber that reflects, at any angle inside the domain |
+| the 82-degree row must be OVER the bar | same file, `test_the_domain_edge_is_where_the_note_says` | a domain claim that quietly widens |
+| geometry recomputed from `rfx.sources.tfsf` | `test_aux_echo_record_invariant.py::test_the_arrival_is_the_LIVE_auxiliary_geometry_not_a_copy_of_it` | a comparator copy of the layout that drifts from the module |
+| the 20-cell pins must now DISAGREE | same file, two `_a_stale_copy_..._would_be_caught` tests | re-deriving that bought nothing |
+| the recompute waiver, both directions | same file, `test_an_artifact_on_a_superseded_absorber_is_declared_and_only_those_are` | a silent stale artifact, and a waiver that outlives its reason |
+| arrival must only move EARLIER | same file, `test_the_superseded_layout_only_ever_moves_the_arrival_earlier` | keeping a record whose bound got looser |
+| live monostatic vs the committed fixture, 0.25 dB | `tests/oracle/test_rcs_mie_fixture.py` | any drift in the TFSF/NTFF/RCS chain — this is what caught the 0.573 dB move |
+| uncorrected pattern must fail the moved bar | `test_rcs280_reference_subtraction.py::test_the_pattern_bar_still_rejects_the_uncorrected_path` | a bar widened past the defect it exists to catch |
+
+### 14.5 R2 accounting
+
+One attempt per mechanism hypothesis, and one non-closing attempt recorded: the
+0.41 dB rcs280 reading in 14.3, which was not retried blind — it was root-caused to
+the import shadow, the generator was fixed, and the re-run is a different
+measurement, not a repeat of the same one.
