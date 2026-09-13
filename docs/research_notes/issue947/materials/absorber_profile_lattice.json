@@ -1,0 +1,11 @@
+{
+  "full_array_matches_declared_ramp": true,
+  "shape": [
+    391,
+    5,
+    13
+  ],
+  "start": 270,
+  "end_exclusive": 390,
+  "source_sha256": "4280e63e60c762d78d1f5627ec0e60571f2736168fc3558e1b8685b76cb12371"
+}

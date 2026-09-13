@@ -1,0 +1,71 @@
+{
+  "source_head": "45481c6cff79c9f49004e13893f47cb6dd7bc41c",
+  "start_index": 270,
+  "slice_yz": [
+    2,
+    6
+  ],
+  "mismatched_cells": 9,
+  "zero_cells": [
+    28
+  ],
+  "nonmonotonic_steps": [
+    27
+  ],
+  "mismatches": [
+    {
+      "local_cell": 28,
+      "x_node_m": 0.14400000000000002,
+      "actual": 0.0,
+      "expected": 0.11281249672174454
+    },
+    {
+      "local_cell": 29,
+      "x_node_m": 0.1445,
+      "actual": 0.11281249672174454,
+      "expected": 0.12086805701255798
+    },
+    {
+      "local_cell": 30,
+      "x_node_m": 0.145,
+      "actual": 0.12086805701255798,
+      "expected": 0.12920138239860535
+    },
+    {
+      "local_cell": 31,
+      "x_node_m": 0.1455,
+      "actual": 0.12920138239860535,
+      "expected": 0.13781249523162842
+    },
+    {
+      "local_cell": 32,
+      "x_node_m": 0.146,
+      "actual": 0.13781249523162842,
+      "expected": 0.1467013955116272
+    },
+    {
+      "local_cell": 33,
+      "x_node_m": 0.1465,
+      "actual": 0.1467013955116272,
+      "expected": 0.1558680534362793
+    },
+    {
+      "local_cell": 34,
+      "x_node_m": 0.147,
+      "actual": 0.1558680534362793,
+      "expected": 0.1653124988079071
+    },
+    {
+      "local_cell": 35,
+      "x_node_m": 0.1475,
+      "actual": 0.1653124988079071,
+      "expected": 0.17503471672534943
+    },
+    {
+      "local_cell": 36,
+      "x_node_m": 0.148,
+      "actual": 0.17503471672534943,
+      "expected": 0.18503472208976746
+    }
+  ]
+}

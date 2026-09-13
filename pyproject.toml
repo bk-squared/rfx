@@ -80,7 +80,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "gpu: tests that need GPU — too slow on CPU or GPU-specific (select with '-m gpu')",
     "distributed: tests that require multi-device / distributed setup (deselect with '-m not distributed')",
-    "slow_physics: release-tag-time physics regression gate (V173-A bit-identity); opt-in with '-m slow_physics'",
+    "slow_physics: physics regression gate; included by the weekly CPU suite (except gpu/highmem lanes), locally opt-in with '-m slow_physics'",
     "highmem: memory-heavy weekly-lane tests (issue #545, 3-24 GB RSS high-water each); run serially on the a6000 VESSL lane the weekly workflow's weekly-a6000-lane job submits (scripts/vessl_validation_lane_a6000.yaml), ADDITIVE to slow/slow_physics/gpu (never excludes from the default fast lane on its own — addopts above only filters not gpu/slow/slow_physics)",
 ]
 

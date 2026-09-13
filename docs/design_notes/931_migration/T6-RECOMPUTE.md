@@ -1,5 +1,15 @@
 # T6 (oracle / contracts / locks / studio) — recompute ledger for #931
 
+**2026-09-13 correction for the Leontovich rows below:**
+[#947's controlled comparison](../../research_notes/2026-09-13_issue947_oracle_repair.md)
+isolates a gap and eight displaced conductivity values in the absorber,
+introduced by #834 before #931. Correcting only its bounds recovers the
+historical O3 envelope and the original 0.72494 endpoint diagnostic, with
+current sheet ownership retained and physics gates unchanged. The old rim
+attribution and the 0.87333 re-pin below are historical conclusions superseded
+by that evidence. Ez is also now predicted from each mode's E/H relation at
+its actual Yee samples, rather than using the Hy alpha for both components.
+
 Branch `feat/931-t6-oracle-contracts-locks-studio`, worktree
 `/root/workspace/byungkwan-workspace/research/rfx-931-T6-oracle-contracts-locks-studio`.
 
