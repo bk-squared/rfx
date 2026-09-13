@@ -1,0 +1,8 @@
+{
+  "run_id": 369367260698,
+  "status": "terminated",
+  "log_file": "docs/research_notes/vessl_logs/369367260698-terminated.log",
+  "bytes": 11890,
+  "sha256": "db2d1d6f19f761a5989f4b194abfd4418933001e36f6dd445e33143900e072bc",
+  "reason": "stop weak illumination after h3/h4 completed;retain h5 partial;replace excitation only"
+}

@@ -1,0 +1,197 @@
+{
+  "label": "dx80",
+  "desired_width_m": 0.0006,
+  "desired_height_m": 0.000254,
+  "dx_m": 8e-05,
+  "height_m": 0.00024000000000000003,
+  "width_m": 0.0005599999999999997,
+  "trace_thickness_m": 0.0,
+  "height_intervals": 3,
+  "width_intervals": 7,
+  "domain_m": [
+    0.04,
+    0.0044,
+    0.00216
+  ],
+  "grid_shape": [
+    517,
+    72,
+    36
+  ],
+  "dt_s": 1.5252598956248049e-13,
+  "n_steps": 26226,
+  "num_periods": 20.0,
+  "actual_duration_s": 4.000146602265614e-09,
+  "pulse_f0_hz": 3750000000.0,
+  "pulse_bandwidth": 0.8,
+  "eps_r": 3.66,
+  "feed_positions_m": [
+    0.002,
+    0.038000000000000006
+  ],
+  "probe_positions_m": [
+    [
+      0.008,
+      0.011040000000000001,
+      0.01408,
+      0.01712,
+      0.02016
+    ],
+    [
+      0.032,
+      0.028960000000000003,
+      0.025920000000000002,
+      0.02288,
+      0.01984
+    ]
+  ],
+  "port_definitions": [
+    {
+      "name": "p0",
+      "position": [
+        0.002,
+        0.0022,
+        0.0
+      ],
+      "width": 0.0005600000000000001,
+      "height": 0.00024000000000000003,
+      "direction": "+x",
+      "impedance": 50.0,
+      "waveform": {
+        "f0": 3750000000.0,
+        "bandwidth": 0.8,
+        "amplitude": 1.0,
+        "cutoff": 3.0
+      },
+      "excite": true,
+      "n_probe_offset": 75,
+      "n_probe_spacing": 38,
+      "n_probes": 5,
+      "mode": "laplace",
+      "eps_r_sub": 3.66
+    },
+    {
+      "name": "p1",
+      "position": [
+        0.038000000000000006,
+        0.0022,
+        0.0
+      ],
+      "width": 0.0005600000000000001,
+      "height": 0.00024000000000000003,
+      "direction": "-x",
+      "impedance": 50.0,
+      "waveform": {
+        "f0": 3750000000.0,
+        "bandwidth": 0.8,
+        "amplitude": 1.0,
+        "cutoff": 3.0
+      },
+      "excite": true,
+      "n_probe_offset": 75,
+      "n_probe_spacing": 38,
+      "n_probes": 5,
+      "mode": "laplace",
+      "eps_r_sub": 3.66
+    }
+  ],
+  "repo_simplified_reference_ohm": 48.27058357539957,
+  "repo_eps_eff": 2.866619478882643,
+  "hj1980_reference_ohm": 48.04080206391668,
+  "hj1980_eps_eff": 2.872867448973112,
+  "material_signatures": {
+    "eps_r": {
+      "shape": [
+        517,
+        72,
+        36
+      ],
+      "dtype": "<f4",
+      "sha256": "10ff63874596f5c0aa5b5bf039c9e26c2fc659dbef4bb9361996e62294ae36af"
+    },
+    "sigma": {
+      "shape": [
+        517,
+        72,
+        36
+      ],
+      "dtype": "<f4",
+      "sha256": "b4dd2888c784661bb49c194f85551a816f4a69b6ba642465c5ebbed39d1bb89b"
+    },
+    "mu_r": {
+      "shape": [
+        517,
+        72,
+        36
+      ],
+      "dtype": "<f4",
+      "sha256": "699cf1a5d19b07584faa6555a6184d7c7e8be8b82f768bf2d88f0ea94b0ebdf3"
+    }
+  },
+  "pec_edge_signatures": [
+    {
+      "shape": [
+        517,
+        72,
+        36
+      ],
+      "dtype": "|b1",
+      "sha256": "999029ca933ae64b104fca31c64c882f991f8ab6424eee0eba3c9fec222b75bc"
+    },
+    {
+      "shape": [
+        517,
+        72,
+        36
+      ],
+      "dtype": "|b1",
+      "sha256": "f25fd710bb2f8098b69b65c6580c5d51328a150cfff40380efd1a1969f914a2f"
+    },
+    {
+      "shape": [
+        517,
+        72,
+        36
+      ],
+      "dtype": "|b1",
+      "sha256": "d8fd81816b32f4b4f0c9ddb012757a33973b507108959bf7f53b9c0f73af987b"
+    }
+  ],
+  "driver_sha256": "9037d723ee78c749e5441c8e7ad1b978dd1664a7e5ed68e3c8cda78590d4e41d",
+  "python": "3.10.12 (main, Sep 11 2024, 15:47:36) [GCC 11.4.0]",
+  "jax": "0.4.33.dev20241023+e3c6d6430",
+  "backend": "gpu",
+  "x64": false,
+  "frequencies_hz": [
+    500000000.0,
+    655172416.0,
+    810344832.0,
+    965517248.0,
+    1120689664.0,
+    1275862016.0,
+    1431034496.0,
+    1586206848.0,
+    1741379328.0,
+    1896551680.0,
+    2051724160.0,
+    2206896640.0,
+    2362068992.0,
+    2517241344.0,
+    2672413696.0,
+    2827586304.0,
+    2982758656.0,
+    3137931008.0,
+    3293103360.0,
+    3448275968.0,
+    3603448320.0,
+    3758620672.0,
+    3913793024.0,
+    4068965632.0,
+    4224137984.0,
+    4379310592.0,
+    4534482944.0,
+    4689655296.0,
+    4844827648.0,
+    5000000000.0
+  ]
+}

@@ -73,3 +73,18 @@ the declared design or the realized structure, and whether that analytic
 model supports the conductor thickness and dielectric stack being used.
 Neither the historical “within 0.4%” result nor a quiet geometry preflight
 supplies a current error bound.
+
+## Reference formula and fresh measurements
+
+The public helper `hammerstad_jensen_z0_eps_eff` retains its historical name
+and numerical behavior. It implements a simplified piecewise quasi-static
+formula, using `(1+12*h/w)^(-1/2)` for the effective permittivity. It is not
+the complete Hammerstad–Jensen 1980 model. Comparisons must identify which
+formula they use; neither model is an exact Maxwell solution or an absolute
+port-accuracy certificate.
+
+The fresh #752 study uses newly measured, node-aligned zero-thickness foil
+boards with the dielectric top and validated port top on the same plane.
+It retains both the repository formula and a separate full HJ1980 reference.
+The [frozen protocol](../research_notes/issue752/fresh/protocol.md) specifies
+geometry, pulse coverage, the original 0.4% hypothesis, and rejection screens.

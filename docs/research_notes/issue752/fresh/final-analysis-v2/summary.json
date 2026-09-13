@@ -1,0 +1,368 @@
+{
+  "analysis_script_sha256": "74dc1f221e28c3ec561212205510bb894d88ab041cff044dc8015a1b19cc7be0",
+  "python": "3.10.12 (main, Feb  4 2025, 14:57:36) [GCC 11.4.0]",
+  "numpy": "2.2.6",
+  "scipy": "1.15.3",
+  "platform": "Linux-5.15.0-187-generic-x86_64-with-glibc2.35",
+  "scan_nodes": 1401,
+  "primary_band_hz": [
+    3000000000.0,
+    4500000000.0
+  ],
+  "relative_comparison_limit": 0.004,
+  "normal_model_residual_rejection_screen": 0.02,
+  "no_field_solves": true,
+  "production_values_not_replaced": true,
+  "fit_precision": "independent complex128/float64; production extractor casts complex64/float32",
+  "limits": [
+    "2% voltage residual is not a0.4% uncertainty bound",
+    "finite condition does not certify current scale",
+    "wide-scan/prior sensitivity is reported, never used to calibrate production",
+    "raw S power remains separate; no #726 redesign",
+    "agreement is not absolute RF accuracy"
+  ],
+  "case_status": {
+    "h3": "usable_under_declared_screens",
+    "h4": "usable_under_declared_screens",
+    "h5": "usable_under_declared_screens",
+    "h6": "usable_under_declared_screens",
+    "dx80": "usable_under_declared_screens",
+    "dx60": "usable_under_declared_screens"
+  },
+  "hypotheses": {
+    "repo_simplified": {
+      "port0_historical_hypothesis": {
+        "verdict": "refuted",
+        "coherent_campaign_inputs": true,
+        "all_six_within_0p4_percent": false,
+        "valid_violations": [
+          {
+            "case": "h3",
+            "port": 0,
+            "relative_error": -0.039470964067509155
+          },
+          {
+            "case": "h4",
+            "port": 0,
+            "relative_error": -0.029029162437249616
+          },
+          {
+            "case": "h5",
+            "port": 0,
+            "relative_error": -0.02145090891049109
+          },
+          {
+            "case": "h6",
+            "port": 0,
+            "relative_error": -0.017807665308985046
+          },
+          {
+            "case": "dx80",
+            "port": 0,
+            "relative_error": -0.03964301543269643
+          },
+          {
+            "case": "dx60",
+            "port": 0,
+            "relative_error": -0.027202798941811483
+          }
+        ],
+        "usable_cases": [
+          "h3",
+          "h4",
+          "h5",
+          "h6",
+          "dx80",
+          "dx60"
+        ]
+      },
+      "port1_secondary": {
+        "verdict": "refuted",
+        "coherent_campaign_inputs": true,
+        "all_six_within_0p4_percent": false,
+        "valid_violations": [
+          {
+            "case": "h3",
+            "port": 1,
+            "relative_error": -0.03952486073381095
+          },
+          {
+            "case": "h4",
+            "port": 1,
+            "relative_error": -0.029083767575439016
+          },
+          {
+            "case": "h5",
+            "port": 1,
+            "relative_error": -0.0215152845834959
+          },
+          {
+            "case": "h6",
+            "port": 1,
+            "relative_error": -0.017872722396086692
+          },
+          {
+            "case": "dx80",
+            "port": 1,
+            "relative_error": -0.039689088389373774
+          },
+          {
+            "case": "dx60",
+            "port": 1,
+            "relative_error": -0.027256186364466136
+          }
+        ],
+        "usable_cases": [
+          "h3",
+          "h4",
+          "h5",
+          "h6",
+          "dx80",
+          "dx60"
+        ]
+      },
+      "both_ports_secondary": {
+        "verdict": "refuted",
+        "coherent_campaign_inputs": true,
+        "all_six_within_0p4_percent": false,
+        "valid_violations": [
+          {
+            "case": "h3",
+            "port": 0,
+            "relative_error": -0.039470964067509155
+          },
+          {
+            "case": "h3",
+            "port": 1,
+            "relative_error": -0.03952486073381095
+          },
+          {
+            "case": "h4",
+            "port": 0,
+            "relative_error": -0.029029162437249616
+          },
+          {
+            "case": "h4",
+            "port": 1,
+            "relative_error": -0.029083767575439016
+          },
+          {
+            "case": "h5",
+            "port": 0,
+            "relative_error": -0.02145090891049109
+          },
+          {
+            "case": "h5",
+            "port": 1,
+            "relative_error": -0.0215152845834959
+          },
+          {
+            "case": "h6",
+            "port": 0,
+            "relative_error": -0.017807665308985046
+          },
+          {
+            "case": "h6",
+            "port": 1,
+            "relative_error": -0.017872722396086692
+          },
+          {
+            "case": "dx80",
+            "port": 0,
+            "relative_error": -0.03964301543269643
+          },
+          {
+            "case": "dx80",
+            "port": 1,
+            "relative_error": -0.039689088389373774
+          },
+          {
+            "case": "dx60",
+            "port": 0,
+            "relative_error": -0.027202798941811483
+          },
+          {
+            "case": "dx60",
+            "port": 1,
+            "relative_error": -0.027256186364466136
+          }
+        ],
+        "usable_cases": [
+          "h3",
+          "h4",
+          "h5",
+          "h6",
+          "dx80",
+          "dx60"
+        ]
+      }
+    },
+    "HJ1980": {
+      "port0_historical_hypothesis": {
+        "verdict": "refuted",
+        "coherent_campaign_inputs": true,
+        "all_six_within_0p4_percent": false,
+        "valid_violations": [
+          {
+            "case": "h3",
+            "port": 0,
+            "relative_error": -0.03487670659849087
+          },
+          {
+            "case": "h4",
+            "port": 0,
+            "relative_error": -0.024364959815153322
+          },
+          {
+            "case": "h5",
+            "port": 0,
+            "relative_error": -0.016796557080123342
+          },
+          {
+            "case": "h6",
+            "port": 0,
+            "relative_error": -0.013109791219956613
+          },
+          {
+            "case": "dx80",
+            "port": 0,
+            "relative_error": -0.035049580893792835
+          },
+          {
+            "case": "dx60",
+            "port": 0,
+            "relative_error": -0.022628185195522087
+          }
+        ],
+        "usable_cases": [
+          "h3",
+          "h4",
+          "h5",
+          "h6",
+          "dx80",
+          "dx60"
+        ]
+      },
+      "port1_secondary": {
+        "verdict": "refuted",
+        "coherent_campaign_inputs": true,
+        "all_six_within_0p4_percent": false,
+        "valid_violations": [
+          {
+            "case": "h3",
+            "port": 1,
+            "relative_error": -0.03493086105518988
+          },
+          {
+            "case": "h4",
+            "port": 1,
+            "relative_error": -0.0244198272572337
+          },
+          {
+            "case": "h5",
+            "port": 1,
+            "relative_error": -0.016861238948324905
+          },
+          {
+            "case": "h6",
+            "port": 1,
+            "relative_error": -0.013175159478295303
+          },
+          {
+            "case": "dx80",
+            "port": 1,
+            "relative_error": -0.035095874219680696
+          },
+          {
+            "case": "dx60",
+            "port": 1,
+            "relative_error": -0.022681823674447554
+          }
+        ],
+        "usable_cases": [
+          "h3",
+          "h4",
+          "h5",
+          "h6",
+          "dx80",
+          "dx60"
+        ]
+      },
+      "both_ports_secondary": {
+        "verdict": "refuted",
+        "coherent_campaign_inputs": true,
+        "all_six_within_0p4_percent": false,
+        "valid_violations": [
+          {
+            "case": "h3",
+            "port": 0,
+            "relative_error": -0.03487670659849087
+          },
+          {
+            "case": "h3",
+            "port": 1,
+            "relative_error": -0.03493086105518988
+          },
+          {
+            "case": "h4",
+            "port": 0,
+            "relative_error": -0.024364959815153322
+          },
+          {
+            "case": "h4",
+            "port": 1,
+            "relative_error": -0.0244198272572337
+          },
+          {
+            "case": "h5",
+            "port": 0,
+            "relative_error": -0.016796557080123342
+          },
+          {
+            "case": "h5",
+            "port": 1,
+            "relative_error": -0.016861238948324905
+          },
+          {
+            "case": "h6",
+            "port": 0,
+            "relative_error": -0.013109791219956613
+          },
+          {
+            "case": "h6",
+            "port": 1,
+            "relative_error": -0.013175159478295303
+          },
+          {
+            "case": "dx80",
+            "port": 0,
+            "relative_error": -0.035049580893792835
+          },
+          {
+            "case": "dx80",
+            "port": 1,
+            "relative_error": -0.035095874219680696
+          },
+          {
+            "case": "dx60",
+            "port": 0,
+            "relative_error": -0.022628185195522087
+          },
+          {
+            "case": "dx60",
+            "port": 1,
+            "relative_error": -0.022681823674447554
+          }
+        ],
+        "usable_cases": [
+          "h3",
+          "h4",
+          "h5",
+          "h6",
+          "dx80",
+          "dx60"
+        ]
+      }
+    }
+  }
+}

@@ -18,6 +18,9 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
 - Retire legacy sweep/anchor generation that could overwrite frozen records
   or combine old Z0 with current geometry. `--show-archive` provides explicit,
   hash-verified historical inspection; the original data remain unchanged.
+- Provide a separate matched-geometry six-point measurement recipe with raw
+  records and explicit quality screens. Clarify that the historically named
+  HJ helper is a simplified formula; its API and numerical behavior are unchanged.
 
 ### Fixed — weekly fixture and verdict regressions (#940)
 

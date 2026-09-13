@@ -1,0 +1,9 @@
+{
+  "out": "/root/workspace/claude-workspace/rfx/runs/codex-i752-fresh-lvzgejp6",
+  "base_sha": "cbdc0976bd67a7c5fc318f3bc1967cd947399495",
+  "hashes": {
+    "protocol.md": "3462c4be58c58ce774a6ceec96cc63334f54d3c991b726eccae55c3a1795b884",
+    "driver.py": "67079fd48f32d657a1679d55a737e6ca61cd1e4ea82a962b7f52e6f657b30f45",
+    "source.tar": "bc606ec80bb7e87965e243d4cdd74474d2f9e45398c5b6c7547e09fce097a9dc"
+  }
+}

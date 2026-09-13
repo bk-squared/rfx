@@ -489,43 +489,39 @@ def test_h_sub_alignment_checks_fire_for_every_direction(direction):
     "generalised" them onto the propagation axis would be wrong, and would
     stop reporting the substrate resolution for a y port.
 
-    Issue #752 / #766: the checks now count the substrate cells the RUN
-    GRID has, read off the assembled permittivity under the port. At
-    dx = 80 um (the bisecting mesh, passed explicitly below) the 254 um
-    substrate REALIZES 4 cells (320 um), so check 2
-    ("< 4 cells") is correctly silent there and only check 2b fires (the
-    declared top sits 0.175 of a cell above a node). The genuine < 4-cell
-    case is dx = 100 um (3 cells, 300 um). Both are exercised, on every
-    direction, and the realized numbers must be identical across
-    directions -- h_sub does not depend on the propagation axis.
+    #752: conductor intervals and dielectric sample slots are different.
+    At dx=80um the foil/port snap to 240um (three intervals), whereas the
+    dielectric column occupies four slots/320um. At dx=100um the conductor
+    gap is 300um over three intervals. Both must warn in every direction;
+    the direction does not rotate the substrate normal away from z.
     """
     prop, width, _n, _s = msl_axis_roles(direction)
     domain = [0.0, 0.0, LZ]
     domain[{"x": 0, "y": 1}[prop]] = L_PROP
     domain[{"x": 0, "y": 1}[width]] = L_LAT
 
-    # dx = 80 um: 2b fires, 2 must not (the run grid has 4 substrate
-    # cells). Passed explicitly since #931 moved the module default onto
-    # the lattice -- this test is ABOUT the bisecting mesh.
+    # Explicit off-lattice declaration: both resolution and fraction fire.
     sim80 = _board(tuple(domain), direction, PORT_MARGIN, L_LAT / 2.0,
                    trace_len_axis=prop, dx=DX_BISECTING)
     msgs80 = _msl_warnings(sim80)
-    cells80 = [m for m in msgs80 if "substrate cell(s) in z" in m]
+    cells80 = [m for m in msgs80 if "normal interval(s) between" in m]
     frac80 = [m for m in msgs80 if "mixed-cell danger zone" in m]
-    assert cells80 == [], f"4 realized cells must not trip check 2 for {direction}: {cells80}"
+    assert len(cells80) == 1, f"three conductor intervals must warn for {direction}: {msgs80}"
+    assert "only 3 normal interval(s)" in cells80[0]
+    assert "conductor-plane gap=240.0µm" in cells80[0]
     assert frac80, f"mixed-cell check silent for {direction}: {msgs80}"
-    assert "sits 0.175 of a cell above the nearest mesh node" in frac80[0], frac80[0]
-    assert "4 cell(s) of substrate = 320µm" in frac80[0], frac80[0]
+    assert "sits 0.175 of a cell above its lower mesh node" in frac80[0], frac80[0]
+    assert "4 same-permittivity sample slot(s), extent 320.0µm" in frac80[0], frac80[0]
 
-    # dx = 100 um: the run grid has 3 substrate cells -> check 2 fires.
+    # dx = 100 um: the port spans three actual normal intervals too.
     sim100 = _board(tuple(domain), direction, PORT_MARGIN, L_LAT / 2.0,
                     trace_len_axis=prop, dx=100e-6)
     msgs100 = _msl_warnings(sim100)
-    cells100 = [m for m in msgs100 if "substrate cell(s) in z" in m]
+    cells100 = [m for m in msgs100 if "normal interval(s) between" in m]
     assert cells100, f"substrate-resolution check silent for {direction}: {msgs100}"
     # Same numbers on every axis -- h_sub does not depend on direction.
-    assert "only 3 substrate cell(s) in z" in cells100[0], cells100[0]
-    assert "actually realizes 3 cell(s) = 300µm" in cells100[0], cells100[0]
+    assert "only 3 normal interval(s)" in cells100[0], cells100[0]
+    assert "conductor-plane gap=300.0µm" in cells100[0], cells100[0]
 
 
 def test_probe_span_absorber_check_fires_on_the_propagation_axis():

@@ -5,7 +5,8 @@ remaining defects could still reproduce the same incorrect interpretation:
 preflight treated a dielectric column extent as the RF gap, and the legacy
 anchor generator combined historical Z0 values with current geometry before
 overwriting the protected record. This repair makes neither operation a
-current accuracy claim. No new six-point RF campaign is reported here.
+current accuracy claim. This note covers the core repair; the separate fresh
+six-point study is specified in [its frozen protocol](issue752/fresh/protocol.md).
 
 ## A material extent is not a conductor gap
 
@@ -125,5 +126,42 @@ Evidence is in [issue752/](issue752/), with full logs, the deliberately
 invalid old-generator output, source hashes, original script bytes,
 geometry/negative-control records, AD receipts and snapshot-change receipts.
 The scripts retaining absolute workspace paths are execution provenance.
-No field accuracy, source formulation or reference-impedance replacement is
-part of this repair.
+
+## Fresh six-point quantitative assessment
+
+The separate matched-geometry campaign requested for this issue ran all six
+cases sequentially on VESSL run `369367260699` using the source archive at
+`cbdc0976`. Each case used a zero-thickness node-aligned PEC foil, with the
+dielectric top, port top and foil plane coincident. The replacement
+differentiated-Gaussian parameter was fixed before the run (`f0=3.75 GHz`,
+bandwidth `0.8`); the original `0.4%` comparison and all quality screens were
+unchanged. Every case passed the finite, settling (worst `-102.83 dB`),
+relative-signal and beta-rail screens. The independent evidence validator
+also verified per-drive material/PEC/source arrays, probe/DFT registration,
+current-plane metadata, and result/dump identities. Its synthetic mutation
+tests reject inconsistent records before fitting.
+
+The primary band is the inclusive 3–4.5 GHz mean of the production
+`Re(Z0)` at port 0. The values and deviations are:
+
+| dx | realized h | realized W | mean Re(Z0) | vs repository reference | vs full HJ1980 reference |
+|---:|---:|---:|---:|---:|---:|
+| 84.667 µm | 254.0 µm | 592.667 µm | 46.36530 Ω | −3.947% | −3.488% |
+| 63.500 µm | 254.0 µm | 571.500 µm | 47.95702 Ω | −2.903% | −2.436% |
+| 50.800 µm | 254.0 µm | 609.600 µm | 46.39500 Ω | −2.145% | −1.680% |
+| 42.333 µm | 254.0 µm | 592.667 µm | 47.41100 Ω | −1.781% | −1.311% |
+| 80.000 µm | 240.0 µm | 560.000 µm | 46.35699 Ω | −3.964% | −3.505% |
+| 60.000 µm | 240.0 µm | 600.000 µm | 44.92623 Ω | −2.720% | −2.263% |
+
+The all-six `≤0.4%` hypothesis is therefore **refuted** for both references;
+the negative result is the conclusion, not a reason to relax a gate. The
+independent float64 fit and beta-prior sensitivity differ from production
+by only about `0.03%` on the first usable point, so the multi-percent
+deviations are not explained by the production extractor's float32 fit alone.
+Agreement with either quasi-static model remains a model comparison, not an
+absolute electromagnetic accuracy certificate. The residual MSL power issue
+tracked by #726 is outside this assessment.
+
+The complete raw records, terminal logs and analysis outputs are under
+[`issue752/fresh/`](issue752/fresh/). No field accuracy, source formulation
+or reference-impedance replacement is claimed beyond this bounded result.
