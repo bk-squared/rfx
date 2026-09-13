@@ -14,6 +14,9 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
 - Transfer complete realized sheet edges, substrate bounds and wire terminals
   to openEMS with one coordinate translation. Check finite-sheet contact before
   solving; the 28×37 mm patch and its feed now describe the same realized board.
+- Preserve the realized faces in the external mesh, keep the finite antenna
+  outside PML cells, and use a fresh retained output directory per external run
+  so old reference files cannot silently describe a different board.
 
 ### Fixed — cv11 realized dielectric slab geometry (#812)
 

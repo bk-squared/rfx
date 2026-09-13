@@ -289,7 +289,11 @@ import jax.numpy as jnp
 import sys as _sys_mid
 _sys_mid.path.insert(0, SCRIPT_DIR)
 from _patch_feed_contract import assert_galvanic_patch_feed as assert_galvanic_feed  # noqa: E402
-from _patch_external_geometry import external_patch_board, add_openems_patch_board  # noqa: E402
+from _patch_external_geometry import (  # noqa: E402
+    external_patch_board, add_openems_patch_board, external_patch_mesh,
+    assert_external_patch_mesh, run_openems_reference,
+    assert_external_absorber_clearance,
+)
 
 _sys_mid.path.insert(0, os.path.join(SCRIPT_DIR, "comparators"))
 from patch_mode_identification import (            # noqa: E402
@@ -696,8 +700,17 @@ FEED_CHECK = assert_galvanic_feed(
     sim, _port_grid, ground_node=REALIZED_PORT["ground"]["k"],
     patch_node=REALIZED_PORT["patch"]["k"])
 OPENEMS_MARGIN_MM = 50.0
+OPENEMS_PML_LAYERS = 8
+OPENEMS_MESH_RES_MM = 2.5
+# With spacing <= mesh_res, PML thickness is <= layers*mesh_res. Leave two
+# further maximum-size cells below the finite ground. The legacy ground at
+# z=0 put its entire 1.5 mm feed inside the lower eight absorbing cells.
+OPENEMS_GROUND_Z_MM = (OPENEMS_PML_LAYERS + 2) * OPENEMS_MESH_RES_MM
 EXTERNAL_BOARD = external_patch_board(
-    REALIZED_PORT, FEED_CHECK, margin_mm=OPENEMS_MARGIN_MM)
+    REALIZED_PORT, FEED_CHECK, margin_mm=OPENEMS_MARGIN_MM,
+    ground_z_mm=OPENEMS_GROUND_Z_MM)
+EXTERNAL_DOMAIN_MM, EXTERNAL_MESH_LINES = external_patch_mesh(
+    EXTERNAL_BOARD, margin_mm=OPENEMS_MARGIN_MM, air_above_mm=40.0)
 
 # RFX_CV05_BUILD_ONLY=1 stops here: both builds, both realization assertions,
 # no FDTD. This is the case's cheap smoke — it exercises exactly the thing the
@@ -716,6 +729,7 @@ if os.environ.get("RFX_CV05_BUILD_ONLY"):
                        "no_port": REALIZED,
                        "feed_check": FEED_CHECK,
                        "external_board_mm": EXTERNAL_BOARD,
+                       "external_mesh_lines_mm": {k: v.tolist() for k, v in EXTERNAL_MESH_LINES.items()},
                        "dz_sub_mm": dz_sub * 1e3, "dx_mm": dx * 1e3,
                        "n_sub": n_sub, "h_sub_mm": h_sub * 1e3}, _f, indent=2)
         print(f"  realized-stack JSON: {_rj}")
@@ -823,39 +837,22 @@ for _n in ("float", "int", "complex"):
 from CSXCAD.CSXCAD import ContinuousStructure
 from CSXCAD.SmoothMeshLines import SmoothMeshLines
 from openEMS.openEMS import openEMS as OEMS
-import shutil
 
 UNIT = 1e-3  # mm
-sim_path_oe = os.path.join(SCRIPT_DIR, "05_openems_tmp")
-# Skip re-running OpenEMS if the port files from a previous successful
-# run are still on disk. Delete `05_openems_tmp/` to force a fresh run.
-cached_oe = all(
-    os.path.exists(os.path.join(sim_path_oe, f))
-    for f in ("port_ut_1", "port_it_1", "et", "ht")
-)
+# The old four-file cache did not identify its geometry or solver settings.
+# Preserve it, but give every new solve a separate retained output directory
+# so a changed board cannot be compared against that unrelated reference.
+_oe_runs = os.path.join(SCRIPT_DIR, "05_openems_tmp")
 
 f0_hz_oe = f_design
 fc_hz_oe = 1.0e9                 # Gaussian half-bandwidth → covers 1.4–3.4 GHz
 lam0_mm = C0 / f0_hz_oe * 1000   # ≈ 125 mm
 
-# Geometry in mm (matches the rfx PART 1 design exactly)
-L_mm = L * 1000
-W_mm = W * 1000
-h_sub_mm = h_sub * 1000
-gx_mm = gx * 1000
-gy_mm = gy * 1000
-inset_mm = probe_inset * 1000
-
-# Domain: ground plane + ≥λ/2 air margin + radiation air above the patch.
+# The measured board is translated into the external air domain. Its finite
+# ground has PML-free air below, as required by the clearance assertion below.
 # The previous version used MUR at ~λ/4 margin which caused reflections
 # that corrupted the resonance frequency by ~8 % (see research note).
-margin_mm = OPENEMS_MARGIN_MM
-air_above_mm = 40.0
-dom_x_mm = gx_mm + 2 * margin_mm
-dom_y_mm = gy_mm + 2 * margin_mm
-dom_z_mm = h_sub_mm + air_above_mm
-x_c = dom_x_mm / 2
-y_c = dom_y_mm / 2
+dom_x_mm, dom_y_mm, dom_z_mm = EXTERNAL_DOMAIN_MM
 
 # FDTD solver — use NrTS cap to guarantee enough ringdown.
 # EndCriteria is set loose on purpose: for a Q~30 resonator the total
@@ -863,7 +860,7 @@ y_c = dom_y_mm / 2
 # prematurely, cutting off the signal before the DFT can resolve the peak.
 FDTD = OEMS(NrTS=25000, EndCriteria=1e-7)
 FDTD.SetGaussExcite(f0_hz_oe, fc_hz_oe)
-FDTD.SetBoundaryCond(['PML_8'] * 6)   # PML absorbers (was MUR — reflections)
+FDTD.SetBoundaryCond([f'PML_{OPENEMS_PML_LAYERS}'] * 6)
 
 CSX = ContinuousStructure()
 FDTD.SetCSX(CSX)
@@ -874,51 +871,34 @@ mesh_oe.SetDeltaUnit(UNIT)
 sub_lo, sub_hi = (EXTERNAL_BOARD["substrate"][key] for key in ("lo", "hi"))
 patch_lo_oe, patch_hi_oe = (EXTERNAL_BOARD["patch"][key] for key in ("lo", "hi"))
 feed_x_mm, feed_y_mm = EXTERNAL_BOARD["feed"]["lo"][:2]
-port = add_openems_patch_board(CSX, FDTD, EXTERNAL_BOARD, eps_r=eps_r)
 
 # --- Mesh lines (λ_min/20 everywhere, no edge refinement) ---
 # Aim: ≥ 10 cells across the patch L dimension so the TM010 half-wave
 # mode is well-resolved, but keep cell count low enough to run
 # within a reasonable wall clock (~3–4 minutes).
 lam_min_mm = C0 / (f0_hz_oe + fc_hz_oe) * 1000.0   # ≈ 88 mm
-mesh_res = 2.5                                      # 2.5 mm → 12 cells across L
-sub_cells = 4                                       # 4 cells in 1.5 mm substrate
-
-x_lines = np.array([
-    0, dom_x_mm,
-    sub_lo[0], sub_hi[0],
-    patch_lo_oe[0], patch_hi_oe[0],
-    feed_x_mm,
-])
-y_lines = np.array([
-    0, dom_y_mm,
-    sub_lo[1], sub_hi[1],
-    patch_lo_oe[1], patch_hi_oe[1],
-    feed_y_mm,
-])
-z_lines = np.concatenate([
-    np.array([0.0, dom_z_mm, h_sub_mm]),
-    np.linspace(0, h_sub_mm, sub_cells + 1),
-])
+mesh_res = OPENEMS_MESH_RES_MM
+x_lines, y_lines, z_lines = (EXTERNAL_MESH_LINES[axis] for axis in "xyz")
 x_lines = SmoothMeshLines(np.unique(x_lines), mesh_res, ratio=1.4)
 y_lines = SmoothMeshLines(np.unique(y_lines), mesh_res, ratio=1.4)
 z_lines = SmoothMeshLines(np.unique(z_lines), mesh_res, ratio=1.4)
+assert_external_patch_mesh(EXTERNAL_BOARD, dict(x=x_lines, y=y_lines, z=z_lines))
+assert_external_absorber_clearance(
+    EXTERNAL_BOARD, dict(x=x_lines, y=y_lines, z=z_lines),
+    pml_layers=OPENEMS_PML_LAYERS)
 
 mesh_oe.SetLines('x', x_lines)
 mesh_oe.SetLines('y', y_lines)
 mesh_oe.SetLines('z', z_lines)
+port = add_openems_patch_board(CSX, FDTD, EXTERNAL_BOARD, eps_r=eps_r)
 
 print(f"  OpenEMS mesh: {len(x_lines)} × {len(y_lines)} × {len(z_lines)} "
       f"cells = {len(x_lines)*len(y_lines)*len(z_lines):,}")
-if cached_oe:
-    print(f"  Using cached OpenEMS output from {sim_path_oe}")
-    print("  (delete the folder to force a fresh run)")
-else:
-    print(f"  Running OpenEMS (GaussExcite f0={f0_hz_oe/1e9:.2f} GHz, "
-          f"fc={fc_hz_oe/1e9:.2f} GHz)...")
-    t0 = time.time()
-    FDTD.Run(sim_path_oe, verbose=0, cleanup=True)
-    print(f"  done in {time.time()-t0:.1f}s")
+print(f"  Running OpenEMS (GaussExcite f0={f0_hz_oe/1e9:.2f} GHz, "
+      f"fc={fc_hz_oe/1e9:.2f} GHz)...")
+t0 = time.time()
+sim_path_oe = run_openems_reference(FDTD, _oe_runs)
+print(f"  done in {time.time()-t0:.1f}s")
 
 # --- Post-process S11 ---
 # The Gaussian source spectrum rolls off hard outside [f0 ± fc].
@@ -1265,6 +1245,8 @@ if json_out:
         "realized_stack": REALIZED,
         "realized_stack_with_port": REALIZED_PORT,
         "external_board_mm": EXTERNAL_BOARD,
+        "external_mesh_lines_mm": {k: v.tolist() for k, v in EXTERNAL_MESH_LINES.items()},
+        "openems_run_path": os.path.relpath(sim_path_oe, SCRIPT_DIR),
         "sheet_plane_delta": SHEET_PLANE_DELTA,
         "analytic_resonance_hz": float(f_resonance_an),
         "openems_harminv_hz": float(f_res_oe),

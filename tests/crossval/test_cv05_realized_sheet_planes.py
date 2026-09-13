@@ -143,12 +143,12 @@ def _external_geometry_module():
 
 def test_external_sheet_edges_retain_the_complete_realized_extent(realized):
     board = realized["external_board_mm"]
-    assert board["ground"]["lo"] == pytest.approx([50, 50, 0])
-    assert board["ground"]["hi"] == pytest.approx([110, 105, 0])
-    assert board["patch"]["lo"] == pytest.approx([66, 59, 1.5])
-    assert board["patch"]["hi"] == pytest.approx([94, 96, 1.5])
-    assert board["substrate"]["lo"] == pytest.approx([50, 50, 0])
-    assert board["substrate"]["hi"] == pytest.approx([110, 105, 1.5])
+    assert board["ground"]["lo"] == pytest.approx([50, 50, 25])
+    assert board["ground"]["hi"] == pytest.approx([110, 105, 25])
+    assert board["patch"]["lo"] == pytest.approx([66, 59, 26.5])
+    assert board["patch"]["hi"] == pytest.approx([94, 96, 26.5])
+    assert board["substrate"]["lo"] == pytest.approx([50, 50, 25])
+    assert board["substrate"]["hi"] == pytest.approx([110, 105, 26.5])
     for name in ("ground", "patch"):
         for axis, key in enumerate(("realized_x_mm", "realized_y_mm")):
             assert board[name]["hi"][axis] - board[name]["lo"][axis] == pytest.approx(
@@ -163,11 +163,111 @@ def test_external_sheet_edges_retain_the_complete_realized_extent(realized):
 def test_external_air_margin_translates_every_object_together(realized):
     module = _external_geometry_module()
     moved = module.external_patch_board(
-        realized["with_port"], realized["feed_check"], margin_mm=75.0)
+        realized["with_port"], realized["feed_check"], margin_mm=75.0,
+        ground_z_mm=25.)
     for name in ("ground", "patch", "substrate", "feed"):
         for corner in ("lo", "hi"):
             old = realized["external_board_mm"][name][corner]
             assert moved[name][corner] == pytest.approx([old[0]+25, old[1]+25, old[2]])
+
+
+def _assert_mesh_contains_every_board_feature(record):
+    board = record["external_board_mm"]
+    lines = record["external_mesh_lines_mm"]
+    for name in ("ground", "patch", "substrate", "feed"):
+        for corner in ("lo", "hi"):
+            for axis, label in enumerate("xyz"):
+                assert board[name][corner][axis] in lines[label], (name, corner, label)
+
+
+def test_external_mesh_preserves_faces_and_terminals(realized):
+    _assert_mesh_contains_every_board_feature(realized)
+    module = _external_geometry_module()
+    lines = {k: list(v) for k, v in realized["external_mesh_lines_mm"].items()}
+    module.assert_external_patch_mesh(realized["external_board_mm"], lines)
+    lines["x"].remove(realized["external_board_mm"]["patch"]["hi"][0])
+    with pytest.raises(ValueError, match="mesh lost patch.hi.x"):
+        module.assert_external_patch_mesh(realized["external_board_mm"], lines)
+
+
+def test_external_runs_cannot_reuse_legacy_or_previous_board_files(tmp_path):
+    module = _external_geometry_module()
+    for name in ("port_ut_1", "port_it_1", "et", "ht"):
+        (tmp_path / name).write_text("legacy board")
+    called = []
+
+    class Solver:
+        def Run(self, path, **kwargs):
+            called.append(path)
+            assert not (Path(path) / "port_ut_1").exists()
+            (Path(path) / "port_ut_1").write_text("new board")
+
+    first = module.run_openems_reference(Solver(), tmp_path)
+    second = module.run_openems_reference(Solver(), tmp_path)
+    assert called == [first, second]
+    assert first != second
+    assert (tmp_path / "port_ut_1").read_text() == "legacy board"
+    assert (Path(first) / "port_ut_1").read_text() == "new board"
+    assert (Path(second) / "port_ut_1").read_text() == "new board"
+
+
+def test_external_ground_at_the_domain_floor_is_rejected(realized):
+    import numpy as np
+    module = _external_geometry_module()
+    board = realized["external_board_mm"]
+    # Max-res regular lines are the conservative PML-thickness limit.
+    lines = dict(x=np.linspace(0, 160, 65), y=np.linspace(0, 155, 63),
+                 z=np.linspace(0, 66.5, 28))
+    module.assert_external_absorber_clearance(board, lines, pml_layers=8)
+    old = module.external_patch_board(realized["with_port"], realized["feed_check"],
+                                      margin_mm=50., ground_z_mm=0.)
+    with pytest.raises(ValueError, match="ground intersects z PML"):
+        module.assert_external_absorber_clearance(old, lines, pml_layers=8)
+
+
+@pytest.mark.parametrize("sheet_delta", [0, 1])
+def test_native_openems_keeps_the_transferred_board(tmp_path, realized, monkeypatch, sheet_delta):
+    """Optional native constructor/XML check; no electromagnetic time stepping."""
+    import numpy as np
+    import xml.etree.ElementTree as ET
+
+    pytest.importorskip("CSXCAD")
+    pytest.importorskip("openEMS")
+    from CSXCAD.CSXCAD import ContinuousStructure
+    from CSXCAD.SmoothMeshLines import SmoothMeshLines
+    from openEMS.openEMS import openEMS
+
+    for name, value in (("float", float), ("int", int), ("complex", complex)):
+        monkeypatch.setattr(np, name, value, raising=False)
+    record = realized if sheet_delta == 0 else _run(tmp_path, delta=sheet_delta)
+    module = _external_geometry_module()
+    board = record["external_board_mm"]
+    csx = ContinuousStructure()
+    fdtd = openEMS(NrTS=25000, EndCriteria=1e-7)
+    fdtd.SetGaussExcite(2.4e9, 1.0e9)
+    fdtd.SetBoundaryCond(["PML_8"]*6)
+    fdtd.SetCSX(csx)
+    mesh = csx.GetGrid()
+    mesh.SetDeltaUnit(1e-3)
+    for axis in "xyz":
+        mesh.SetLines(axis, SmoothMeshLines(
+            np.asarray(record["external_mesh_lines_mm"][axis]), 2.5, ratio=1.4))
+    native_lines = {axis: np.asarray(mesh.GetLines(axis)) for axis in "xyz"}
+    module.assert_external_patch_mesh(board, native_lines)
+    module.assert_external_absorber_clearance(board, native_lines, pml_layers=8)
+    module.add_openems_patch_board(csx, fdtd, board, eps_r=4.3)
+    out_dir = Path(os.environ.get("RFX_CV05_NATIVE_DIR", str(tmp_path)))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"cv05-delta{sheet_delta}.xml"
+    csx.Write2XML(str(path))
+    tree = ET.parse(path)
+    for property_name, geometry_name in (("FR4", "substrate"), ("ground", "ground"), ("patch", "patch")):
+        boxes = tree.findall(f".//*[@Name='{property_name}']/Primitives/Box")
+        assert len(boxes) == 1
+        for xml_corner, corner in (("P1", "lo"), ("P2", "hi")):
+            point = boxes[0].find(xml_corner)
+            assert [float(point.attrib[axis]) for axis in "XYZ"] == pytest.approx(
+                board[geometry_name][corner], abs=1e-10, rel=0)
 
 
 def test_openems_receives_the_inspected_board_and_rejects_a_detached_feed(realized):
@@ -257,6 +357,7 @@ def test_sheet_plane_falsifier_moves_the_cavity(tmp_path):
     (the geometry is legal, just not the declared board).
     """
     record = _run(tmp_path, delta=1)
+    _assert_mesh_contains_every_board_feature(record)
     st = record["no_port"]
     assert st["substrate_cells_between"] == N_SUB + 2
     assert st["cavity_node_to_node_mm"] > H_SUB_MM + DZ_SUB_MM, (
