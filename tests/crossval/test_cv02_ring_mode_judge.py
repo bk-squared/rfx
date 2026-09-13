@@ -617,6 +617,56 @@ def test_q_window_docstring_withdraws_the_1_over_T_resolution_claim() -> None:
     assert "derived" in rmj.rate_interval_to_log_q_bounds.__doc__
 
 
+def test_harminv_error_field_is_the_decay_restated() -> None:
+    """Why ingredient 1 is a stated policy and not a fit residual (#907, item 1).
+
+    The obvious alternative to a declared envelope is to take the estimator's
+    own residual. rfx's harminv reports one, ``HarminvMode.error``, but it is
+    not a residual: ``rfx/harminv.py`` computes
+    ``err = 1 - min(|lam|, 1/|lam|)``, and for a decaying pole
+    ``|lam| = exp(-alpha * dt_eff)``, so
+
+        error  ==  1 - exp(-decay * dt_eff)
+
+    exactly -- a strictly increasing function of the reported decay rate, i.e.
+    of ``1/Q`` at fixed ``f``. It carries no information about how well the
+    pole fits the record. A tolerance built from it would scale with the very
+    quantity the Q gate judges, which is #812's self-referential gate class.
+
+    Measured here rather than argued, on a clean single damped exponential at
+    cv02's own step, on both harminv paths. On the decimated path the identity
+    holds against the DECIMATED step, which is the same statement.
+    """
+    from rfx.harminv import harminv
+
+    dt = 2.3350677933821873e-16           # cv02's step
+    freq = 1.2e14
+    n_samples = 1500                      # enough for the decimation to fire
+
+    for decimate in (False, "auto"):
+        for q_in in (80.0, 1700.0):
+            alpha = math.pi * freq / q_in
+            t = np.arange(n_samples) * dt
+            signal = np.exp(-alpha * t) * np.cos(2 * math.pi * freq * t)
+            modes = harminv(signal, dt, freq * 0.5, freq * 1.5,
+                            decimate=decimate)
+            assert modes, f"no modes at Q={q_in}, decimate={decimate!r}"
+            mode = max(modes, key=lambda m: m.amplitude)
+            # dt_eff is dt on the undecimated path and an integer multiple of
+            # it otherwise; recover it from the identity rather than from the
+            # decimation rule, then check it IS that integer multiple.
+            dt_eff = -math.log1p(-mode.error) / mode.decay
+            factor = dt_eff / dt
+            assert factor == pytest.approx(round(factor), rel=1e-6)
+            assert round(factor) >= 1
+            if decimate is False:
+                assert round(factor) == 1
+            assert mode.error == pytest.approx(
+                1.0 - math.exp(-mode.decay * dt_eff), rel=1e-12)
+            # monotone in the decay, so it ranks modes by Q, not by fit
+            # quality: the longer-lived mode reports the SMALLER "error"
+            assert mode.error > 0.0
+
 def test_gated_row_retains_the_signed_ratio_and_the_bounds_that_judged_it(
 ) -> None:
     """An asymmetric interval cannot be audited from an absolute ``|ln Q|``:

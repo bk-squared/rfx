@@ -146,7 +146,14 @@ Q_GATE_INGREDIENTS: tuple[GateIngredient, ...] = (
             "barrier to import. The reference side (Meep filter "
             "diagonalisation) obeys a different law again and is not "
             "modelled separately; Meep's err field is a fit residual, not an "
-            "accuracy bound."
+            "accuracy bound. Building the uncertainty from rfx's own residual "
+            "instead is not available either: HarminvMode.error is "
+            "1 - exp(-decay * dt_eff) exactly (rfx/harminv.py: "
+            "err = 1 - min(|lam|, 1/|lam|) on a decaying pole), i.e. a "
+            "monotone function of the reported decay itself, so a tolerance "
+            "built from it would scale with the quantity it gates - the "
+            "self-referential class #812 catalogued. Pinned by "
+            "test_harminv_error_field_is_the_decay_restated."
         ),
         source="#907 (2026-09-07, 2026-09-10 comments); #812 published bracket",
     ),

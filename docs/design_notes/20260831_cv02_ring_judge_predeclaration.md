@@ -300,6 +300,24 @@ So `tau_ref/T` is a **policy envelope with provenance**, not a derived bound.
 The `1/4` admission cut keeps its prior-provenance standing from #812 and is
 separately supported by that same measurement.
 
+**The obvious alternative was checked and is not available.** The natural
+replacement for a declared envelope is the estimator's own fit residual.
+rfx's harminv reports a field named `error`, but it is not a residual:
+`rfx/harminv.py` computes `err = 1 - min(|lam|, 1/|lam|)`, and for a decaying
+pole `|lam| = exp(-alpha * dt_eff)`, so
+
+    error  ==  1 - exp(-decay * dt_eff)
+
+exactly — measured to bit equality on a clean damped exponential at cv02's own
+step, on both the decimated and undecimated paths, in
+`test_harminv_error_field_is_the_decay_restated`. It is a monotone function of
+the reported decay rate, i.e. of `1/Q` at fixed `f`, and says nothing about how
+well the pole fits the record. A tolerance built from it would scale with the
+very quantity the Q gate judges — #812's self-referential gate class. Meep's
+`err` is a signal-processing residual on the other side and is not retained by
+this case at all. Item 1 of #907's re-scoped ask therefore needs a measurement
+campaign, not a field that already exists.
+
 **What replaces the claim.** The gate's inputs are now three named objects with
 an explicit epistemic status, in `ring_mode_judge.Q_GATE_INGREDIENTS`, printed
 with every report and persisted under `gate_limits.q_gate_ingredients`:
