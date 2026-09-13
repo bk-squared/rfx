@@ -254,6 +254,50 @@ def test_a_real_case_record_follows_a_forced_late_exit(tmp_path: Path) -> None:
     assert doc["arms"]["tand1"]["e2_ok"] in (True, False)
 
 
+# The same case driven as a LIBRARY: imported under its own module name and
+# called by a host whose exit status has nothing to do with the case. This is
+# how tests/crossval/test_cv23_lossy_slab_gates.py drives it.
+EMBEDDED_WRAPPER = '''\
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("cv23_embedded", {script!r})
+mod = importlib.util.module_from_spec(spec)
+sys.modules["cv23_embedded"] = mod
+spec.loader.exec_module(mod)
+rc = mod.main(["--smoke", "--no-plots", "--arms", "tand1",
+               "--out-dir", {out_dir!r}])
+print("the case returned", rc)
+sys.exit(2)
+'''
+
+
+def test_a_host_process_exit_status_never_stamps_an_embedded_case(
+        tmp_path: Path) -> None:
+    """An imported case is not the program, so its record is not armed.
+
+    A pytest run that drives ``main()`` in-process, and a ``pytest.raises(
+    SystemExit)`` elsewhere in the same session, must not be able to write
+    their own status into a case record.
+    """
+    out_dir = tmp_path / "cv23_out"
+    out_dir.mkdir()
+    wrapper = tmp_path / "embedded_wrapper.py"
+    wrapper.write_text(EMBEDDED_WRAPPER.format(
+        script=str(CV23), out_dir=str(out_dir)))
+
+    proc = subprocess.run([sys.executable, str(wrapper)], cwd=str(tmp_path),
+                          capture_output=True, text=True)
+    record = out_dir / "rfx.json"
+    assert record.is_file(), proc.stdout[-4000:] + proc.stderr[-4000:]
+    doc = json.loads(record.read_text())
+
+    assert proc.returncode == 2
+    assert doc["verdict"]["exit_code"] == 0  # what the case itself returned
+    assert "exit_code_reconciliation" not in doc["verdict"]
+    assert "EXIT-CODE RECONCILED" not in proc.stderr
+
+
 def _load_helper():
     """Import ``_exit_evidence`` the way a crossval script does."""
     sys.path.insert(0, str(CROSSVAL_DIR))
@@ -278,8 +322,11 @@ def test_write_record_is_the_only_source_of_the_code_in_the_document(
         persisted = json.loads(record.read_text())
         assert persisted["verdict"] == {"judge_passed": False, "exit_code": 1,
                                         "summary": "SOME CHECKS FAILED"}
+        # Called from a test module, not from a program: the record is written
+        # and nothing is armed, because this pytest process's exit status is
+        # not that record's verdict.
+        assert helper.armed_records() == {}
     finally:
-        # Never leave this pytest process holding an armed record.
         helper._reset_for_tests()
 
 

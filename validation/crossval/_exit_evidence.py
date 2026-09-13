@@ -39,6 +39,15 @@ contract, not by this module: ``tests/contracts/test_crossval_exit_code_evidence
 requires every script that writes an exit-code record to leave through
 ``sys.exit`` and to route the write through ``write_record``.
 
+WHEN THE FINALIZER ARMS. Only when ``write_record``'s caller is running as
+the program -- its module ``__name__`` is ``"__main__"``. A test that imports
+a case and calls its ``main()`` gets the record written and nothing armed,
+because the pytest process's exit status is not that case's verdict, and a
+``pytest.raises(SystemExit)`` in an unrelated test would otherwise be read as
+this run's outcome. The consequence for a future case: call ``write_record``
+from the case script's own body, not from a helper module it imports, or the
+record is persisted unarmed.
+
 Usage -- the caller no longer holds a second copy of the code or the summary,
 because ``write_record`` is what puts both into the document:
 
@@ -152,7 +161,8 @@ def _install() -> None:
 
 def write_record(path: str, doc: dict, *, exit_code: Any,
                  summary: "str | Callable[[int], str] | None" = None,
-                 verdict_key: str = VERDICT_KEY, indent: int = 1) -> int:
+                 verdict_key: str = VERDICT_KEY, indent: int = 1,
+                 arm: "bool | None" = None) -> int:
     """Persist ``doc`` at ``path`` now; amend its exit code if the run ends
     with a different status.
 
@@ -162,9 +172,14 @@ def write_record(path: str, doc: dict, *, exit_code: Any,
     callable taking the exit code, in which case it is also what regenerates
     the summary if the record has to be amended.
 
+    ``arm`` defaults to "the caller is running as the program" -- see the
+    module docstring; pass it explicitly only in a test of this module.
+
     Returns the normalized exit code, for the caller to ``sys.exit()`` or
     ``return``.
     """
+    if arm is None:
+        arm = sys._getframe(1).f_globals.get("__name__") == "__main__"
     code = normalize_exit_code(exit_code)
     verdict = doc.setdefault(verdict_key, {})
     if not isinstance(verdict, dict):
@@ -181,9 +196,10 @@ def write_record(path: str, doc: dict, *, exit_code: Any,
     with open(path, "w") as handle:
         json.dump(doc, handle, indent=indent)
 
-    _install()
-    _armed[os.path.abspath(path)] = _Armed(
-        os.path.abspath(path), verdict_key, code, summary, indent)
+    if arm:
+        _install()
+        _armed[os.path.abspath(path)] = _Armed(
+            os.path.abspath(path), verdict_key, code, summary, indent)
     return code
 
 
