@@ -57,6 +57,17 @@ def build_rectangular_broad_e4_comparison(
     mean_mag_tol: float = MEAN_MAG_ABS_TOL,
 ) -> dict[str, Any]:
     text = cv11_stdout.read_text(encoding="utf-8")
+    normalization = {geometry: None for geometry, _ in GEOMETRY_COMPONENTS}
+    for line in text.splitlines():
+        if not line.startswith("CV11_EXTRACTION_MODE "):
+            continue
+        record = json.loads(line.split(" ", 1)[1])
+        geometry, mode = record["geometry"], record["normalize"]
+        if geometry not in normalization or not (type(mode) is bool or mode == "flux"):
+            raise ValueError(f"invalid cv11 extraction record: {record}")
+        if normalization[geometry] is not None:
+            raise ValueError(f"duplicate cv11 extraction record for {geometry}")
+        normalization[geometry] = mode
     output_dir.mkdir(parents=True, exist_ok=True)
 
     per_pair: list[dict[str, Any]] = []
@@ -112,7 +123,7 @@ def build_rectangular_broad_e4_comparison(
             f"E4-broad-external-{solver_tag}-rectangular-wr90-multigeometry-te10"
         ),
         "claim": (
-            "rfx rectangular_waveguide_port compute_waveguide_s_matrix(normalize='flux') "
+            "rfx rectangular_waveguide_port compute_waveguide_s_matrix "
             f"magnitude comparison against {reference_column} ({solver_kind}) across "
             "the WR-90 empty / PEC-short / dielectric-slab geometry axis "
             f"{'passes' if status == 'passed' else 'fails'} the broad-E4 magnitude "
@@ -132,6 +143,12 @@ def build_rectangular_broad_e4_comparison(
             "disagreement was a reference defect, not an rfx residual (R4/R5)."
         ),
         "external_reference_column": reference_column,
+        "normalization_by_geometry": normalization,
+        "normalization_note": (
+            "Values come from CV11_EXTRACTION_MODE records in the producer stdout; "
+            "null means the historical stdout did not record the mode. No flux "
+            "algorithm or AD coverage is inferred from a magnitude table."
+        ),
         "source_cv11_stdout": str(cv11_stdout),
         "max_mag_abs_tol": max_mag_tol,
         "mean_mag_abs_tol": mean_mag_tol,

@@ -15,6 +15,9 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   nodes, preventing a one-ulp high-face inclusion from solving an 11-node slab
   while the reference describes 10 mm. Add a build-only ten-cell contract and
   retain the VESSL failure evidence that identified the mismatch.
+- Correct the refreshed artifact's extraction label: empty/slab use two-run
+  modal normalization and PEC short uses single-run V/I. Future stdout records
+  the actual mode; the June-to-August historical attribution remains unresolved.
 
 ### Fixed — cv02 retained verdict exit contract (#946)
 

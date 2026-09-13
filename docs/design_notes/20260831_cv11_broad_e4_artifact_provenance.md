@@ -299,3 +299,14 @@ their SHA-256 records. The post-fix VESSL run `369367260736` on commit
 Palace slab `S11` max/mean are `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].max_mag_abs_diff = 0.0193`
 and `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].mean_mag_abs_diff = 0.007767`,
 inside the unchanged `0.1`/`0.07` tolerances.
+
+
+### Review correction (2026-09-13)
+
+The September material A/B above does not attribute the June-to-August 3.7x
+improvement. CPML and aperture changes remain candidates, not isolated causes.
+The renewed artifact's producer uses `normalize=True` for empty/slab and
+`False` for PEC short; its former `normalize="flux"` claim was incorrect.
+The numbers and thresholds are unchanged. The original stdout had no mode
+record, so the retrospective source audit is identified separately from
+measured metadata. Future runs print the actual extraction argument per case.
