@@ -588,6 +588,14 @@ CLASSIFICATION: dict[str, str] = {
     # `others` and never `parses`; NO_ARTIFACT_REFERENCE only checks `parses`.
     "docs/design_notes/20260910_cv05_crossval_disposition.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260911_harminv_record_support.md": GATED,
+    # 2026-09-13 (#717 crossval lane decision): `parses` is empty -- the note
+    # cites no artifact key at all. Its five `::` spans are pytest node ids
+    # (`test_crossval_comprehensive.py::TestPECCavity::test_rfx_vs_analytical`
+    # and siblings), so they land in `others`. The note quotes wall times and
+    # pass/fail counts from a pytest run it prints the command for, not values
+    # out of a committed JSON, so there is no `path.json::key` for the gate to
+    # resolve.
+    "docs/design_notes/717_crossval_lane_decision.md": NO_ARTIFACT_REFERENCE,
     # 2026-09-10 (#931 lattice-ownership merge): 591e296e added a resolvable
     # citation to this note (cv18's Richardson envelope); opted in rather than
     # left failing NO_ARTIFACT_REFERENCE's own vacuity check.
