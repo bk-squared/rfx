@@ -410,6 +410,243 @@ def test_q_rate_interval_maps_to_asymmetric_q_bounds() -> None:
     assert high_q.gates["q"] is True
     assert low_q.gates["q"] is False
 
+# --- #945: the transform, as a pure function on synthetic intervals ---------
+#
+# ``rate_interval_to_log_q_bounds`` takes only the declared rate scale ``s``,
+# so it can be exercised without a mode list, a record, or a solver. These
+# tests are the whole of the #945 claim: the image of ``[1-s, 1+s]`` under
+# ``Q = pi f / alpha`` is ``[1/(1+s), 1/(1-s)]``, which is asymmetric for every
+# ``s > 0`` and unbounded above at ``s >= 1``.
+
+
+@pytest.mark.parametrize("s", [1e-12, 1e-6, 0.01, 0.1, 0.25, 0.5, 0.798,
+                               0.9, 0.999, 0.999999])
+def test_rate_bounds_invert_the_rate_interval_exactly(s: float) -> None:
+    """Round trip: exponentiating each log-Q bound returns the rate edge that
+    produced it. ``exp(-lower) = 1+s`` and ``exp(-upper) = 1-s``."""
+    lower, upper = rmj.rate_interval_to_log_q_bounds(s)
+    assert math.exp(-lower) == pytest.approx(1.0 + s, rel=1e-12)
+    assert math.exp(-upper) == pytest.approx(1.0 - s, rel=1e-9, abs=1e-15)
+    # the interval straddles equality, and the upper side is the wider one
+    assert lower < 0.0 < upper
+    assert upper > -lower
+
+
+@pytest.mark.parametrize("s,q_ratio_upper", [(0.25, 4.0 / 3.0),
+                                             (0.5, 2.0),
+                                             (0.798, 1.0 / 0.202)])
+def test_rate_bounds_upper_side_is_one_over_one_minus_s(s, q_ratio_upper
+                                                        ) -> None:
+    """The #945 table, in the shipped function. The symmetric window this
+    replaced capped the high-Q side at ``1+s``; the transform's own upper edge
+    is ``1/(1-s)``, larger for every ``s > 0`` because ``(1+s)(1-s) < 1``."""
+    _lower, upper = rmj.rate_interval_to_log_q_bounds(s)
+    assert math.exp(upper) == pytest.approx(q_ratio_upper, rel=1e-12)
+    old_symmetric_cap = math.log1p(s)
+    assert upper > old_symmetric_cap
+    assert math.exp(upper) > (1.0 + s)
+
+
+def test_rate_bounds_lower_side_matches_the_old_symmetric_window() -> None:
+    """The defect was one-sided. The rfx-too-lossy edge is unchanged, so this
+    fix cannot mask a Q that is too LOW -- criterion (B) of the #812 re-gate
+    (a wrong Q must still fail) keeps its low-side detection intact."""
+    for s in (0.05, 0.25, 0.5, 0.798, 2.0, 4.0):
+        lower, _upper = rmj.rate_interval_to_log_q_bounds(s)
+        assert lower == pytest.approx(-math.log1p(s), rel=1e-15)
+
+
+def test_rate_bounds_upper_side_diverges_as_s_approaches_one() -> None:
+    """The s -> 1 limit. The admissible rate interval's lower edge ``1-s``
+    reaches zero, so an arbitrarily small decay rate -- an arbitrarily large Q
+    -- is admitted, and the upper log bound grows without limit."""
+    # binary eps so that 1-(1-eps) is eps exactly and the expected value is
+    # not itself a rounding of a decimal literal
+    eps_values = tuple(2.0 ** -k for k in (7, 14, 26, 40, 52))
+    uppers = [rmj.rate_interval_to_log_q_bounds(1.0 - eps)[1]
+              for eps in eps_values]
+    # strictly increasing, and each step is the exact -log(eps)
+    assert uppers == sorted(uppers)
+    for eps, upper in zip(eps_values, uppers):
+        assert upper == pytest.approx(-math.log(eps), rel=1e-12)
+    assert uppers[-1] > 36.0
+    # and the limit itself is attained, not approached: exactly at s = 1 the
+    # bound is +inf, so the function is continuous from below into infinity.
+    assert rmj.rate_interval_to_log_q_bounds(1.0)[1] == math.inf
+    assert uppers[-1] < rmj.rate_interval_to_log_q_bounds(1.0)[1]
+    # the low-Q side stays finite there -- only one side is unbounded
+    assert rmj.rate_interval_to_log_q_bounds(1.0)[0] == pytest.approx(
+        -math.log(2.0))
+
+
+@pytest.mark.parametrize("s", [1.0, 1.0 + 1e-12, 2.0, 2.8295108704304397,
+                               4.0, 1e6])
+def test_rate_bounds_have_no_finite_upper_side_above_s_one(s: float) -> None:
+    """``s >= 1`` is cv02's operating regime, not an edge case: the committed
+    live board's mode 2 runs at ``s = 2.8295``. The stated policy admits any
+    positive rate below ``alpha_ref``, so there is no finite Q ceiling to
+    impose; the low-Q side stays bounded by the positive-rate edge ``1+s``."""
+    lower, upper = rmj.rate_interval_to_log_q_bounds(s)
+    assert upper == math.inf
+    assert lower == pytest.approx(-math.log1p(s), rel=1e-15)
+    assert math.isfinite(lower)
+
+
+def test_rate_bounds_degenerate_and_invalid_inputs() -> None:
+    """``s = 0`` is a point interval (equality only); ``s = inf`` is no record
+    and therefore no restriction; a negative or NaN scale is a caller bug and
+    is refused rather than absolute-valued into a plausible answer."""
+    assert rmj.rate_interval_to_log_q_bounds(0.0) == (0.0, 0.0)
+    assert rmj.rate_interval_to_log_q_bounds(math.inf) == (-math.inf, math.inf)
+    for bad in (-1e-12, -1.0, float("nan")):
+        with pytest.raises(ValueError):
+            rmj.rate_interval_to_log_q_bounds(bad)
+
+
+def test_q_log_bounds_composes_the_policy_scale_with_the_transform() -> None:
+    """The per-mode entry point is exactly ``q_window`` feeding the pure
+    transform -- no second, divergent copy of the algebra."""
+    for freq, q, record in [(0.118, 80.7, 291.0), (0.147, 316.3, 291.0),
+                            (0.175, 1677.5, 3385.0), (1.0, 10.0, 0.0)]:
+        _t_over_tau, window = rmj.q_window(freq, q, record)
+        assert (rmj.q_log_bounds(freq, q, record)
+                == rmj.rate_interval_to_log_q_bounds(window))
+
+
+def test_issue945_a_mode_on_the_declared_rate_bound_is_admitted() -> None:
+    """The reproduction from #945, driven through ``judge``.
+
+    ``f_ref = 1/pi``, ``Q_ref = 10``, ``T = 20`` gives ``tau = 10``,
+    ``s = 0.5``, ``alpha_ref = 0.1`` and ``1/T = 0.05``. A mode whose decay
+    rate differs by EXACTLY the tolerance the gate claims to allow
+    (``alpha_rfx = 0.05``, hence ``Q_rfx = 20``) used to be REJECTED, because
+    the symmetric window stopped at ``ln(1+s) = 0.405`` while the mode sits at
+    ``ln 2 = 0.693``. Both rate edges are now admitted, and a mode past either
+    edge is still rejected -- the gate did not become one-sided, it became the
+    right two sides."""
+    f_ref, q_ref, record = 1.0 / math.pi, 10.0, 20.0
+    band = dict(f_min=0.2, f_max=0.5)
+    alpha_ref = math.pi * f_ref / q_ref
+
+    def _q_from_rate(alpha: float) -> float:
+        return math.pi * f_ref / alpha
+
+    def _gate(q_rfx: float) -> "rmj.Verdict":
+        return rmj.judge([rmj.ReferenceMode(f_ref, q_ref)],
+                         [rmj.SolverMode(f_ref, q_rfx)], record,
+                         min_matched=1, **band)
+
+    assert alpha_ref == pytest.approx(0.1)
+    # the record resolves this mode, so the row really is Q-gated
+    row = _gate(q_ref).rows[0]
+    assert row.q_gated is True
+    assert row.q_window == pytest.approx(0.5)
+
+    slow = _q_from_rate(alpha_ref - 1.0 / record)          # Q = 20, the issue
+    assert slow == 20.0
+    assert _gate(slow).gates["q"] is True
+    # what the old symmetric window said about the very same mode
+    assert abs(math.log(slow / q_ref)) > math.log1p(0.5)
+
+    # The mirror edge, on the rfx-too-lossy side, taken as Q_ref/(1+s) rather
+    # than through alpha: the endpoints are reconstructed through a logarithm,
+    # so re-deriving them by a different arithmetic route lands one ULP off
+    # and a boundary row flips. That is the endpoint's numerical sensitivity,
+    # not the gate's, and the interior checks below are what pin the gate.
+    fast = q_ref / (1.0 + 0.5)
+    assert _gate(fast).gates["q"] is True
+
+    # a step outside either declared rate edge still fails
+    assert _gate(slow * (1.0 + 1e-9)).gates["q"] is False
+    assert _gate(fast * (1.0 - 1e-9)).gates["q"] is False
+    # and comfortably inside, both sides pass
+    assert _gate(slow * 0.99).gates["q"] is True
+    assert _gate(fast * 1.01).gates["q"] is True
+
+
+# --- #907: the three ingredients, named and printed -------------------------
+
+
+def test_q_gate_ingredients_separate_derived_from_declared_policy() -> None:
+    """#907's ask, in executable form: the estimator scale, the transform and
+    the discretization budget are three separate quantities with three
+    different epistemic statuses, and the module says which is which."""
+    kinds = {item.name: item.kind for item in rmj.Q_GATE_INGREDIENTS}
+    assert kinds == {
+        "estimator_uncertainty": "declared-policy",
+        "rate_to_q_transform": "derived",
+        "discretization_budget": "absent",
+    }
+    for item in rmj.Q_GATE_INGREDIENTS:
+        assert item.quantity and item.basis and item.source
+    # the absent one must not be dressed up as a value
+    budget = [i for i in rmj.Q_GATE_INGREDIENTS
+              if i.name == "discretization_budget"][0]
+    assert "none declared" in budget.quantity
+    # and the consequence is stated, not left to the reader
+    assert "consistency heuristic" in rmj.Q_GATE_CHARACTER
+    assert "NOT a Q-accuracy guarantee" in rmj.Q_GATE_CHARACTER
+
+
+def test_the_report_prints_which_ingredients_are_policy() -> None:
+    """The crossval log is where a reader meets this gate. The split has to be
+    in the printed report, not only in the source."""
+    text = rmj.format_report(_judge(RFX_TODAY))
+    assert "Q gate ingredients" in text
+    for item in rmj.Q_GATE_INGREDIENTS:
+        assert item.name in text
+        assert f"[{item.kind:>15}]" in text
+    assert "consistency heuristic" in text
+    # the old claim that the window is not a chosen value is gone
+    assert "not chosen values" not in text
+    assert "DECLARED rate scale" in text
+
+
+def test_q_window_docstring_withdraws_the_1_over_T_resolution_claim() -> None:
+    """The docstring used to argue the window from a Fourier-style ``1/T``
+    resolution limit. #907 measured that claim false for this estimator, so
+    the withdrawal has to live where the number is produced."""
+    doc = rmj.q_window.__doc__
+    assert "DECLARED-POLICY" in doc
+    assert "refuted" in doc
+    assert "decimate=False" in doc
+    assert "Known limitation" in doc          # the T-dependence still stands
+    # and the derived half is not tarred with it
+    assert "derived" in rmj.rate_interval_to_log_q_bounds.__doc__
+
+
+def test_gated_row_retains_the_signed_ratio_and_the_bounds_that_judged_it(
+) -> None:
+    """An asymmetric interval cannot be audited from an absolute ``|ln Q|``:
+    the side decides. The row keeps the signed value and both bounds, so the
+    retained artifact re-derives its own verdict without the judge."""
+    verdict = _judge(RFX_TODAY)
+    gated = verdict.q_gated_rows
+    assert gated
+    for row in gated:
+        assert row.q_log_ratio == pytest.approx(abs(row.q_log_ratio_signed))
+        lower, upper = rmj.q_log_bounds(row.ref_freq, row.ref_Q,
+                                        verdict.record_length)
+        assert row.q_log_lower == lower and row.q_log_upper == upper
+        assert row.q_pass is (lower <= row.q_log_ratio_signed <= upper)
+    # ungated rows carry no bounds at all rather than misleading defaults
+    for row in verdict.rows:
+        if not row.q_gated:
+            assert row.q_log_ratio_signed is None
+            assert row.q_log_lower is None and row.q_log_upper is None
+
+
+def test_script_persists_the_ingredient_split_and_drops_the_old_claim(
+) -> None:
+    """Revert-proof, on the script: the retained artifact must carry the named
+    ingredients and the heuristic reading, and must not re-assert that the Q
+    window is derived rather than chosen."""
+    source = SCRIPT_PATH.read_text(encoding="utf-8")
+    assert "q_gate_ingredients" in source
+    assert "Q_GATE_INGREDIENTS" in source
+    assert "Q_GATE_CHARACTER" in source
+    assert "not a chosen number" not in source
+    assert "consistency heuristic" in source
 
 def test_reference_side_carries_the_same_q_floor_as_rfx() -> None:
     """The shipped script filtered rfx modes (Q > 1) and the reference not at
