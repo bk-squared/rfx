@@ -273,6 +273,26 @@ evaluated unpinned (a 0.5 mm lead cannot host the coarser 1.0 mm pin).
   dt. Floor reading rule (E1 1f): a fired row with `R_model < 2.5e-4` and
   `|R_meas - R_model| <= 1.5e-4` is recorded "fired — at the instrument's
   absolute floor". No modelled row is under 2.5e-4 (1h).
+  *Reviewer note (second pass, 2026-09-14; window unchanged):* the
+  rectangular DFT windows make `R_meas` depend on where the two window
+  ends fall. The incident pulse (sigma_t = 64 ps, sigma_f = 2.5 GHz)
+  reaches down to the discrete TE10 cutoff of this grid (5.0 GHz, 2
+  sigma_f below F0), whose near-cutoff energy arrives late and rings;
+  the 8-sigma incident end truncates that ringing and leaks it into the
+  10 GHz bin. Measured by the review's scan on five recorded arms and
+  reproduced on this tree before this edit (five CPU reruns, each
+  reproducing the stored `R_meas` to the float64 bit); re-recorded
+  through the instrument's own `--window-scan` as the diagnostic
+  declared in the "Second pass" section (`results/e5_window_scan.json`):
+  over every window end the declared rules would allow, `|DFT_F0(B)|`
+  moves 3.3 % peak to peak (beat = the cutoff) and `R_meas` moves -2.0 ..
+  +2.2 % (S n_b = 4) to -3.3 .. +4.5 % (x P1 n_b = 32) of the chain. The 20 % window absorbs this by 5-10 x
+  (the closest arm sits at 0.26 of its half-window), the 8-sigma rule is
+  E1's declared form, not tuned; but the instrument RESOLVES about 3 %,
+  so sub-3 % differences between arms in the Results section (pinned vs
+  unpinned, P1 vs P2, the 0.00-1.09 % single-transition agreement) are
+  readings of the window rule as much as of the physics. Verdicts
+  unaffected.
 - **W2 — the bound:** every band arm `R_meas <= 1.05 x (R_L + R_R)` for
   S, P1-P4 (S: `2 R_single x 1.05`, E1 (ii)), and `R_meas <= 1.05 x (R_1L
   + R_1R + R_2L + R_2R)` for T. Numbers: 1.2160e-2 (S), 1.9163e-2
@@ -297,12 +317,35 @@ evaluated unpinned (a 0.5 mm lead cannot host the coarser 1.0 mm pin).
   absolute. Reading rule: if W5 fires on an axis, that axis's arms still
   run and are gated by W1-W3 on their own model; the cell verdict carries
   "relabel identity fired: instrument class"; the fire is not tuned.
+  *Reviewer note (second pass, 2026-09-14; window unchanged):* the
+  `R_meas` sub-criterion at 1e-6 is a bit-identity test in disguise.
+  `R_meas` is a ~1 % differenced quantity (`A - B` over `B`), so a
+  trace-level difference of 7e-7 maps to up to 7e-5 on `R_meas`; the
+  1e-6 `R_meas` window can only be met when the traces are bit-identical,
+  which is why it fired on y while both trace criteria (also 1e-6) held.
+  The stored y-vs-z difference is deterministic (y re-run twice is
+  bit-identical to itself and to the stored trace), 1.8 float32 eps RMS
+  against the running maximum of the trace, non-growing over 1200 steps
+  (7.7e-7 in the first 200-step block, 1.1e-6 in the last). The fire is
+  a defect of the sub-criterion's design, not of the kernel; it stays a
+  fire (declared window), and the reading rule handled it.
 - **W6 — gates:** the six margins (1f) of every arm are positive in the
   frozen model JSON (Table G: smallest 0.2560 ns, the incident-gate
   construction, on every arm; inner-return margin on T's longest
   structure n_c = 16 / n_b2 = 8: 0.397 ns z, 0.416 ns x/y — the program
   expected ~0.42 ns). `gates_hold` is measured per arm (geometry AND
   `dt_matches_b` AND `source_probe_in_lead` AND `lead_f32_identical`).
+  *Reviewer note (second pass, 2026-09-14; window unchanged):* the
+  0.2560 ns "smallest margin" is 4 sigma_t by construction, not a
+  measurement: `incident_inside = t_inc_end - (t_inc_arr + 4 sigma)`
+  with `t_inc_end = min(t_inc_arr + 8 sigma, t_echo - 4 sigma)`, and the
+  8-sigma term binds on every arm here (0.947 ns against 1.478 ns), so
+  the margin is exactly 4 x 64 ps on all 120 arms; it could only fail if
+  the source-wall echo term bound, which the geometry (z_src >= 67 mm)
+  rules out. The other five margins are real: reflection_inside
+  0.776-0.815 ns, inner_return_inside 0.397 ns (T n_c = 16 / n_b2 = 8,
+  z) at the tightest, direct B far-end return 2.89-2.98 ns. The lane's
+  tightest measured gate is the 0.397 ns inner return, not 0.256 ns.
 - **Cell verdicts (before the run):** "inside the law domain" = every W1
   held (singles and widths), W2 held at every width, and (S, P1-P4) W3
   held; "inside the -54 dB class" by E1's rule verbatim (every adjacent
@@ -542,26 +585,50 @@ and `git_sha ea208024` (the tests commit, the last before any FDTD).
 --porcelain` at the START of the call, and the results JSON the previous
 sub-lane had just written was still untracked at that moment. The L1-0
 call's own provenance block was overwritten by the resumed L1-Z call
-(only its `started_utc 15:55:38Z` survives in `resumed_from`); the tree
-was clean at the `ea208024` commit ten seconds earlier (`git status`
-empty, 00:55:28 KST) and nothing ran in between. Nothing under `rfx/`,
-`validation/` code or `tests/` was modified between `ea208024` and the
-measurements — `git diff --stat` on those paths across the lane's
-commits is empty for `rfx/` and the five reused files.
+(only its `git_sha`, `started_utc 15:55:38Z` and `argv` survive in
+`resumed_from`; its `git_dirty` and `wallclock_s` are not stored
+anywhere). What the record does support: `ea208024` was committed at
+15:55:28Z and the first FDTD started at 15:55:38Z; the instrument file
+is byte-identical between `be606f45` and `b4646528`; nothing under
+`rfx/`, `validation/` code or `tests/` was modified between `ea208024`
+and the measurements — `git diff --stat` on those paths across the
+lane's commits is empty for `rfx/` and the five reused files. (The
+first version of this paragraph also said the tree was clean at
+`ea208024` and nothing ran in between; that was read from the terminal
+and a `git status` that are not stored — second-pass correction.)
 Sub-lanes ran in the declared order (L1-0, L1-R, L1-Z, L1-X, pin bridge,
 L1-Y), one attempt each. FDTD runs executed: z 7 (L1-0) + 37 (L1-Z, a new
 process, so the S single and `B_1.96` ran again) = 44, x 42, y 42, L1-R 6,
-pin bridge 7 — 141 runs, 107 s of FDTD wallclock in total, CPU.
+pin bridge 7 — 141 runs (the `b4646528` commit message says 139, the
+declared count of 1j; the two extra are the L1-Z re-runs). Stored
+wallclock: z 21.1 s (resumed call only), x 30.6 s, y 43.0 s, relabel
+3.5 s, pin bridge 4.6 s = 102.8 s; the L1-0 call's wallclock was
+overwritten (the "107 s" first written here was the terminal total,
+second-pass correction). The L1-Z re-run of the S single reproduced the
+L1-0 `R_meas` 5.730199918373753e-3 to the float64 bit in a new process
+(`P1.L`, `fdtd_run_cached` false) — a determinism datum.
 
 One instrument defect, found by the replay test after the runs and
 recorded: the L1-Z `--resume` call rebuilt `e5_z.json` from the previous
 file's `cells` only and dropped the top-level `w4_control` block that
 L1-0 had written. The block is a pure function of the stored S cell and
 E1's JSON (`w4_control()`, no FDTD); it was regenerated by `--refresh-w4`
-at `b4646528` and the JSON carries `w4_control_recomputed_from_stored`
-with the reason. The regenerated rows equal the L1-0 printout (relative
-difference 0.0 on every arm, `bit_identical` true). The resume path now
-carries the block forward.
+and the JSON carries `w4_control_recomputed_from_stored` with the
+reason. Provenance of that step (second-pass correction): the block is
+stamped `git_sha b4646528`, but the `--refresh-w4` path it ran through
+was uncommitted instrument code at that moment (16:10:11Z; it was
+committed in `3622cf01` at 16:13:31Z), i.e. a clean sha for a dirty
+tree — the stamp had no dirty flag. `w4_control()` itself is unchanged
+since `be606f45` (the post-measurement diff of the instrument is
+additive: a pathlib import, the resume carry-forward, the two printers
+and the argparse branches), and `test_results_w4_control_against_e1`
+re-derives the block from the stored S cell and E1's JSON (six rows,
+`meas_rel` 0.0, `model_rel` 1.7e-13 .. 6.3e-12). The block now carries
+`git_dirty_at_refresh: true` (annotation added in the second pass) and
+the `--refresh-w4` stamp records `git_dirty` from now on. The regenerated
+rows are the ones the replay test re-derives; the sentence first written
+here, that they "equal the L1-0 printout", refers to terminal output
+that is not stored. The resume path now carries the block forward.
 
 ### Regression (W4) — HELD, bit-identical
 
@@ -607,8 +674,8 @@ differ by 6.71e-7 (A) and 6.85e-7 (B) of their maximum — inside the
 `R_meas` criterion**, with both trace criteria held. The number is the
 float32 summation-order class (1200 steps of float32 leapfrog; a single
 ulp is 6e-8), not a physics difference: the y arms below agree with the
-x arms to <= 4.0e-5 relative on every one of the 40 arm pairs (median
-3.4e-6), and their W1-W3 verdicts are identical. Per the declared
+x arms to <= 4.1e-5 relative on every one of the 40 arm pairs (4.08e-5
+largest, median 3.4e-6), and their W1-W3 verdicts are identical. Per the declared
 reading rule the y arms ran and are gated by W1-W3 on their own model;
 every y cell carries the flag "relabel identity FIRED: instrument
 class". The window is not widened; the program's section-2 statement
@@ -644,7 +711,10 @@ chain value of 5.7907e-3. The pins are an instrumentation of the lo
 wall (a 1.0 | 1.4 | 1.96 mm step pair the source-wall echo crosses
 twice); the chain model has no wall, and both readings are inside the
 W1 windows and inside E1's measured floor class. Recorded as a number;
-not explained here.
+not explained here. *Second-pass reading:* the pinned-vs-unpinned
+difference (0.3-2.5 %) is under the instrument's window-end sensitivity
+(about 3 %, W1 reviewer note and the "Second pass" section), so "36 of
+40 closer" is a count, not evidence that the pins improve the physics.
 
 ### W1, W2, W3 on every (pattern, axis) cell — all HELD; 18 of 18 cells inside the law domain
 
@@ -807,9 +877,21 @@ Table B — law checks per (pattern, axis) cell and the validity-domain verdicts
   3.271 / 3.272 mm on z and 3.261 / 3.284 mm in-plane against `c_model`
   3.294 mm (window 0.140 mm; the centroid closed form 3.228 mm sits 0.066
   mm from the chain and 0.02-0.06 mm from the measurements). **Traversal
-  direction does not matter:** P1 and P2 give the same numbers within
-  0.1-0.5 % on every axis (reciprocity, |S11| = |S22|), and the program's
-  likeliest fire "W3 on P2" did not occur (dev 0.022 mm z, 0.010 mm x/y).
+  direction does not matter at the gate level:** P1 and P2 are the same
+  cell in the chain (reciprocity, |S11| = |S22|, equal to 1e-15) and both
+  are inside W1 and W3 on every axis; the program's likeliest fire "W3
+  on P2" did not occur (dev 0.022 mm z, 0.010 mm x/y). The measured
+  |R_meas(P1) - R_meas(P2)| / R_meas(P2) per width (n_b 2/4/8/16/32) is
+  z 0.02 / 0.08 / 0.02 / 0.11 / 0.06 %, x 0.13 / 0.21 / 0.56 / 0.89 /
+  1.84 %, y the same as x (the sentence first written here, "within
+  0.1-0.5 % on every axis", mis-stated both ends — second-pass
+  correction). The in-plane spread grows with n_b to 1.84 % (P1 n_b = 32
+  -1.45 %, P2 n_b = 32 +0.40 % from the chain; P3 vs P4 in-plane up to
+  1.94 %), about 17 x the z spread: the pinned lo wall differs between
+  the two traversals (`[1.0, 1.4]` before a 1.96 mm lead vs `[1.0, 1.4,
+  1.96]` before a 2.744 mm lead), so P1 and P2 have different wall-echo
+  instrumentation in-plane and none on z. All of it is under the ~3 %
+  window-end sensitivity of the instrument (W1 reviewer note).
 - **A coarse side that is the ramp size itself (P3, P4).** The single
   cap step 1.0 -> 1.4 mm reflects 1.9832e-3 (z) / 2.0051e-3 (x, y) against
   1.9982e-3 (0.75 % / 0.34 %), 0.345 x the ramp side; the band nulls sit
@@ -825,13 +907,14 @@ Table B — law checks per (pattern, axis) cell and the validity-domain verdicts
   although it spans 3.92 x in cell size: the per-step amplitudes fall as
   the cells shrink (3.42e-3, 1.96e-3, 1.13e-3, 6.5e-4, 3.8e-4). The four
   two-band arms are within 0.89-1.76 % of the chain, all under the
-  four-amplitude bound (largest measured 0.877 of 2.6116e-2; the bound
-  held with 12 % to spare, the model said 0.886). The likeliest-fire arm
+  four-amplitude bound (largest measured 0.878 of 2.6116e-2 — 0.8767 z,
+  0.8779 x/y; the bound held with 12 % to spare, the model said 0.886). The likeliest-fire arm
   (n_c = 16, n_b2 = 8, inner-return margin 0.397 ns) deviates 1.76 % on z
   and 1.25 % in-plane.
 - **In-plane.** The first FDTD-measured in-plane reflection numbers: 40
   arms on x and 40 on y, every one inside its window, x and y equal to
-  <= 4.0e-5 relative, deviations 0.00-3.36 % (median 0.49 %). The
+  <= 4.1e-5 relative, deviations 0.00-3.36 % (median 0.49 %; the
+  instrument resolves about 3 %, so the median is a floor reading). The
   -54 dB class is met by construction on every cell (every adjacent
   ratio 1.4000 on the builder output, 1.3142 inside the 0.5 mm ramp);
   the coarsest runway is 10.9 cells per lambda0 (2.744 mm) on P1/P2.
@@ -855,10 +938,17 @@ is
         within 0.010-0.066 mm of the chain, an explanation, not the gate),
 
 with `R_L`, `R_R` the chain model's single transitions, each measured
-within 0.00-1.09 % on every axis (fifteen single arms of eight distinct
-kinds x three axes); for E1's symmetric case it is `2 R_single |sin(k_g
-(n_b d + c))|`. Two fine bands of different sizes in one column follow
-the chain within 1.8 % and the coherent four-amplitude bound.
+within 0.00-1.09 % of the chain on every axis (eleven single-arm entries
+per axis of eight distinct FDTD runs — P1.L = P3.L = S.L and P4.R = P2.R
+— 33 verdicts, 24 distinct runs over three axes; the first version of
+this sentence said "fifteen single arms", which is the number of
+(pattern, axis) cells with a c fit, a different count). Two fine bands
+of different sizes in one column follow the chain within 1.8 % and the
+coherent four-amplitude bound. Precision of those agreement figures
+(second pass): the instrument's window-end sensitivity is about 3 %
+(-2.0 .. +4.5 % over the legal window ends on five arms, W1 reviewer
+note), so "within 1.09 %" and "within 1.8 %" are the nominal-window
+readings and the law is witnessed at the 3 % level, not the 1 % level.
 
 Inside the law domain, measured here: **18 of 18 (pattern, axis)
 cells** — the E1 control (S) and the four unequal-side patterns P1-P4
@@ -882,3 +972,68 @@ pre-declaration with the instrument and the frozen model (`be606f45`),
 the replay test and classification entries (`ea208024`), the raw
 measurements (`b4646528`), this results section with the W4-block
 regeneration and the results-table printer (the commit that carries it).
+
+## Second pass (review of the record, 2026-09-14)
+
+Ten review findings, each reproduced from the stored JSONs or by reruns
+on this tree before anything was edited (`rfx.__file__` under this
+worktree; scratch scripts `window_scan.py`, `analyze_stored.py`,
+`fdtd_checks.py` in the session scratchpad, not part of the record).
+No window was edited; no verdict changed; no arm was re-attempted (no
+finding showed a measurement to be invalid: the closest arm to a W1 edge
+is at 0.26 of its half-window, x S n_b = 32). `stopped` stays false.
+
+### What was corrected in the text above (each marked "second-pass correction" in place)
+
+| # | finding (review lens) | what the record said | what the stored numbers say | where |
+|---|---|---|---|---|
+| 1 | window-end systematic ~3 % (physics, major) | sub-1 % agreement quoted as resolved | instrument resolves about 3 %; verdicts unaffected | W1 reviewer note; "Reading the tables"; "Validity domain" |
+| 2, 6 | P1 = P2 "within 0.1-0.5 % on every axis" (physics + record, major) | 0.1-0.5 % | z 0.02-0.11 %, x/y 0.13-1.84 %, growing with n_b; P3/P4 in-plane up to 1.94 % | "Reading the tables" |
+| 3 | W5 `R_meas` 1e-6 is bit-identity in disguise (minor) | fire read as float32 class | same reading, the sub-criterion's design named as the defect; deterministic, 1.8 eps RMS | W5 reviewer note |
+| 4 | W6 0.256 ns is tautological (minor) | "smallest margin 0.2560 ns" | 4 sigma by construction; the tightest measured gate is 0.397 ns (inner return) | W6 reviewer note |
+| 5 | "fifteen single arms of eight distinct kinds" (minor) | 15 | 11 entries x 3 axes = 33 verdicts, 8 distinct runs per axis, 24 over three axes | "Validity domain" |
+| 7 | L1-0 provenance overwritten; 107 s (record, minor) | 107 s; "tree clean, nothing ran in between" | stored wallclock sums to 102.8 s; the clean-tree sentence is not re-derivable from the record | "Measured" |
+| 8 | `--refresh-w4` from uncommitted code stamped as a clean sha (record, minor) | `git_sha b4646528`, no dirty flag | `git_dirty_at_refresh: true` annotation added to the block; the CLI stamp records `git_dirty` from now on | "Measured"; `e5_z.json` |
+| 9 | rounding (record, minor) | 4.0e-5; 0.877; commit message 139 runs | 4.08e-5 (quoted <= 4.1e-5); 0.8779 (quoted 0.878); 141 runs, 139 was the declared count | W5, "Reading the tables", "Measured" |
+| 10 | program document section 2 "exact cyclic relabelings" (record, minor) | claim stands in the frozen plan | z -> x measured exact, z -> y float32 class; addendum appended to the program document (gap-map candidate), section 2 not edited | program document |
+
+Finding 1 also renames one reading: "pinned arms deviate less (36 of
+40)" is a count under the instrument's resolution, not evidence about
+the pins (pin-bridge paragraph). Finding 2's physical content is new to
+the record: the in-plane P1/P2 spread is ~17 x the z spread because the
+pinned lo wall differs between the two traversals — an instrumentation
+asymmetry, unrecorded before.
+
+### Declared diagnostic: window-end scan (declared here BEFORE it ran through the instrument)
+
+Purpose: put the review's window-sensitivity numbers into the record
+through the instrument, not a scratch script. Not an arm; no verdict is
+computed from it. Five recorded arms are re-run once each through the
+same `run_probe_axis` / `make_b_profile` / `dft_at` path (S single L and
+S n_b = 4 on z, T n_c = 16 / n_b2 = 8 on z, P1 n_b = 32 and P2 n_b = 32
+on x, pinned as recorded), 10 CPU FDTD runs incl. the B references.
+For each arm: (a) the rerun `R_meas` must equal the stored `R_meas` to
+the float64 bit (precondition; if it does not, the scan is reported and
+the discrepancy becomes a finding); (b) the incident window end is moved
+from arrival + 4 sigma to arrival + 12 sigma (the declared rule is
+arrival + 8 sigma; the source-wall echo bound, 1.478 ns, is beyond 12
+sigma on every arm) and `|DFT_F0(B)|` is recorded relative to the
+nominal, with the 4-8 sigma sub-band, the peak-to-peak and the dominant
+beat of the scan (FFT of the scan, resolution ~1.3 GHz) beside the
+discrete TE10 cutoff of the grid (`s0(f_c) = sy`, chain-model
+dispersion); (c) the reflection window end is moved from `t_inner_last +
+4 sigma` to `gate_end` and `|DFT_F0(A - B)|` recorded the same way; (d)
+`R_meas` over every (reflection end, incident end) pair, as a range
+relative to the chain. Expectation (from the reproduction on this tree):
+(a) true on all five; (b) 0.9727 .. 1.0053, p-p 3.26 %, beat 5.28 GHz
+against a 4.99 GHz cutoff; (c) 0.993 .. 1.002 (S n_b = 4), 0.993 ..
+1.007 (S single), 0.993 .. 1.012 (T), 0.987 .. 1.031 (x P1), 0.975 ..
+1.000 (x P2); (d) -1.99 .. +2.19 %, -2.29 .. +2.48 %, -2.98 .. +2.20 %,
+-3.25 .. +4.50 %, -2.67 .. +3.15 % of the chain. Output
+`results/e5_window_scan.json`; replayed by
+`test_e5_multilevel_replay.py::test_results_window_scan_replays` (the
+stored ranges re-derived from the stored numbers, the bit-identity
+flags, and the statement that no recorded arm is within 0.30 of its
+half-window of a W1 edge). Command: `--window-scan
+validation/research/multiband_nu/results --out
+validation/research/multiband_nu/results/e5_window_scan.json`.

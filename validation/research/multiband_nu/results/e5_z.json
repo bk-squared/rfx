@@ -9902,6 +9902,8 @@
  "w4_control_recomputed_from_stored": {
   "git_sha": "b46465286110415752396526507b3a087ec438a4",
   "utc": "2026-09-13T16:10:11Z",
-  "reason": "the first --resume call (L1-Z) rebuilt the file from the previous cells and dropped the block"
+  "reason": "the first --resume call (L1-Z) rebuilt the file from the previous cells and dropped the block",
+  "git_dirty_at_refresh": true,
+  "annotation_second_pass_2026-09-14": "the --refresh-w4 CLI path was uncommitted instrument code when this block was written (committed in 3622cf01 at 2026-09-13T16:13:31Z); w4_control() itself unchanged since be606f45; block re-derived by tests/unit/nonuniform/test_e5_multilevel_replay.py::test_results_w4_control_against_e1"
  }
 }

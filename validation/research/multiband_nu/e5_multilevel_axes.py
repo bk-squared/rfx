@@ -1250,6 +1250,117 @@ def results_tables(results_dir: str) -> str:
     return "\n".join(L)
 
 
+# --- second-pass diagnostic (2026-09-14): window-end sensitivity of R_meas ------
+# Declared in the lane note ("Second pass") before it ran. Not an arm and not a
+# judge: it re-runs five recorded arms (each must reproduce the stored R_meas
+# to the float64 bit), then moves the two rectangular DFT window ends over
+# every end the declared gate rules would allow and records the range of
+# |DFT_F0(B)|, |DFT_F0(A - B)| and R_meas. The nominal windows and every
+# verdict are untouched.
+WINDOW_SCAN_ARMS = (("z", "S", "L"), ("z", "S", "S_nb4"), ("z", "T", "T_c16_b8"),
+                    ("x", "P1", "P1_nb32"), ("x", "P2", "P2_nb32"))
+WINDOW_SCAN_INC_SIGMAS = (4, 12)   # incident end scanned from arrival + 4 sigma to arrival + 12 sigma
+
+
+def te10_cutoff_hz(dt: float) -> float:
+    """Discrete TE10 cutoff on this grid: s0(f_c) = sy (chain_model dispersion)."""
+    _, sy = s0_sy(F0, dt, D_T, fx.B_Y)
+    return float(np.arcsin(C0_E1 * dt * sy / 2) / (np.pi * dt))
+
+
+def window_scan_arm(trace_a: np.ndarray, trace_b: np.ndarray, dt: float, rec: dict, n_steps: int) -> dict:
+    g = rec["gates_ns"]
+    n_gate, n_inc = min(rec["n_gate"], n_steps), rec["n_inc"]
+    diff = trace_a - trace_b
+    inc0 = abs(dft_at(trace_b, dt, F0, 0, n_inc))
+    refl0 = abs(dft_at(diff, dt, F0, 0, n_gate))
+    r0 = refl0 / inc0
+    # the 8-sigma term binds on every recorded arm (incident_inside == 4 sigma), so
+    # t_inc_end - 8 sigma is the incident arrival at the probe
+    t_inc_arr = g["t_inc_end"] * 1e-9 - 8 * SIGMA_T
+    lo = int((t_inc_arr + WINDOW_SCAN_INC_SIGMAS[0] * SIGMA_T) / dt)
+    hi = int((t_inc_arr + WINDOW_SCAN_INC_SIGMAS[1] * SIGMA_T) / dt)
+    incs = np.array([abs(dft_at(trace_b, dt, F0, 0, n)) for n in range(lo, hi + 1)])
+    n8 = int((t_inc_arr + 8 * SIGMA_T) / dt)
+    incs_4_8 = incs[: n8 - lo + 1]
+    x = incs - incs.mean()
+    freqs = np.fft.rfftfreq(len(x), dt)
+    spec = np.abs(np.fft.rfft(x))
+    beat = float(freqs[int(np.argmax(spec[1:])) + 1])
+    glo = int((g["t_inner_last"] * 1e-9 + 4 * SIGMA_T) / dt)
+    refls = np.array([abs(dft_at(diff, dt, F0, 0, n)) for n in range(glo, n_gate + 1)])
+    rr = np.outer(refls, 1.0 / incs)
+    return {
+        "R_meas_rerun": r0, "inc_abs": inc0, "refl_abs": refl0,
+        "n_inc_nominal": n_inc, "n_gate_nominal": n_gate,
+        "inc_scan_steps": [lo, hi], "inc_scan_ns": [lo * dt * 1e9, hi * dt * 1e9],
+        "inc_ratio_min": float(incs.min() / inc0), "inc_ratio_max": float(incs.max() / inc0),
+        "inc_ratio_4_8_min": float(incs_4_8.min() / inc0), "inc_ratio_4_8_max": float(incs_4_8.max() / inc0),
+        "inc_peak_to_peak_rel": float((incs.max() - incs.min()) / inc0),
+        "inc_scan_beat_hz": beat, "inc_scan_fft_resolution_hz": float(freqs[1]),
+        "refl_scan_steps": [glo, n_gate], "refl_scan_ns": [glo * dt * 1e9, n_gate * dt * 1e9],
+        "refl_ratio_min": float(refls.min() / refl0), "refl_ratio_max": float(refls.max() / refl0),
+        "R_range_min": float(rr.min()), "R_range_max": float(rr.max()),
+        "R_range_rel_model": [float(rr.min() / rec["R_model"] - 1), float(rr.max() / rec["R_model"] - 1)],
+        "R_nominal_rel_model": float(r0 / rec["R_model"] - 1),
+    }
+
+
+def run_window_scan(out_path: str, results_dir: str) -> dict:
+    out = _provenance(False)
+    out["diagnostic"] = "window_scan"
+    out["arms_declared"] = [list(a) for a in WINDOW_SCAN_ARMS]
+    out["inc_scan_sigmas_after_arrival"] = list(WINDOW_SCAN_INC_SIGMAS)
+    out["refl_scan"] = "t_inner_last + 4 sigma .. gate_end"
+    cache = _RunCache()
+    t0 = time.time()
+    rows = []
+    for axis, pattern, name in WINDOW_SCAN_ARMS:
+        with open(pathlib.Path(results_dir) / f"e5_{axis}.json") as fh:
+            stored_cell = json.load(fh)["cells"][pattern]
+        stored = stored_cell["singles"][name] if name in stored_cell["singles"] \
+            else {b["name"]: b for b in stored_cell["bands"]}[name]
+        spec = AXES[axis]
+        pinned = axis != "z"
+        cell = model_cell(pattern, spec, pinned)
+        rec = cell["singles"][name] if name in cell["singles"] else {b["name"]: b for b in cell["bands"]}[name]
+        n_steps = cell["n_steps"]
+        lay = rec["layout"]
+        built = make_b_profile(lay["lead_cell_m"], lay["n_B"], cell["d_min_m"], pinned)
+        b_key, _, (grid_b, trace_b) = cache.run(spec, built["profile"], built["m_lo"] + lay["k_src"],
+                                                built["m_lo"] + lay["k_prb"], n_steps)
+        a_key, _, (grid_a, trace_a) = cache.run(spec, unrle(rec["profile_rle"]), rec["k_src_used"],
+                                                rec["k_prb_used"], n_steps)
+        dt = float(grid_a.dt)
+        row = {"axis": axis, "pattern": pattern, "arm": name, "run_id": a_key, "b_run_id": b_key,
+               "stored_run_id": stored["meas"]["run_id"], "stored_b_run_id": stored["meas"]["b_run_id"],
+               "dt_s": dt, "R_model": rec["R_model"], "R_meas_stored": stored["meas"]["R_meas"],
+               "te10_cutoff_grid_hz": te10_cutoff_hz(dt)}
+        row.update(window_scan_arm(trace_a, trace_b, dt, rec, n_steps))
+        row["rerun_bit_identical"] = bool(row["R_meas_rerun"] == row["R_meas_stored"])
+        row["rerun_rel_diff"] = abs(row["R_meas_rerun"] - row["R_meas_stored"]) / row["R_meas_stored"]
+        rows.append(row)
+        print(f"window scan {axis}/{pattern}/{name}: R_meas rerun {row['R_meas_rerun']:.10e} stored "
+              f"{row['R_meas_stored']:.10e} bit_identical={row['rerun_bit_identical']} | incident "
+              f"{row['inc_ratio_min']:.4f}..{row['inc_ratio_max']:.4f} (p-p {row['inc_peak_to_peak_rel']*100:.2f} %, "
+              f"beat {row['inc_scan_beat_hz']/1e9:.2f} GHz, cutoff {row['te10_cutoff_grid_hz']/1e9:.2f} GHz) | "
+              f"reflection {row['refl_ratio_min']:.4f}..{row['refl_ratio_max']:.4f} | R over legal pairs "
+              f"{row['R_range_rel_model'][0]*100:+.2f} .. {row['R_range_rel_model'][1]*100:+.2f} % of model "
+              f"(nominal {row['R_nominal_rel_model']*100:+.2f} %)", flush=True)
+    out["rows"] = rows
+    out["all_reruns_bit_identical"] = all(r["rerun_bit_identical"] for r in rows)
+    out["max_half_range_rel_model"] = max(max(abs(r["R_range_rel_model"][0]), abs(r["R_range_rel_model"][1]))
+                                          for r in rows)
+    out["fdtd_runs_new"] = cache.n_new
+    out["wallclock_s"] = time.time() - t0
+    with open(out_path, "w") as fh:
+        json.dump(out, fh, indent=1)
+    print(f"wrote {out_path} (FDTD runs {cache.n_new}, wallclock {out['wallclock_s']:.1f}s, "
+          f"all reruns bit-identical {out['all_reruns_bit_identical']}, "
+          f"largest half-range {out['max_half_range_rel_model']*100:.2f} % of model)")
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--model-only", action="store_true")
@@ -1264,6 +1375,9 @@ def main(argv=None):
     ap.add_argument("--refresh-w4", default=None,
                     help="e5_z.json path: regenerate the W4 control block from the STORED S cell "
                          "and E1's JSON (no FDTD; same judge code)")
+    ap.add_argument("--window-scan", default=None,
+                    help="results directory: second-pass window-end sensitivity diagnostic on five "
+                         "recorded arms (5 FDTD reruns, no verdict touched); writes --out")
     ap.add_argument("--out", default=None)
     args = ap.parse_args(argv)
     if args.note_tables:
@@ -1272,13 +1386,18 @@ def main(argv=None):
     if args.results_tables:
         print(results_tables(args.results_tables))
         return
+    if args.window_scan:
+        run_window_scan(args.out or "validation/research/multiband_nu/results/e5_window_scan.json",
+                        args.window_scan)
+        return
     if args.refresh_w4:
         with open(args.refresh_w4) as fh:
             zres = json.load(fh)
         with open(E1_JSON) as fh:
             zres["w4_control"] = w4_control(zres["cells"]["S"], json.load(fh))
         zres["w4_control_recomputed_from_stored"] = {
-            "git_sha": _git_sha(), "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "git_sha": _git_sha(), "git_dirty": _git_dirty(),
+            "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "reason": "the first --resume call (L1-Z) rebuilt the file from the previous cells and dropped the block"}
         with open(args.refresh_w4, "w") as fh:
             json.dump(zres, fh, indent=1)
