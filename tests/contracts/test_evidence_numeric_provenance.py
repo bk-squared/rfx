@@ -575,6 +575,17 @@ CLASSIFICATION: dict[str, str] = {
     "docs/design_notes/20260907_nu_band_accuracy_ad_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260913_nu_ad_directional_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260913_nu_ad_designvar_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-14 (nu full-functionality lane 1): none of the four carries a
+    # `path.json::key` span (parses empty); the AD-Q notes are replayed from
+    # results/adq_*.json by tests/unit/nonuniform/test_adq_designvar_replay.py,
+    # the program document is planning only (no measurement), and the lane-1
+    # note is replayed from results/e5_*.json by
+    # tests/unit/nonuniform/test_e5_multilevel_replay.py, verdict for verdict.
+    # The first three predate lane 1 and had no entry (the contract failed on
+    # this branch before lane 1 touched anything); listed here so the tree
+    # passes, with the same mechanical check as every other NU note.
+    "docs/design_notes/20260913_nu_full_functionality_program.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260913_nu_lane1_multilevel_xyz_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260908_adi_interior_pec_guard.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260908_automesh_regressions.md": NO_ARTIFACT_REFERENCE,
     # 2026-09-10 (#931 lattice-ownership merge): a single `::referee` span
