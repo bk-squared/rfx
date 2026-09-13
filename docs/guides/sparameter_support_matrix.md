@@ -414,6 +414,9 @@ ports are required. `run()` provides only per-port diagnostics.
   `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].max_mag_abs_diff = 0.0193`
   and
   `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].mean_mag_abs_diff = 0.007767`.
+  The preserved historical sequence is June `0.0707` / `0.00943`, current-main
+  pre-fix `0.1500` / `0.1055`, and post-fix aggregate mean `0.001953`; these
+  values are provenance records, not additional tolerances.
 - The validation battery requires empty-guide `max |S11| < 0.02`, maximum column
   power `< 1.02`, symmetric-obstacle mean reciprocity error `< 0.01`, and a
   PEC-short result with `min |S11| >= 0.99` and `max |S11| < 1.03`.
