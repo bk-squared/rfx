@@ -15,6 +15,13 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   `sys.exit` path in the ring-resonator crossval to use the same `_rc` value,
   preventing a later exit branch from contradicting retained evidence.
 
+### Fixed — cv02 Q-rate interval transform (#945)
+
+- Transform the declared decay-rate interval into its exact asymmetric log-Q
+  bounds, including an unbounded high-Q side when the rate interval reaches
+  zero. Keep the existing record-resolution policy and public scalar window,
+  while removing the false symmetric upper restriction.
+
 ### Fixed — shared coordinates for Kottke smoothing (#833)
 
 - Build uniform-grid smoothing coordinates from the same exact host-float64

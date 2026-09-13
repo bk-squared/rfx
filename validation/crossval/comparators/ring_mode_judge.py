@@ -35,10 +35,13 @@ Gates (all evaluated only when the external reference is present):
 ``mean_err``  mean relative frequency error over ALL assigned pairs < 5%
 ``max_err``   max relative frequency error over ALL assigned pairs < 5%
 ``q``         for every mode whose decay the record actually observed,
-              ``|ln(Q_rfx / Q_ref)| <= ln(1 + tau_ref / T)``
+              the Q interval obtained by transforming the decay-rate
+              interval; it is asymmetric when ``tau_ref/T > 0``
 ============  ==========================================================
 
-The Q window is derived, not chosen — see :func:`q_window`.
+    The decay-rate scale is a declared record-resolution policy; its
+    transformation into Q bounds is exact — see :func:`q_window` and
+    :func:`q_log_bounds`.
 
 Frequencies and the record length must be in reciprocal units (the script
 passes both in Meep normalised units: ``f`` in ``c/a``, ``T`` in ``a/c``).
@@ -67,8 +70,9 @@ MIN_MATCHED = 2
 #: ``T/tau = 0.376`` (resolved) and ``0.086`` (not resolved, "must be
 #: excluded"); any cut inside that interval implements the published finding,
 #: and 1/4 is the round geometric fraction in it (a quarter e-folding = 22%
-#: of observed amplitude decay). Consequence: the loosest admissible Q window
-#: is tau/T <= 4, so every gated mode still rejects a factor-3.35 Q error.
+#: of observed amplitude decay). This cut controls whether the record is long
+#: enough to judge Q; it does not impose a finite upper Q bound when the
+#: transformed rate interval reaches zero (s >= 1).
 Q_RECORD_MIN_EFOLDS = 0.25
 
 #: Mode-admission floor, applied symmetrically to both solvers' harminv output.
@@ -225,6 +229,10 @@ def q_window(ref_freq: float, ref_Q: float, record_length: float
     Meep (verdict) lane keeps its calibrated record length instead of the
     tau-scaled one.
 
+    ``window`` is retained as the historical scalar resolution quantity for
+    callers and reports.  The Q gate itself uses the exact, asymmetric
+    transformed interval from :func:`q_log_bounds`.
+
     Returns ``(T/tau, window)``. ``T/tau`` is the number of amplitude
     e-foldings the record observed; a mode is Q-gated only when it reaches
     :data:`Q_RECORD_MIN_EFOLDS`.
@@ -234,6 +242,28 @@ def q_window(ref_freq: float, ref_Q: float, record_length: float
         return 0.0, float("inf")
     t_over_tau = record_length / tau
     return t_over_tau, tau / record_length
+
+
+def q_log_bounds(ref_freq: float, ref_Q: float, record_length: float
+                 ) -> tuple[float, float]:
+    """Return the exact log-Q bounds implied by a rate interval.
+
+    With ``s = tau_ref/T``, the stated rate uncertainty is
+    ``alpha_rfx/alpha_ref ∈ [1-s, 1+s]``.  Since ``Q`` is inversely
+    proportional to ``alpha``, the admissible ratio is
+    ``Q_rfx/Q_ref ∈ [1/(1+s), 1/(1-s)]``.  In log space this is
+    ``[-log1p(s), -log1p(-s)]``; the upper side is unbounded when ``s >= 1``.
+
+    A non-positive record has no usable rate interval and returns an
+    unrestrictive pair.  Such a row is not Q-gated by :func:`judge` because
+    its ``T/tau`` is below :data:`Q_RECORD_MIN_EFOLDS`.
+    """
+    t_over_tau, window = q_window(ref_freq, ref_Q, record_length)
+    if not math.isfinite(window):
+        return float("-inf"), float("inf")
+    lower = -math.log1p(window)
+    upper = float("inf") if window >= 1.0 else -math.log1p(-window)
+    return lower, upper
 
 
 def judge(
@@ -276,8 +306,12 @@ def judge(
             )
             errs.append(row.freq_err_pct)
             if row.q_gated and partner.Q > 0 and ref_mode.Q > 0:
-                row.q_log_ratio = abs(math.log(partner.Q / ref_mode.Q))
-                row.q_pass = row.q_log_ratio <= math.log(1.0 + window)
+                signed_log_ratio = math.log(partner.Q / ref_mode.Q)
+                row.q_log_ratio = abs(signed_log_ratio)
+                q_lower, q_upper = q_log_bounds(
+                    ref_mode.freq, ref_mode.Q, record_length
+                )
+                row.q_pass = q_lower <= signed_log_ratio <= q_upper
             elif row.q_gated:
                 row.q_pass = False
         verdict.rows.append(row)
