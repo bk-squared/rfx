@@ -1878,9 +1878,11 @@ def _settling_db_for_record(peak_power: float,
     underflowed to exactly zero. The caller drops such a record from the
     worst-over-records and reports it by name; it must never be scored.
 
-    On a record that clears the floor the arithmetic is the original
-    ``10*log10((end + tiny)/(peak + tiny))``, unchanged, so a run whose
-    records all clear the floor returns the same number it always did.
+    The arithmetic is ``10*log10((end + tiny)/(peak + tiny))``. The public
+    record scorer tests the storage floor in amplitude units first, then
+    supplies normalized powers and a zero floor here to avoid overflowing
+    or underflowing a square. The regularizer then bounds an unrepresentable
+    tail ratio independently of the record's amplitude units.
     """
     if not (peak_power > 0.0):
         return None
@@ -1909,27 +1911,37 @@ def settling_db_from_named_records(named_records,
     Per record: peak power over the whole record, mean power over the last
     tenth, ``10*log10(end/peak)``; records below
     :func:`_settling_record_floor_amplitude` are SKIPPED (not scored) and
-    named. The return is the WORST (largest) surviving ratio.
+    named. Powers are normalized before reduction to keep the ratio
+    independent of amplitude units and avoid squared-value overflow or
+    underflow. The return is the WORST (largest) surviving ratio.
 
     Returns NaN when the witness has no coverage at all: a traced record, a
-    record shorter than 10 samples, or every record under the floor (which
-    also warns). NaN is the "no witness value" state and must never be read
+    record shorter than 10 samples, any invalid selected record, or every
+    record under the floor. Invalid records are named separately from
+    underflow skips and make the whole witness unavailable, with a warning.
+    NaN is the "no witness value" state and must never be read
     as a pass -- route every comparison through
     ``rfx.api._sparams.settling_verdict``.
 
     ``return_detail=True`` returns ``(worst_db, detail)`` with
     ``skipped_records``, ``n_witnessed``, ``floor_amplitude`` and
-    ``per_record_db`` (name -> dB for every scored record).
+    ``per_record_db`` (name -> dB for every scored record). Invalid input
+    additionally supplies ``invalid_records`` (name -> reason).
     """
     from rfx.core.jax_utils import is_tracer
+
+    invalid_records = {}
 
     def _out(value, skipped, n_witnessed, floor, per_record):
         if not return_detail:
             return value
-        return value, {"skipped_records": skipped,
-                       "n_witnessed": n_witnessed,
-                       "floor_amplitude": floor,
-                       "per_record_db": per_record}
+        detail = {"skipped_records": skipped,
+                  "n_witnessed": n_witnessed,
+                  "floor_amplitude": floor,
+                  "per_record_db": per_record}
+        if invalid_records:
+            detail["invalid_records"] = dict(invalid_records)
+        return value, detail
 
     worst = -np.inf
     skipped: list[str] = []
@@ -1940,20 +1952,58 @@ def settling_db_from_named_records(named_records,
         if is_tracer(ts):
             return _out(float("nan"), skipped, n_witnessed, floor, per_record)
         raw = np.asarray(ts)
-        if raw.shape[0] < 10:
+        if raw.ndim == 0 or raw.shape[0] < 10:
             return _out(float("nan"), skipped, n_witnessed, floor, per_record)
         floor = _settling_record_floor_amplitude(np.finfo(raw.dtype).tiny)
-        amp = np.abs(raw.astype(np.float64))
-        p = amp ** 2
-        tail = max(1, p.shape[0] // 10)
-        db = _settling_db_for_record(float(p.max()),
-                                     float(p[-tail:].mean()), floor)
-        if db is None:
+        if not np.isfinite(raw).all():
+            invalid_records[record_name] = "non-finite samples"
+            continue
+        # Complex Bloch/TFSF records carry both quadratures. Widen before
+        # taking the magnitude so a global phase cannot change coverage or
+        # ring-down; casting to real first discards physical signal content.
+        dtype = np.complex128 if np.iscomplexobj(raw) else np.float64
+        with np.errstate(over="ignore", invalid="ignore"):
+            wide = raw.astype(dtype)
+        if not np.isfinite(wide).all():
+            invalid_records[record_name] = "samples exceed the diagnostic precision range"
+            continue
+        complex_record = np.iscomplexobj(wide)
+        scale = float(np.max(np.abs(wide.real)))
+        if complex_record:
+            scale = max(scale, float(np.max(np.abs(wide.imag))))
+        # Use a component scale so even a finite complex record whose
+        # magnitude exceeds float64 max remains representable. A value
+        # below this bound cannot clear the amplitude floor on either
+        # quadrature, so subnormal division is unnecessary.
+        if scale == 0.0 or scale < floor / (np.sqrt(2.) if complex_record else 1.):
             skipped.append(record_name)
+            continue
+        p = (wide.real / scale)**2
+        if complex_record:
+            p = p + (wide.imag / scale)**2
+        peak = float(p.max())
+        if scale < floor / np.sqrt(peak):
+            skipped.append(record_name)
+            continue
+        tail = max(1, p.shape[0] // 10)
+        ratio = float((p[-tail:] / peak).mean())
+        db = _settling_db_for_record(1., ratio, 0.)
+        if db is None or not np.isfinite(db):
+            invalid_records[record_name] = "non-finite power-ratio calculation"
             continue
         n_witnessed += 1
         per_record[record_name] = db
         worst = max(worst, db)
+
+    if invalid_records:
+        import warnings
+        warnings.warn(
+            "ring-down settling witness has INVALID RECORDS: "
+            + "; ".join(f"{name}: {reason}" for name, reason in invalid_records.items())
+            + ". The witness is unavailable; other records cannot establish a pass.",
+            stacklevel=_warn_stacklevel,
+        )
+        return _out(float("nan"), skipped, n_witnessed, floor, per_record)
 
     if n_witnessed == 0:
         import warnings

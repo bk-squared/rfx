@@ -1044,7 +1044,14 @@ class ForwardResult(NamedTuple):
     """Minimal differentiable simulation result.
 
     Carries only the observables needed by gradient-based objectives,
-    avoiding the broader stateful surface of :class:`Result`.
+    avoiding the broader stateful surface of :class:`Result`. The
+    ``settling_db`` and ``settling_witness`` properties score the concrete
+    user-probe record using the same host diagnostic as ``run()``. They
+    report absence while records are traced; read them on the returned
+    concrete result, not as gradient objectives. Numeric
+    ``settling_probe_info`` preserves the selected columns and component
+    labels without inserting strings into a JAX result tree. These lazy
+    properties are not stored fields in ``_asdict()``.
 
     ``lumped_port_sparams`` exposes the raw per-port (V_dft, I_dft) tuples
     accumulated inside the JIT scan body when ``forward(port_s11_freqs=...)``
@@ -1072,6 +1079,28 @@ class ForwardResult(NamedTuple):
     lumped_port_sparams: object = None
     wire_port_sparams: object = None
     dft_planes: object = None
+    settling_probe_info: object = None
+
+    @property
+    def settling_db(self) -> float | None:
+        """Host ring-down diagnostic from the concrete recorded user probes.
+
+        None means absent, including during tracing. This is a diagnostic,
+        not a differentiable objective. A returned JIT result can be scored
+        once its time series is concrete. Other result fields retain their
+        existing JIT restrictions (for example the host Grid object).
+        Use ``settling_verdict`` to judge the diagnostic.
+        """
+        from rfx.probes.settling import probe_record_settling_witness
+        return probe_record_settling_witness(
+            self.time_series, self.settling_probe_info, warn=False)[0]
+
+    @property
+    def settling_witness(self) -> dict:
+        """Provenance for ``settling_db``, without string leaves in JAX trees."""
+        from rfx.probes.settling import probe_record_settling_witness
+        return probe_record_settling_witness(
+            self.time_series, self.settling_probe_info, warn=False)[1]
 
 
 # ---------------------------------------------------------------------------
