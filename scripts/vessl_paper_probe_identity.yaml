@@ -1,0 +1,43 @@
+name: rfx-paper-probe-identity
+description: "Sequential probe/no-probe NTFF/S and JIT/AD identity on both real paper builders; fixed source commit and unchanged record lengths."
+tags: [rfx, issue-918, ntff, msl, autodiff]
+resources:
+  cluster: remilab-c0
+  preset: gpu-a6000-1
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  MPLBACKEND: Agg
+  SMOKE: "0"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  COMMIT=da718e33c14e541919e028a3bd7dbbd7701301db
+  REPO=/tmp/rfx-paper-probe-$COMMIT
+  OUT=/root/workspace/byungkwan-workspace/research/rfx-review-corrections/$COMMIT
+  mkdir -p "$REPO" "$OUT"
+  git -C "$REPO" init -q
+  git -C "$REPO" remote add origin https://github.com/bk-squared/rfx.git
+  git -C "$REPO" fetch -q --depth 1 origin "$COMMIT"
+  git -C "$REPO" checkout -q --detach FETCH_HEAD
+  cd "$REPO"
+  git rev-parse HEAD | tee "$OUT/commit.txt"
+  python -m pip install -q 'jax[cuda12]==0.6.2' 'numpy<2' 'optax==0.2.5' 'scipy>=1.11' 'h5py>=3.8' 'matplotlib>=3.7'
+  python -m pip freeze > "$OUT/pip-freeze.txt"
+  export PYTHONPATH="$REPO"
+  python -c 'import jax; print(jax.__version__, jax.devices()); assert jax.__version__ == "0.6.2" and jax.default_backend() == "gpu"' | tee "$OUT/runtime.txt"
+  STATUS=0
+  for CASE in beam msl; do
+    set +e
+    timeout 14400 python -u scripts/diagnostics/paper_probe_identity.py --case "$CASE" --out "$OUT/$CASE" > "$OUT/$CASE.log" 2>&1
+    RC=$?
+    set -e
+    echo "$RC" > "$OUT/$CASE.rc"
+    tail -n 35 "$OUT/$CASE.log"
+    if [ "$RC" -ne 0 ]; then STATUS=1; fi
+  done
+  echo "PAPER_PROBE_IDENTITY_STATUS=$STATUS OUT=$OUT"
+  exit "$STATUS"
