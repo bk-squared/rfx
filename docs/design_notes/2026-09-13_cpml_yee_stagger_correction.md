@@ -52,6 +52,20 @@ magnetic profiles retain their legacy behavior.
 
 ## Evidence
 
+Everything in this section is **ported from research commit 7b6c33d5 and not
+re-measured on this branch.** The counts and timings below -- 136 passed, the
+5 RED to 16 pass remedy count, the 45-test compatibility check at 67.59 s, the
+20 byte-identical NPY pairs -- were recorded on
+`accel/pod-distributed-usable-20260912`, and this bundle carries **no committed
+receipt** for any of them; the same holds for the infinite-lattice assertion in
+the header above. They are kept as the research lane's own record, reported and
+not gated, rather than deleted. What is gated on this branch is the
+operator-placement claim itself
+(`tests/unit/boundaries/test_cpml_yee_stagger.py` -- the exact mirror residual,
+plus the absolute orientation pin and the swap falsifier added 2026-09-14 after
+an independent review showed the mirrors alone pass on a reversed pair) and the
+GPU-witness section below, where every number resolves to a committed receipt.
+
 - Native3H RED/3E pass to6pass; distributed3RED to combined9pass.
 - Initial broad related CPU suite:136passed,1marker-deselected,51warnings.
   Warnings were read: existing amplitude/preflight/grading advisories and
@@ -119,8 +133,13 @@ the 5% requirement, its source check passes
 (`docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/red_witness.json::source_relative_peak_error = 6.5534537e-07`,
 the same value GREEN reports), and its late window passes on all four channels
 (`docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/red_witness.json::channels.far_hy.late_relative_max = 0.00125`).
-So the arms are separated by exactly the channel the operator-placement
-argument predicts, not by a broken run. GREEN passes every full and late
+So the arms are separated by one channel, not by a broken run, and that
+separation is **consistent with** the operator-placement argument rather than
+predicted by it: far-Hy falls 359x with the bulk and source code unchanged
+between the arms, which implicates CPML placement. The mirror derivation
+establishes that E and transverse H must be sampled half a cell apart; it does
+not on its own say which observation channel a violation shows up in, so this
+is corroboration, not a channel-level prediction the run confirmed. GREEN passes every full and late
 requirement; its worst late channel is
 `docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/green_witness.json::channels.far_ez.late_relative_max = 0.000174`.
 The witness verdicts as printed per arm are in `artifacts/summary.txt`,
@@ -153,7 +172,32 @@ The two raw trace arrays are deliberately NOT committed. They are recorded by
 digest in `manifest.json` under `not_committed`: red_trace.npy sha256
 8390e4cef6a2d01269eadb60d55cd61ae5ac9ecc7a6c8a1ca370440ec60c43bb, green_trace.npy
 sha256 d179ac30d0c2ba91f8ae54a84546cedbd48d52d61f17307e28be291c344fe283 (110720
-bytes each). Every scalar this note cites lives in the two witness JSONs, which
-also carry the per-channel reference/observed/residual series the traces hold.
+bytes each). Every scalar **this GPU-witness section** cites lives in the two
+witness JSONs, which also carry the per-channel reference/observed/residual
+series the traces hold. That claim is scoped to this section only: the Evidence
+section above is the ported research-lane record and has no receipt in this
+bundle, as its own disclaimer says.
 The originals are retained on remilab-fs at
 `personal-workspaces/claude-workspace/rfx/runs/cpml-stagger-20260913T160213Z/`.
+
+## Pre-existing limitation (out of scope)
+
+The NU distributed applier synthesizes the x and y high-face **E** profiles by
+flipping the corresponding low-face ones -- `b_xr`/`c_xr`/`k_xr` at
+`rfx/runners/distributed_nu.py` line 1466 and `b_yr`/`c_yr`/`k_yr` at line 1472
+(grep the names; the line numbers rot) -- so it does not honor an arbitrary
+explicit high-face E profile;
+the public NU adapter also does not forward arbitrary per-face counts. An
+independent review measured this directly on a kernel probe -- h = 1/512,
+budget 4, kappa_max 3, face counts (1, 4, 2, 3, 3, 1), random unit-scale
+fields, seed 5 -- and found a native/NU maximum Ey difference of 1122.99 V/m
+while the H differences stayed at or below 2.38e-7 A/m, i.e. float32 arithmetic
+noise; with every face count set to 1 the H differences stayed at that same
+floor. Those numbers are the reviewer's measurement, reported and not gated:
+they have no committed receipt here.
+
+This behavior **predates this lane** and is untouched by it. What it limits is
+any general per-face **E** claim on the NU distributed path; it does not touch
+the corrected magnetic-profile selection, which is what this note qualifies --
+the H differences above are the evidence that the H selection is unaffected.
+Fixing the E synthesis is a separate change on a separate lane.
