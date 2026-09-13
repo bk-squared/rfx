@@ -115,3 +115,22 @@ def test_h_air_fire_is_on_the_upper_side_of_the_band():
     share is exactly zero (revert arm). Pinned so a change in either is noticed."""
     d = _load("stack_l1")["directions"]["h_air"]["order"]
     assert d["verdict"] == "FIRED" and d["R1"]["slope"] > 2.2 and d["points"] == 4
+
+
+def test_l2_floor_second_attempt_replay():
+    """Second attempt (measured noise floor): re-derive each verdict from the
+    stored ladders with the recorded sigma, and pin the declared outcome --
+    h_thin still FIRES, so L2 thickness is not verified by this lane."""
+    d = _load("stack_l2_floor")
+    first = _load("stack_l2")
+    for name, r in d["directions"].items():
+        assert r["sigma_reliable"] is True, name
+        assert r["sigma_in_ulp"] > 1.0, name
+        steps = first["directions"][name]["fd"]["steps"]
+        pts = _points(steps)
+        ad = first["directions"][name]["ad_relative"]
+        o = adq.fit_order(pts, d["loss0"], ad, sigma=r["sigma"])
+        f = adq.fd_budget(pts, ad, adq.P0[adq.NAMES.index(name)], sigma=r["sigma"])
+        assert o["verdict"] == r["order"]["verdict"], name
+        assert f["verdict"] == r["fd"]["verdict"], name
+    assert d["directions"]["h_thin"]["fd"]["verdict"] == "FIRED"

@@ -362,3 +362,89 @@ over eligible points.
 **Declared outcome rule:** if h_thin still FIRES with the measured floor,
 L2 thickness gradients are not verified by this lane, and the note says so;
 the first-attempt record stays FIRED either way.
+
+## Results — second attempt, L2 thickness (measured noise floor)
+
+Run once on `edd43fb1`; L2 reproduced bit for bit (`loss(P0) == loss0`
+asserted). Raw: `results/adq_stack_l2_floor.json`.
+
+| control | measured floor | cubic/quad RMS | order | R1 | FD | empirical rel. error bound |
+|---|---|---|---|---|---|---|
+| h_core_left | 13.6 ulp | 1.00 (reliable) | FIRED (upper) | 3.241 | HELD | 3.8e-3 |
+| **h_thin** | 43.6 ulp | 1.00 (reliable) | INCONCLUSIVE | — (2-pt run) | **FIRED** | 8.3e-3 |
+| h_core_right | 13.5 ulp | 1.00 (reliable) | FIRED (upper) | 2.638 | HELD | 2.4e-3 |
+| h_air | 27.8 ulp | 1.00 (reliable) | INCONCLUSIVE | — (3-pt run) | HELD | 4.2e-2 |
+
+The measured floors are 14-44 ulp — far above the one ulp the first attempt
+assumed (my "~150 ulp" in the first-attempt diagnosis was one FD point's
+deviation, not the RMS roughness; the measured figure supersedes it).
+
+**Declared outcome rule applies: h_thin still FIRES, so L2 thickness
+gradients are NOT verified by this lane.** h_thin's FD verdict is decided by
+one step: HELD at relative h = 1.95e-3 (err/3B 0.30) and 3.9e-3 (0.35),
+FIRED at 3.1e-2 (err/3B 3.96, rho 4.10). The measured floor cannot touch
+that step — at h = 3.1e-2 the roundoff term is negligible and the fire is
+truncation-side.
+
+### Why L2 thickness cannot be adjudicated here — diagnosis, not verdict
+
+The one-sided slopes of h_thin's L2 ladder, as fractions of the AD value:
+
+| relative h | FD+ / AD | FD- / AD | central / AD |
+|---|---|---|---|
+| 6.1e-5 | 0.962 | 1.013 | 0.987 |
+| 4.9e-4 | 0.954 | 1.037 | 0.995 |
+| 1.95e-3 | 0.856 | 1.170 | 1.013 |
+| 3.9e-3 | 0.761 | 1.329 | 1.045 |
+| 7.8e-3 | 0.755 | 1.504 | 1.129 |
+| 1.56e-2 | 1.039 | 1.243 | 1.141 |
+| 3.1e-2 | 0.982 | 1.320 | 1.151 |
+
+For a smooth loss the two one-sided slopes close on each other linearly in
+h; here they wander non-monotonically, and the curvature implied by
+`FD+ - FD-` changes by an order of magnitude between steps. L2 is the
+narrowband DFT power, at a fixed frequency, of an 8000-step transient: a
+thickness change moves `dt`, which changes how many oscillation periods fit
+in the fixed step window, so the observable carries RIPPLE in the design
+variable on a scale of about 1e-2 relative. That is a property of the
+observable, seen before as E4's curvature fire (E4-T, PR #962).
+
+What the data do support: over every step with h <= 3.9e-3 the central
+difference sits within **-1.3 % to +4.5 %** of the AD value, and the
+empirical bound `min R1/(h |g.v|)` is 0.83 %. What they do not support is
+the declared gate, and the lane does not claim it.
+
+**Consequence for use.** The AD thickness gradient of a resonant DFT-power
+observable is a valid LOCAL derivative, but the landscape it describes is
+rippled at roughly the 1 % scale in thickness. An optimizer stepping thickness
+by more than a few tenths of a percent will see the ripple, not the local
+slope. A smooth resonant observable — a tapered window, a spectral integral
+across the line, or a differentiable resonance-frequency estimator — is the
+next step and is out of scope here.
+
+## What the NU autodiff claim is, after this lane
+
+Stated so it can be copied into the support matrix:
+
+- **Verified quantitatively, along physical design variables** (layer
+  thickness at fixed total length, per-layer permittivity), by Taylor-
+  remainder order (R1 slope in [1.8, 2.2]) AND by agreement with central FD
+  inside three times the FD's own estimated error:
+  - transient probe-energy loss (120 steps): h_core_left, **h_thin**,
+    h_core_right, eps_core_right. Tightest band 2.8e-4 relative (h_thin).
+    These cover **88.3 %** of the cell-space gradient norm.
+  - resonant DFT-power loss (8000 steps): eps_core_left, eps_core_right,
+    eps_air (second order; FD HELD).
+- **The CFL time-step path is verified**, not assumed: removing it from the
+  gradient makes the same h_thin test fire (R1 0.947); h_thin's dt-path
+  share is 18.5 % of its gradient.
+- **Not verified**: resonant DFT-power gradients with respect to thickness
+  (FD fires; the observable is rippled at ~1 % in thickness — above);
+  per-cell gradients on tied-minimum cells, which are not derivatives but an
+  equal-split subgradient, `g_ad = FD+ + (FD- - FD+)/n_tied` — a per-cell
+  optimizer that breaks a tie must not read the split as its directional
+  derivative; per-cell gradients on small non-tied cells, which float32 FD
+  cannot resolve better than a few percent on this fixture (A3 y: ~3.6 % at
+  the U-curve minimum).
+- **Legacy figure**: the 5 %-dominance / 15 % per-cell smoke check is kept for
+  continuity and is not a quantitative claim.
