@@ -37,11 +37,23 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   `scripts/diagnostics/cv02_harminv_decimation_ladder.py`), so the envelope's
   provenance is now #812's published bracket alone. (b) The Q gap's attribution
   to a staircased ring boundary and subpixel treatment, which #907 retracted as
-  an overclaim, is removed from all three surfaces that carried it. No gate
-  value, admission cut or verdict changed.
+  an overclaim, is removed from all three surfaces that carried it — including
+  the weaker restatement ("a property of the two discretizations rather than of
+  the record"), which the same evidence does not support either: rfx's Q being
+  stable across record lengths rules out a record artefact, not the two
+  estimators. No gate value, admission cut or verdict changed.
 - Pin which retained cv02 record the "the transform moved no committed verdict"
   guard was established against, so regenerating that record reds the guard
-  instead of silently turning it into the judge checking its own output.
+  instead of silently turning it into the judge checking its own output. That
+  record predates the correction and still calls the Q window "not a chosen
+  number"; since it cannot be regenerated without voiding the guard, the
+  manifest's `claim_scope` and the pre-declaration's Correction 4(d) record
+  that the note is superseded by `Q_GATE_INGREDIENTS`.
+- Withdraw the decimation ladder's claim that its two frequency bands are an
+  independent witness for each other. Both bands resolve to the same decimation
+  plan, so the two columns are one computation and agree by construction; the
+  band pair is a plan-stability check, and the independent witness is
+  `decimate='auto'` against `decimate=False`.
 
 ### Fixed — cv02 Q-rate interval transform (#945)
 
