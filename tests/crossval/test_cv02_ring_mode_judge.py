@@ -29,6 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 JUDGE_PATH = REPO_ROOT / "validation/crossval/comparators/ring_mode_judge.py"
 TRIALS_PATH = REPO_ROOT / "scripts/diagnostics/cv02_judge_tautology_trials.py"
 TRIALS_JSON = REPO_ROOT / "tests/fixtures/cv02_ring_judge/tautology_trials_200k.json"
+LADDER_JSON = REPO_ROOT / "tests/fixtures/cv02_ring_judge/harminv_decimation_ladder.json"
 SCRIPT_PATH = REPO_ROOT / "validation/crossval/02_ring_resonator.py"
 
 
@@ -310,8 +311,16 @@ def test_b3_wrong_q_on_the_gated_mode_passes_the_shipped_judge_and_fails() -> No
 
 
 def test_b3_the_q_gate_is_two_sided() -> None:
-    """An over-damped mode (Q too LOW) fails too -- the log form is symmetric,
-    so a leaky boundary is caught as well as a lossless one."""
+    """An over-damped mode (Q too LOW) fails too, so a leaky boundary is caught
+    as well as a lossless one.
+
+    Two-sided is NOT symmetric. #945 replaced the symmetric ``+-log1p(s)``
+    window with the transformed rate interval, whose sides differ and whose
+    high-Q side is unbounded for ``s >= 1``
+    (:func:`rate_interval_to_log_q_bounds`). The low-Q side stays finite at
+    every ``s``, which is why this direction is gated at all; the earlier
+    wording here claimed symmetry and was wrong after #999.
+    """
     defect = [
         rmj.SolverMode(0.147213, 357.6 / 5.0),
         rmj.SolverMode(0.175298, 1864.1),
@@ -350,8 +359,17 @@ def test_the_assignment_contains_no_tolerance() -> None:
     assert rmj.assign([0.12, 0.18], [0.1805]) == [None, 0]
 
 
-def test_q_window_is_the_record_length_resolution_limit() -> None:
-    """delta_Q/Q = tau/T, with tau = Q_ref/(pi f_ref). No fitted constant."""
+def test_q_window_is_tau_ref_over_record_length() -> None:
+    """``s = tau_ref/T``, with ``tau = Q_ref/(pi f_ref)``. No fitted constant.
+
+    The name says the formula and nothing more, deliberately. This test used
+    to be called ``..._is_the_record_length_resolution_limit``; #907 measured
+    that reading false (a damped exponential has no ``1/T`` separation limit
+    to import), so the claim is withdrawn here as well as in the module
+    docstring, the report header, the artifact note and the pre-declaration.
+    What survives is the algebra: no constant in this function was fitted to
+    the board it judges.
+    """
     for freq, q in [(0.118101575043663, 80.683059081382),
                     (0.147162555528154, 316.29272471914),
                     (0.175246750722663, 1677.48461212767)]:
@@ -359,8 +377,10 @@ def test_q_window_is_the_record_length_resolution_limit() -> None:
         t_over_tau, window = rmj.q_window(freq, q, RECORD_T)
         assert t_over_tau == pytest.approx(RECORD_T / tau, rel=1e-12)
         assert window == pytest.approx(tau / RECORD_T, rel=1e-12)
-    # A longer record buys a tighter window, linearly. This is the property
-    # that makes the gate track the instrument instead of a chosen number.
+    # A longer record buys a tighter window, linearly. That 1/T scaling is
+    # what makes the window shrink faster than the rfx-vs-Meep Q gap does --
+    # the "Known limitation" in q_window, i.e. a defect, NOT the virtue this
+    # comment used to claim. Pinned here so the scaling cannot change silently.
     _, w1 = rmj.q_window(0.147162555528154, 316.29272471914, RECORD_T)
     _, w2 = rmj.q_window(0.147162555528154, 316.29272471914, 4 * RECORD_T)
     assert w2 == pytest.approx(w1 / 4.0, rel=1e-12)
@@ -667,6 +687,141 @@ def test_harminv_error_field_is_the_decay_restated() -> None:
             # quality: the longer-lived mode reports the SMALLER "error"
             assert mode.error > 0.0
 
+def test_the_decimation_penalty_claim_does_not_reproduce() -> None:
+    """The second empirical prop under ingredient 1, withdrawn and pinned.
+
+    ``q_window`` briefly read: "what DOES degrade at short records is the
+    decimated path cv02 actually runs (3.49% there, 0.24% at the 0.25 cut)".
+    Those figures came from a comment on #907 and were never pinned by any
+    artifact, test or table in this repo. Re-measured on the configuration
+    that sentence names, they do not reproduce, and at the shorter of the two
+    rungs they cannot: no decimation stage fires there at all, so there is no
+    decimated path to measure.
+
+    Both halves are checked here -- the committed ladder
+    (``tests/fixtures/cv02_ring_judge/harminv_decimation_ladder.json``,
+    regenerate with ``scripts/diagnostics/cv02_harminv_decimation_ladder.py``)
+    and a live re-measurement of the two rungs that carry the claim, so the
+    artifact cannot rot into a number nobody re-runs.
+    """
+    from rfx.harminv import _decimation_plan, harminv
+
+    doc = json.loads(LADDER_JSON.read_text(encoding="utf-8"))
+    rows = {row["t_over_tau"]: row for row in doc["rows"]}
+    claimed = doc["withdrawn_claim"]["asserted_relative_q_error"]
+    assert set(claimed) == {"0.0822", "0.25"}
+
+    # (a) the shorter rung: 'auto' chooses no decimation, in BOTH bands, so
+    #     "the decimated path ... 3.49% there" has no path to be about.
+    short = rows[0.0822]
+    for band in short["bands"].values():
+        assert band["decimation_fires"] is False
+        assert band["decimation_factors"] == []
+        assert band["dt_eff_over_dt"] == 1.0
+        assert band["auto"]["relative_q_error"] == band["no_decimation"][
+            "relative_q_error"]
+
+    # (b) the 0.25 cut: decimation DOES fire, and the decimated path is not
+    #     worse than the undecimated one -- the opposite of the claim's sign.
+    cut = rows[0.25]
+    for band in cut["bands"].values():
+        assert band["decimation_fires"] is True
+        assert band["dt_eff_over_dt"] > 1.0
+        assert band["auto"]["relative_q_error"] <= band["no_decimation"][
+            "relative_q_error"]
+
+    # (c) every measured error on every rung is orders of magnitude below what
+    #     was asserted. Stated as a ratio so the assertion says "not close".
+    for key, asserted in claimed.items():
+        row = rows[float(key)]
+        for band in row["bands"].values():
+            assert band["auto"]["relative_q_error"] * 1e6 < asserted
+
+    # (d) the two bands are each other's witness: a decimation plan depends on
+    #     f_max, so a finding that holds in only one band is a band artefact.
+    for row in doc["rows"]:
+        plans = {tuple(b["decimation_factors"]) for b in row["bands"].values()}
+        assert len(plans) == 1, (row["t_over_tau"], plans)
+
+    # (e) live, on the two rungs the claim named: the artifact is reproducible
+    #     from today's rfx, not just a file somebody committed once.
+    dt = doc["signal"]["dt_s"]
+    freq = doc["signal"]["freq_hz"]
+    q_true = doc["signal"]["Q"]
+    tau = doc["signal"]["tau_s"]
+    band = doc["bands"]["withdrawn_claim_band"]
+    for key in ("0.0822", "0.25"):
+        t_over_tau = float(key)
+        n_samples = int(round(t_over_tau * tau / dt))
+        stored = rows[t_over_tau]["bands"]["withdrawn_claim_band"]
+        assert n_samples == stored["n_samples"]
+        factors, _ = _decimation_plan(n_samples, dt, band["f_max_hz"], "auto")
+        assert list(factors) == stored["decimation_factors"]
+        t = np.arange(n_samples) * dt
+        signal = np.exp(-t / tau) * np.cos(2 * math.pi * freq * t)
+        modes = harminv(signal, dt, band["f_min_hz"], band["f_max_hz"],
+                        decimate="auto")
+        assert modes
+        best = min(modes, key=lambda m: abs(m.freq - freq))
+        measured = abs(best.Q - q_true) / q_true
+        assert measured == pytest.approx(stored["auto"]["relative_q_error"],
+                                         rel=1e-6, abs=1e-15)
+        assert measured * 1e6 < claimed[key]
+
+
+def test_q_window_docstring_withdraws_the_decimation_penalty_claim() -> None:
+    """The withdrawal has to live where the number was quoted, and the two
+    figures must not survive anywhere in the cv02 surfaces."""
+    doc = rmj.q_window.__doc__
+    assert "WITHDRAWN" in doc
+    assert "harminv_decimation_ladder.json" in doc
+    assert "UNMEASURED" in doc
+    basis = next(i.basis for i in rmj.Q_GATE_INGREDIENTS
+                 if i.name == "estimator_uncertainty")
+    # the prop is not cited as a motivation any more ("motivated by ... and by
+    # the measured degradation ..."); it survives only as a named withdrawal
+    assert "and by the measured degradation" not in basis
+    assert "WITHDRAWN" in basis
+    assert "UNMEASURED" in basis
+    assert "harminv_decimation_ladder.json" in basis
+    # the figures survive in exactly one place -- quoted inside the sentence
+    # that withdraws them -- and nowhere on the script
+    judge_source = JUDGE_PATH.read_text(encoding="utf-8")
+    assert judge_source.count("3.49%") == 1
+    assert "briefly read" in judge_source
+    assert "3.49" not in SCRIPT_PATH.read_text(encoding="utf-8")
+
+
+def test_the_staircasing_attribution_is_withdrawn_everywhere() -> None:
+    """#907 (2026-09-10) retracted the attribution of the rfx-vs-Meep Q gap to
+    the ring's staircased curved boundary and its subpixel treatment, as an
+    overclaim: a counterexample moves Q while every frequency stays inside the
+    two solvers' mutual agreement, so the frequency agreement cannot pin the
+    geometry, and the log decomposition cannot settle it either.
+
+    The retraction has to hold on all three surfaces that carried it, not only
+    in the docstring that was being rewritten at the time. The forbidden
+    wordings are not spelled out here -- see ``withdrawn`` below, which builds
+    them at runtime so this docstring does not trip its own check.
+    """
+    surfaces = {
+        "q_window docstring": rmj.q_window.__doc__,
+        "script comment": SCRIPT_PATH.read_text(encoding="utf-8"),
+        "characterization test": Path(__file__).read_text(encoding="utf-8"),
+    }
+    # Assembled from fragments on purpose: one of the surfaces checked is this
+    # file, so a literal would match its own assertion and never fail.
+    withdrawn = ("is a " + "discretization offset",
+                 "staircased " + "ring boundary")
+    for name, text in surfaces.items():
+        assert "UNRESOLVED" in text, name
+        for phrase in withdrawn:
+            assert phrase not in text, (name, phrase)
+    # and the judge no longer prescribes the floor that was refused
+    assert "encoding the expected" not in rmj.q_window.__doc__
+    assert "certify the agreement" in rmj.q_window.__doc__
+
+
 def test_gated_row_retains_the_signed_ratio_and_the_bounds_that_judged_it(
 ) -> None:
     """An asymmetric interval cannot be audited from an absolute ``|ln Q|``:
@@ -716,6 +871,38 @@ def test_the_persisted_ingredient_payload_round_trips_through_json() -> None:
 
 CV02_RECORD = REPO_ROOT / "validation/crossval/_02_ring_resonator_results/crossval.json"
 
+#: WHICH retained record the guard below is a guard against. The check is only
+#: a check because this record was written BEFORE the asymmetric transform
+#: existed -- re-driving today's judge on it then answers "did the transform
+#: move an answer that was already committed?". Regenerate the record with
+#: today's judge and the comparison becomes the judge against its own output,
+#: which cannot detect a verdict move at all. So the identity is pinned here:
+#: a regeneration reds this test loudly instead of quietly voiding it.
+#:
+#: If you regenerated the record on purpose, do NOT simply retype these two
+#: strings. Re-establish the guard against a copy of the record that predates
+#: the transform under test (the commit named below still carries it), or
+#: delete the guard and say in the PR body that the falsifier is gone.
+CV02_RECORD_PIN = {
+    "commit": "296cabada23343eede7beb05a0a4f98f7bb64adf",
+    "date_utc": "2026-09-06T17:07:57Z",
+}
+
+
+def test_the_committed_record_is_still_the_pre_transform_one() -> None:
+    """The guard below is void if the record moved. Fail loudly when it does.
+
+    Nothing else in the suite notices a regenerated
+    ``_02_ring_resonator_results/crossval.json``: the verdict comparison would
+    keep passing while silently comparing today's judge against a record that
+    same judge had just written.
+    """
+    doc = json.loads(CV02_RECORD.read_text(encoding="utf-8"))
+    assert {k: doc[k] for k in CV02_RECORD_PIN} == CV02_RECORD_PIN, (
+        "the retained cv02 record is not the one the transform guard was "
+        "established against -- read CV02_RECORD_PIN before touching this"
+    )
+
 
 def test_the_committed_record_reproduces_its_own_verdict_through_the_judge(
 ) -> None:
@@ -727,8 +914,12 @@ def test_the_committed_record_reproduces_its_own_verdict_through_the_judge(
     "widening the high-Q side changed a committed answer": if it ever fires,
     the record is NOT to be regenerated to make it green -- the divergence is
     the finding.
+
+    Which record that is, and why regenerating it would void this check
+    rather than refresh it: :data:`CV02_RECORD_PIN` and the test above.
     """
     doc = json.loads(CV02_RECORD.read_text(encoding="utf-8"))
+    assert {k: doc[k] for k in CV02_RECORD_PIN} == CV02_RECORD_PIN
     f_min, f_max = doc["rig"]["band_c_over_a"]
     verdict = rmj.judge(
         [rmj.ReferenceMode(m["freq_c_over_a"], m["Q"])
@@ -1139,9 +1330,11 @@ def test_verdict_lane_q_gate_is_run_length_contingent() -> None:
     """Why the Meep (verdict) lane keeps its calibrated record instead of the
     tau-scaled one -- executable, so the qualification cannot rot.
 
-    The judge's Q window ``tau_ref/T`` is a record-length RESOLUTION bound: it
-    shrinks as 1/T. The rfx-vs-Meep Q gap is a discretization offset and does
-    not. So on the very same (frozen) mode pair the q gate passes at the
+    The judge's Q window ``tau_ref/T`` shrinks as 1/T. The rfx-vs-Meep Q gap
+    does not. (Why it does not is UNRESOLVED -- #907 retracted the
+    "discretization offset" attribution this docstring used to state; the
+    T-independence is what is measured, the mechanism is not.) So on the very
+    same (frozen) mode pair the q gate passes at the
     committed record and fails at a longer, better-settled one, with the
     frequency gates and the |ln Q| values unchanged. That is a comparator
     defect tracked as issue #907 -- the tau_ref/T window shrinks with T faster

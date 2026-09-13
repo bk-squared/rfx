@@ -136,10 +136,19 @@ Q_GATE_INGREDIENTS: tuple[GateIngredient, ...] = (
         kind="declared-policy",
         quantity="s = tau_ref / T   (per reference mode; see q_window)",
         basis=(
-            "A record-length-scaled envelope, motivated by #812's published "
-            "bracket (T/tau = 0.376 resolved vs 0.086 'must be excluded') "
-            "and by the measured degradation of the decimated path cv02 "
-            "actually runs. It is NOT the estimator's error law: on a clean "
+            "A record-length-scaled envelope whose whole provenance is #812's "
+            "published bracket (T/tau = 0.376 resolved vs 0.086 'must be "
+            "excluded'). A second prop - 'the measured degradation of the "
+            "decimated path cv02 actually runs' - was cited here until "
+            "2026-09-13 and is WITHDRAWN: re-measured on the configuration it "
+            "named it does not reproduce, and at the shorter rung no "
+            "decimation stage fires at all, so there is no decimated path "
+            "there to degrade (ladder + per-rung decimation plans: "
+            "tests/fixtures/cv02_ring_judge/harminv_decimation_ladder.json, "
+            "pinned by test_the_decimation_penalty_claim_does_not_reproduce). "
+            "Whether the REAL multi-mode cv02 record degrades under "
+            "decimation is UNMEASURED. The envelope is NOT the estimator's "
+            "error law either: on a clean "
             "damped exponential at cv02's sampling density, rfx's "
             "matrix-pencil harminv with decimate=False recovers Q to ~3e-12 "
             "relative at T/tau = 0.0822, so there is no 1/T information "
@@ -334,20 +343,45 @@ def q_window(ref_freq: float, ref_Q: float, record_length: float
     ratios; there is no Fourier separation limit to import. On a clean
     synthetic exponential at cv02's own sampling density, rfx's matrix-pencil
     harminv with ``decimate=False`` returns Q to ~3e-12 relative error at
-    ``T/tau = 0.0822`` -- a third of :data:`Q_RECORD_MIN_EFOLDS`. What DOES
-    degrade at short records is the decimated path cv02 actually runs (3.49%
-    there, 0.24% at the 0.25 cut), which is a configuration, not a limit.
-    So ``tau/T`` is a policy envelope with provenance, not a derived bound,
-    and this function's name is historical.
+    ``T/tau = 0.0822`` -- a third of :data:`Q_RECORD_MIN_EFOLDS`.
+
+    **A second empirical prop is WITHDRAWN (2026-09-13).** This docstring
+    briefly read "what DOES degrade at short records is the decimated path
+    cv02 actually runs (3.49% there, 0.24% at the 0.25 cut)". Re-measured on
+    the configuration that sentence names -- #907's synthetic single damped
+    exponential at cv02's own ``dt`` -- it does not reproduce, and it cannot:
+    at ``T/tau = 0.0822`` the record is too short for any decimation stage to
+    leave the requested pencil capacity, so ``decimate='auto'`` decimates by
+    nothing and there is no decimated path to measure there. On the rungs
+    where a stage does fire, the decimated path is not worse than
+    ``decimate=False``. The ladder, its per-rung decimation plans and every
+    number are in
+    ``tests/fixtures/cv02_ring_judge/harminv_decimation_ladder.json``, pinned
+    by ``test_the_decimation_penalty_claim_does_not_reproduce``; the
+    withdrawn figures are recorded there under ``withdrawn_claim`` so the
+    retraction is checkable and not just an absence.
+
+    That leaves #812's published bracket as this envelope's whole provenance.
+    Whether the REAL cv02 record -- multi-mode, with source contamination
+    still inside the analysed window -- degrades under decimation is
+    UNMEASURED; the synthetic ladder is a clean single exponential and does
+    not settle it. So ``tau/T`` is a policy envelope with one published
+    bracket behind it, not a derived bound, and this function's name is
+    historical.
 
     **Known limitation -- this scale behaves like a RESOLUTION bound, not an
     accuracy bound, and it therefore shrinks with run length while the physics
     does not.** ``tau/T`` scales with how finely a record of length ``T``
     separates two decay rates; it says nothing about how far apart two
     *solvers* should be.
-    The rfx-vs-Meep Q gap on cv02 is a discretization offset (staircased ring
-    boundary, subpixel treatment, hence a slightly different radiation Q), so
-    it is roughly constant in ``T``, while rfx's own Q for modes 2 and 3 is
+    The rfx-vs-Meep Q gap on cv02 does not shrink with ``T`` -- it is a
+    property of the two discretizations rather than of the record -- but WHAT
+    produces it is UNRESOLVED. This paragraph used to assert a staircased ring
+    boundary and subpixel treatment as the cause; #907 (2026-09-10) retracted
+    that as an overclaim, on a counterexample that moves Q while keeping all
+    three frequencies inside the two solvers' observed mutual agreement, so
+    the frequency agreement cannot pin the geometry and the log decomposition
+    cannot settle the attribution. rfx's own Q for modes 2 and 3 is
     stable over every RESOLVED span that was measured (mode 1's recorded
     readings spread ~7% across T=291/561/1101 and are NOT cited as invariance evidence). Measured ``|ln(Q_rfx/Q_ref)| = 0.070`` (mode 1)
     and ``0.123`` (mode 2); rfx mode 2 reads ``Q = 357.61 -> 356.83`` (0.22%)
@@ -363,9 +397,14 @@ def q_window(ref_freq: float, ref_Q: float, record_length: float
     committed reference/rfx pair this gate PASSES at ``T=291`` (mode-1 window
     0.747) and FAILS at ``T=3385`` (window 0.064) purely because the record got
     longer and better settled. A longer record reds a physically stable case.
-    Fixing it needs a floor on the window encoding the expected
-    discretization Q gap (or a pre-declared |ln Q| envelope); that is a change
-    to a claims-bearing gate and is NOT done here -- it is tracked as issue
+    Fixing it needs ingredient 3 -- a discretization budget derived
+    independently of this board, e.g. a resolution ladder against the exact
+    annulus. It specifically does NOT need a floor read off the observed
+    rfx-vs-Meep gap: such a floor would make the gate certify the agreement it
+    exists to test, and it was refused on those grounds (see the record-length
+    comment in ``validation/crossval/02_ring_resonator.py``). Either way that
+    is a change to a claims-bearing gate and is NOT done here -- it is
+    tracked as issue
     #907 (the ``tau_ref/T`` window shrinks with ``T`` faster than the physics
     does, so a longer record fails a stable Q), and it is the reason cv02's
     Meep (verdict) lane keeps its calibrated record length instead of the

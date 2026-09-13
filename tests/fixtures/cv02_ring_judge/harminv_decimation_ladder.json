@@ -1,0 +1,280 @@
+{
+  "schema": "cv02-harminv-decimation-ladder/v1",
+  "purpose": "Refutes the 'the decimated path degrades at short records' prop that ring_mode_judge.q_window briefly cited. See withdrawn_claim.",
+  "generated_by": "scripts/diagnostics/cv02_harminv_decimation_ladder.py",
+  "quick": false,
+  "max_undecimated_samples": 5000,
+  "source_record": {
+    "path": "validation/crossval/_02_ring_resonator_results/crossval.json",
+    "commit": "296cabada23343eede7beb05a0a4f98f7bb64adf",
+    "date_utc": "2026-09-06T17:07:57Z"
+  },
+  "signal": {
+    "model": "single damped exponential, cos(2 pi f t) exp(-t/tau)",
+    "dt_s": 2.3350677933821873e-16,
+    "freq_hz": 44134453769187.84,
+    "Q": 358.1786218292347,
+    "tau_s": 2.5832832766931678e-12,
+    "samples_per_period": 97.03373540080992
+  },
+  "bands": {
+    "withdrawn_claim_band": {
+      "f_min_hz": 22067226884593.92,
+      "f_max_hz": 66201680653781.766,
+      "why": "the band #907's comment used; the configuration under test"
+    },
+    "cv02_analysis_band": {
+      "f_min_hz": 29979245800000.0,
+      "f_max_hz": 59958491600000.01,
+      "why": "rig.band_c_over_a -- the band cv02 actually runs; witness"
+    }
+  },
+  "withdrawn_claim": {
+    "text": "what DOES degrade at short records is the decimated path cv02 actually runs (3.49% there, 0.24% at the 0.25 cut)",
+    "source": "issue #907, comment of 2026-09-10; never pinned by any repo artifact",
+    "asserted_relative_q_error": {
+      "0.0822": 0.0349,
+      "0.25": 0.0024
+    },
+    "withdrawn_in": "PR for #945/#907, 2026-09-13"
+  },
+  "rows": [
+    {
+      "t_over_tau": 0.0822,
+      "n_samples": 909,
+      "bands": {
+        "withdrawn_claim_band": {
+          "n_samples": 909,
+          "decimation_factors": [],
+          "decimation_retained_samples": 909,
+          "decimation_fires": false,
+          "dt_eff_over_dt": 1.0,
+          "auto": {
+            "measured": true,
+            "found": true,
+            "Q": 358.1786218279091,
+            "relative_q_error": 3.700914703016616e-12,
+            "relative_freq_error": 2.6552384813203153e-15,
+            "harminv_error_field": 9.038738734268303e-05,
+            "wall_time_s": 2.208813190460205
+          },
+          "no_decimation": {
+            "measured": true,
+            "found": true,
+            "Q": 358.1786218279091,
+            "relative_q_error": 3.700914703016616e-12,
+            "relative_freq_error": 2.6552384813203153e-15,
+            "harminv_error_field": 9.038738734268303e-05,
+            "wall_time_s": 0.42722129821777344
+          }
+        },
+        "cv02_analysis_band": {
+          "n_samples": 909,
+          "decimation_factors": [],
+          "decimation_retained_samples": 909,
+          "decimation_fires": false,
+          "dt_eff_over_dt": 1.0,
+          "auto": {
+            "measured": true,
+            "found": true,
+            "Q": 358.1786218279091,
+            "relative_q_error": 3.700914703016616e-12,
+            "relative_freq_error": 2.6552384813203153e-15,
+            "harminv_error_field": 9.038738734268303e-05,
+            "wall_time_s": 0.400526762008667
+          },
+          "no_decimation": {
+            "measured": true,
+            "found": true,
+            "Q": 358.1786218279091,
+            "relative_q_error": 3.700914703016616e-12,
+            "relative_freq_error": 2.6552384813203153e-15,
+            "harminv_error_field": 9.038738734268303e-05,
+            "wall_time_s": 0.3987305164337158
+          }
+        }
+      }
+    },
+    {
+      "t_over_tau": 0.25,
+      "n_samples": 2766,
+      "bands": {
+        "withdrawn_claim_band": {
+          "n_samples": 2766,
+          "decimation_factors": [
+            8
+          ],
+          "decimation_retained_samples": 326,
+          "decimation_fires": true,
+          "dt_eff_over_dt": 8.0,
+          "auto": {
+            "measured": true,
+            "found": true,
+            "Q": 358.1786218290778,
+            "relative_q_error": 4.3801563380471096e-13,
+            "relative_freq_error": 1.770158987546877e-16,
+            "harminv_error_field": 0.0007228703834534222,
+            "wall_time_s": 0.0888969898223877
+          },
+          "no_decimation": {
+            "measured": true,
+            "found": true,
+            "Q": 358.1786218306014,
+            "relative_q_error": 3.8156557549154585e-12,
+            "relative_freq_error": 1.770158987546877e-16,
+            "harminv_error_field": 9.03873873420169e-05,
+            "wall_time_s": 7.821901082992554
+          }
+        },
+        "cv02_analysis_band": {
+          "n_samples": 2766,
+          "decimation_factors": [
+            8
+          ],
+          "decimation_retained_samples": 326,
+          "decimation_fires": true,
+          "dt_eff_over_dt": 8.0,
+          "auto": {
+            "measured": true,
+            "found": true,
+            "Q": 358.1786218290778,
+            "relative_q_error": 4.3801563380471096e-13,
+            "relative_freq_error": 1.770158987546877e-16,
+            "harminv_error_field": 0.0007228703834534222,
+            "wall_time_s": 0.9660351276397705
+          },
+          "no_decimation": {
+            "measured": true,
+            "found": true,
+            "Q": 358.1786218306014,
+            "relative_q_error": 3.8156557549154585e-12,
+            "relative_freq_error": 1.770158987546877e-16,
+            "harminv_error_field": 9.03873873420169e-05,
+            "wall_time_s": 11.554769277572632
+          }
+        }
+      }
+    },
+    {
+      "t_over_tau": 0.3534,
+      "n_samples": 3910,
+      "bands": {
+        "withdrawn_claim_band": {
+          "n_samples": 3910,
+          "decimation_factors": [
+            8,
+            2
+          ],
+          "decimation_retained_samples": 215,
+          "decimation_fires": true,
+          "dt_eff_over_dt": 16.0,
+          "auto": {
+            "measured": true,
+            "found": true,
+            "Q": 358.17862182917327,
+            "relative_q_error": 1.7155612324017846e-13,
+            "relative_freq_error": 0.0,
+            "harminv_error_field": 0.0014452182253151813,
+            "wall_time_s": 0.01520848274230957
+          },
+          "no_decimation": {
+            "measured": true,
+            "found": true,
+            "Q": 358.17862182887444,
+            "relative_q_error": 1.005848944584876e-12,
+            "relative_freq_error": 2.30120668381094e-15,
+            "harminv_error_field": 9.038738734234997e-05,
+            "wall_time_s": 25.64661431312561
+          }
+        },
+        "cv02_analysis_band": {
+          "n_samples": 3910,
+          "decimation_factors": [
+            8,
+            2
+          ],
+          "decimation_retained_samples": 215,
+          "decimation_fires": true,
+          "dt_eff_over_dt": 16.0,
+          "auto": {
+            "measured": true,
+            "found": true,
+            "Q": 358.17862182917327,
+            "relative_q_error": 1.7155612324017846e-13,
+            "relative_freq_error": 0.0,
+            "harminv_error_field": 0.0014452182253151813,
+            "wall_time_s": 0.016112565994262695
+          },
+          "no_decimation": {
+            "measured": true,
+            "found": true,
+            "Q": 358.17862182887444,
+            "relative_q_error": 1.005848944584876e-12,
+            "relative_freq_error": 2.30120668381094e-15,
+            "harminv_error_field": 9.038738734234997e-05,
+            "wall_time_s": 16.680891036987305
+          }
+        }
+      }
+    },
+    {
+      "t_over_tau": 1.2528,
+      "n_samples": 13860,
+      "bands": {
+        "withdrawn_claim_band": {
+          "n_samples": 13860,
+          "decimation_factors": [
+            8,
+            2
+          ],
+          "decimation_retained_samples": 837,
+          "decimation_fires": true,
+          "dt_eff_over_dt": 16.0,
+          "auto": {
+            "measured": true,
+            "found": true,
+            "Q": 358.17862182928644,
+            "relative_q_error": 1.4441819810227789e-13,
+            "relative_freq_error": 0.0,
+            "harminv_error_field": 0.0014452182253147372,
+            "wall_time_s": 3.1022086143493652
+          },
+          "no_decimation": {
+            "measured": false,
+            "skipped": "runtime",
+            "why": "undecimated pencil on 13860 samples; the reference leg is capped at 5000"
+          }
+        },
+        "cv02_analysis_band": {
+          "n_samples": 13860,
+          "decimation_factors": [
+            8,
+            2
+          ],
+          "decimation_retained_samples": 837,
+          "decimation_fires": true,
+          "dt_eff_over_dt": 16.0,
+          "auto": {
+            "measured": true,
+            "found": true,
+            "Q": 358.17862182928644,
+            "relative_q_error": 1.4441819810227789e-13,
+            "relative_freq_error": 0.0,
+            "harminv_error_field": 0.0014452182253147372,
+            "wall_time_s": 0.6984472274780273
+          },
+          "no_decimation": {
+            "measured": false,
+            "skipped": "runtime",
+            "why": "undecimated pencil on 13860 samples; the reference leg is capped at 5000"
+          }
+        }
+      }
+    }
+  ],
+  "provenance": {
+    "harminv_source_sha256": "b63e017ff469d144b53c69d2ae701edef7d1543ec66670bc163041a14672cf20",
+    "numpy": "2.2.6",
+    "python": "3.10.12"
+  }
+}

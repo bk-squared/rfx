@@ -28,6 +28,20 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
 - Expose the interval inversion as `rate_interval_to_log_q_bounds(s)`, a pure
   function of the rate scale, and retain the signed log-Q ratio with the bounds
   that judged it on every gated row.
+- Withdraw two claims the same docstring was still making, both flagged by
+  independent review. (a) "The decimated path cv02 actually runs degrades at
+  short records (3.49% there, 0.24% at the 0.25 cut)" does not reproduce: at
+  the shorter rung no decimation stage fires at all, and where one does the
+  decimated path is not worse. The ladder that measures it is committed as
+  `tests/fixtures/cv02_ring_judge/harminv_decimation_ladder.json` (generator:
+  `scripts/diagnostics/cv02_harminv_decimation_ladder.py`), so the envelope's
+  provenance is now #812's published bracket alone. (b) The Q gap's attribution
+  to a staircased ring boundary and subpixel treatment, which #907 retracted as
+  an overclaim, is removed from all three surfaces that carried it. No gate
+  value, admission cut or verdict changed.
+- Pin which retained cv02 record the "the transform moved no committed verdict"
+  guard was established against, so regenerating that record reds the guard
+  instead of silently turning it into the judge checking its own output.
 
 ### Fixed — cv02 Q-rate interval transform (#945)
 

@@ -292,13 +292,32 @@ retained. It is false about the window's *form*. The premise §2 G5 argues from,
 its exponent from adjacent-sample ratios, and there is no Fourier separation
 limit to import. rfx's matrix-pencil harminv with `decimate=False` returns Q to
 ~3e-12 relative error at `T/tau = 0.0822`, a third of the `1/4` admission cut
-(#907, comment of 2026-09-10). What does degrade at short records is the
-decimated path cv02 actually runs, which is a configuration rather than a
-limit.
+(#907, comment of 2026-09-10).
 
-So `tau_ref/T` is a **policy envelope with provenance**, not a derived bound.
-The `1/4` admission cut keeps its prior-provenance standing from #812 and is
-separately supported by that same measurement.
+**(c) A second empirical prop, added under (b) and withdrawn 2026-09-13.**
+This section briefly continued: "what does degrade at short records is the
+decimated path cv02 actually runs" — with `3.49 %` at `T/tau = 0.0822` and
+`0.24 %` at the cut, from the same #907 comment. Independent review could not
+reproduce those figures and neither could a re-measurement here. At
+`T/tau = 0.0822` the record is too short for a decimation stage to leave the
+requested pencil capacity, so `decimate='auto'` decimates by nothing and there
+is no decimated path there to degrade; where a stage does fire the decimated
+path is not worse than `decimate=False`, and every measured relative Q error on
+the ladder is orders of magnitude below what was asserted. The ladder, both
+frequency bands and the per-rung decimation plans are committed as
+`tests/fixtures/cv02_ring_judge/harminv_decimation_ladder.json` (generator
+`scripts/diagnostics/cv02_harminv_decimation_ladder.py`), pinned by
+`test_the_decimation_penalty_claim_does_not_reproduce`.
+
+Whether the REAL cv02 record — multi-mode, with source contamination still in
+the analysed window — degrades under decimation is **unmeasured**; the ladder
+is a clean single exponential and does not settle it.
+
+So `tau_ref/T` is a **policy envelope with provenance**, not a derived bound,
+and that provenance is #812's published bracket alone. The `1/4` admission cut
+keeps its prior-provenance standing from #812; the sentence that also claimed
+independent support for it from the decimation measurement is withdrawn with
+(c).
 
 **The obvious alternative was checked and is not available.** The natural
 replacement for a declared envelope is the estimator's own fit residual.

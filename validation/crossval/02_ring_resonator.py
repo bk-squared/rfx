@@ -205,9 +205,14 @@ source_off_time = 2.0 * wf_main.t0
 #     **the cv02 verdict lane does not use the tau-scaled record.**
 #
 #     Why not, honestly: not because a fixed record is better physics, but
-#     because this judge's per-mode Q window ``tau_ref/T`` is a record-length
-#     RESOLUTION bound, so it shrinks as 1/T while the rfx-vs-Meep Q gap (a
-#     discretization offset) stays put. Measured on the committed
+#     because this judge's per-mode Q window ``tau_ref/T`` shrinks as 1/T
+#     while the rfx-vs-Meep Q gap does not. (What CAUSES that gap is
+#     UNRESOLVED. An earlier version of this comment called it "a
+#     discretization offset"; #907 retracted that attribution as an overclaim
+#     on 2026-09-10 -- a counterexample moves Q while leaving all three
+#     frequencies inside the two solvers' mutual agreement, so the frequency
+#     agreement cannot pin the geometry. The T-independence below is measured;
+#     the mechanism is not.) Measured on the committed
 #     reference/rfx mode pair (tests/crossval/test_cv02_ring_mode_judge.py's
 #     MEEP_REFERENCE / RFX_TODAY, re-driven at four lengths):
 #         T = 291  (committed): gate q PASS  (mode-1 |lnQ| 0.070 vs window 0.747)
