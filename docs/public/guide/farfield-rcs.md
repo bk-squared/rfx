@@ -160,8 +160,11 @@ vector, so it does not depend on the observation grid), and the
 ### Validation scope: raw backscatter and reference-subtracted bistatic RCS
 
 `monostatic_rcs` is always evaluated from the unsubtracted run at the exact
-backscatter direction. It agrees with the exact Mie series to about 0.06 dB for
-the committed ka ≈ 1 PEC-sphere case.
+backscatter direction. It agrees with the exact Mie series to about 0.19 dB for
+the committed ka ≈ 1 PEC-sphere case (24-cell CPML). That case read 0.06 dB
+until 2026-09-13, on an 8-cell absorber; the closer number was a cancellation
+against a TF/SF auxiliary grid that reflected 4–6 % of the injected field, and
+both halves of it have since been fixed and measured.
 
 With the default `subtract_incident_reference=False`, the full
 `rcs_dbsm` / `rcs_linear` **bistatic pattern is not validated**. An empty-domain
@@ -175,9 +178,12 @@ For bistatic work, set `subtract_incident_reference=True`. rfx then performs a
 second vacuum run with the same TFSF and NTFF setup and subtracts the complex
 far fields before forming RCS. This doubles the solve cost. In the committed
 ka ≈ 1 PEC-sphere H-plane comparison against exact Mie, subtraction reduces the
-largest 15–90° forward-oblique difference from 10.5 dB to 1.2 dB, gives a
-full-pattern dB correlation of 0.965 and a mean absolute difference of 0.42 dB,
-and leaves the backscatter difference at about 0.06 dB. That evidence covers
+largest 15–90° forward-oblique difference from 10.7 dB to 1.5 dB, gives a
+full-pattern dB correlation of 0.977 and a mean absolute difference of 0.70 dB,
+and leaves the backscatter difference at about 0.19 dB. (The mean got worse when
+the injected field got cleaner: the subtraction had been cancelling part of the
+pattern error against the contamination. Those are the honest numbers with a
+clean incident field.) That evidence covers
 the stated sphere, frequency, polarization, angle cut, and discretization; it
 does not validate every target or setup. An independent Bempp cube fixture
 confirms the raw forward-oblique discrepancy on a second geometry, but does not

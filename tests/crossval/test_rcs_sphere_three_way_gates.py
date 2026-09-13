@@ -218,8 +218,15 @@ def test_rfx_fine_column_is_a_resolvable_reference_not_a_copy(fx):
     assert three_way["rfx_fine_ref"].endswith("::monostatic.rfx_sigma_over_pi_a2")
     expected = json.loads(_RFX_FINE.read_text())["monostatic"]["rfx_sigma_over_pi_a2"]
     assert _rfx_fine(fx) == expected
-    assert three_way["rfx_fine_witness_status"] == "carried-unwitnessed"
+    # Was "carried-unwitnessed" while the 8-cell rig's 0.063 dB agreement with
+    # Mie stood unexplained. #888 supplied the witness the note asked for -- a
+    # CPML depth ladder measured on both injections -- so the status names it,
+    # and the note still has to carry the mechanism.
+    assert three_way["rfx_fine_witness_status"] == "witnessed-cpml-depth"
     assert "CPML" in three_way["rfx_fine_witness_note"]
+    note = three_way["rfx_fine_witness_note"].lower()
+    for phrase in ("cancellation", "converge", "0.185"):
+        assert phrase in note, phrase
 
 
 def test_the_resolver_refuses_a_duplicate_and_a_malformed_keypath(fx, tmp_path):
