@@ -1,5 +1,5 @@
 name: rfx-cpml-stagger-witness
-description: "Two-arm GPU witness for the CPML Yee half-cell magnetic-profile fix (Lane A port of research 7b6c33d5). Runs the Experiment 68/69 native CPML vacuum dipole fixture -- 96x72x60, h=1/512, dt=3.723779042052746e-12, 1536 steps, 12 CPML layers, kappa_max=1, float32, traces only -- twice in ONE job, with the SAME comparator, on the SAME GPU: arm RED at origin/main (pre-fix; predeclared expectation far-Hy full peak-relative residual ~0.139, so the fixed 5% requirement FAILS and the witness exits 1) and arm GREEN at the fix branch (predeclared ~4e-4, exits 0). The comparator (scripts/diagnostics/cpml_dipole_waveform_witness.py, whose reference()/check_traces() are copied verbatim from the research checker at 7b6c33d5) is copied from the GREEN tree into the RED tree so the only difference between arms is the three CPML solver files; a comparator that moved between arms would make the two receipts incomparable. Tolerances are FIXED and predeclared (full 5%, late 1%, source 1e-5); no amplitude/time fitting, no window selection, no relaxation. Memory: traces only -- 6 fields 9.49 MiB + 3 material arrays 4.75 MiB + CPML psi 6.22 MiB + trace 0.11 MiB = 20.6 MiB of declared arrays (measured on CPU). The 22.97 GiB peak-in-use of Experiments 68/69 was dominated by six full float32 histories (14.24 GiB) that this witness does NOT request, so one 24 GB gpu-rtx4090 is ample. A PASS is a bounded total-waveform observation only: it does not separate bulk, source-cell and CPML error, does not certify a reflection coefficient, and qualifies no other mesh, angle or material. PREREQUISITE: the branch is NOT pushed to origin -- push agent/cpml-magnetic-half-cell to the NFS mirror at $RFX_SRC first, or this job exits 3. Submit: vessl run create -f scripts/vessl_cpml_stagger_witness.yaml --project byungkwan"
+description: "Two-arm GPU witness for the CPML Yee half-cell magnetic-profile fix (Lane A port of research 7b6c33d5). Runs the Experiment 68/69 native CPML vacuum dipole fixture -- 96x72x60, h=1/512, dt=3.723779042052746e-12, 1536 steps, 12 CPML layers, kappa_max=1, float32, traces only -- twice in ONE job, with the SAME comparator, on the SAME GPU: arm RED at origin/main (pre-fix; predeclared expectation far-Hy full peak-relative residual ~0.139, so the fixed 5% requirement FAILS and the witness exits 1) and arm GREEN at the fix branch (predeclared ~4e-4, exits 0). The comparator (scripts/diagnostics/cpml_dipole_waveform_witness.py, whose reference()/check_traces() are copied verbatim from the research checker at 7b6c33d5) is copied from the GREEN tree into the RED tree so the only difference between arms is the three CPML solver files; a comparator that moved between arms would make the two receipts incomparable. Tolerances are FIXED and predeclared (full 5%, late 1%, source 1e-5); no amplitude/time fitting, no window selection, no relaxation. Memory: traces only -- 6 fields 9.49 MiB + 3 material arrays 4.75 MiB + CPML psi 6.22 MiB + trace 0.11 MiB = 20.6 MiB of declared arrays (measured on CPU). The 22.97 GiB peak-in-use of Experiments 68/69 was dominated by six full float32 histories (14.24 GiB) that this witness does NOT request, so one 24 GB gpu-rtx4090 is ample. A PASS is a bounded total-waveform observation only: it does not separate bulk, source-cell and CPML error, does not certify a reflection coefficient, and qualifies no other mesh, angle or material. PREREQUISITE: the lane is NOT pushed to origin and the pod's research/rfx mirror is not writable from the Mac, so the two arms are pushed from the Mac into a bare mirror on the writable claude-workspace volume ($RFX_SRC): ref red = the lane's merge-base on main (fa392913), ref green = the lane tip; the job exits 3 if either ref is missing. Submit: vessl run create -f scripts/vessl_cpml_stagger_witness.yaml --project byungkwan"
 tags: [rfx, cpml, stagger, witness, gpu, lane-a]
 resources:
   cluster: remilab-c0
@@ -12,10 +12,10 @@ env:
   HDF5_USE_FILE_LOCKING: "FALSE"
   LANG: "C.UTF-8"
   MPLBACKEND: Agg
-  RFX_SRC: /root/workspace/byungkwan-workspace/research/rfx
+  RFX_SRC: /root/workspace/claude-workspace/rfx/mirrors/cpml-stagger.git
   RFX_RUNS_ROOT: /root/workspace/claude-workspace/rfx/runs
-  RFX_RED_REF: "origin/main"
-  RFX_GREEN_REF: "agent/cpml-magnetic-half-cell"
+  RFX_RED_REF: "red"
+  RFX_GREEN_REF: "green"
   WITNESS: scripts/diagnostics/cpml_dipole_waveform_witness.py
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
@@ -25,14 +25,13 @@ run: |-
   date
   command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
   git config --global --add safe.directory '*'
-  test -d "$RFX_SRC/.git" || { echo "ERROR: no git mirror at $RFX_SRC"; exit 3; }
+  [ "$(git -C "$RFX_SRC" rev-parse --is-bare-repository 2>/dev/null)" = "true" ] || { echo "ERROR: no bare git mirror at $RFX_SRC"; exit 3; }
 
   # -- 1. stage both arms under /root/work. The NFS checkout is read-only for
   #       the pod and these scripts write JSON beside the tree, so nothing runs
   #       from the mount. --
   WORK=/root/work
   rm -rf "$WORK"; mkdir -p "$WORK"
-  git -C "$RFX_SRC" fetch -q origin main
   for REF in "$RFX_RED_REF" "$RFX_GREEN_REF"; do
     git -C "$RFX_SRC" cat-file -e "${REF}^{commit}" 2>/dev/null || {
       echo "ERROR: $RFX_SRC has no ref $REF -- push the lane branch to the NFS mirror first"; exit 3; }
