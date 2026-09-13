@@ -33,6 +33,7 @@ Conventions
 
 from __future__ import annotations
 
+import ast
 import math
 import os
 import sys
@@ -44,6 +45,8 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 for _p in (_HERE, _REPO_ROOT):
     if _p not in sys.path:
         sys.path.insert(0, _p)
+
+import slab_family  # noqa: E402   (the family's leaf: rig constants + the envelope loader)
 
 from tests._gate_policy import gate_from_envelope  # noqa: E402
 
@@ -418,10 +421,70 @@ def cpml_continuum_reflection(theta_rad, R_asymptotic: float = CPML_R_ASYMPTOTIC
 #
 # These constants do NOT scale with dx_div (cv04 note section 6.1) -- tfsf_2d
 # fixes them in cells, whatever dx the 3-D rig runs at.
-from rfx.sources.tfsf_2d import (  # noqa: E402
-    AUX_CPML_KAPPA_MAX, AUX_CPML_ORDER, AUX_CPML_R_ASYMPTOTIC, AUX_N_CPML,
-    AUX_N_MARGIN_X as AUX_N_MARGIN, AUX_SRC_OFFSET,
-)
+TFSF_2D_SOURCE = os.path.join(_REPO_ROOT, "rfx", "sources", "tfsf_2d.py")
+
+
+def tfsf_2d_constants(names, path: str | None = None) -> dict:
+    """The named module-level constants of ``rfx/sources/tfsf_2d.py``, read from
+    the module that OWNS them without importing it.
+
+    Why not ``from rfx.sources.tfsf_2d import ...``: importing it pulls in
+    ``rfx`` and therefore JAX, and the Meep reference leg
+    (``scripts/crossval/meep_cv26_oblique_slab.py``) imports this comparator
+    from a pymeep conda environment that has neither. The import made the whole
+    leg unimportable there -- ``ModuleNotFoundError: No module named 'jax'``
+    before a single Meep step -- which is why the leg produced nothing after
+    #888 and E4 read ``[SKIP]`` on every arm.
+
+    This keeps the ONE source of truth: the values come out of that file, and a
+    constant that is renamed, deleted, or turned into a computed expression
+    raises here instead of falling back to a copy. The read is cross-checked
+    against the IMPORTED values, in the rfx environment, by
+    ``tests/crossval/test_cv26_oblique_fresnel_comparator.py``
+    (``test_aux_constants_come_from_tfsf_2d_not_a_local_copy``), so a divergence
+    between the two ways of reading the module is a red test, not a silent
+    disagreement.
+    """
+    path = path or TFSF_2D_SOURCE
+    with open(path, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read(), filename=path)
+    wanted = set(names)
+    found: dict = {}
+    for node in tree.body:                       # module level only
+        targets = []
+        if isinstance(node, ast.Assign):
+            targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            targets = [node.target.id]
+        else:
+            continue
+        for name in targets:
+            if name not in wanted:
+                continue
+            try:
+                value = ast.literal_eval(node.value)
+            except (ValueError, SyntaxError) as exc:
+                raise ValueError(
+                    f"{path}: {name} is no longer a module-level literal "
+                    f"({ast.dump(node.value)[:80]}); this reader cannot resolve it, "
+                    f"and a copy here would be a second source of truth") from exc
+            if not isinstance(value, (int, float)):
+                raise ValueError(f"{path}: {name} is {type(value).__name__}, expected a number")
+            found[name] = value
+    missing = sorted(wanted - set(found))
+    if missing:
+        raise ValueError(f"{path}: no module-level definition of {missing}")
+    return found
+
+
+_AUX = tfsf_2d_constants(("AUX_CPML_KAPPA_MAX", "AUX_CPML_ORDER", "AUX_CPML_R_ASYMPTOTIC",
+                          "AUX_N_CPML", "AUX_N_MARGIN_X", "AUX_SRC_OFFSET"))
+AUX_CPML_KAPPA_MAX = _AUX["AUX_CPML_KAPPA_MAX"]
+AUX_CPML_ORDER = _AUX["AUX_CPML_ORDER"]
+AUX_CPML_R_ASYMPTOTIC = _AUX["AUX_CPML_R_ASYMPTOTIC"]
+AUX_N_CPML = _AUX["AUX_N_CPML"]
+AUX_N_MARGIN = _AUX["AUX_N_MARGIN_X"]
+AUX_SRC_OFFSET = _AUX["AUX_SRC_OFFSET"]
 
 # init_tfsf_2d: i0_x = AUX_N_CPML + AUX_N_MARGIN maps to the 3-D x_lo, and the
 # soft source sits at src_x = AUX_N_CPML + AUX_SRC_OFFSET, so the auxiliary
@@ -725,12 +788,31 @@ def yee_lattice_full(f_hz, ky: float, cells: dict, *, eps_slab: float = 1.0, mu_
 # Windows (note section 4): cv04's committed envelope through the shared
 # gate policy, plus the two named terms of this rig.
 # ---------------------------------------------------------------------------
-# tests/fixtures/golden_workflows/multilayer_fresnel.json::expected_metrics[...].observed_baseline
-# and the per-bin max|R+T-1| pinned at validation/crossval/04_multilayer_fresnel.py:309.
-CV04_ENVELOPE = {"mean_dR": 0.0066, "mean_dT": 0.011, "per_bin_max_RT_closure": 0.0487}
-W_BIN = gate_from_envelope(CV04_ENVELOPE["per_bin_max_RT_closure"], quantum=1000)   # 0.074
-W_MEAN_R = gate_from_envelope(CV04_ENVELOPE["mean_dR"], quantum=1000)               # 0.010
-W_MEAN_T = gate_from_envelope(CV04_ENVELOPE["mean_dT"], quantum=1000)               # 0.017
+# #928's ownership rule: cv04 is the PRODUCER of these numbers and its envelope
+# artifact is their ONE input source. A consumer carries an ADOPTION RECORD --
+# which revision, its hash, the realized rig's hash, the gate policy, where the
+# adoption was declared and who reviewed it -- and resolves the values through
+# it. Restating them here would be a second input source, which is how a
+# producer re-run and its consumers drift apart silently.
+#
+# This case's adoption was declared in the pre-declaration (section 4.1) before
+# any arm ran; the record below pins what was declared. The earlier round of
+# this file held the three values as a literal dict, which predates #928.
+CV04_ADOPTION = {
+    "envelope": slab_family.CV04_ENVELOPE_REL,
+    "adopted_revision": "r1",
+    "revision_sha256": "sha256:59dafc9ab63239d74d6fec16fa4e89f7c055636fb6e14bf4123d724c05635686",
+    "rig_hash": "sha256:24164f616573af51b91f5c596e7b79e521005c4a872218fede25d009ed9dd211",
+    "gate_policy": {"multiplier": 1.5, "quantum": 1000},
+    "adopted_in": "docs/design_notes/20260902_cv26_oblique_fresnel_predeclaration.md",
+    "adopted_by_reviewer": "cv26 pre-declaration review, 2026-09-02",
+}
+CV04_ADOPTED = slab_family.load_adopted_envelope(CV04_ADOPTION)
+CV04_ENVELOPE = CV04_ADOPTED["values"]
+_QUANTUM = CV04_ADOPTION["gate_policy"]["quantum"]
+W_BIN = gate_from_envelope(CV04_ENVELOPE["per_bin_max_RT_closure"], quantum=_QUANTUM)   # 0.074
+W_MEAN_R = gate_from_envelope(CV04_ENVELOPE["mean_dR"], quantum=_QUANTUM)               # 0.010
+W_MEAN_T = gate_from_envelope(CV04_ENVELOPE["mean_dT"], quantum=_QUANTUM)               # 0.017
 
 
 def injection_term(R_or_T, leak_bar: float = LEAK_BAR):

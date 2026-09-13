@@ -128,6 +128,16 @@ COINCIDENTAL_VALUES: dict[tuple[str, str], str] = {
         "Meep's length unit a = 1 cm, in metres. Equal to W_MEAN_R (0.010) by "
         "arithmetic coincidence; it is the reference leg's geometry scale and "
         "enters no window.",
+    ("validation/crossval/comparators/oblique_fresnel.py", "MEEP_A_M"):
+        "the same Meep length unit as cv22's, in the oblique lane's comparator.",
+    ("validation/crossval/comparators/oblique_fresnel.py", "D_SLAB_M"):
+        "cv04's slab thickness, 10 mm in metres -- the rig's geometry, shared "
+        "with the producer. Equal to W_MEAN_R by arithmetic coincidence and "
+        "used in no gate.",
+    ("validation/crossval/comparators/oblique_fresnel.py", "SETTLING_LIMIT"):
+        "the -40 dB ring-down bar on the scattered and transmitted tails (note "
+        "section 6): a settling witness on the time record, not an R/T window, "
+        "and it equals W_MEAN_R only because -40 dB is 0.01.",
 }
 
 
@@ -515,6 +525,11 @@ FANOUT: dict[str, str] = {
     "docs/design_notes/20260903_test_reorg_tier3b_consolidation.md": DIFFERENT_QUANTITY,
     "validation/research/multiband_nu/results/e3_battery_after.json": DIFFERENT_QUANTITY,
     "docs/design_notes/20260904_aux_echo_record_invariant.md": RESOLVING_REFERENCE,
+    # cv26 (the oblique lane) adopts cv04's r1 through the same loader cv22 and
+    # cv23 use; its pre-declaration section 4.1 is the site the adoption record
+    # names, and it quotes the adopted values there with their producer paths.
+    "docs/design_notes/20260902_cv26_oblique_fresnel_predeclaration.md": ADOPTION_DECLARATION,
+    "docs/design_notes/20260904_cv26_round3_close.md": DIFFERENT_QUANTITY,
     # #888's absorber lane: dated readings of what the derived absorber did to
     # cv04/cv22/cv23, including the pre-fix envelope numbers it is compared
     # against. No revision names it, and its section 14 states explicitly that
@@ -544,6 +559,7 @@ DIFFERENT_QUANTITY_REASON: dict[str, str] = {
     "tests/studio/test_interop_design_document.py": "a geometry centre coordinate that happens to read 0.011 m",
     "rfx/api/_preflight.py": "a docstring worked example of the ceil(domain/dx) rounding rule, whose grid coordinate reads 0.011 m; the file enters this scan at all only because a preflight helper is named _waveguide_with_dispersive_slab",
     "docs/design_notes/20260903_test_reorg_tier3b_consolidation.md": "a pytest node id containing a parametrized 0.011",
+    "docs/design_notes/20260904_cv26_round3_close.md": "one cell of cv26's absorber depth ladder -- the MEASURED mean|dT| of the 40-cell rung at 45 deg, which happens to read the same as cv04's normal-incidence mean_closure; the close note derives no window and no revision names it as an adoption site",
     "validation/research/multiband_nu/results/e3_battery_after.json": "the runtime reciprocity warner's 0.011 bar (max|S_ij - S_ji| / max|S|) quoted in the e3 battery's captured warnings; the file names the slab family only because one battery board is the dispersive slab",
 }
 

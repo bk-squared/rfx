@@ -528,6 +528,8 @@ CLASSIFICATION: dict[str, str] = {
     "docs/design_notes/20260903_lattice_witness_standard.md": GATED,
     "docs/design_notes/20260903_test_reorg_tier3b_consolidation.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260904_aux_echo_record_invariant.md": GATED,
+    "docs/design_notes/20260902_cv26_oblique_fresnel_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260904_cv26_round3_close.md": SYMBOL_SPAN_PARSER_SCOPE,
     # 2026-09-13 (#888 r2): one resolvable span,
     # `validation/crossval/_04_fresnel_results/lattice_witness.json::gated_here`,
     # alongside several `tests/....py::test_name` spans (and

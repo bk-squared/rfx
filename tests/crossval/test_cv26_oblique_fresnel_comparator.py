@@ -14,7 +14,9 @@ bandwidths, records, the primary-recipe rule, and every falsifier's margin.
 from __future__ import annotations
 
 import importlib.util
+import json
 import math
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -33,6 +35,7 @@ def _load(name: str, rel: str):
 
 
 O = _load("cv26_oblique_fresnel", "validation/crossval/comparators/oblique_fresnel.py")
+slab_family = _load("cv26_slab_family", "validation/crossval/comparators/slab_family.py")
 F0 = O.TFSF_F0_HZ
 FREQS = np.linspace(6e9, 14e9, 41)
 
@@ -428,15 +431,34 @@ def test_continuum_pml_reflection():
 # ---------------------------------------------------------------------------
 
 def test_windows_are_cv04s_committed_envelope_through_the_shared_policy():
-    import json
+    """#928: cv04 OWNS these numbers, so this checks the chain rather than the
+    values -- the adoption record resolves against the producer's artifact, and
+    every window is that artifact's value through the adopted gate policy.
+
+    Restating the producer's three band-mean / closure literals here (which the
+    earlier round of this file did) would make the test a second copy of that
+    evidence: a producer re-run would move the artifact and leave this file
+    agreeing with nothing.
+    """
+    adoption = O.CV04_ADOPTION
+    assert adoption["envelope"] == slab_family.CV04_ENVELOPE_REL
+    assert (_REPO / adoption["adopted_in"]).is_file()
+    doc = slab_family.load_envelope()
+    revision = doc["revisions"][adoption["adopted_revision"]]
+    assert revision["status"] == "active"
+    assert revision["revision_hash"] == adoption["revision_sha256"]
+    values = revision["values"]
+    assert O.CV04_ENVELOPE == values
+    quantum = adoption["gate_policy"]["quantum"]
+    assert O.W_BIN == gate_from_envelope(values["per_bin_max_RT_closure"], quantum=quantum)
+    assert O.W_MEAN_R == gate_from_envelope(values["mean_dR"], quantum=quantum)
+    assert O.W_MEAN_T == gate_from_envelope(values["mean_dT"], quantum=quantum)
+    # the producer's own two band-means also sit in the golden workflow fixture;
+    # the two must agree, and neither is restated here
     golden = json.loads((_REPO / "tests/fixtures/golden_workflows/multilayer_fresnel.json").read_text())
     base = {m["id"]: m["observed_baseline"] for m in golden["expected_metrics"]}
-    assert O.CV04_ENVELOPE["mean_dR"] == base["mean_reflectance_error"] == 0.0066
-    assert O.CV04_ENVELOPE["mean_dT"] == base["mean_transmittance_error"] == 0.011
-    assert O.CV04_ENVELOPE["per_bin_max_RT_closure"] == 0.0487
-    assert O.W_BIN == gate_from_envelope(0.0487, quantum=1000) == 0.074
-    assert O.W_MEAN_R == gate_from_envelope(0.0066, quantum=1000) == 0.010
-    assert O.W_MEAN_T == gate_from_envelope(0.011, quantum=1000) == 0.017
+    assert values["mean_dR"] == base["mean_reflectance_error"]
+    assert values["mean_dT"] == base["mean_transmittance_error"]
     assert O.LEAK_BAR == 1e-3 and O.PML_FLOOR_R == pytest.approx(2.001e-3) and O.PML_REL == 0.5
     assert O.injection_term(1.0) == O.PML_FLOOR_R
 
@@ -826,3 +848,64 @@ def test_the_grazing_pec_falsifiers_still_break_g6_through_the_new_rule():
         v = O.compact_arm_verdict("graze_pec", dict(_ALL_PASS["graze_pec"], G6_absorber=False))
         assert v["ok"] is False
         assert v["not_applicable"] == ["G3_passivity", "G3_closure"]
+
+
+def test_the_comparator_and_the_meep_leg_import_without_rfx_or_jax():
+    """The Meep reference leg runs in a pymeep conda environment with no rfx and
+    no JAX, and it imports this comparator. When the comparator imported
+    ``rfx.sources.tfsf_2d`` directly (for the auxiliary-absorber constants), the
+    leg died at import with ``ModuleNotFoundError: No module named 'jax'`` before
+    a single Meep step -- which is why cv26's Meep leg produced nothing after
+    #888 and E4 read ``[SKIP]`` on all six arms.
+
+    The constants still come from that module; they are read out of its source
+    instead of imported (``O.tfsf_2d_constants``). This runs both modules under
+    an import hook that refuses ``rfx`` and ``jax`` exactly as that environment
+    does, so a re-added top-level rfx import fails here rather than in a VESSL
+    job an hour later.
+    """
+    import builtins
+
+    real_import = builtins.__import__
+
+    def refuse_rfx_and_jax(name, *args, **kwargs):
+        if name.split(".")[0] in ("rfx", "jax"):
+            raise ModuleNotFoundError(f"No module named {name.split('.')[0]!r}")
+        return real_import(name, *args, **kwargs)
+
+    for rel in ("validation/crossval/comparators/oblique_fresnel.py",
+                "scripts/crossval/meep_cv26_oblique_slab.py"):
+        blocked = [m for m in list(sys.modules) if m.split(".")[0] in ("rfx", "jax")]
+        saved = {m: sys.modules.pop(m) for m in blocked}
+        builtins.__import__ = refuse_rfx_and_jax
+        try:
+            spec = importlib.util.spec_from_file_location(f"cv26_norfx_{Path(rel).stem}", _REPO / rel)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+        finally:
+            builtins.__import__ = real_import
+            sys.modules.update(saved)
+        if rel.endswith("oblique_fresnel.py"):
+            # and it is the module's own values that came through, not a fallback
+            assert module.AUX_N_CPML == O.AUX_N_CPML
+            assert module.AUX_CPML_R_ASYMPTOTIC == O.AUX_CPML_R_ASYMPTOTIC
+            assert module.W_BIN == O.W_BIN
+
+
+def test_a_constant_that_stops_being_a_literal_raises_rather_than_falling_back(tmp_path):
+    """The source read must fail loudly. A reader that shrugged at a renamed or
+    computed constant would leave the comparator modelling an auxiliary grid
+    that does not exist -- the exact defect #888 found."""
+    src = tmp_path / "tfsf_2d.py"
+    src.write_text("AUX_N_CPML = 200\nAUX_CPML_ORDER = 3\n", encoding="utf-8")
+    assert O.tfsf_2d_constants(("AUX_N_CPML",), str(src)) == {"AUX_N_CPML": 200}
+    with pytest.raises(ValueError, match="no module-level definition"):
+        O.tfsf_2d_constants(("AUX_N_CPML", "AUX_GONE"), str(src))
+    computed = tmp_path / "computed.py"
+    computed.write_text("BASE = 100\nAUX_N_CPML = 2 * BASE\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="no longer a module-level literal"):
+        O.tfsf_2d_constants(("AUX_N_CPML",), str(computed))
+    nested = tmp_path / "nested.py"
+    nested.write_text("def f():\n    AUX_N_CPML = 200\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="no module-level definition"):
+        O.tfsf_2d_constants(("AUX_N_CPML",), str(nested))
