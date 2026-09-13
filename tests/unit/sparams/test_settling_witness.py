@@ -613,7 +613,7 @@ def _rebuild_solve(call):
 
 
 def _legacy_worst(cfgs):
-    """The pre-fix arithmetic, verbatim, for the bit-identity check below."""
+    """The pre-fix arithmetic, verbatim, for the preserved-verdict control."""
     worst = -np.inf
     for cfg in cfgs:
         for ts in (cfg.v_probe_t, cfg.v_ref_t, cfg.i_probe_t, cfg.i_ref_t):
@@ -731,14 +731,44 @@ def test_a_subnormal_record_no_longer_carries_the_pass():
 def test_normal_range_far_port_records_are_kept_and_the_cell_does_not_move():
     """Control, and the reason the floor is not simply "the far port": at the
     coarse rung the same far-port records are ordinary float32 (peak
-    amplitudes 3.15e-20 / 5.5e-23). Nothing is skipped, and the arithmetic on
-    a kept record is bit-identical to the pre-fix formula."""
+    amplitudes 3.15e-20 / 5.5e-23). Nothing is skipped and the recorded-cell
+    gate stays unchanged. #919 normalizes power before reduction to avoid
+    overflow/underflow; compare its arithmetic to an independent high-
+    precision ratio, not the last bit of the superseded operation order.
+    """
+    from decimal import Decimal, localcontext
+
     c = _pec_short_cell("coarse", "false")
     for call, port in zip(c["settling_records"], ("left", "right")):
         cfgs = _rebuild_solve(call)
         db, detail = settling_db_from_port_records(cfgs, return_detail=True)
         assert detail["skipped_records"] == [] and detail["n_witnessed"] == 8
-        assert db == _legacy_worst(cfgs), "kept-record arithmetic changed"
+        references = []
+        tail_max = 0
+        # Raw stored samples -> unscaled squared power in Decimal. This
+        # oracle does not share the production normalization or reduction.
+        with localcontext() as context:
+            context.prec = 60
+            for cfg in cfgs:
+                for name in ("v_probe_t", "v_ref_t", "i_probe_t", "i_ref_t"):
+                    raw = np.asarray(getattr(cfg, name))
+                    tail = max(1, len(raw) // 10)
+                    tail_max = max(tail_max, tail)
+                    peak = Decimal.from_float(float(np.max(np.abs(raw))))**2
+                    end = sum((Decimal.from_float(float(x))**2 for x in raw[-tail:]),
+                              Decimal(0)) / Decimal(tail)
+                    references.append(Decimal(10) * (end / peak).log10())
+            reference = float(max(references))
+        # Positive terms have no cancellation: a serial tail reduction
+        # plus the surrounding divisions/square is bounded by gamma_(N+8).
+        # Convert relative ratio error to dB. The extra two ULPs are an
+        # explicit platform log/final-rounding allowance, not an IEEE
+        # guarantee about the accuracy of every platform's libm.
+        unit_roundoff = np.finfo(float).eps / 2
+        gamma = (tail_max + 8) * unit_roundoff / (1 - (tail_max + 8) * unit_roundoff)
+        roundoff_db = 10 / np.log(10) * (-np.log1p(-gamma)) + 2 * abs(np.spacing(reference))
+        assert abs(db - reference) <= roundoff_db
+        assert settling_verdict(db) == settling_verdict(reference) == settling_verdict(_legacy_worst(cfgs))
         assert db == pytest.approx(c["settling_db"][port], abs=0.01)
 
 
