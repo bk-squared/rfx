@@ -515,6 +515,11 @@ FANOUT: dict[str, str] = {
     "docs/design_notes/20260903_test_reorg_tier3b_consolidation.md": DIFFERENT_QUANTITY,
     "validation/research/multiband_nu/results/e3_battery_after.json": DIFFERENT_QUANTITY,
     "docs/design_notes/20260904_aux_echo_record_invariant.md": RESOLVING_REFERENCE,
+    # #888's absorber lane: dated readings of what the derived absorber did to
+    # cv04/cv22/cv23, including the pre-fix envelope numbers it is compared
+    # against. No revision names it, and its section 14 states explicitly that
+    # nothing in it re-derives a window.
+    "docs/design_notes/20260904_aux_absorber_depth_derivation.md": HISTORICAL_PROSE,
     "docs/design_notes/20260905_post_merge_review_20_prs.md": HISTORICAL_PROSE,
     "docs/design_notes/20260906_issue928_ownership_decision.md": HISTORICAL_PROSE,
     "docs/design_notes/20260908_docs_truth_field_ledger.md": HISTORICAL_PROSE,

@@ -951,7 +951,7 @@ carried and what is dropped is listed in 14.3.
   (W_witness_R inside its ceiling, continuum falsifier separating 2.68 on 65 of 115
   bins). Main reached that state first and by a different mechanism: #974's
   settling-extension loop grows `nx_interior` until cv04's own tails clear the
-  family bar, and `_04_fresnel_results/lattice_witness.json::gated_here` is already
+  family bar, and `validation/crossval/_04_fresnel_results/lattice_witness.json::gated_here` is already
   `true` on a 990-step record with the falsifier firing on 111 of 115 bins
   (separation 8.35). Section 11.1's numbers stand as what the absorber alone did;
   they are not the basis of any gate on main.

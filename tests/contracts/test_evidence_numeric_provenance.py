@@ -528,6 +528,15 @@ CLASSIFICATION: dict[str, str] = {
     "docs/design_notes/20260903_lattice_witness_standard.md": GATED,
     "docs/design_notes/20260903_test_reorg_tier3b_consolidation.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260904_aux_echo_record_invariant.md": GATED,
+    # 2026-09-13 (#888 r2): one resolvable span,
+    # `validation/crossval/_04_fresnel_results/lattice_witness.json::gated_here`,
+    # alongside several `tests/....py::test_name` spans (and
+    # `tests/_gate_policy.py::gate_from_envelope`) that this parser rejects by
+    # construction. The note's own measurements are not quoted out of a
+    # committed artifact -- they are the lane's raw readings, replayed by
+    # tests/unit/sources/test_tfsf_aux_absorber_reflection.py and
+    # tests/crossval/test_aux_echo_record_invariant.py.
+    "docs/design_notes/20260904_aux_absorber_depth_derivation.md": SYMBOL_SPAN_PARSER_SCOPE,
     "docs/design_notes/20260905_post_merge_review_20_prs.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260905_post_v18_plan_rasterization_preflight_cst.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260905_v18_close_predeclaration.md": NO_ARTIFACT_REFERENCE,
