@@ -14,7 +14,6 @@ Pre-declaration:
 """
 from __future__ import annotations
 
-import ast
 import importlib.util
 import math
 import sys
@@ -845,40 +844,3 @@ def test_verdict_lane_q_gate_is_run_length_contingent() -> None:
     assert fast_c.q_log_ratio < fast_c.q_window
     # and the limitation is written where the window is derived
     assert "Known limitation" in rmj.q_window.__doc__
-
-
-def test_cv02_persists_and_exits_through_one_decision_value() -> None:
-    """The retained record and every process exit must share ``_rc``.
-
-    cv02 writes its JSON before the visualization tail.  A later ad-hoc
-    ``sys.exit(2)`` can therefore make a record claim PASS while the process
-    reports inconclusive (the failure found on the abandoned #907 branch).
-    This source contract keeps that invariant cheap and always-on: adding an
-    exit path with a literal or another expression fails review immediately.
-    """
-    tree = ast.parse(SCRIPT_PATH.read_text(encoding="utf-8"),
-                     filename=str(SCRIPT_PATH))
-    exit_calls = [
-        node for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "exit"
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id == "sys"
-    ]
-    assert exit_calls, "cv02 must retain an explicit process exit"
-    assert all(
-        len(node.args) == 1
-        and isinstance(node.args[0], ast.Name)
-        and node.args[0].id == "_rc"
-        for node in exit_calls
-    ), "every cv02 exit path must use the persisted _rc decision"
-
-    persisted = [
-        node_value for node in ast.walk(tree)
-        if isinstance(node, ast.Dict)
-        for key, node_value in zip(node.keys, node.values)
-        if isinstance(key, ast.Constant) and key.value == "exit_code"
-    ]
-    assert len(persisted) == 1
-    assert isinstance(persisted[0], ast.Name) and persisted[0].id == "_rc"

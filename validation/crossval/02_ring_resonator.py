@@ -604,253 +604,257 @@ _doc = {
 _out_dir = os.path.join(SCRIPT_DIR, "_02_ring_resonator_results")
 os.makedirs(_out_dir, exist_ok=True)
 _artifact = os.path.join(_out_dir, "crossval.json")
-with open(_artifact, "w") as _fh:
-    _json.dump(_doc, _fh, indent=1)
-print(f"\n  artifact: {_artifact}")
+from _retained_verdict import retained_verdict  # noqa: E402
 
-# =============================================================================
-# PART 4: Mode pattern visualization (narrowband)
-# =============================================================================
-print(f"\n{'=' * 70}")
-print("PART 4: Mode pattern visualization")
-print("=" * 70)
 
-# Use the first few matched resonances (or first 3)
-vis_freqs = [mf for mf, _, _, _ in matched[:3]]
-if not vis_freqs and meep_freqs:
-    vis_freqs = meep_freqs[:3]
+def _visualize_comparison():
+    # =============================================================================
+    # PART 4: Mode pattern visualization (narrowband)
+    # =============================================================================
+    print(f"\n{'=' * 70}")
+    print("PART 4: Mode pattern visualization")
+    print("=" * 70)
 
-n_modes = len(vis_freqs)
-if n_modes == 0:
-    print("  No modes to visualize!")
-else:
-    fig, axes = plt.subplots(n_modes, 3, figsize=(18, 5 * n_modes),
-                              squeeze=False)
+    # Use the first few matched resonances (or first 3)
+    vis_freqs = [mf for mf, _, _, _ in matched[:3]]
+    if not vis_freqs and meep_freqs:
+        vis_freqs = meep_freqs[:3]
 
-    for mi, f_meep_unit in enumerate(vis_freqs):
-        print(f"\n  Mode {mi+1}: f={f_meep_unit:.6f} (Meep units)")
-
-        # --- Meep narrowband run ---
-        sim_nb = mp.Simulation(cell_size=cell_meep, boundary_layers=pml_meep,
-                               geometry=geo_meep,
-                               sources=[mp.Source(
-                                   mp.GaussianSource(f_meep_unit, fwidth=df/20),
-                                   component=mp.Ez,
-                                   center=mp.Vector3(r + 0.1, 0))],
-                               resolution=resolution)
-        sim_nb.run(until_after_sources=mp.stop_when_fields_decayed(
-            20, mp.Ez, mp.Vector3(r + 0.1, 0), 1e-4))
-
-        ez_meep = sim_nb.get_array(center=mp.Vector3(), size=cell_meep,
-                                    component=mp.Ez)
-        pml_c = int(dpml * resolution)
-        pml_cells = int(dpml * resolution)
-        ez_meep_int = ez_meep[pml_cells:-pml_cells, pml_cells:-pml_cells]
-
-        # --- rfx narrowband run ---
-        f_rfx_hz = f_meep_unit * C0 / a
-        bw_nb = (df / 20) / (f_meep_unit * math.pi * math.sqrt(2))
-
-        sim_rfx_nb = Simulation(freq_max=0.25 * C0 / a,
-                                domain=(domain, domain, dx), dx=dx,
-                                boundary=BoundarySpec.uniform("upml"),
-                                cpml_layers=cpml_n,
-                                mode="2d_tmz")
-        sim_rfx_nb.add_material("ring", eps_r=eps_wg)
-        sim_rfx_nb.add(RfxCylinder(center=ring_center_rfx,
-                                    radius=(r + w) * a,
-                                    height=dx, axis="z"), material="ring")
-        sim_rfx_nb.add_material("air_hole", eps_r=1.0)
-        sim_rfx_nb.add(RfxCylinder(center=ring_center_rfx, radius=r * a,
-                                    height=dx, axis="z"), material="air_hole")
-        sim_rfx_nb.add_source(position=(src_rfx_x, src_rfx_y, 0),
-            component="ez",
-            waveform=ModulatedGaussian(f0=f_rfx_hz, bandwidth=bw_nb,
-                                       cutoff=5.0 / math.sqrt(2)))
-        sim_rfx_nb.add_probe(position=(src_rfx_x, src_rfx_y, 0),
-                              component="ez")
-
-        # Run until fields decay
-        n_nb = 30000  # generous
-        snap_nb = SnapshotSpec(components=("ez",), slice_axis=2,
-                               slice_index=0)
-        res_nb = sim_rfx_nb.run(n_steps=n_nb, snapshot=snap_nb,
-                                 subpixel_smoothing=True)
-
-        # Take last snapshot as steady-state mode
-        ez_rfx_all = np.asarray(res_nb.snapshots["ez"])
-        grid_nb = sim_rfx_nb._build_grid()
-        pad_nb = grid_nb.pad_x
-        n_dom = int(np.ceil(domain / dx)) + 1
-        ez_rfx_last = ez_rfx_all[-1, pad_nb:pad_nb+n_dom,
-                                  pad_nb:pad_nb+n_dom]
-
-        # Normalize for comparison
-        n_c = min(ez_meep_int.shape[0], ez_rfx_last.shape[0])
-        rfx_f = ez_rfx_last[:n_c, :n_c]
-        meep_f = ez_meep_int[:n_c, :n_c]
-
-        vm = max(np.max(np.abs(rfx_f)), 1e-30) * 0.8
-        vm_m = max(np.max(np.abs(meep_f)), 1e-30) * 0.8
-
-        axes[mi, 0].imshow(rfx_f.T, origin="lower", cmap="RdBu_r",
-                            vmin=-vm, vmax=vm)
-        axes[mi, 0].set_title(f"rfx Ez (f={f_meep_unit:.5f})", fontsize=11)
-        axes[mi, 0].set_ylabel(f"Mode {mi+1}")
-
-        axes[mi, 1].imshow(meep_f.T, origin="lower", cmap="RdBu_r",
-                            vmin=-vm_m, vmax=vm_m)
-        axes[mi, 1].set_title(f"Meep Ez (f={f_meep_unit:.5f})", fontsize=11)
-
-        # Diff (normalized)
-        r_norm = rfx_f / (vm + 1e-30)
-        m_norm = meep_f / (vm_m + 1e-30)
-        diff = r_norm - m_norm
-        vd = max(np.max(np.abs(diff)), 1e-30)
-        axes[mi, 2].imshow(diff.T, origin="lower", cmap="bwr",
-                            vmin=-vd, vmax=vd)
-        axes[mi, 2].set_title("Normalized diff", fontsize=11)
-
-    for ax in axes.flat:
-        ax.set_xlabel("x"); ax.set_ylabel("y")
-
-    fig.suptitle("Ring Resonator Mode Patterns — rfx vs Meep\n"
-                 f"n={n_wg}, r={r}, w={w}, resolution={resolution}",
-                 fontsize=13, fontweight="bold")
-    plt.tight_layout()
-    out = os.path.join(SCRIPT_DIR, "02_mode_patterns.png")
-    plt.savefig(out, dpi=150)
-    plt.close()
-    print(f"\n  Saved: {out}")
-
-# =============================================================================
-# PART 5: Broadband field envelope comparison (Meep cross-check only)
-# =============================================================================
-print(f"\n{'=' * 70}")
-print("PART 5: Broadband field snapshot comparison")
-print("=" * 70)
-
-if not HAVE_MEEP:
-    print("  [SKIP] Meep reference unavailable — no rfx-vs-Meep field "
-          "comparison to render.")
-else:
-    ez_rfx_broad = np.asarray(res_rfx.snapshots["ez"])
-    grid_broad = sim_rfx._build_grid()
-    pad_b = grid_broad.pad_x
-    n_dom_b = int(np.ceil(domain / dx)) + 1
-
-    capture_ps = [0.10, 0.30, 0.60, 1.00, 1.50, 2.50]
-    rfx_steps = [min(ez_rfx_broad.shape[0]-1, int(t*1e-12/dt))
-                 for t in capture_ps]
-    rfx_frames = [ez_rfx_broad[s, pad_b:pad_b+n_dom_b, pad_b:pad_b+n_dom_b]
-                  for s in rfx_steps]
-
-    # Meep broadband snapshots
-    sim_meep_b = mp.Simulation(cell_size=cell_meep, boundary_layers=pml_meep,
-                               geometry=geo_meep, sources=src_meep_list,
-                               resolution=resolution)
-    sim_meep_b.init_sim()
-    meep_times = [t * 1e-12 * C0 / a for t in capture_ps]
-    meep_frames = []
-    for target_t in meep_times:
-        remaining = target_t - sim_meep_b.meep_time()
-        if remaining > 0:
-            sim_meep_b.run(until=remaining)
-        ez = sim_meep_b.get_array(center=mp.Vector3(), size=cell_meep,
-                                   component=mp.Ez)
-        pml_cells = int(dpml * resolution)
-        meep_frames.append(ez[pml_cells:-pml_cells, pml_cells:-pml_cells].copy())
-
-    fig2, axes2 = plt.subplots(len(capture_ps), 3,
-                                figsize=(18, 4 * len(capture_ps)))
-    for i, t_ps in enumerate(capture_ps):
-        n_c = min(rfx_frames[i].shape[0], meep_frames[i].shape[0])
-        rf = rfx_frames[i][:n_c, :n_c]
-        mf = meep_frames[i][:n_c, :n_c]
-
-        vm_r = max(np.max(np.abs(rf)), 1e-30) * 0.9
-        vm_m = max(np.max(np.abs(mf)), 1e-30) * 0.9
-
-        axes2[i, 0].imshow(rf.T, origin="lower", cmap="RdBu_r",
-                            vmin=-vm_r, vmax=vm_r)
-        axes2[i, 0].set_title(f"rfx Ez (t={t_ps:.2f}ps)", fontsize=10)
-        axes2[i, 0].set_ylabel("y")
-
-        axes2[i, 1].imshow(mf.T, origin="lower", cmap="RdBu_r",
-                            vmin=-vm_m, vmax=vm_m)
-        axes2[i, 1].set_title(f"Meep Ez (t={t_ps:.2f}ps)", fontsize=10)
-
-        # Envelope diff
-        from scipy.signal import hilbert
-        def env2d(f):
-            e = np.zeros_like(f)
-            for j in range(f.shape[1]):
-                e[:, j] = np.abs(hilbert(f[:, j]))
-            return e
-        re = env2d(rf); me = env2d(mf)
-        re /= max(re.max(), 1e-30); me /= max(me.max(), 1e-30)
-        diff = re - me
-        axes2[i, 2].imshow(diff.T, origin="lower", cmap="bwr",
-                            vmin=-1, vmax=1)
-        axes2[i, 2].set_title("Envelope diff", fontsize=10)
-
-    axes2[-1, 0].set_xlabel("x"); axes2[-1, 1].set_xlabel("x")
-    axes2[-1, 2].set_xlabel("x")
-    fig2.suptitle("Ring Resonator: Broadband Field Snapshots — rfx vs Meep",
-                  fontsize=13, fontweight="bold")
-    plt.tight_layout()
-    out2 = os.path.join(SCRIPT_DIR, "02_broadband_fields.png")
-    plt.savefig(out2, dpi=150)
-    plt.close()
-    print(f"  Saved: {out2}")
-
-# =============================================================================
-# SUMMARY
-# =============================================================================
-print(f"\n{'=' * 70}")
-print("SUMMARY")
-print("=" * 70)
-print(f"  Meep modes found: {len(meep_modes)}")
-print(f"  rfx  modes found: {len(rfx_modes)}")
-print(f"  Matched modes:    {len(matched)}")
-
-# rfx self-check (does NOT depend on Meep): rfx Harminv must find at least one
-# physical ring mode in the source band. If rfx finds nothing, the rfx physics
-# is broken (exit 1) regardless of the reference.
-rfx_self_ok = len(rfx_modes) >= 1
-print(f"  rfx self-check (>=1 ring mode found): "
-      f"{'PASS' if rfx_self_ok else 'FAIL'}")
-
-if not HAVE_MEEP:
-    # No Meep reference → the rfx-vs-Meep matched-mode gate cannot be evaluated.
-    if rfx_self_ok:
-        print("\nrfx SELF-CHECK PASSED")
-        print("[SKIP] Meep reference unavailable — crossval inconclusive (exit 2)")
+    n_modes = len(vis_freqs)
+    if n_modes == 0:
+        print("  No modes to visualize!")
     else:
-        print("\nSOME CHECKS FAILED — rfx Harminv found no ring modes (exit 1)")
-    # Same prints, same codes; the value comes from _exit_code() above so the
-    # retained artifact records the code this script actually returns (#928).
+        fig, axes = plt.subplots(n_modes, 3, figsize=(18, 5 * n_modes),
+                                  squeeze=False)
+
+        for mi, f_meep_unit in enumerate(vis_freqs):
+            print(f"\n  Mode {mi+1}: f={f_meep_unit:.6f} (Meep units)")
+
+            # --- Meep narrowband run ---
+            sim_nb = mp.Simulation(cell_size=cell_meep, boundary_layers=pml_meep,
+                                   geometry=geo_meep,
+                                   sources=[mp.Source(
+                                       mp.GaussianSource(f_meep_unit, fwidth=df/20),
+                                       component=mp.Ez,
+                                       center=mp.Vector3(r + 0.1, 0))],
+                                   resolution=resolution)
+            sim_nb.run(until_after_sources=mp.stop_when_fields_decayed(
+                20, mp.Ez, mp.Vector3(r + 0.1, 0), 1e-4))
+
+            ez_meep = sim_nb.get_array(center=mp.Vector3(), size=cell_meep,
+                                        component=mp.Ez)
+            pml_cells = int(dpml * resolution)
+            ez_meep_int = ez_meep[pml_cells:-pml_cells, pml_cells:-pml_cells]
+
+            # --- rfx narrowband run ---
+            f_rfx_hz = f_meep_unit * C0 / a
+            bw_nb = (df / 20) / (f_meep_unit * math.pi * math.sqrt(2))
+
+            sim_rfx_nb = Simulation(freq_max=0.25 * C0 / a,
+                                    domain=(domain, domain, dx), dx=dx,
+                                    boundary=BoundarySpec.uniform("upml"),
+                                    cpml_layers=cpml_n,
+                                    mode="2d_tmz")
+            sim_rfx_nb.add_material("ring", eps_r=eps_wg)
+            sim_rfx_nb.add(RfxCylinder(center=ring_center_rfx,
+                                        radius=(r + w) * a,
+                                        height=dx, axis="z"), material="ring")
+            sim_rfx_nb.add_material("air_hole", eps_r=1.0)
+            sim_rfx_nb.add(RfxCylinder(center=ring_center_rfx, radius=r * a,
+                                        height=dx, axis="z"), material="air_hole")
+            sim_rfx_nb.add_source(position=(src_rfx_x, src_rfx_y, 0),
+                component="ez",
+                waveform=ModulatedGaussian(f0=f_rfx_hz, bandwidth=bw_nb,
+                                           cutoff=5.0 / math.sqrt(2)))
+            sim_rfx_nb.add_probe(position=(src_rfx_x, src_rfx_y, 0),
+                                  component="ez")
+
+            # Run until fields decay
+            n_nb = 30000  # generous
+            snap_nb = SnapshotSpec(components=("ez",), slice_axis=2,
+                                   slice_index=0)
+            res_nb = sim_rfx_nb.run(n_steps=n_nb, snapshot=snap_nb,
+                                     subpixel_smoothing=True)
+
+            # Take last snapshot as steady-state mode
+            ez_rfx_all = np.asarray(res_nb.snapshots["ez"])
+            grid_nb = sim_rfx_nb._build_grid()
+            pad_nb = grid_nb.pad_x
+            n_dom = int(np.ceil(domain / dx)) + 1
+            ez_rfx_last = ez_rfx_all[-1, pad_nb:pad_nb+n_dom,
+                                      pad_nb:pad_nb+n_dom]
+
+            # Normalize for comparison
+            n_c = min(ez_meep_int.shape[0], ez_rfx_last.shape[0])
+            rfx_f = ez_rfx_last[:n_c, :n_c]
+            meep_f = ez_meep_int[:n_c, :n_c]
+
+            vm = max(np.max(np.abs(rfx_f)), 1e-30) * 0.8
+            vm_m = max(np.max(np.abs(meep_f)), 1e-30) * 0.8
+
+            axes[mi, 0].imshow(rfx_f.T, origin="lower", cmap="RdBu_r",
+                                vmin=-vm, vmax=vm)
+            axes[mi, 0].set_title(f"rfx Ez (f={f_meep_unit:.5f})", fontsize=11)
+            axes[mi, 0].set_ylabel(f"Mode {mi+1}")
+
+            axes[mi, 1].imshow(meep_f.T, origin="lower", cmap="RdBu_r",
+                                vmin=-vm_m, vmax=vm_m)
+            axes[mi, 1].set_title(f"Meep Ez (f={f_meep_unit:.5f})", fontsize=11)
+
+            # Diff (normalized)
+            r_norm = rfx_f / (vm + 1e-30)
+            m_norm = meep_f / (vm_m + 1e-30)
+            diff = r_norm - m_norm
+            vd = max(np.max(np.abs(diff)), 1e-30)
+            axes[mi, 2].imshow(diff.T, origin="lower", cmap="bwr",
+                                vmin=-vd, vmax=vd)
+            axes[mi, 2].set_title("Normalized diff", fontsize=11)
+
+        for ax in axes.flat:
+            ax.set_xlabel("x"); ax.set_ylabel("y")
+
+        fig.suptitle("Ring Resonator Mode Patterns — rfx vs Meep\n"
+                     f"n={n_wg}, r={r}, w={w}, resolution={resolution}",
+                     fontsize=13, fontweight="bold")
+        plt.tight_layout()
+        out = os.path.join(SCRIPT_DIR, "02_mode_patterns.png")
+        plt.savefig(out, dpi=150)
+        plt.close()
+        print(f"\n  Saved: {out}")
+
+    # =============================================================================
+    # PART 5: Broadband field envelope comparison (Meep cross-check only)
+    # =============================================================================
+    print(f"\n{'=' * 70}")
+    print("PART 5: Broadband field snapshot comparison")
+    print("=" * 70)
+
+    if not HAVE_MEEP:
+        print("  [SKIP] Meep reference unavailable — no rfx-vs-Meep field "
+              "comparison to render.")
+    else:
+        ez_rfx_broad = np.asarray(res_rfx.snapshots["ez"])
+        grid_broad = sim_rfx._build_grid()
+        pad_b = grid_broad.pad_x
+        n_dom_b = int(np.ceil(domain / dx)) + 1
+
+        capture_ps = [0.10, 0.30, 0.60, 1.00, 1.50, 2.50]
+        rfx_steps = [min(ez_rfx_broad.shape[0]-1, int(t*1e-12/dt))
+                     for t in capture_ps]
+        rfx_frames = [ez_rfx_broad[s, pad_b:pad_b+n_dom_b, pad_b:pad_b+n_dom_b]
+                      for s in rfx_steps]
+
+        # Meep broadband snapshots
+        sim_meep_b = mp.Simulation(cell_size=cell_meep, boundary_layers=pml_meep,
+                                   geometry=geo_meep, sources=src_meep_list,
+                                   resolution=resolution)
+        sim_meep_b.init_sim()
+        meep_times = [t * 1e-12 * C0 / a for t in capture_ps]
+        meep_frames = []
+        for target_t in meep_times:
+            remaining = target_t - sim_meep_b.meep_time()
+            if remaining > 0:
+                sim_meep_b.run(until=remaining)
+            ez = sim_meep_b.get_array(center=mp.Vector3(), size=cell_meep,
+                                       component=mp.Ez)
+            pml_cells = int(dpml * resolution)
+            meep_frames.append(ez[pml_cells:-pml_cells, pml_cells:-pml_cells].copy())
+
+        fig2, axes2 = plt.subplots(len(capture_ps), 3,
+                                    figsize=(18, 4 * len(capture_ps)))
+        for i, t_ps in enumerate(capture_ps):
+            n_c = min(rfx_frames[i].shape[0], meep_frames[i].shape[0])
+            rf = rfx_frames[i][:n_c, :n_c]
+            mf = meep_frames[i][:n_c, :n_c]
+
+            vm_r = max(np.max(np.abs(rf)), 1e-30) * 0.9
+            vm_m = max(np.max(np.abs(mf)), 1e-30) * 0.9
+
+            axes2[i, 0].imshow(rf.T, origin="lower", cmap="RdBu_r",
+                                vmin=-vm_r, vmax=vm_r)
+            axes2[i, 0].set_title(f"rfx Ez (t={t_ps:.2f}ps)", fontsize=10)
+            axes2[i, 0].set_ylabel("y")
+
+            axes2[i, 1].imshow(mf.T, origin="lower", cmap="RdBu_r",
+                                vmin=-vm_m, vmax=vm_m)
+            axes2[i, 1].set_title(f"Meep Ez (t={t_ps:.2f}ps)", fontsize=10)
+
+            # Envelope diff
+            from scipy.signal import hilbert
+            def env2d(f):
+                e = np.zeros_like(f)
+                for j in range(f.shape[1]):
+                    e[:, j] = np.abs(hilbert(f[:, j]))
+                return e
+            re = env2d(rf); me = env2d(mf)
+            re /= max(re.max(), 1e-30); me /= max(me.max(), 1e-30)
+            diff = re - me
+            axes2[i, 2].imshow(diff.T, origin="lower", cmap="bwr",
+                                vmin=-1, vmax=1)
+            axes2[i, 2].set_title("Envelope diff", fontsize=10)
+
+        axes2[-1, 0].set_xlabel("x"); axes2[-1, 1].set_xlabel("x")
+        axes2[-1, 2].set_xlabel("x")
+        fig2.suptitle("Ring Resonator: Broadband Field Snapshots — rfx vs Meep",
+                      fontsize=13, fontweight="bold")
+        plt.tight_layout()
+        out2 = os.path.join(SCRIPT_DIR, "02_broadband_fields.png")
+        plt.savefig(out2, dpi=150)
+        plt.close()
+        print(f"  Saved: {out2}")
+
+
+
+with retained_verdict(_artifact, _doc):
+    print(f"\n  artifact: {_artifact}")
+    _visualize_comparison()
+    # =============================================================================
+    # SUMMARY
+    # =============================================================================
+    print(f"\n{'=' * 70}")
+    print("SUMMARY")
+    print("=" * 70)
+    print(f"  Meep modes found: {len(meep_modes)}")
+    print(f"  rfx  modes found: {len(rfx_modes)}")
+    print(f"  Matched modes:    {len(matched)}")
+
+    # rfx self-check (does NOT depend on Meep): rfx Harminv must find at least one
+    # physical ring mode in the source band. If rfx finds nothing, the rfx physics
+    # is broken (exit 1) regardless of the reference.
+    rfx_self_ok = len(rfx_modes) >= 1
+    print(f"  rfx self-check (>=1 ring mode found): "
+          f"{'PASS' if rfx_self_ok else 'FAIL'}")
+
+    if not HAVE_MEEP:
+        # No Meep reference → the rfx-vs-Meep matched-mode gate cannot be evaluated.
+        if rfx_self_ok:
+            print("\nrfx SELF-CHECK PASSED")
+            print("[SKIP] Meep reference unavailable — crossval inconclusive (exit 2)")
+        else:
+            print("\nSOME CHECKS FAILED — rfx Harminv found no ring modes (exit 1)")
+        # Same prints, same codes; the value comes from _exit_code() above so the
+        # retained artifact records the code this script actually returns (#928).
+        sys.exit(_rc)
+
+    # Meep present → evaluate the full cross-check.
+    #
+    # Five gates, all from the pre-declared judge. `mean_err < 5%` and the
+    # `>= 2` mode count are the published values, unchanged; what changed is that
+    # the matcher no longer applies the same 5% before the gate reads it, so a
+    # mode rfx places far away is now an error term instead of a deleted row.
+    PASS = rfx_self_ok
+    print(f"  Unmatched reference modes: {verdict.n_unmatched}")
+    if verdict.mean_err_pct is not None:
+        print(f"  Max freq error:   {verdict.max_err_pct:.3f}%")
+        print(f"  Mean freq error:  {verdict.mean_err_pct:.3f}%")
+    for gate_name, gate_ok in verdict.gates.items():
+        print(f"  {'PASS' if gate_ok else 'FAIL'}: gate {gate_name}")
+    if not verdict.passed:
+        PASS = False
+
+    if PASS:
+        print("\nALL CHECKS PASSED")
+    else:
+        print("\nSOME CHECKS FAILED")
+
     sys.exit(_rc)
-
-# Meep present → evaluate the full cross-check.
-#
-# Five gates, all from the pre-declared judge. `mean_err < 5%` and the
-# `>= 2` mode count are the published values, unchanged; what changed is that
-# the matcher no longer applies the same 5% before the gate reads it, so a
-# mode rfx places far away is now an error term instead of a deleted row.
-PASS = rfx_self_ok
-print(f"  Unmatched reference modes: {verdict.n_unmatched}")
-if verdict.mean_err_pct is not None:
-    print(f"  Max freq error:   {verdict.max_err_pct:.3f}%")
-    print(f"  Mean freq error:  {verdict.mean_err_pct:.3f}%")
-for gate_name, gate_ok in verdict.gates.items():
-    print(f"  {'PASS' if gate_ok else 'FAIL'}: gate {gate_name}")
-if not verdict.passed:
-    PASS = False
-
-if PASS:
-    print("\nALL CHECKS PASSED")
-else:
-    print("\nSOME CHECKS FAILED")
-
-sys.exit(_rc)

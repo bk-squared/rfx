@@ -24,9 +24,10 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
 
 ### Fixed — cv02 retained verdict exit contract (#946)
 
-- Add a source contract that requires the persisted `exit_code` and every
-  `sys.exit` path in the ring-resonator crossval to use the same `_rc` value,
-  preventing a later exit branch from contradicting retained evidence.
+- Persist the ring-resonator verdict before optional visualization, then
+  reconcile late exits and exceptions within the case tail. Subprocess tests
+  compare the stored outcome with the actual return code and preserve the
+  original scientific verdict when a later process outcome differs.
 
 ### Fixed — cv02 Q-rate interval transform (#945)
 
