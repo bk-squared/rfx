@@ -211,6 +211,7 @@ def fit_hy_field(xs, z_nodes, hy_meas, f, b, g, rs, eta0):
     Returns dict with:
       modes      — the supermode kx list,
       amps       — fitted complex amplitudes c_i,
+      x_reference — physical x at which those amplitudes are defined,
       rel_resid  — relative rms residual of the fit over the whole plane,
       alpha_model — the model's own log-linear fitted alpha of |Hy| at
                     the z node nearest the gap midplane over xs (the
@@ -234,8 +235,29 @@ def fit_hy_field(xs, z_nodes, hy_meas, f, b, g, rs, eta0):
     kmid = int(np.argmin(np.abs(z_nodes - (g + b / 2.0))))
     alpha_model = _fit_alpha_loglin(xs, np.abs(model[:, kmid]))
     alpha_meas = _fit_alpha_loglin(xs, np.abs(hy_meas[:, kmid]))
-    return {"modes": modes, "amps": amps, "rel_resid": rel_resid,
+    return {"modes": modes, "amps": amps, "x_reference": float(xs[0]),
+            "rel_resid": rel_resid,
             "alpha_model": alpha_model, "alpha_meas": alpha_meas}
+
+
+def predict_ez_from_hy_fit(fit, xs, zs, f, b, g, rs, eta0):
+    """Predict TM Ez on its physical sample coordinates without an E fit.
+
+    In air, Ampere's law for exp(+j omega t - j kx x) gives
+    Ez_m = -eta0 * (kx_m / k0) * Hy_m. Each mode has its OWN factor;
+    the magnitude slopes of a multimode Ez and Hy need not coincide.
+    The fitted amplitudes stay referred to the original Hy x plane,
+    including when Ez samples sit half a Yee cell away. A common DFT
+    half-time-step phase does not affect the magnitude/alpha comparison.
+    """
+    xs, zs = np.asarray(xs, float), np.asarray(zs, float)
+    k0 = 2.0 * np.pi * f / C0
+    ez = np.zeros((len(xs), len(zs)), complex)
+    for mode, amp in zip(fit["modes"], fit["amps"]):
+        profile = hy_profile(mode, f, b, g, rs, eta0, zs)
+        wave = np.exp(-1j * mode * (xs - fit["x_reference"]))
+        ez += (-eta0 * mode / k0 * amp) * wave[:, None] * profile[None, :]
+    return ez
 
 
 def _fit_alpha_loglin(xs, mag):

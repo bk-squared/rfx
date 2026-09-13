@@ -9,6 +9,16 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
+### Fixed — Leontovich oracle fixture and observable pairing (#947)
+
+- Tile the guide's graded absorber with canonical node bounds, removing a
+  zero-conductivity gap and eight displaced ramp values introduced during
+  the #834 coordinate transition. Restore the original endpoint diagnostic
+  after a controlled comparison, keeping the 1% field-fit and 9% alpha gates.
+- Predict Ez from the Hy-fitted modes using each mode's wave impedance and
+  actual Yee sample coordinates. Add fast full-ramp and analytic comparator
+  checks; clarify the existing weekly `slow_physics` coverage.
+
 ### Fixed — forward results expose recorded-probe settling (#919)
 
 - Expose `ForwardResult.settling_db` and `settling_witness` from retained

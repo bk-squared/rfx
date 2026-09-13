@@ -1,0 +1,6 @@
+green_o3_comparator_commit bb43d95fcdaf365769cd7c2909e896b1f20e737b coords float32 mismatches []
+before_exact_coordinates_834 9201851390696d9fb609f50e0bc54744c7d2a0ff coords float32 mismatches []
+exact_coordinates_834 635ab2e32a05cf406b3c175d01877a1ee2e9131e coords float64 mismatches [28, 29, 30, 31, 32, 33, 34, 35, 36]
+first_parent_before_931 df8195230ebdae69c9cdebc5f680b743a1a5d719 coords float64 mismatches [28, 29, 30, 31, 32, 33, 34, 35, 36]
+current 45481c6cff79c9f49004e13893f47cb6dd7bc41c coords float64 mismatches [28, 29, 30, 31, 32, 33, 34, 35, 36]
+current canonical bounds: all120 layers select intended singleton; zero mismatches

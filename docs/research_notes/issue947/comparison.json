@@ -1,0 +1,106 @@
+{
+  "baseline": {
+    "rows": [
+      {
+        "frequency_hz": 8000000000.0,
+        "hy_fit_relative_rms": 0.010769756331269219,
+        "alpha_hy_measured": 0.21631057617950766,
+        "alpha_hy_model": 0.218497763949543,
+        "alpha_ez_measured": 0.24581773886744196,
+        "alpha_ez_model": 0.22922665968949957,
+        "ez_relative_alpha_error": 0.07237848861217078
+      },
+      {
+        "frequency_hz": 9000000000.0,
+        "hy_fit_relative_rms": 0.011254856950105644,
+        "alpha_hy_measured": 0.4227896483585442,
+        "alpha_hy_model": 0.44063892022581175,
+        "alpha_ez_measured": 0.49738573784907886,
+        "alpha_ez_model": 0.45489317577304217,
+        "ez_relative_alpha_error": 0.09341217749381525
+      },
+      {
+        "frequency_hz": 10000000000.0,
+        "hy_fit_relative_rms": 0.012424065719874906,
+        "alpha_hy_measured": 0.6618665754549938,
+        "alpha_hy_model": 0.665580666967615,
+        "alpha_ez_measured": 0.7156498738330063,
+        "alpha_ez_model": 0.678774092197074,
+        "ez_relative_alpha_error": 0.054327031717683605
+      },
+      {
+        "frequency_hz": 11000000000.0,
+        "hy_fit_relative_rms": 0.012833322777007787,
+        "alpha_hy_measured": 0.8707689270297896,
+        "alpha_hy_model": 0.8504750312795484,
+        "alpha_ez_measured": 0.8687129189102193,
+        "alpha_ez_model": 0.8611815408574396,
+        "ez_relative_alpha_error": 0.008745401167425282
+      },
+      {
+        "frequency_hz": 12000000000.0,
+        "hy_fit_relative_rms": 0.012749890949236068,
+        "alpha_hy_measured": 1.0148226755389773,
+        "alpha_hy_model": 0.992526809694419,
+        "alpha_ez_measured": 1.0028541072249477,
+        "alpha_ez_model": 1.00061008402327,
+        "ez_relative_alpha_error": 0.002242654993696469
+      }
+    ],
+    "settle_db": -70.98709106445312,
+    "f0_two_plane_alpha": 0.8733349293470383,
+    "f0_ez_log_fit_rms": 0.008662129786582652
+  },
+  "absorber_repair": {
+    "rows": [
+      {
+        "frequency_hz": 8000000000.0,
+        "hy_fit_relative_rms": 0.005607790482727785,
+        "alpha_hy_measured": 0.23102673100140056,
+        "alpha_hy_model": 0.21864827116007524,
+        "alpha_ez_measured": 0.23105959570246606,
+        "alpha_ez_model": 0.22938195330980865,
+        "ez_relative_alpha_error": 0.007313750573880284
+      },
+      {
+        "frequency_hz": 9000000000.0,
+        "hy_fit_relative_rms": 0.0026007303970009134,
+        "alpha_hy_measured": 0.4558555318761889,
+        "alpha_hy_model": 0.4411610606251093,
+        "alpha_ez_measured": 0.46383583899770536,
+        "alpha_ez_model": 0.4554197801959534,
+        "ez_relative_alpha_error": 0.018479783197231203
+      },
+      {
+        "frequency_hz": 10000000000.0,
+        "hy_fit_relative_rms": 0.0032683595298420593,
+        "alpha_hy_measured": 0.6793957341082676,
+        "alpha_hy_model": 0.6665276187031338,
+        "alpha_ez_measured": 0.6982374071493459,
+        "alpha_ez_model": 0.6797238916335365,
+        "ez_relative_alpha_error": 0.02723681739554129
+      },
+      {
+        "frequency_hz": 11000000000.0,
+        "hy_fit_relative_rms": 0.003378774285556312,
+        "alpha_hy_measured": 0.8682835366888878,
+        "alpha_hy_model": 0.8515796201183635,
+        "alpha_ez_measured": 0.8737083233246375,
+        "alpha_ez_model": 0.8622903259301765,
+        "ez_relative_alpha_error": 0.013241476856584278
+      },
+      {
+        "frequency_hz": 12000000000.0,
+        "hy_fit_relative_rms": 0.0037548105427212767,
+        "alpha_hy_measured": 1.0081404702092736,
+        "alpha_hy_model": 0.9935001007490554,
+        "alpha_ez_measured": 1.0143287808640853,
+        "alpha_ez_model": 1.001590089533922,
+        "ez_relative_alpha_error": 0.012718467827583124
+      }
+    ],
+    "settle_db": -71.0195083618164,
+    "f0_two_plane_alpha": 0.7249479740858078,
+    "f0_ez_log_fit_rms": 0.0024450216442762794
+  }
+}
