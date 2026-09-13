@@ -1,4 +1,4 @@
-"""Compare the paper builders' observables and JIT/AD with and without probes.
+"""Compare the paper builders' observables and AD with and without probes.
 
 Same geometry, fields, extraction and input per arm. The only mutation is
 removing the user probes added by #918. This tests diagnostic passivity and
@@ -67,6 +67,7 @@ def main():
         "smoke": os.environ.get("SMOKE", "1") if args.case == "beam" else None,
         "grid_shape": list(grid.shape), "n_steps": n_steps,
         "parameter": np.asarray(parameter).tolist(),
+        "ad_invocation": "jax.value_and_grad, matching both paper scripts; outer jit is not used",
         "scope": "point-probe instrumentation identity on the real paper forward/extractor; no optimization or RF accuracy claim",
     }
     (args.out / "plan.json").write_text(json.dumps(provenance, indent=2) + "\n")
@@ -83,11 +84,11 @@ def main():
         value = np.asarray(value)
         witness = retain_observation(args.out, label, result, value)
         del result
-        print(f"{args.case} {label}: JIT value_and_grad", flush=True)
+        print(f"{args.case} {label}: value_and_grad (paper invocation)", flush=True)
         def cost_fn(p, evaluate=evaluate):
             return objective(evaluate(p))
 
-        cost, gradient = jax.jit(jax.value_and_grad(cost_fn))(parameter)
+        cost, gradient = jax.value_and_grad(cost_fn)(parameter)
         cost, gradient = np.asarray(cost), np.asarray(gradient)
         np.savez_compressed(args.out / f"{label}_ad.npz", cost=cost, gradient=gradient)
         arms.append((value, cost, gradient, witness))
