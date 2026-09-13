@@ -1,0 +1,126 @@
+name: rfx-cpml-stagger-witness
+description: "Two-arm GPU witness for the CPML Yee half-cell magnetic-profile fix (Lane A port of research 7b6c33d5). Runs the Experiment 68/69 native CPML vacuum dipole fixture -- 96x72x60, h=1/512, dt=3.723779042052746e-12, 1536 steps, 12 CPML layers, kappa_max=1, float32, traces only -- twice in ONE job, with the SAME comparator, on the SAME GPU: arm RED at origin/main (pre-fix; predeclared expectation far-Hy full peak-relative residual ~0.139, so the fixed 5% requirement FAILS and the witness exits 1) and arm GREEN at the fix branch (predeclared ~4e-4, exits 0). The comparator (scripts/diagnostics/cpml_dipole_waveform_witness.py, whose reference()/check_traces() are copied verbatim from the research checker at 7b6c33d5) is copied from the GREEN tree into the RED tree so the only difference between arms is the three CPML solver files; a comparator that moved between arms would make the two receipts incomparable. Tolerances are FIXED and predeclared (full 5%, late 1%, source 1e-5); no amplitude/time fitting, no window selection, no relaxation. Memory: traces only -- 6 fields 9.49 MiB + 3 material arrays 4.75 MiB + CPML psi 6.22 MiB + trace 0.11 MiB = 20.6 MiB of declared arrays (measured on CPU). The 22.97 GiB peak-in-use of Experiments 68/69 was dominated by six full float32 histories (14.24 GiB) that this witness does NOT request, so one 24 GB gpu-rtx4090 is ample. A PASS is a bounded total-waveform observation only: it does not separate bulk, source-cell and CPML error, does not certify a reflection coefficient, and qualifies no other mesh, angle or material. PREREQUISITE: the branch is NOT pushed to origin -- push agent/cpml-magnetic-half-cell to the NFS mirror at $RFX_SRC first, or this job exits 3. Submit: vessl run create -f scripts/vessl_cpml_stagger_witness.yaml --project byungkwan"
+tags: [rfx, cpml, stagger, witness, gpu, lane-a]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: Agg
+  RFX_SRC: /root/workspace/byungkwan-workspace/research/rfx
+  RFX_RUNS_ROOT: /root/workspace/claude-workspace/rfx/runs
+  RFX_RED_REF: "origin/main"
+  RFX_GREEN_REF: "agent/cpml-magnetic-half-cell"
+  WITNESS: scripts/diagnostics/cpml_dipole_waveform_witness.py
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eux
+  echo "=== rfx CPML Yee half-cell stagger witness: RED(origin/main) vs GREEN(fix) ==="
+  date
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  git config --global --add safe.directory '*'
+  test -d "$RFX_SRC/.git" || { echo "ERROR: no git mirror at $RFX_SRC"; exit 3; }
+
+  # -- 1. stage both arms under /root/work. The NFS checkout is read-only for
+  #       the pod and these scripts write JSON beside the tree, so nothing runs
+  #       from the mount. --
+  WORK=/root/work
+  rm -rf "$WORK"; mkdir -p "$WORK"
+  git -C "$RFX_SRC" fetch -q origin main
+  for REF in "$RFX_RED_REF" "$RFX_GREEN_REF"; do
+    git -C "$RFX_SRC" cat-file -e "${REF}^{commit}" 2>/dev/null || {
+      echo "ERROR: $RFX_SRC has no ref $REF -- push the lane branch to the NFS mirror first"; exit 3; }
+  done
+  RED_SHA=$(git -C "$RFX_SRC" rev-parse "$RFX_RED_REF")
+  GREEN_SHA=$(git -C "$RFX_SRC" rev-parse "$RFX_GREEN_REF")
+  [ "$RED_SHA" != "$GREEN_SHA" ] || { echo "ERROR: both arms resolve to $RED_SHA"; exit 3; }
+  for ARM in red green; do
+    case "$ARM" in red) SHA=$RED_SHA;; green) SHA=$GREEN_SHA;; esac
+    git clone -q --no-checkout --shared "$RFX_SRC" "$WORK/$ARM"
+    git -C "$WORK/$ARM" checkout -q --detach "$SHA"
+    echo "$ARM = $(git -C "$WORK/$ARM" rev-parse HEAD) ($(git -C "$WORK/$ARM" ls-files | wc -l) tracked files)"
+  done
+
+  STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+  OUT="$RFX_RUNS_ROOT/cpml-stagger-$STAMP"
+  mkdir -p "$OUT"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  printf 'red=%s\ngreen=%s\n' "$RED_SHA" "$GREEN_SHA" > "$WORK/commits.txt"
+
+  # -- 2. HOLD THE COMPARATOR FIXED. origin/main does not carry the witness;
+  #       copying the GREEN comparator into the RED tree is what makes the two
+  #       residuals comparable. Recorded by digest so the swap is auditable. --
+  test -f "$WORK/green/$WITNESS" || { echo "ERROR: witness missing in GREEN tree"; exit 3; }
+  mkdir -p "$WORK/red/$(dirname "$WITNESS")"
+  cp "$WORK/green/$WITNESS" "$WORK/red/$WITNESS"
+  sha256sum "$WORK/green/$WITNESS" "$WORK/red/$WITNESS" > "$WORK/comparator.sha256"
+  cat "$WORK/comparator.sha256"
+
+  # -- 3. environment, once per arm (editable install so rfx resolves to that
+  #       arm's tree and cannot be crossed with the other's). --
+  run_arm() {
+    ARM=$1; EXPECT=$2
+    cd "$WORK/$ARM"
+    python -m pip install -q -e . 2>&1 | tail -2
+    python -m pip install -q pytest 2>&1 | tail -1
+    python -c "import jax, rfx, pathlib; print('$ARM', 'jax', jax.__version__, jax.devices(), 'rfx', rfx.__version__, pathlib.Path(rfx.__file__).parent)"
+    set +e
+    python -m pytest -q -ra -p no:cacheprovider \
+      tests/unit/boundaries/test_cpml_yee_stagger.py \
+      tests/unit/runners/test_distributed_cpml_stagger.py \
+      > "$WORK/${ARM}_lane_tests.log" 2>&1
+    echo "$?" > "$WORK/${ARM}_lane_tests.rc"
+    python "$WITNESS" --label "$ARM" \
+      --output "$WORK/${ARM}_witness.json" \
+      --trace-output "$WORK/${ARM}_trace.npy" \
+      > "$WORK/${ARM}_witness.log" 2>&1
+    rc=$?
+    set -e
+    echo "$rc" > "$WORK/${ARM}_witness.rc"
+    cat "$WORK/${ARM}_witness.log"
+    echo "${ARM}_witness_rc=$rc (predeclared expectation: $EXPECT) lane_tests_rc=$(cat "$WORK/${ARM}_lane_tests.rc")"
+    tail -3 "$WORK/${ARM}_lane_tests.log" || true
+  }
+
+  # -- 4. RED first: the falsifier must fire on the unfixed solver, or the
+  #       witness is not discriminating and GREEN proves nothing. --
+  run_arm red 1
+  run_arm green 0
+  RED_RC=$(cat "$WORK/red_witness.rc")
+  GREEN_RC=$(cat "$WORK/green_witness.rc")
+  GREEN_TESTS_RC=$(cat "$WORK/green_lane_tests.rc")
+
+  # -- 5. hand back both JSONs, both traces, both logs, the comparator digests. --
+  cp "$WORK"/commits.txt "$WORK"/comparator.sha256 "$OUT/"
+  cp "$WORK"/red_witness.json "$WORK"/green_witness.json "$OUT/"
+  cp "$WORK"/red_trace.npy "$WORK"/green_trace.npy "$OUT/"
+  cp "$WORK"/red_witness.log "$WORK"/green_witness.log "$OUT/"
+  cp "$WORK"/red_lane_tests.log "$WORK"/green_lane_tests.log "$OUT/"
+  # The witness already prints its own JSON verdict per arm; the summary is
+  # those two verdicts plus the commits, concatenated. No inline code here --
+  # everything that computes a number lives in the tracked witness script.
+  {
+    cat "$WORK/commits.txt"
+    printf 'red_witness_rc=%s expected=1\n' "$RED_RC"
+    printf 'green_witness_rc=%s expected=0\n' "$GREEN_RC"
+    printf 'green_lane_tests_rc=%s expected=0\n' "$GREEN_TESTS_RC"
+    printf '\n--- red verdict ---\n'; cat "$WORK/red_witness.log"
+    printf '\n--- green verdict ---\n'; cat "$WORK/green_witness.log"
+  } > "$OUT/summary.txt"
+  cat "$OUT/summary.txt"
+  chmod -R a+rX "$OUT"
+
+  echo "=== verdict ==="
+  echo "red_rc=$RED_RC (expect 1) green_rc=$GREEN_RC (expect 0) green_lane_tests_rc=$GREEN_TESTS_RC (expect 0)"
+  echo "artifacts: $OUT"
+  fail=0
+  [ "$RED_RC" -eq 1 ] || { echo "ERROR: RED arm exited $RED_RC, not 1 -- the 5% far-channel requirement did NOT fail on the unfixed solver, so this witness does not discriminate the fix. Do not read GREEN as evidence."; fail=1; }
+  [ "$GREEN_RC" -eq 0 ] || { echo "ERROR: GREEN arm exited $GREEN_RC, not 0 -- the fix did not clear the fixed requirements on GPU. Report the residuals; do not move a tolerance."; fail=1; }
+  [ "$GREEN_TESTS_RC" -eq 0 ] || { echo "ERROR: GREEN lane tests exited $GREEN_TESTS_RC"; fail=1; }
+  exit "$fail"
