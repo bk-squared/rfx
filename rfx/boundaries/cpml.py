@@ -50,6 +50,12 @@ class CPMLAxisParams(NamedTuple):
 
     Cell sizes are stored as Python floats (not traced) so they
     can be used inside JIT-compiled scan bodies.
+
+    ``magnetic`` contains separately sampled half-cell profiles. Its high
+    faces are not simple reversals of its low faces because both are
+    applied in the existing integer-indexed face buffers. Legacy explicit
+    constructors may omit it. One-active-layer faces retain their legacy
+    single-sample coefficients; stagger-matching claims require >=2 layers.
     """
     x_lo: CPMLParams    # x-lo face
     x_hi: CPMLParams    # x-hi face (flipped relative to x_lo in the uniform case)
@@ -63,6 +69,7 @@ class CPMLAxisParams(NamedTuple):
     dx_y_hi: float = 0.0   # y-hi boundary cell size
     dz_lo: float = 0.0     # z-lo boundary cell size
     dz_hi: float = 0.0     # z-hi boundary cell size
+    magnetic: CPMLAxisParams | None = None  # half-cell profiles; legacy constructors omit these
 
 
 class CPMLState(NamedTuple):
@@ -105,6 +112,7 @@ def _cpml_profile(
     order: int = 3,
     kappa_max: float = 1.0,
     R_asymptotic: float = 1e-15,
+    sample_offset: float = 0.0,
 ) -> CPMLParams:
     """Compute graded CPML profile using polynomial grading.
 
@@ -126,6 +134,11 @@ def _cpml_profile(
         this value using the Meep formula:
         ``σ_max = -ln(R) * (m+1) / (2 * η * d)``
         where ``d = n_layers * dx``.  Default 1e-15 (matching Meep).
+    sample_offset : float
+        Offset in cell units from the integer E sample. H uses +0.5 on
+        low faces and -0.5 before high-face reversal. Zero preserves the
+        original E profile exactly. Single-sample legacy profiles are
+        unchanged because they have no resolved grading interval.
     """
 
     # Stay in-trace when dt/dx are JAX tracers (mesh-as-design-variable
@@ -152,6 +165,17 @@ def _cpml_profile(
     # to 0 at interior edge (index n-1) for the lo face.
     # The hi face uses jnp.flip() to reverse this.
     rho = 1.0 - xp.arange(n_layers, dtype=work_dtype) / max(n_layers - 1, 1)
+    # A single sample has no resolved interior grading interval. Preserve
+    # its legacy constant coefficient instead of inventing an origin;
+    # stagger-matching qualification requires at least two active layers.
+    if sample_offset != 0.0 and n_layers > 1:
+        # E's existing integer-node profile is unchanged. H samples that
+        # same profile half a cell to the right. Before high-face reversal
+        # this is a negative offset, not the low-face positive offset.
+        rho = xp.clip(
+            (n_layers - 1 - xp.arange(n_layers, dtype=work_dtype) - sample_offset)
+            / max(n_layers - 1, 1), 0.0, 1.0,
+        )
     sigma = sigma_max * rho**order
     # κ graded from kappa_max (outer) to 1.0 (inner): κ(ρ) = 1 + (κ_max - 1) * ρ^m
     kappa = 1.0 + (kappa_max - 1.0) * rho**order
@@ -471,18 +495,22 @@ def init_cpml(grid, *, kappa_max: float | None = None,
         f: n for f in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
     }
 
-    def _lo_face_profile(is_noop: bool, cell_size, face_name: str) -> CPMLParams:
+    def _lo_face_profile(is_noop: bool, cell_size, face_name: str,
+                         sample_offset: float = 0.0) -> CPMLParams:
         if is_noop:
             return noop
         n_active = int(face_layers.get(face_name, n))
-        p = _cpml_profile(n_active, grid.dt, cell_size, kappa_max=kappa_max)
+        p = _cpml_profile(n_active, grid.dt, cell_size, kappa_max=kappa_max,
+                          sample_offset=sample_offset)
         return _pad_profile_at_end(p, n_active, n)
 
-    def _hi_face_profile(is_noop: bool, cell_size, face_name: str) -> CPMLParams:
+    def _hi_face_profile(is_noop: bool, cell_size, face_name: str,
+                         sample_offset: float = 0.0) -> CPMLParams:
         if is_noop:
             return noop
         n_active = int(face_layers.get(face_name, n))
-        base = _cpml_profile(n_active, grid.dt, cell_size, kappa_max=kappa_max)
+        base = _cpml_profile(n_active, grid.dt, cell_size, kappa_max=kappa_max,
+                             sample_offset=sample_offset)
         return _pad_profile_at_start(_flip_profile(base), n_active, n)
 
     prof_x_lo = _lo_face_profile("x_lo" in noop_faces, dx, "x_lo")
@@ -499,6 +527,16 @@ def init_cpml(grid, *, kappa_max: float | None = None,
         dx_x_lo=dx, dx_x_hi=dx,
         dx_y_lo=dy, dx_y_hi=dy,
         dz_lo=dz_lo, dz_hi=dz_hi,
+        magnetic=CPMLAxisParams(
+            x_lo=_lo_face_profile("x_lo" in noop_faces, dx, "x_lo", .5),
+            x_hi=_hi_face_profile("x_hi" in noop_faces, dx, "x_hi", -.5),
+            y_lo=_lo_face_profile("y_lo" in noop_faces, dy, "y_lo", .5),
+            y_hi=_hi_face_profile("y_hi" in noop_faces, dy, "y_hi", -.5),
+            z_lo=_lo_face_profile("z_lo" in noop_faces, dz_lo, "z_lo", .5),
+            z_hi=_hi_face_profile("z_hi" in noop_faces, dz_hi, "z_hi", -.5),
+            dx_x_lo=dx, dx_x_hi=dx, dx_y_lo=dy, dx_y_hi=dy,
+            dz_lo=dz_lo, dz_hi=dz_hi,
+        ),
     )
 
     nx, ny, nz = _grid_extents(grid)
@@ -918,6 +956,9 @@ def apply_cpml_h(
         ch_xlo = ch_xhi = ch_ylo = ch_yhi = ch_zlo = ch_zhi = dt / MU_0
 
 
+    # H derivatives live at the half-cell coordinates, not E nodes.
+    if isinstance(cpml_params, CPMLAxisParams) and cpml_params.magnetic is not None:
+        cpml_params = cpml_params.magnetic
     # Unpack per-face profiles and cell sizes (T7 Phase 2 PR1).
     if isinstance(cpml_params, CPMLAxisParams):
         px_lo, px_hi = cpml_params.x_lo, cpml_params.x_hi

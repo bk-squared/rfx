@@ -596,6 +596,16 @@ CLASSIFICATION: dict[str, str] = {
     # out of a committed JSON, so there is no `path.json::key` for the gate to
     # resolve.
     "docs/design_notes/717_crossval_lane_decision.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-14 (Lane A port of research 7b6c33d5, CPML Yee half-cell
+    # sampling): the note carries no `::` span at all (parses and others both
+    # empty). Its Experiment68/69 numbers come from GPU runs on the research
+    # branch `accel/pod-distributed-usable-20260912` and are cited by input
+    # manifest SHA256 and solver-source SHA in the note's own header; no
+    # in-repo artifact holds them, so there is nothing for this gate to
+    # resolve. The operator-placement claim itself is gated by
+    # tests/unit/boundaries/test_cpml_yee_stagger.py (exact mirror residual),
+    # not by a quoted number.
+    "docs/design_notes/2026-09-13_cpml_yee_stagger_correction.md": NO_ARTIFACT_REFERENCE,
     # 2026-09-10 (#931 lattice-ownership merge): 591e296e added a resolvable
     # citation to this note (cv18's Richardson envelope); opted in rather than
     # left failing NO_ARTIFACT_REFERENCE's own vacuity check.
