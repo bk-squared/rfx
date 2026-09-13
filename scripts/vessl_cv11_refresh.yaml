@@ -16,7 +16,7 @@ mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
   set -u
-  COMMIT=3fa534d17c35463fc5e0082bc9159eaec1ec5b37
+  COMMIT=8206031de9923dfaddc17f7060def466a7906915
   REPO=/tmp/rfx-cv11-${COMMIT:0:12}
   OUT=/root/workspace/byungkwan-workspace/research/rfx-cv11-refresh-${COMMIT:0:12}
   rm -rf "$REPO"
