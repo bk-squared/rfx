@@ -106,10 +106,12 @@ tests skip cleanly — which is what the two openEMS entries did here.
 - `scripts/run_crossval_cpu.py:106-112` builds `CPU_SUBSET` from each case's
   `cpu_runner.order`, and `:59` gives every script a 900 s timeout.
 - **Nothing calls it.** `grep -rn run_crossval_cpu .github/ scripts/` matches one line: the
-  script's own usage docstring, `scripts/run_crossval_cpu.py:35`. The only other references
-  are documentation — `README.md:117`, `docs/public/guide/benchmarks.mdx:203`,
+  script's own usage docstring, `scripts/run_crossval_cpu.py:35`. Repo-wide
+  (`grep -rn run_crossval_cpu . --exclude-dir=.git`) the other references are documentation —
+  `README.md:117`, `docs/public/guide/benchmarks.mdx:203`,
   `docs/guides/reference_lane_contract.md:93` — plus an existence check in
-  `tests/contracts/test_crossval_manifest_contract.py:18,451`.
+  `tests/contracts/test_crossval_manifest_contract.py:18,451` and a docstring mention in
+  `tests/crossval/test_crossval_gate_logic.py:11`. None of them executes it.
 
 That is the whole of #741's remaining item: the largest declared tier has no executor.
 
@@ -214,14 +216,18 @@ image and already runs cv11; `scripts/vessl_gpu_suite.yaml` already collects the
 
 **(a), scoped, with one line of (b) taken and the rest of (b) declined.** In this order:
 
-1. **Delete `$IGN` from `scripts/vessl_validation_lane_a6000.yaml:37` only** — not from the
-   four CPU jobs, where the `gpu` marker already deselects these files and the `--ignore`s are
-   belt-and-braces. That lane already selects `-m gpu`, so removing one variable makes all 18
-   tests run weekly on the a6000 at **no new environment cost**: the 5 rfx-only gates execute,
-   and the 13 external legs report as skips instead of being invisible. The image has no meep
-   at all, so they hit `ModuleNotFoundError` and skip cleanly — the pytest-9 trap in §1 only
-   fires if someone installs a solver with the wrong numpy pin. Budget the 7.6 min CPU figure
-   as the upper reference until a GPU number exists.
+1. **Drop `$IGN` from `scripts/vessl_validation_lane_a6000.yaml` — the `IGN=` definition at
+   `:37` AND both of its expansions, at `:40` (the `highmem` selection) and `:44` (the `gpu`
+   selection).** All three, not the definition alone: that run block is `set -eu` (`:19`), so
+   deleting `:37` and leaving `$IGN` expanded aborts the lane at its first pytest call.
+   Reproduce the abort with `sh -c 'set -eu; echo "using: $IGN"'` → `sh: 1: IGN: parameter not
+   set`, exit 2. Do not touch the four CPU jobs, where the `gpu` marker already deselects these
+   files and the `--ignore`s are belt-and-braces. That lane already selects `-m gpu`, so
+   removing the variable makes all 18 tests run weekly on the a6000 at **no new environment
+   cost**: the 5 rfx-only gates execute, and the 13 external legs report as skips instead of
+   being invisible. The image has no meep at all, so they hit `ModuleNotFoundError` and skip
+   cleanly — the pytest-9 trap in §1 only fires if someone installs a solver with the wrong
+   numpy pin. Budget the 7.6 min CPU figure as the upper reference until a GPU number exists.
 2. **Measure `scripts/run_crossval_cpu.py` once by `workflow_dispatch`** before it goes near
    the cron. If the wall time fits the schedule, add it as a weekly job and let it be the
    `cpu-runner` tier's executor. If it does not, narrow the job to 14, 16, 17, 18 — the four
@@ -235,8 +241,8 @@ image and already runs cv11; `scripts/vessl_gpu_suite.yaml` already collects the
    the three options.
 
 The reason in one sentence: the cheap half of the gap — rfx-only gates that never run on a
-schedule — closes by deleting one line, and the expensive half — external solvers inside
-pytest — is already covered outside pytest by two lanes that work.
+schedule — closes by deleting one variable from one lane file, and the expensive half —
+external solvers inside pytest — is already covered outside pytest by two lanes that work.
 
 ---
 
@@ -246,9 +252,22 @@ pytest — is already covered outside pytest by two lanes that work.
   change with a marker policy behind it, and it only matters if step 1 above is rejected.
 - **Whether cv14/cv15's `gate_paths` should list their existing test files.** Small manifest
   accuracy fix, separate from the lane question.
-- **The stale sentence in `tests/data/v173a_pre_t7_phase2_baseline.json`** (#717 item 1's third
-  bullet): `grep -rn v173a_pre_t7_phase2 --include=*.py .` finds no reader, so the choice is
-  delete-the-orphan versus correct-its-prose, not a one-word edit.
+
+---
+
+## 6. Resolved after the first draft (review round, 2026-09-13)
+
+- **The stale sentence in `tests/data/v173a_pre_t7_phase2_baseline.json`** (#717 item 1's
+  third bullet) is corrected, in this PR. The first draft deferred it on the grounds that
+  `grep -rn v173a_pre_t7_phase2 --include=*.py .` finds no reader. That grep was scoped to
+  `*.py`; repo-wide it also hits `docs/design_notes/issue802_807_rasterization_predeclaration.md`
+  and `docs/design_notes/931_migration/T7-fixture-purpose-and-engineering-review.md`, the
+  second of which quotes the fixture's `_note` directly. Orphanhood was the wrong question
+  anyway: the sentence is false whether or not anything reads it. The correction went in as a
+  sibling key, `_correction_717_lane_signal`, which is the convention the file already uses —
+  the existing `_retired_by_931_fixture_repair` key corrects other claims in the same `_note`
+  the same way, and rewriting archived prose in place would break the T7 note's quotation of
+  it.
 
 ## Evidence
 
@@ -258,5 +277,7 @@ pytest — is already covered outside pytest by two lanes that work.
 | 5 pass / 13 need a solver, 459.15 s | the four-file pytest command in §1 |
 | importorskip fails on a broken import under pytest 9.1.1 | two-test probe in §1 |
 | 17/21 cases declare `cpu-runner` | the one-liner in §2 |
-| nothing calls the CPU runner | `grep -rn run_crossval_cpu .github/ scripts/` |
+| nothing calls the CPU runner | `grep -rn run_crossval_cpu . --exclude-dir=.git` |
 | which cases the weekly external lane runs | `validation.yml:270-295` reading `scheduled_external_order` |
+| `$IGN` unset aborts an `set -eu` run block | `sh -c 'set -eu; echo "using: $IGN"'` → exit 2 |
+| the fixture note has non-`*.py` readers | `grep -rn v173a_pre_t7_phase2 . --exclude-dir=.git` |
