@@ -433,11 +433,12 @@ def test_the_committed_case_arms_when_it_is_the_program(tmp_path: Path) -> None:
     assert doc["arms"]["tand1"]["e2_ok"] in (True, False)
 
 
-# A host that runs the case as ``__main__`` through runpy -- handing over
-# sys.argv as well -- swallows the exit the case asked for, and then returns a
-# status of its own. This is the shape of
-# scripts/diagnostics/harminv_record_capture.py and of
-# scripts/diagnostics/cv0104_dielectric_control_witness.py.
+# A host that runs the case as ``__main__`` through runpy, swallows the exit
+# the case asked for, and then returns a status of its own. Two diagnostics
+# harnesses embed a case this way: cv0104_dielectric_control_witness.py hands
+# over sys.argv as this wrapper does, harminv_record_capture.py keeps its own.
+# The wrapper here takes the harder variant -- with argv handed over, nothing
+# in sys.argv or sys.modules distinguishes it from a direct run.
 RUNPY_HOST = '''\
 import runpy
 import sys
