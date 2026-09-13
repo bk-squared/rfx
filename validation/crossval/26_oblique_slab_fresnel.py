@@ -512,6 +512,12 @@ def main(argv=None) -> int:
                   f"excess over Fresnel max {gs['max_excess_over_fresnel_R_gated']:.3e} vs a-priori absorber term "
                   f"{gs['max_absorber_term_R_gated']:.3e} -> {'ok' if gs['G7_R'] and gs['G7_T'] else 'FAIL'}")
         e2["gates_all"] = gates_line
+        # the arm's OWN verdict, in the artifact. Before this it could only be
+        # reconstructed by re-running the case's main loop: e2["e2_ok"] is the base
+        # gate conjunction and does NOT carry G3_absorber or the Brewster gate on a
+        # primary arm. A shard merge (scripts/crossval/merge_cv26_arm_shards.py)
+        # needs the per-arm verdict, and so does anyone reading one arm's JSON.
+        e2["arm_ok"] = bool(arm_ok)
         print(f"  gates: {gates_line} -> {'PASS' if arm_ok else 'FAIL'}")
         if spec["compact"]:
             print(f"  verdict rule (#905, 2026-09-13): judged on {e2['verdict_rule']['judged_on']} = "
