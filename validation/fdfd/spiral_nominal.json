@@ -4,6 +4,7 @@
     "spacing": 1e-05,
     "width": 1e-05
   },
+  "dut_kind": "spiral",
   "n_turns": 2,
   "lead": 2e-05,
   "base_dx": 1e-05,
@@ -152,8 +153,8 @@
       ]
     ]
   ],
-  "solve_seconds_three_fixtures": 6.149009943008423,
-  "build_seconds": 0.10442304611206055,
+  "solve_seconds_three_fixtures": 5.695559978485107,
+  "build_seconds": 0.015430927276611328,
   "flatness_50_200_MHz": {
     "L_diff@5e+07": 9.60887462496852e-07,
     "L_se@5e+07": 2.3529917523353093e-06,
