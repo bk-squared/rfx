@@ -114,9 +114,14 @@ def main():
             f"{_db(corr)[-1] - _db(mie)[-1]:+.2f} dB. The empty-domain run isolates the "
             "leakage (a spurious far-field with NO scatterer). Default OFF is byte-"
             "identical on the validated monostatic path."),
+        # cpml_layers is part of the RIG, not a detail: it moved 8 -> 24 here and
+        # re-baselined every number below, so an artifact that does not declare it
+        # cannot be checked against the rig it was measured on (PR #1005 review,
+        # finding 5; the sibling rcs_sphere_mie fixture has always recorded it).
         "geometry": {"shape": "pec_sphere", "radius_m": A, "f0_hz": F0, "ka": KA,
                      "dx_m": DX, "res_cells_per_lambda": RES,
-                     "cells_per_radius": A / DX, "n_steps": N_STEPS, "domain_m": DOMAIN},
+                     "cells_per_radius": A / DX, "n_steps": N_STEPS,
+                     "domain_m": DOMAIN, "cpml_layers": CPML},
         "phi_deg": [round(float(np.degrees(p)), 2) for p in phi],
         "mie_bistatic_over_pi_a2": [float(x) for x in mie],
         "rfx_uncorrected_over_pi_a2": [float(x) for x in uncorr],

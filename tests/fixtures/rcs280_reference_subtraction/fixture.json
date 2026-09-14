@@ -12,7 +12,8 @@
     "res_cells_per_lambda": 40,
     "cells_per_radius": 6.364402936380741,
     "n_steps": 700,
-    "domain_m": 0.1
+    "domain_m": 0.1,
+    "cpml_layers": 24
   },
   "phi_deg": [
     0.0,
@@ -221,7 +222,7 @@
     "empty_leakage_backscatter_over_pi_a2": 1.0000411103905253e-12
   },
   "provenance": {
-    "rfx_commit": "77199aed5392a9b89319d7ad002f763c3cdf4ff8",
+    "rfx_commit": "6a369c2730c4904f71187f3cd4bddff943e91f22",
     "producer": "rcs280_reference_subtraction/generate.py"
   }
 }
