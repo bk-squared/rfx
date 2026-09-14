@@ -1323,3 +1323,21 @@ def compute_msl_s_matrix(
         self._ports = saved_ports
         self._probes = saved_probes
         self._internal_probe_indices = saved_internal_probes
+
+
+# ---------------------------------------------------------------------------
+# Pre-move ``__qualname__``, restored explicitly.
+#
+# ``compute_msl_s_matrix`` was a ``def`` in the ``_SparamMixin`` class body,
+# so its ``__qualname__`` read ``_SparamMixin.compute_msl_s_matrix``; a
+# module-level ``def`` gets the bare name instead. ``rfx/api/__init__.py``
+# rewrites exactly ``_SparamMixin.<name>`` -> ``Simulation.<name>`` at
+# class-composition time so that a bad keyword argument reports
+# ``Simulation.compute_msl_s_matrix() got an unexpected keyword argument``,
+# and it SKIPS any function whose qualname does not match that pattern.
+# Leaving the bare name here would therefore change that TypeError message
+# -- a user-visible behaviour change in a pure code-motion step.
+# ``tests/unit/autodiff/test_design_mask_removed.py
+# ::test_no_public_simulation_method_leaks_a_mixin_class_name`` pins it.
+# ---------------------------------------------------------------------------
+compute_msl_s_matrix.__qualname__ = "_SparamMixin.compute_msl_s_matrix"

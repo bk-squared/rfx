@@ -11,8 +11,19 @@ Modules:
   and wave solve, the settling / passivity / reciprocity witnesses, the
   ringdown and geometry advisories, the mixed and coaxial power-wave
   assemblers, and the shared constants.
+* :mod:`rfx.sparams.coax` — ``compute_coaxial_s_matrix``,
+  ``compute_coaxial_line_reflection``, ``compute_coaxial_two_port`` and
+  ``compute_coax_msl_transition``.
+* :mod:`rfx.sparams.waveguide` — ``compute_waveguide_s_matrix`` and its
+  non-uniform-mesh lane ``_compute_waveguide_s_matrix_nu``.
 * :mod:`rfx.sparams.mixed` — ``compute_mixed_s_matrix``, the lumped/wire +
   MSL two-family driver of issue #488.
+* :mod:`rfx.sparams.msl` — ``compute_msl_s_matrix``.
+
+Every calculator is a module-level function whose first parameter is still
+``self`` (the ``Simulation``); ``rfx.api._sparams`` binds each back onto
+``_SparamMixin`` at its original position, so ``sim.compute_*`` keeps its
+name, signature, docstring and bound-method behaviour.
 
 ``rfx.api._sparams`` still holds ``_SparamMixin`` and re-exports every name
 moved here, so existing imports and string monkeypatches keep resolving.

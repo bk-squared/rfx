@@ -21,7 +21,13 @@ except ImportError:
     from jax.experimental import enable_x64
 
 from rfx import Box, Simulation
-import rfx.api._sparams as sparams
+# #980 Phase 2 moved compute_msl_s_matrix verbatim into rfx/sparams/msl.py, so
+# ``msl_solve_s_from_waves`` is looked up as a global of THAT module. The two
+# monkeypatches below patch where the lane reads; patching the
+# ``rfx.api._sparams`` re-export would still succeed and silently stop biting
+# (the capture list would stay empty, the forced-NaN fallback would never
+# trigger).
+import rfx.sparams.msl as sparams
 from rfx.probes.probes import DFTPlaneProbe
 from rfx.validation import load_port_vi_dump_npz, replay_smatrix_from_port_vi_dump
 
