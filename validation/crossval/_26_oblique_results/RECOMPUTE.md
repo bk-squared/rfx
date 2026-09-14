@@ -212,3 +212,8 @@ measurement. Regenerate with
     python validation/crossval/comparators/emit_cv26_lattice_witness_replay.py
 
 It reports `tm_60` FAILING GL2_R. See close note §10.5.
+
+Since 2026-09-14 (#1015) it also carries `domain_R` / `domain_T` per arm: the bins on
+which the standard's window is a valid bound at all, and how the GL1 breaches split
+across that line (standard §13). Nothing numeric moved when those keys were added —
+every value the file already carried is bit-identical, and `tm_60` still fails GL2_R.
