@@ -63,6 +63,46 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   `sys.exit` path in the ring-resonator crossval to use the same `_rc` value,
   preventing a later exit branch from contradicting retained evidence.
 
+### Changed — cv02 Q gate states which of its inputs are derived (#907)
+
+- Split the ring-resonator Q gate into three named ingredients with an explicit
+  epistemic status (`Q_GATE_INGREDIENTS`): the `tau_ref/T` scale is declared
+  policy, the transform into log-Q bounds is derived, and a discretization
+  budget is absent. The report prints the split and the crossval record
+  persists it, so a `Q` PASS reads as two-solver consistency rather than as a
+  Q-accuracy guarantee. Withdraws the `1/T` resolution argument the window's
+  docstring made, which was measured false for this estimator. No gate value,
+  admission cut or verdict changed.
+- Expose the interval inversion as `rate_interval_to_log_q_bounds(s)`, a pure
+  function of the rate scale, and retain the signed log-Q ratio with the bounds
+  that judged it on every gated row.
+- Withdraw two claims the same docstring was still making, both flagged by
+  independent review. (a) "The decimated path cv02 actually runs degrades at
+  short records (3.49% there, 0.24% at the 0.25 cut)" does not reproduce: at
+  the shorter rung no decimation stage fires at all, and where one does the
+  decimated path is not worse. The ladder that measures it is committed as
+  `tests/fixtures/cv02_ring_judge/harminv_decimation_ladder.json` (generator:
+  `scripts/diagnostics/cv02_harminv_decimation_ladder.py`), so the envelope's
+  provenance is now #812's published bracket alone. (b) The Q gap's attribution
+  to a staircased ring boundary and subpixel treatment, which #907 retracted as
+  an overclaim, is removed from all three surfaces that carried it — including
+  the weaker restatement ("a property of the two discretizations rather than of
+  the record"), which the same evidence does not support either: rfx's Q being
+  stable across record lengths rules out a record artefact, not the two
+  estimators. No gate value, admission cut or verdict changed.
+- Pin which retained cv02 record the "the transform moved no committed verdict"
+  guard was established against, so regenerating that record reds the guard
+  instead of silently turning it into the judge checking its own output. That
+  record predates the correction and still calls the Q window "not a chosen
+  number"; since it cannot be regenerated without voiding the guard, the
+  manifest's `claim_scope` and the pre-declaration's Correction 4(d) record
+  that the note is superseded by `Q_GATE_INGREDIENTS`.
+- Withdraw the decimation ladder's claim that its two frequency bands are an
+  independent witness for each other. Both bands resolve to the same decimation
+  plan, so the two columns are one computation and agree by construction; the
+  band pair is a plan-stability check, and the independent witness is
+  `decimate='auto'` against `decimate=False`.
+
 ### Fixed — cv02 Q-rate interval transform (#945)
 
 - Transform the declared decay-rate interval into its exact asymmetric log-Q

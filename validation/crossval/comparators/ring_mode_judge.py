@@ -39,18 +39,38 @@ Gates (all evaluated only when the external reference is present):
               interval; it is asymmetric when ``tau_ref/T > 0``
 ============  ==========================================================
 
-    The decay-rate scale is a declared record-resolution policy; its
-    transformation into Q bounds is exact — see :func:`q_window` and
-    :func:`q_log_bounds`.
+    The ``q`` gate is built from THREE separable ingredients, and only one
+    of them is derived. They are named individually in
+    :data:`Q_GATE_INGREDIENTS`, printed by
+    :func:`format_q_window_provenance`, and persisted by the crossval script
+    under ``gate_limits.q_gate_ingredients`` — so no reader has to infer
+    which part is algebra and which part is a board decision:
+
+    1. ``estimator_uncertainty`` — **declared policy**. The fractional
+       decay-rate scale ``s = tau_ref/T`` (:func:`q_window`). Its functional
+       form is NOT this estimator's measured error law (#907).
+    2. ``rate_to_q_transform`` — **derived**. The exact image of the rate
+       interval in log Q (:func:`rate_interval_to_log_q_bounds`), #945.
+    3. ``discretization_budget`` — **absent**. No permitted rfx-vs-Meep
+       discretization disagreement has ever been declared (#907).
+
+    Because ingredient 3 does not exist, this gate is a two-solver
+    **consistency heuristic**, not a Q-accuracy guarantee. That is the
+    reading recorded when #907 was closed (2026-09-13); do not cite a cv02
+    ``q`` PASS as a bound on rfx's Q accuracy.
 
 Frequencies and the record length must be in reciprocal units (the script
 passes both in Meep normalised units: ``f`` in ``c/a``, ``T`` in ``a/c``).
-Pre-declaration: ``docs/design_notes/20260831_cv02_ring_judge_predeclaration.md``.
+Pre-declaration: ``docs/design_notes/20260831_cv02_ring_judge_predeclaration.md``
+— read its **Correction 4** with it: the gate form declared there was
+superseded (#945) and its "the Q window carries no chosen value at all"
+claim is withdrawn (#907).
 """
 
 from __future__ import annotations
 
 import math
+import textwrap
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -77,6 +97,114 @@ Q_RECORD_MIN_EFOLDS = 0.25
 
 #: Mode-admission floor, applied symmetrically to both solvers' harminv output.
 MIN_Q = 1.0
+
+
+@dataclass(frozen=True)
+class GateIngredient:
+    """One named input to the ``q`` gate, with its epistemic status.
+
+    ``kind`` is the whole point of this dataclass and takes exactly three
+    values:
+
+    ``derived``
+        follows from stated premises by algebra that can be re-done on paper;
+        a reader can check it without trusting a board decision.
+    ``declared-policy``
+        a chosen envelope. It may have provenance (a published measurement
+        that motivated it) without being entailed by one. A policy is not
+        wrong; presenting it as derived is.
+    ``absent``
+        the quantity the gate would need in order to mean what its name
+        suggests, which nobody has declared. Naming it keeps the hole
+        visible instead of letting the other two ingredients imply it.
+    """
+
+    name: str
+    kind: str
+    quantity: str
+    basis: str
+    source: str
+
+
+#: The ``q`` gate's inputs, separated (#907). Read this before quoting a cv02
+#: ``q`` verdict: with ``discretization_budget`` absent the gate compares two
+#: finite-grid solvers to each other, which is a consistency statement, not an
+#: accuracy statement about either one.
+Q_GATE_INGREDIENTS: tuple[GateIngredient, ...] = (
+    GateIngredient(
+        name="estimator_uncertainty",
+        kind="declared-policy",
+        quantity="s = tau_ref / T   (per reference mode; see q_window)",
+        basis=(
+            "A record-length-scaled envelope whose whole provenance is #812's "
+            "published bracket (T/tau = 0.376 resolved vs 0.086 'must be "
+            "excluded'). A second prop - 'the measured degradation of the "
+            "decimated path cv02 actually runs' - was cited here until "
+            "2026-09-13 and is WITHDRAWN: re-measured on the configuration it "
+            "named it does not reproduce, and at the shorter rung no "
+            "decimation stage fires at all, so there is no decimated path "
+            "there to degrade (ladder + per-rung decimation plans: "
+            "tests/fixtures/cv02_ring_judge/harminv_decimation_ladder.json, "
+            "pinned by test_the_decimation_penalty_claim_does_not_reproduce). "
+            "Whether the REAL multi-mode cv02 record degrades under "
+            "decimation is UNMEASURED. The envelope is NOT the estimator's "
+            "error law either: on a clean "
+            "damped exponential at cv02's sampling density, rfx's "
+            "matrix-pencil harminv with decimate=False recovers Q to ~3e-12 "
+            "relative at T/tau = 0.0822, so there is no 1/T information "
+            "barrier to import. The reference side (Meep filter "
+            "diagonalisation) obeys a different law again and is not "
+            "modelled separately; Meep's err field is a fit residual, not an "
+            "accuracy bound. Building the uncertainty from rfx's own residual "
+            "instead is not available either: HarminvMode.error is "
+            "1 - exp(-decay * dt_eff) exactly (rfx/harminv.py: "
+            "err = 1 - min(|lam|, 1/|lam|) on a decaying pole), i.e. a "
+            "monotone function of the reported decay itself, so a tolerance "
+            "built from it would scale with the quantity it gates - the "
+            "self-referential class #812 catalogued. Pinned by "
+            "test_harminv_error_field_is_the_decay_restated."
+        ),
+        source="#907 (2026-09-07, 2026-09-10 comments); #812 published bracket",
+    ),
+    GateIngredient(
+        name="rate_to_q_transform",
+        kind="derived",
+        quantity="ln(Q_rfx/Q_ref) in [-log1p(s), -log1p(-s)], upper = +inf for s >= 1",
+        basis=(
+            "Q = pi f / alpha at fixed f, so Q is monotone DECREASING in the "
+            "decay rate alpha and the rate interval [1-s, 1+s] maps to the "
+            "reciprocal interval [1/(1+s), 1/(1-s)]. Exact algebra, no "
+            "choice in it. The symmetric +-log1p(s) window this replaced "
+            "rejected a mode whose rate differed by exactly the tolerance "
+            "the gate claimed to allow, and stayed finite where the "
+            "transformed interval is unbounded."
+        ),
+        source="#945; PR #999; rate_interval_to_log_q_bounds",
+    ),
+    GateIngredient(
+        name="discretization_budget",
+        kind="absent",
+        quantity="(none declared)",
+        basis=(
+            "Nothing here states how far two finite-grid solvers with "
+            "different boundary rasterisations are ALLOWED to disagree on a "
+            "radiation Q. A budget cannot be back-filled from the observed "
+            "gap without the gate certifying the agreement it is supposed to "
+            "test. Deriving one needs the rfx estimator's real SNR / "
+            "model-order uncertainty, a source-free Meep reference record "
+            "regenerated under the same conditions, and a spatial/timestep "
+            "discretization ladder against the exact annulus - a "
+            "pre-declared campaign, not a number chosen here."
+        ),
+        source="#907 closing decision, 2026-09-13",
+    ),
+)
+
+#: One-line reading of the table above, quoted by the report and the artifact.
+Q_GATE_CHARACTER = (
+    "limited two-solver consistency heuristic - NOT a Q-accuracy guarantee "
+    "(no discretization budget is declared; #907 closed 2026-09-13)"
+)
 
 
 @dataclass(frozen=True)
@@ -108,6 +236,14 @@ class PairRow:
     t_over_tau: float = 0.0
     q_window: float = float("inf")
     q_log_ratio: float | None = None
+    #: SIGNED ``ln(Q_rfx/Q_ref)``. The gate's interval is asymmetric (#945),
+    #: so the side matters: ``q_log_ratio`` (absolute) cannot say which bound
+    #: a row is near, and a row can sit 2.76x closer to one end than the
+    #: other. Kept beside the bounds that judged it so the verdict is
+    #: re-derivable from the retained record without re-running the judge.
+    q_log_ratio_signed: float | None = None
+    q_log_lower: float | None = None
+    q_log_upper: float | None = None
     q_gated: bool = False
     q_pass: bool | None = None
 
@@ -185,27 +321,69 @@ def assign(ref_freqs, rfx_freqs) -> list[int | None]:
 
 def q_window(ref_freq: float, ref_Q: float, record_length: float
              ) -> tuple[float, float]:
-    """Record-length-derived Q tolerance for one REFERENCE mode.
+    """DECLARED-POLICY decay-rate scale ``s`` for one REFERENCE mode.
 
-    A record of length ``T`` cannot resolve exponential decay rates finer than
-    ``1/T`` — the same record-length limit that sets ``1/T`` Fourier frequency
-    resolution; two envelopes whose rates differ by less than ``1/T`` differ by
-    less than one factor of ``e`` over the whole record and are not separable.
-    With amplitude decay rate ``alpha = pi f / Q`` (e-folding time
-    ``tau = Q / (pi f)``)::
+    **This is ingredient 1 of three (:data:`Q_GATE_INGREDIENTS`), and it is
+    the declared one.** It returns the fractional decay-rate scale the gate
+    is willing to spend, not a measured uncertainty. With amplitude decay
+    rate ``alpha = pi f / Q`` (e-folding time ``tau = Q / (pi f)``), a
+    fractional rate scale of ``1/T`` per unit record reads::
 
-        delta_Q / Q = delta_alpha / alpha = (1/T) / (pi f / Q) = tau / T
+        s = delta_alpha / alpha = (1/T) / (pi f / Q) = tau / T
 
-    Both inputs are the reference's; no measured rfx quantity appears, so this
-    window is not fitted to the agreement it judges.
+    Both inputs are the reference's; no measured rfx quantity appears, so the
+    scale is not fitted to the agreement it judges. That is its one real
+    virtue, and it is separate from the question of whether ``1/T`` is the
+    right law.
 
-    **Known limitation -- this window is a RESOLUTION bound, not an accuracy
-    bound, and it therefore shrinks with run length while the physics does
-    not.** ``tau/T`` says how finely a record of length ``T`` can separate two
-    decay rates; it says nothing about how far apart two *solvers* should be.
-    The rfx-vs-Meep Q gap on cv02 is a discretization offset (staircased ring
-    boundary, subpixel treatment, hence a slightly different radiation Q), so
-    it is roughly constant in ``T``, while rfx's own Q for modes 2 and 3 is
+    **It is not.** The argument this docstring used to make -- that a record
+    of length ``T`` cannot resolve decay rates finer than ``1/T``, by analogy
+    with Fourier frequency resolution -- was measured and refuted (#907,
+    2026-09-10). A damped exponential fixes its exponent from adjacent-sample
+    ratios; there is no Fourier separation limit to import. On a clean
+    synthetic exponential at cv02's own sampling density, rfx's matrix-pencil
+    harminv with ``decimate=False`` returns Q to ~3e-12 relative error at
+    ``T/tau = 0.0822`` -- a third of :data:`Q_RECORD_MIN_EFOLDS`.
+
+    **A second empirical prop is WITHDRAWN (2026-09-13).** This docstring
+    briefly read "what DOES degrade at short records is the decimated path
+    cv02 actually runs (3.49% there, 0.24% at the 0.25 cut)". Re-measured on
+    the configuration that sentence names -- #907's synthetic single damped
+    exponential at cv02's own ``dt`` -- it does not reproduce, and it cannot:
+    at ``T/tau = 0.0822`` the record is too short for any decimation stage to
+    leave the requested pencil capacity, so ``decimate='auto'`` decimates by
+    nothing and there is no decimated path to measure there. On the rungs
+    where a stage does fire, the decimated path is not worse than
+    ``decimate=False``. The ladder, its per-rung decimation plans and every
+    number are in
+    ``tests/fixtures/cv02_ring_judge/harminv_decimation_ladder.json``, pinned
+    by ``test_the_decimation_penalty_claim_does_not_reproduce``; the
+    withdrawn figures are recorded there under ``withdrawn_claim`` so the
+    retraction is checkable and not just an absence.
+
+    That leaves #812's published bracket as this envelope's whole provenance.
+    Whether the REAL cv02 record -- multi-mode, with source contamination
+    still inside the analysed window -- degrades under decimation is
+    UNMEASURED; the synthetic ladder is a clean single exponential and does
+    not settle it. So ``tau/T`` is a policy envelope with one published
+    bracket behind it, not a derived bound, and this function's name is
+    historical.
+
+    **Known limitation -- this scale behaves like a RESOLUTION bound, not an
+    accuracy bound, and it therefore shrinks with run length while the physics
+    does not.** ``tau/T`` scales with how finely a record of length ``T``
+    separates two decay rates; it says nothing about how far apart two
+    *solvers* should be.
+    The rfx-vs-Meep Q gap on cv02 does not shrink with ``T``, and WHAT
+    produces it is UNRESOLVED -- including whether any of it is the two
+    estimators rather than the two discretizations, since rfx's matrix pencil
+    and Meep's filter diagonalisation have different and unmodelled error laws.
+    This paragraph used to assert a staircased ring boundary and subpixel
+    treatment as the cause; #907 (2026-09-10) retracted
+    that as an overclaim, on a counterexample that moves Q while keeping all
+    three frequencies inside the two solvers' observed mutual agreement, so
+    the frequency agreement cannot pin the geometry and the log decomposition
+    cannot settle the attribution. rfx's own Q for modes 2 and 3 is
     stable over every RESOLVED span that was measured (mode 1's recorded
     readings spread ~7% across T=291/561/1101 and are NOT cited as invariance evidence). Measured ``|ln(Q_rfx/Q_ref)| = 0.070`` (mode 1)
     and ``0.123`` (mode 2); rfx mode 2 reads ``Q = 357.61 -> 356.83`` (0.22%)
@@ -221,17 +399,25 @@ def q_window(ref_freq: float, ref_Q: float, record_length: float
     committed reference/rfx pair this gate PASSES at ``T=291`` (mode-1 window
     0.747) and FAILS at ``T=3385`` (window 0.064) purely because the record got
     longer and better settled. A longer record reds a physically stable case.
-    Fixing it needs a floor on the window encoding the expected
-    discretization Q gap (or a pre-declared |ln Q| envelope); that is a change
-    to a claims-bearing gate and is NOT done here -- it is tracked as issue
+    Fixing it needs ingredient 3 -- a discretization budget derived
+    independently of this board, e.g. a resolution ladder against the exact
+    annulus. It specifically does NOT need a floor read off the observed
+    rfx-vs-Meep gap: such a floor would make the gate certify the agreement it
+    exists to test, and it was refused on those grounds (see the record-length
+    comment in ``validation/crossval/02_ring_resonator.py``). Either way that
+    is a change to a claims-bearing gate and is NOT done here -- it is
+    tracked as issue
     #907 (the ``tau_ref/T`` window shrinks with ``T`` faster than the physics
     does, so a longer record fails a stable Q), and it is the reason cv02's
     Meep (verdict) lane keeps its calibrated record length instead of the
     tau-scaled one.
 
-    ``window`` is retained as the historical scalar resolution quantity for
-    callers and reports.  The Q gate itself uses the exact, asymmetric
-    transformed interval from :func:`q_log_bounds`.
+    ``window`` is retained as the scalar rate scale ``s`` for callers and
+    reports.  The Q gate itself uses the exact, asymmetric transformed
+    interval from :func:`q_log_bounds` -- that transform (ingredient 2) IS
+    derived, and its exactness says nothing about ingredient 1's provenance.
+    Ingredient 3, the permitted discretization disagreement, does not exist:
+    see :data:`Q_GATE_CHARACTER`.
 
     Returns ``(T/tau, window)``. ``T/tau`` is the number of amplitude
     e-foldings the record observed; a mode is Q-gated only when it reaches
@@ -244,26 +430,87 @@ def q_window(ref_freq: float, ref_Q: float, record_length: float
     return t_over_tau, tau / record_length
 
 
+def rate_interval_to_log_q_bounds(s: float) -> tuple[float, float]:
+    """The transform (ingredient 2). Pure, exact, DERIVED -- the whole of #945.
+
+    This is the one ingredient of the ``q`` gate that is derived rather than
+    declared: everything below follows from ``Q = pi f / alpha`` by algebra a
+    reader can redo on paper. Its exactness says nothing about ingredient 1's
+    provenance (see :func:`q_window`) or about ingredient 3's absence.
+
+    Takes the fractional decay-rate scale ``s >= 0`` -- i.e. the declared
+    admissible rate interval ``alpha_rfx/alpha_ref in [1-s, 1+s]`` -- and
+    returns the exact image of that interval in ``ln(Q_rfx/Q_ref)``.
+
+    At fixed frequency ``Q = pi f / alpha``, so ``Q`` is monotone
+    **decreasing** in ``alpha`` and the interval inverts end for end::
+
+        alpha/alpha_ref in [1-s, 1+s]   =>   Q/Q_ref in [1/(1+s), 1/(1-s)]
+
+    In logs that is ``[-log1p(s), -log1p(-s)]``: asymmetric for every
+    ``s > 0``, because ``(1+s)(1-s) = 1-s^2 < 1``.  The lower (rfx too lossy)
+    side is the one the old symmetric ``+-log1p(s)`` window got right.
+
+    ``s >= 1`` is not an edge case here -- cv02's committed mode 2 runs at
+    ``s = 2.83``.  The admissible rate interval then reaches zero, an
+    arbitrarily small rate is admitted, and the high-Q side has **no finite
+    bound**: the function returns ``+inf``, and the low-Q side stays bounded
+    by the positive-rate edge ``1+s``.  Capping it at ``1+s`` (what the code
+    did before #945) rejected modes the stated policy admits -- at
+    ``s = 0.798`` the cap was 2.76x too small, and above ``s = 1`` it
+    manufactured a bound the premise does not contain.
+
+    ``s = inf`` (no usable record) falls out as ``(-inf, +inf)``, i.e. no
+    restriction, without a special case.
+
+    Raises ``ValueError`` for ``s < 0`` or NaN: a negative rate scale is not
+    an interval, and silently taking ``abs`` would hide a caller's sign bug.
+    """
+    if math.isnan(s) or s < 0.0:
+        raise ValueError(f"rate scale s must be >= 0 and not NaN, got {s!r}")
+    lower = -math.log1p(s)
+    upper = float("inf") if s >= 1.0 else -math.log1p(-s)
+    return lower, upper
+
+
 def q_log_bounds(ref_freq: float, ref_Q: float, record_length: float
                  ) -> tuple[float, float]:
-    """Return the exact log-Q bounds implied by a rate interval.
+    """Log-Q bounds for one reference mode: policy scale, then transform.
 
-    With ``s = tau_ref/T``, the stated rate uncertainty is
-    ``alpha_rfx/alpha_ref ∈ [1-s, 1+s]``.  Since ``Q`` is inversely
-    proportional to ``alpha``, the admissible ratio is
-    ``Q_rfx/Q_ref ∈ [1/(1+s), 1/(1-s)]``.  In log space this is
-    ``[-log1p(s), -log1p(-s)]``; the upper side is unbounded when ``s >= 1``.
+    Composes the two ingredients that exist -- :func:`q_window` (declared
+    policy, ingredient 1) and :func:`rate_interval_to_log_q_bounds` (derived,
+    ingredient 2).  Ingredient 3 (a discretization budget) is absent, so
+    these bounds do not encode any permitted solver-vs-solver disagreement;
+    see :data:`Q_GATE_CHARACTER`.
 
-    A non-positive record has no usable rate interval and returns an
-    unrestrictive pair.  Such a row is not Q-gated by :func:`judge` because
-    its ``T/tau`` is below :data:`Q_RECORD_MIN_EFOLDS`.
+    A non-positive record gives ``s = inf`` and hence an unrestrictive pair.
+    Such a row is not Q-gated by :func:`judge` anyway, because its ``T/tau``
+    is below :data:`Q_RECORD_MIN_EFOLDS`.
     """
-    t_over_tau, window = q_window(ref_freq, ref_Q, record_length)
-    if not math.isfinite(window):
-        return float("-inf"), float("inf")
-    lower = -math.log1p(window)
-    upper = float("inf") if window >= 1.0 else -math.log1p(-window)
-    return lower, upper
+    _t_over_tau, window = q_window(ref_freq, ref_Q, record_length)
+    return rate_interval_to_log_q_bounds(window)
+
+
+def format_q_window_provenance() -> str:
+    """Print which ingredients of the ``q`` gate are derived and which are
+    declared policy (#907).
+
+    The gate's number used to arrive with a derivation attached to all of it.
+    This block is the correction: one line per ingredient, its epistemic
+    ``kind`` first, so a reader of the crossval log or of the retained
+    artifact sees the split without reading the module.
+    """
+    lines = ["  Q gate ingredients (#907) — what is derived, what is policy:"]
+    for item in Q_GATE_INGREDIENTS:
+        lines.append(f"    [{item.kind:>15}] {item.name}: {item.quantity}")
+        lines.extend(textwrap.wrap(f"basis: {item.basis}", width=76,
+                                   initial_indent=" " * 8,
+                                   subsequent_indent=" " * 15))
+        lines.append(f"        source: {item.source}")
+    lines.extend(textwrap.wrap(f"=> the q gate is a {Q_GATE_CHARACTER}",
+                               width=76, initial_indent=" " * 4,
+                               subsequent_indent=" " * 7))
+    return "\n".join(lines)
 
 
 def judge(
@@ -308,9 +555,12 @@ def judge(
             if row.q_gated and partner.Q > 0 and ref_mode.Q > 0:
                 signed_log_ratio = math.log(partner.Q / ref_mode.Q)
                 row.q_log_ratio = abs(signed_log_ratio)
+                row.q_log_ratio_signed = signed_log_ratio
                 q_lower, q_upper = q_log_bounds(
                     ref_mode.freq, ref_mode.Q, record_length
                 )
+                row.q_log_lower = q_lower
+                row.q_log_upper = q_upper
                 row.q_pass = q_lower <= signed_log_ratio <= q_upper
             elif row.q_gated:
                 row.q_pass = False
@@ -345,7 +595,12 @@ def format_report(verdict: Verdict, freq_tol_pct: float = FREQ_TOL_PCT) -> str:
     lines: list[str] = []
     lines.append(
         f"  harminv record length T = {verdict.record_length:.1f} "
-        f"(Meep units); Q windows below are tau_ref/T, not chosen values"
+        f"(Meep units); the 'Q window' column is the DECLARED rate scale "
+        f"s = tau_ref/T"
+    )
+    lines.append(
+        "  (the gate is the transformed interval [-log1p(s), -log1p(-s)], "
+        "printed per row as 'Q bounds')"
     )
     lines.append("")
     lines.append(
@@ -372,6 +627,15 @@ def format_report(verdict: Verdict, freq_tol_pct: float = FREQ_TOL_PCT) -> str:
             f"{row.freq_err_pct:>9.3f} {row.t_over_tau:>7.3f} "
             f"{window:>9} {q_note:>10}"
         )
+        if row.q_gated and row.q_log_ratio_signed is not None:
+            upper = ("+inf" if row.q_log_upper == float("inf")
+                     else f"{row.q_log_upper:+.4f}")
+            lines.append(
+                f"  {'':>10} {'':>9} {'':>10} {'':>9} "
+                f"{'Q bounds':>9} signed ln(Q_rfx/Q_ref) = "
+                f"{row.q_log_ratio_signed:+.4f} in "
+                f"[{row.q_log_lower:+.4f}, {upper}]"
+            )
     for mode in verdict.surplus:
         lines.append(
             f"  {'--':>10} {'--':>9} {mode.freq:>10.6f} {mode.Q:>9.1f} "
@@ -401,6 +665,8 @@ def format_report(verdict: Verdict, freq_tol_pct: float = FREQ_TOL_PCT) -> str:
             + f" — record spans < {Q_RECORD_MIN_EFOLDS} e-folding; gating "
               "these would measure run length, not physics (#812)"
         )
+    lines.append("")
+    lines.append(format_q_window_provenance())
     return "\n".join(lines)
 
 

@@ -611,6 +611,15 @@ CLASSIFICATION: dict[str, str] = {
     # citation to this note (cv18's Richardson envelope); opted in rather than
     # left failing NO_ARTIFACT_REFERENCE's own vacuity check.
     "docs/design_notes/chain_closure_contract.md": GATED,
+    # 2026-09-13 (issue #813 attribution): the pre-declaration for cv01's CPML
+    # flux self-check. It carries no `::` span at all -- neither a resolvable
+    # `path.json::key` nor one this parser rejects -- so `parses` and `others`
+    # are both empty. Its numbers are produced and replayed by
+    # scripts/diagnostics/cv01_cpml_flux_selfcheck.py into
+    # scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck.json, whose own
+    # control arm must reproduce the committed cv01 artifact or the run is
+    # unreadable -- a stronger check than this gate performs.
+    "docs/design_notes/cv01_cpml_flux_selfcheck_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/cv10_pmc_realization_regate.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/cv14_rect_cavity_gate_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/estimator_resolution_regate.md": GATED,

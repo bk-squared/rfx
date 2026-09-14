@@ -18,8 +18,12 @@ Exit codes (rfx crossval convention):
   0 = all PASS including the Meep cross-check. Five gates (see
       validation/crossval/comparators/ring_mode_judge.py): every Meep mode
       assigned a distinct rfx mode (unmatched = FAIL), >=2 modes, mean AND max
-      |df|/f < 5%, and Q within tau_ref/T of the reference for every mode whose
-      decay the record actually observed.
+      |df|/f < 5%, and Q inside the interval obtained by transforming the
+      DECLARED decay-rate scale s = tau_ref/T, for every mode whose decay the
+      record actually observed. That interval is asymmetric and is unbounded
+      above on the high-Q side once s >= 1 (#945). The q gate is a two-solver
+      consistency heuristic, not a Q-accuracy guarantee: see
+      ring_mode_judge.Q_GATE_INGREDIENTS (#907).
   1 = rfx self-check failed (rfx Harminv found no ring modes — broken physics)
   2 = rfx self-check OK but Meep reference is unavailable — inconclusive
       crossval, NOT a pass. CI must not treat this as green.
@@ -201,9 +205,14 @@ source_off_time = 2.0 * wf_main.t0
 #     **the cv02 verdict lane does not use the tau-scaled record.**
 #
 #     Why not, honestly: not because a fixed record is better physics, but
-#     because this judge's per-mode Q window ``tau_ref/T`` is a record-length
-#     RESOLUTION bound, so it shrinks as 1/T while the rfx-vs-Meep Q gap (a
-#     discretization offset) stays put. Measured on the committed
+#     because this judge's per-mode Q window ``tau_ref/T`` shrinks as 1/T
+#     while the rfx-vs-Meep Q gap does not. (What CAUSES that gap is
+#     UNRESOLVED. An earlier version of this comment called it "a
+#     discretization offset"; #907 retracted that attribution as an overclaim
+#     on 2026-09-10 -- a counterexample moves Q while leaving all three
+#     frequencies inside the two solvers' mutual agreement, so the frequency
+#     agreement cannot pin the geometry. The T-independence below is measured;
+#     the mechanism is not.) Measured on the committed
 #     reference/rfx mode pair (tests/crossval/test_cv02_ring_mode_judge.py's
 #     MEEP_REFERENCE / RFX_TODAY, re-driven at four lengths):
 #         T = 291  (committed): gate q PASS  (mode-1 |lnQ| 0.070 vs window 0.747)
@@ -221,14 +230,21 @@ source_off_time = 2.0 * wf_main.t0
 #     evidence: at T/tau=0.126 the judge's own floor calls it UNRESOLVED, i.e.
 #     not a measurement.)
 #     So a LONGER, better-settled record would red a physically sound case.
-#     That is a comparator defect, not an rfx defect, and fixing it means
-#     giving the Q window a floor that encodes the expected discretization Q
-#     gap -- a change to a claims-bearing gate, with its own root cause and
-#     evidence. It is NOT done in this change; it is tracked as issue #907 --
-#     the tau_ref/T window shrinks with T faster than the physics does, so a
-#     longer record fails a stable Q (see ring_mode_judge.q_window "Known
-#     limitation"). Until it is fixed the verdict lane's PASS is contingent on
-#     the record staying short, and this comment is the record of that.
+#     That is a comparator defect, not an rfx defect. It is STILL PRESENT.
+#     Issue #907 was closed on 2026-09-13 as a design item, not as a repair:
+#     the separable mathematical defect inside it (the rate-to-Q transform)
+#     was fixed under #945, and the three remaining ingredients -- the rfx
+#     estimator's real SNR / model-order uncertainty, a source-free Meep
+#     reference record regenerated under the same conditions, and a
+#     spatial/timestep discretization budget against the exact annulus --
+#     were deferred to a pre-declared campaign rather than settled by
+#     choosing a floor. A floor set from the observed rfx-vs-Meep gap would
+#     have made the gate certify the agreement it is supposed to test, so it
+#     was refused. Consequently the verdict lane's PASS remains contingent on
+#     the record staying short (see ring_mode_judge.q_window "Known
+#     limitation" and Q_GATE_INGREDIENTS), and this comment is the record of
+#     that. Read a cv02 q PASS as two-solver consistency, not as a bound on
+#     rfx's Q accuracy.
 #
 #   * Meep ABSENT (exit 2, inconclusive -- there is NO verdict to preserve):
 #     the record is scaled at runtime to the slowest RESOLVED in-band mode's
@@ -464,9 +480,15 @@ rfx_freqs_meep = [f * a / C0 for f, Q, amp in rfx_modes]
 # (The module was loaded once as `ring_mode_judge` in PART 2 for the settling
 # witness; it is reused here for the judge.)
 
-# Record length harminv actually saw, in Meep units (a/c). Every Q window below
-# is tau_ref / T computed from THIS and from the reference Q -- no chosen
-# number. See docs/design_notes/20260831_cv02_ring_judge_predeclaration.md.
+# Record length harminv actually saw, in Meep units (a/c). Every "Q window"
+# below is the DECLARED rate scale s = tau_ref/T, computed from THIS record and
+# from the reference Q. Not fitted to the rfx-vs-Meep gap it judges (no measured
+# rfx quantity enters it) -- but "not fitted" is not "derived": the 1/T form is a
+# policy envelope, refuted as this estimator's error law in #907. What IS derived
+# is the transform of that scale into Q bounds (#945,
+# ring_mode_judge.rate_interval_to_log_q_bounds). The three ingredients are named
+# separately in ring_mode_judge.Q_GATE_INGREDIENTS and printed by the report.
+# See docs/design_notes/20260831_cv02_ring_judge_predeclaration.md.
 record_T_meep = analysis_duration * C0 / a
 fmin_meep = fcen - df / 2
 fmax_meep = fcen + df / 2
@@ -588,8 +610,16 @@ _doc = {
         "freq_tol_pct": float(ring_mode_judge.FREQ_TOL_PCT),
         "min_matched_modes": int(ring_mode_judge.MIN_MATCHED),
         "q_record_min_efolds": float(ring_mode_judge.Q_RECORD_MIN_EFOLDS),
-        "note": ("the Q window is tau_ref/T per mode, derived from the "
-                 "reference Q and THIS record length -- not a chosen number"),
+        "note": ("the per-mode 'q_window' is the DECLARED rate scale "
+                 "s = tau_ref/T (policy, not this estimator's error law, "
+                 "#907); the gate is its exact transform into log-Q bounds "
+                 "(derived, #945), stored per row as q_log_lower / "
+                 "q_log_upper beside the signed q_log_ratio_signed"),
+        "q_gate_character": ring_mode_judge.Q_GATE_CHARACTER,
+        "q_gate_ingredients": [
+            _dataclasses.asdict(_ing)
+            for _ing in ring_mode_judge.Q_GATE_INGREDIENTS
+        ],
     },
     "verdict": {
         "rfx_self_ok": bool(_rfx_self_ok),
