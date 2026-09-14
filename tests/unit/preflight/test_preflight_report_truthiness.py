@@ -57,36 +57,40 @@ def _error_report():
     ])
 
 
-def _all_reports():
-    return [
-        ("empty", PreflightReport()),
-        ("clean-from-sim", _clean_report()),
-        ("advisory-only", _advisory_report()),
-        ("with-error", _error_report()),
-    ]
+# Built inside each test, not at collection: a drifted fixture must fail as a
+# test, not as a collection error.
+REPORT_BUILDERS = {
+    "empty": PreflightReport,
+    "clean-from-sim": _clean_report,
+    "advisory-only": _advisory_report,
+    "with-error": _error_report,
+}
+ALL_SHAPES = list(REPORT_BUILDERS)
 
 
 # --------------------------------------------------------------- (a) it raises
 
-@pytest.mark.parametrize("label,report", _all_reports(), ids=lambda v: v if isinstance(v, str) else "")
-def test_bool_raises_for_every_report_severity_mix(label, report):
+@pytest.mark.parametrize("shape", ALL_SHAPES)
+def test_bool_raises_for_every_report_severity_mix(shape):
     """Empty, advisory-only and error reports all refuse bool().
 
     The empty case is the point: that is the one inherited truthiness gets
     backwards, and it is also the case a passing run produces.
     """
+    report = REPORT_BUILDERS[shape]()
     with pytest.raises(TypeError) as excinfo:
         bool(report)
     assert "PreflightReport cannot be evaluated as a boolean" in str(excinfo.value)
 
 
-@pytest.mark.parametrize("label,report", _all_reports(), ids=lambda v: v if isinstance(v, str) else "")
-def test_every_implicit_boolean_context_raises(label, report):
+@pytest.mark.parametrize("shape", ALL_SHAPES)
+def test_every_implicit_boolean_context_raises(shape):
     """``bool()`` is not a special case — the implicit contexts raise too.
 
     These are the shapes the defect actually took in the repo: ``if report``,
     ``if not report``, ``and``/``or`` chains, a ternary, and an ``assert``.
     """
+    report = REPORT_BUILDERS[shape]()
     with pytest.raises(TypeError):
         if report:
             pass
@@ -154,9 +158,10 @@ def test_the_supported_gates_still_work_on_a_real_simulation():
 
 # --------------------------------------------------- (c) list behaviour intact
 
-@pytest.mark.parametrize("label,report", _all_reports(), ids=lambda v: v if isinstance(v, str) else "")
-def test_list_and_report_api_survive(label, report):
+@pytest.mark.parametrize("shape", ALL_SHAPES)
+def test_list_and_report_api_survive(shape):
     """Everything except bool() is untouched."""
+    report = REPORT_BUILDERS[shape]()
     items = list(report)
     assert len(report) == len(items)
     assert [i for i in report] == items            # iteration
