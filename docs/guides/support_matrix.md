@@ -97,7 +97,7 @@ result is accurate.
 | MSL S-matrix + nonuniform mesh | **experimental** | `mode="laplace"` and `mode="uniform"` have internal settled-S11 regression coverage only. There is no external nonuniform comparison. `mode="eigenmode"` raises. |
 | Coaxial port + nonuniform mesh | **unsupported** | The request must fail. |
 | Lumped RLC update + nonuniform mesh | **limited** | R/L/C ADE elements participate in the field update. Nonuniform S-parameters and component-value AD are not documented. |
-| Multi-band graded mesh (N fine bands along **z**, ratio <= 1.4) | **limited** | The MESH ITSELF is documented — not any observable computed on it — and only for grading along **z**. Explicit `dz_profile` vectors with every adjacent cell ratio <= 1.4 are covered by the witness battery below. What the battery measures is the **transition law**, not a band count: each transition reflects at a level set by its ratio r, the local cells per wavelength and — for a band narrower than about a guide wavelength — the band width (the two ramp reflections of a narrow band add as a Fabry-Perot sum, bounded by twice the single-ramp value and oscillating with width; W6 row below), and transitions simply add. Widest witnessed fixture: 3 fine bands / 4 transitions (F-S4); narrowest witnessed band: 2 fine cells (W6). **Unwitnessed:** bands narrower than 2 cells, any other resolution than the two measured, and in-plane grading. `rfx.make_band_profile` builds such profiles with every interface on a node plane and the ratio law exact, seams between two protected bands included. Read the scope statement in "Multi-band graded mesh" before quoting this row: in-plane (`dx_profile` / `dy_profile`) grading is UNCOVERED, absorber-adjacent grading is EXCLUDED, and `dt` is unchanged (global min-cell CFL). |
+| Multi-band graded mesh (fine bands on **z, x or y**, unequal sizes allowed, ratio <= 1.4) | **limited** | The MESH ITSELF is documented — not any observable computed on it — and only for grading along **z**. Explicit `dz_profile` vectors with every adjacent cell ratio <= 1.4 are covered by the witness battery below. What the battery measures is the **transition law**, not a band count: each transition reflects at a level set by its ratio r, the local cells per wavelength and — for a band narrower than about a guide wavelength — the band width (the two ramp reflections of a narrow band add as a Fabry-Perot sum, bounded by twice the single-ramp value and oscillating with width; W6 row below), and transitions simply add. Widest witnessed fixture: 3 fine bands / 4 transitions (F-S4); narrowest witnessed band: 2 fine cells (W6). **Unwitnessed:** bands narrower than 2 cells, any other resolution than the two measured, and in-plane grading. `rfx.make_band_profile` builds such profiles with every interface on a node plane and the ratio law exact, seams between two protected bands included. Read the scope statement in "Multi-band graded mesh" before quoting this row: in-plane (`dx_profile` / `dy_profile`) grading is UNCOVERED, absorber-adjacent grading is EXCLUDED, and `dt` is unchanged (global min-cell CFL). |
 | Volumetric PEC scatterer + nonuniform waveguide | **experimental** | The device/reference handling is regression-tested, but no RF validation is documented for arbitrary iris, post, septum, branch, or T-junction geometries. The REALIZATION changed at 2.0 (#931): a PEC volume now realizes walls at both drawn faces and its drawn extent equals its realized extent, so the regression fixtures behind "regression-tested" are recomputed for the release and a fixture that has not been is not shipped. No accuracy claim moves with them, because this row makes none. |
 
 ### Multi-band graded mesh
@@ -133,10 +133,12 @@ the coarser band, since no ramp can sit between them — and the sum exact;
 is a mesh guarantee, not an accuracy witness: it produces profiles inside
 this row's envelope, and the row's evidence is what covers them.
 
-**The z axis is the whole of it.** Every witness below grades z and holds
-the transverse mesh uniform — the witness harness takes a scalar transverse
-cell size — so this row says nothing about `dx_profile` / `dy_profile`
-grading, with or without z grading at the same time. See the exclusions.
+**The F-S1..F-S5 witnesses below grade z only** — that harness takes a
+scalar transverse cell size. The in-plane axes are covered by the later
+witnesses listed after them (W7 A2/A3, E5, E6), each with its own,
+narrower domain; read the in-plane bullet in the exclusions before quoting
+an x/y number, because the in-plane boundary contract still pins the end
+cells and no in-plane witness has an absorber.
 
 **The cap is 1.4 — on z.** Ratios above it still construct and run; what
 is lost is the accuracy class below, not stability. On a `dz_profile`,
@@ -205,23 +207,42 @@ in `validation/research/multiband_nu/`; regression packaging in
   30 cells/wavelength (the same resolution caveat and (dz/lambda)^2 law as
   the F-S2 row above), both consistent with the chain model but outside the
   claimed envelope.
-- **In-plane grading is UNCOVERED — not "limited", not "exercised".** No
-  witness in this row grades `dx_profile` or `dy_profile`. The witness
-  harness takes a SCALAR transverse cell size, so every witness above,
-  including the 3-D energy witness (whose transverse mesh is uniform
-  1.5 mm), grades z alone. Nothing here covers in-plane grading, nor
-  in-plane and z grading simultaneously. `make_nonuniform_grid` accepts
-  those profiles and they run; what does not exist is evidence. (The
-  solver's per-axis code is structurally symmetric — an argument, not a
-  witness, and it is not offered as one.) `make_band_profile(...,
-  max_ratio=1.3, boundary_cell=dx)` produces an in-plane profile that
-  constructs and preflights without the ratio advisory
-  (`test_band_profile_builder.py`, F5) — a construction check, not an
-  accuracy observable, so in-plane grading stays uncovered. That profile
-  does draw `nu_grading_reaches_absorber` on every in-plane face: the
-  pinned cell is one cell, and the plateau beside it (0.9606 mm next to a
-  1.0 mm pin on the F5 fixture, deviation 0.039-0.041) is not the
-  `cpml_layers`-deep uniform runway the absorber exclusion asks for.
+- **In-plane grading is COVERED for three witness classes, and only
+  those.** None of F-S1..F-S5 grades `dx_profile` or `dy_profile` (that
+  harness takes a scalar transverse cell). What does exist, each with its
+  own pre-declaration and replay test:
+  - *Accuracy (W7 A2/A3, `docs/design_notes/20260907_nu_band_accuracy_ad_predeclaration.md`):*
+    two fine bands on x AND y (4:1, caps 1.3 and 1.4) on a TM110 air cavity,
+    |err| <= 0.028 %, graded-minus-uniform <= 0.016 pt; all three axes graded
+    at once (TM111) err -0.035 %. PEC-closed, vacuum.
+  - *Per-transition reflection (E5, `docs/design_notes/20260913_nu_lane1_multilevel_xyz_predeclaration.md`):*
+    the W6/E1 two-run method run on x and y as well as z — 40 arms per axis,
+    every one inside |R - R_model| <= 0.2 R_model + 3e-5, including unequal
+    coarse sides (1.96 / 2.744 mm around a 1.0 mm band), a bare cap step on
+    one side, and two fine sizes (1.0 and 0.5 mm) in one column. The law
+    generalizes to two amplitudes: R = sqrt(R_L^2 + R_R^2 - 2 R_L R_R cos(2 k_g (n_b d + c))),
+    bounded by R_L + R_R (87/87 band arms). x reproduces z to the bit; y to
+    7e-7 (float32 roundoff). Single numbers carry a ~3 % rectangular-DFT
+    window systematic; quote the law and the bound, not a sub-3 % figure.
+  - *Design-variable autodiff (E6, `docs/design_notes/20260913_nu_lane2_inplane_designvar_ad_predeclaration.md`):*
+    d(loss)/d(band width) on x, Taylor order R1 1.945 (transient) / 1.962
+    (smooth spectral), inside central FD's own error bar, CFL-dt path
+    included (59 % of the gradient; the judges fail when it is removed).
+    Band position is FD-supported only. y not measured.
+  What is still NOT covered in-plane: profiles whose two end cells differ
+  (the grid refuses them — `dx_profile[0] == dx_profile[-1] == dx`, and
+  `dy_profile` ends must match — so every in-plane witness above carries
+  pinned 1.0 mm end cells); any absorber on an in-plane-graded face; the
+  energy / round-trip / order witnesses (F-S1, F-S3, F-S4) on x or y;
+  ratios other than 1.3/1.4 in-plane; dielectric interiors in the
+  reflection witness; ports, TFSF and waveguide observables on an
+  in-plane-graded mesh. `make_band_profile(..., max_ratio=1.3,
+  boundary_cell=dx)` constructs and preflights without the ratio advisory
+  (`test_band_profile_builder.py`, F5) but draws `nu_grading_reaches_absorber`
+  on every in-plane face: the pinned cell is one cell, and the plateau
+  beside it (0.9606 mm next to a 1.0 mm pin on the F5 fixture, deviation
+  0.039-0.041) is not the `cpml_layers`-deep uniform runway the absorber
+  exclusion asks for.
 
 **Honest scope — what the witnesses do and do NOT establish.** They are
 statements about the mesh and the solver on it, **for grading along z**:

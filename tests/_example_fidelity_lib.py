@@ -601,6 +601,20 @@ CLASSIFICATION: dict[str, Entry] = {
         "every solve goes through e4._run / w7._ad3_loss (MaterialArrays by "
         "hand on make_nonuniform_grid + run_nonuniform under jax.grad) -- "
         "no Simulation"),
+    "validation/research/multiband_nu/e5_multilevel_axes.py": Entry(
+        "no_simulation",
+        "E5 multi-level unequal-band witness on x, y and z (2026-09-14 lane 1 "
+        "of the NU full-functionality program): make_band_profile profiles "
+        "driven through make_nonuniform_grid + run_nonuniform on the "
+        "axis-relabeled PEC fixture, the W2 two-run method -- no Simulation"),
+    "validation/research/multiband_nu/e6_inplane_designvar.py": Entry(
+        "no_simulation",
+        "E6 in-plane design-variable AD witness (2026-09-14 lane 2 of the NU "
+        "full-functionality program): a host-built MeshMap over the "
+        "make_band_profile x profile, MaterialArrays by hand on "
+        "make_nonuniform_grid, the PEC strip as pec_edge_masks by node index, "
+        "driven through run_nonuniform under jax.grad with the AD-Q judges "
+        "-- no Simulation"),
     "validation/research/multiband_nu/w7_accuracy_ad.py": Entry(
         "builder_fused_with_solve",
         "W7 accuracy + autodiff witness (2026-09-07 lane): the A1 ladder and "
