@@ -1008,23 +1008,53 @@ class PreflightIssue(str):
         }
 
 
+_BOOL_TRAP_MESSAGE = (
+    "PreflightReport cannot be evaluated as a boolean: it is a list of "
+    "issues, so an EMPTY (clean) report is falsy and a report with only "
+    "advisories is truthy \u2014 the opposite of what `if not "
+    "sim.preflight()` intends. Check `report.ok` (no error-severity "
+    "issues), `report.errors`, or call `report.raise_for_failure()`; use "
+    "`len(report)` / `report.issues` for the item count."
+)
+
+
 class PreflightReport(list):
     """Structured result of :meth:`Simulation.preflight`.
 
     A ``list`` subclass holding :class:`PreflightIssue` items, so it IS a list
     and every legacy ``list[str]`` call site (iterate / ``"\\n".join`` / ``len``
-    / truthiness) keeps working unchanged. It also exposes the canonical report
-    API shared with :class:`rfx.validation.PortValidationReport` and
+    / indexing / ``==``) keeps working unchanged. It also exposes the canonical
+    report API shared with :class:`rfx.validation.PortValidationReport` and
     :class:`rfx.subgridding.validation.SubgridValidationReport`.
+
+    **Boolean evaluation raises** :class:`TypeError` on purpose (see
+    :meth:`__bool__`). List truthiness is inverted for a report: an EMPTY
+    (clean) report is falsy and a report carrying only advisories is truthy,
+    so ``if not sim.preflight(): raise`` and ``assert sim.preflight()`` both
+    mean the opposite of what they read as. Use :attr:`ok` (no error-severity
+    finding), :attr:`errors`, or :meth:`raise_for_failure` for a gate, and
+    ``len(report)`` / :attr:`issues` when the item count is what you want.
 
     ``flux_regions`` records finite monitor windows in metres and cell
     indices. These records are metadata, not findings: an aligned window
-    must not change list truthiness or the historical strict-mode gate.
+    must not change ``len(report)`` or the historical strict-mode gate.
     """
 
     def __init__(self, issues=(), *, flux_regions=None):
         super().__init__(issues)
         self.flux_regions = [] if flux_regions is None else list(flux_regions)
+
+    def __bool__(self) -> bool:
+        """Always raise: list truthiness is inverted for a report (#980).
+
+        Inherited ``list.__bool__`` makes a clean report falsy and an
+        advisory-only report truthy, so the natural-reading gates
+        ``if not sim.preflight(): raise`` and ``assert sim.preflight()``
+        fire exactly backwards. Raising is louder than a docstring: the
+        trap becomes a failure at the call site instead of a run that
+        silently skipped its own gate.
+        """
+        raise TypeError(_BOOL_TRAP_MESSAGE)
 
     @property
     def issues(self) -> list:
@@ -1066,7 +1096,7 @@ class PreflightReport(list):
     def format(self) -> str:
         """Return a compact human-readable multiline summary."""
         status = "PASS" if self.ok else "FAIL"
-        count = f"{len(self)} issue(s)" if self else "no issues"
+        count = f"{len(self)} issue(s)" if len(self) else "no issues"
         lines = [f"preflight: {status} ({count})"]
         for issue in self:
             sev = getattr(issue, "severity", "warning")
