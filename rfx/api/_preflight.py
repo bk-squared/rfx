@@ -3190,7 +3190,7 @@ class _PreflightMixin:
                     est.warning, severity="warning", code="ad_memory"
                 ))
 
-        if strict and issues:
+        if strict and len(issues):   # PreflightReport refuses bool() (#980)
             # Aggregate-then-raise: escalate ALL findings at once. Preserves the
             # historical "strict escalates any issue to ValueError" contract,
             # but reports every problem in one pass instead of fail-on-first
@@ -3202,7 +3202,7 @@ class _PreflightMixin:
                 + "\n  - ".join(issues)
             )
 
-        if issues:
+        if len(issues):              # PreflightReport refuses bool() (#980)
             for iss in issues:
                 print(f"  [PREFLIGHT] {iss}")
         elif check_ntff is True:
@@ -3361,7 +3361,7 @@ class _PreflightMixin:
         # waveguide ports there is no layout to audit. Emitted as warnings by
         # the check sites (the repo idiom) and folded into the report here, so
         # the coded fields survive into PreflightIssue.
-        if key == "waveguide" and not issues:
+        if key == "waveguide" and not len(issues):   # refuses bool() (#980)
             _wg_entries = list(self._waveguide_ports)
             if _wg_entries:
                 import warnings as _wmod
@@ -3400,7 +3400,7 @@ class _PreflightMixin:
                 + ":\n  - " + "\n  - ".join(_errors)
             )
 
-        if issues:
+        if len(issues):              # PreflightReport refuses bool() (#980)
             for issue in issues:
                 print(f"  [SPARAM PREFLIGHT] {issue}")
         else:

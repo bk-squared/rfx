@@ -1064,7 +1064,7 @@ class _ExecuteMixin:
         # propagate loudly (Phase D) — do NOT degrade a validator bug to a soft
         # warning that hides it and lets a broken run proceed.
         issues = self.preflight(strict=False, check_ntff=check_ntff)
-        if not issues:
+        if not len(issues):          # PreflightReport refuses bool() (#980)
             return
         import warnings
         errors = [i for i in issues if getattr(i, "severity", "warning") == "error"]
