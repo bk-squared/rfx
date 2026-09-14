@@ -697,6 +697,23 @@ _REBOUND_ON_MIXIN = {
         "_validate_mesh_quality",
         "_validate_thin_metal_on_nu_mesh",
     ),
+    # Leg 6. None of these six was a @staticmethod either -- the one
+    # staticmethod this leg moves went to rfx/preflight/sources.py, which is
+    # why _REBOUND_AS_STATICMETHOD below grows to two names and not to seven.
+    # The one to watch is _validate_cfg_port_inside_pec: 345 lines and five
+    # emission sites, the largest single body the split moves, reaching
+    # self._campaign_ctx (realization, still in the facade) and
+    # self._wire_port_cell_centers (intra-module) plus the module-global
+    # _component_is_dead, which this leg put in rfx/preflight/_common.py
+    # rather than beside it because _RealizedPEC still reads it too.
+    "rfx.preflight.ports": (
+        "_check_coaxial_port_junction_aperture",
+        "_validate_cfg_floating_single_cell_port",
+        "_validate_cfg_port_inside_pec",
+        "_validate_cfg_refplane_placement",
+        "_validate_cfg_tfsf_with_lumped_rlc",
+        "_wire_port_cell_centers",
+    ),
     "rfx.preflight.absorber": (
         "_preflight_face_layers",
         "_validate_cfg_absorber_budget_vs_grid",
