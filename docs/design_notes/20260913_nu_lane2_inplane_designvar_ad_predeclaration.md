@@ -302,3 +302,169 @@ absorber (cpml 0), about y (the same map applies by relabeling but is not
 measured here), or about `interface_eps='dual_average'` under trace.
 
 ## Results (appended after measurement; no window above changed)
+
+### Measured (instrument `6fec85f5`, tests `bd1ea262`, measurements `60781ccc` .. `4f2d22af`; no window above changed)
+
+Every measured arm ran once, on this tree, CPU, `rfx.__file__` under
+`rfx-nu-full`, `git_dirty` false (E6-M at `bd1ea262`, E6-L1 at `60781ccc`,
+E6-R at `fa2eae4d`, E6-L2s at `17ece761`, E6-C at `dd24ec3a`). The judge
+self-check passed before every arm and is bit-identical to the self-check
+stored in all five AD-Q JSONs (R1 2.0030105652046206 HELD /
+0.9094336472889952 FIRED). 442 forward solves and 8 reverse-mode gradients
+in total; wallclock E6-M 6.4 s, E6-L1 13.5 s, E6-R 5.8 s, E6-L2s 63.9 s,
+E6-C zero FDTD. Raw JSONs: `results/e6_{model,map_checks,l1,
+revert_l1_nodt,l2s,coverage}.json` plus the post-hoc diagnostic
+`results/e6_diag_revert_cellwise.json` (declared below, zero ladder runs).
+Replay: `tests/unit/nonuniform/test_e6_inplane_designvar_replay.py`.
+
+### Regression (program 5.5) — HELD
+
+`git diff --stat rfx/` empty at every commit; `adq_designvar.py` and
+`e4_diff_stackup.py` unedited; the two existing replay tests 31 passed /
+1 xfailed before and after; self-check bit-identical (above).
+
+### E6-M — all eight map checks pass
+
+| check | measured | threshold |
+|---|---|---|
+| m1 column length | 6.9e-18 m (max over 60 ladder points) | 1e-9 m |
+| m2 interfaces on nodes | 2.4e-17 m | 1e-9 m |
+| m3 tied-set spread | [0.0, 0.0]; float32 tied set = cells 20..39 at all 60 points | exactly 0.0 |
+| m4 boundary Jacobian | [[0, 0], [0, 0]] float64 and float32 AD | exactly 0.0 |
+| m5 `J^T g` vs direct (L1) | w 1.53e-7, x_c 7.27e-7 relative | 1e-5 |
+| m6 `d(dt)/dw` AD vs analytic | 1.4711222518e-10 vs 1.4711225845e-10 s/m: 2.26e-7; `d(dt)/dx_c` exactly 0.0 | 1e-6 |
+| m7 strip | 21 `ey` node columns, 20 `ex` edges; `pec_edge_masks` accepted | 21 |
+| m8 traced vs concrete L1 at p0 | 4.584793467e-3 vs 4.584793933e-3: 1.02e-7 (dt 3.17762472e-13 float32 vs 3.17762478e-13 float64) | 1e-6 |
+
+### E6-L1 (transient probe energy, 600 steps)
+
+`loss0` = 4.584793467074633e-3, ulp 4.66e-10. `g_param` = (-6.031999588,
++0.0273133516) per metre; chain rule `J^T g_cell` = (-6.0320005,
++0.0273133318). Floors (sigma in ulp of loss0, both cubic-reliable): w
+2.84, x_c 1.86 — so `sigma_eff` is the measured sigma for both.
+
+| control | R0 | R1 | pts | window (rel. h) | order | FD (informative steps) | narrowest 3B/\|g\| (h, rho) | max err/3B |
+|---|---|---|---|---|---|---|---|---|
+| **w** | 1.038 +- 0.007 | **1.945** +- 0.012 | 5 | 4.9e-4 .. 7.8e-3 | **HELD** | **HELD** (4: 9.8e-4 .. 7.8e-3, rho 2.33 / 4.31 / 3.88 / 3.79) | **2.0e-3** (9.8e-4, 2.33) | 0.335 |
+| x_c | — | — | 1 | — | INCONCLUSIVE | HELD (2: 7.8e-3, 1.6e-2; rho 3.69 / 3.63) | 2.4e-2 (7.8e-3, 3.69) | 0.312 |
+
+1-ulp verdicts (reported alongside): identical for w (same 5-point
+window); x_c order INCONCLUSIVE with 2 eligible points. x_c: its gradient
+(0.0273 /m) is 220x smaller than w's and is the difference of a lead
+contribution +1.1678 and a tail contribution -1.1405 (diagnostic JSON);
+R1 clears 32 sigma_eff at one ladder point only (h = 2^-7), so the order
+gate is INCONCLUSIVE — the outcome section 3 named as the likeliest
+non-HELD one. The FD gate holds at two rho-valid steps.
+
+### E6-R — the gate has power against the dt path
+
+Forward values with and without `stop_gradient(dt)` identical; the true
+ladder bit-identical to E6-L1's; `g_true` bit-identical to E6-L1's.
+dt-path share: **w 0.5884** (AD-Q h_thin: 0.1852), x_c -1.48e-4 (see the
+diagnostic). w judged against the no-dt gradient (-2.4831 vs true
+-6.0320): order **FIRED**, R1 slope **1.022** (11 points, 7.6e-6 ..
+7.8e-3), R0 1.013; FD **FIRED** at all three informative steps (err/3B
+294 / 145 / 35). x_c: INCONCLUSIVE / HELD — the same verdicts as E6-L1.
+Declared requirement met (`requirement_met` true): E6-L1's w verdict
+covers the dt path.
+
+**Diagnostic (post-hoc, labelled, zero ladder runs;
+`results/e6_diag_revert_cellwise.json`, two backward passes at
+`4f2d22af`):** the program's 5.3 text expected x_c's dt share to be
+"exactly 0". Measured -1.48e-4. Cell-wise: the tied cells carry the dt
+path (mean difference -3.549 per cell, spread 2.5e-6); the NON-tied cell
+gradients differ between the two compiled programs by up to 7.4e-6
+absolute / 2.0e-5 relative (not zero), and the chain-rule x_c share
+-1.47e-4 is those differences amplified by the 43x lead/tail
+cancellation. Cause class: `stop_gradient(dt)` changes the compiled
+reverse program (dt enters the source waveform, the update coefficients
+and the CFL here; AD-Q's L1 waveform was step-indexed), so float32
+accumulation order differs at the 1e-5 level. AD-Q's "exactly 0" for the
+core controls was a property of that fixture's compilation, not a
+guarantee. The frozen requirement is on the verdicts (unchanged); the
+expectation "exactly 0" is recorded as not met and re-read as "zero within
+float32 recompilation". No window changed.
+
+### E6-L2s (smooth spectral observable, 2400 steps, checkpoint 100)
+
+`loss0` = 3.031254431866461e-24 (V^2 s^2 per node, comb-summed), ulp
+1.97e-31. `g_param` = (-3.666778564e-21, +7.333234819e-22) per metre;
+chain rule (-3.666778828e-21, +7.333234332e-22): 7.2e-8 / 6.6e-8
+relative. Floors: w **14.08 ulp** (cubic/quadratic RMS 0.988, reliable),
+x_c 1.95 ulp (reliable).
+
+| control | R0 | R1 | pts | window (rel. h) | order | FD (informative steps) | narrowest 3B/\|g\| (h, rho) | max err/3B |
+|---|---|---|---|---|---|---|---|---|
+| **w** | 0.950 +- 0.011 | **1.962** +- 0.011 | 6 | 3.9e-3 .. 1.25e-1 | **HELD** | **HELD** (4: 7.8e-3 .. 6.25e-2; rho 2.91 / 4.07 / 4.00 / 4.08) | **7.2e-4** (7.8e-3, 2.91) | 0.332 |
+| x_c | — | — | 3 | 3.1e-2 .. 1.25e-1 | INCONCLUSIVE | HELD (3: 1.6e-2 .. 6.25e-2; rho 4.62 / 3.47 / 4.04) | 1.2e-4 (1.6e-2, 4.62) | 0.332 |
+
+1-ulp verdicts (reported alongside, NOT the primary verdict): w HELD with
+8 points (9.8e-4 .. 1.25e-1), R0 0.966, R1 2.007; x_c order **HELD** with
+4 points (1.6e-2 .. 1.25e-1), R0 0.998, R1 2.134, FD HELD (3). With the
+measured floor (1.95 ulp) the fourth point of x_c drops below the
+32-quantum line and the primary verdict is INCONCLUSIVE by the declared
+rule (1f); it is recorded as such.
+
+Smoothness, as measured: the Richardson ratio sits in [2, 8] at four
+consecutive steps for w and three for x_c (7.8e-3 .. 6.25e-2), and the FD
+bar shrinks to 7.2e-4 / 1.2e-4 of the gradient — the AD-Q L2 thickness
+arm, by contrast, had its FD gate FIRE at h 3.1e-2 with a 43.6-ulp floor
+and no rho-valid window. The physical-time Hann taper with a fixed `T_w`
+removes the truncation ripple, as declared in section 2.
+
+### E6-C — coverage of the x cell-space gradient (no minimum assumed)
+
+| arm | all controls (rank 2) | verified (w) | w only | x_c only | dimensionless | norm total / band / lead / tail |
+|---|---|---|---|---|---|---|
+| L1 | **0.8023** | **0.8023** | 0.8023 | 0.0030 | 0.3726 | 26.87 / 21.81 / 14.22 / 6.64 |
+| L2s | **0.6803** | **0.6711** | 0.6711 | 0.1116 | 0.3835 | 1.953e-20 / 1.632e-20 / 1.006e-20 / 3.68e-21 |
+
+The band cells hold 81 % (L1) / 84 % (L2s) of the gradient norm; the
+width direction captures 80 % / 67 % of the whole; the position direction
+adds 0.3 % / 1.1 % (AD-Q stack: 0.8875 / 0.8830 with seven controls).
+
+### Falsifier ledger
+
+| falsifier | w, L1 | x_c, L1 | w, L2s | x_c, L2s |
+|---|---|---|---|---|
+| Order R0 in [0.9, 1.1], R1 in [1.8, 2.2] | HELD (1.038, 1.945) | INCONCLUSIVE (1 pt) | HELD (0.950, 1.962) | INCONCLUSIVE (3 pts) |
+| FD inside 3B at every rho-valid step | HELD (4 steps, 3B/\|g\| 2.0e-3) | HELD (2 steps, 2.4e-2) | HELD (4 steps, 7.2e-4) | HELD (3 steps, 1.2e-4) |
+| Revert-proof (L1): w FIRED, x_c unchanged | FIRED as required (R1 1.022) | unchanged | — | — |
+| Map checks m1-m8 | all pass | | | |
+
+### Law statement and validity domain, as measured
+
+On the closed vacuum NU fixture of section 2 (x graded 0.5 / 0.1 / 0.5 mm
+at cap 1.3 with the end cells pinned, a PEC strip attached by node index
+on the 21 band-edge nodes, source and probe by index), the reverse-mode
+gradient of both a transient loss and the physical-time-Hann comb-
+integrated spectral power along the fine-band WIDTH `w` — the CFL dt path
+included, 58.8 % of that gradient — is second-order correct (R1 1.945 /
+1.962) and agrees with central FD inside the FD's own 3B bar at every
+Richardson-valid step, 3B/|g| down to 2.0e-3 (transient) and 7.2e-4
+(spectral); the same judges FIRE (R1 1.022, err/3B 294) when the dt path
+is removed. Validity domain: relative width displacements 4.9e-4 ..
+7.8e-3 (L1 order), 9.8e-4 .. 7.8e-3 (L1 FD), 3.9e-3 .. 1.25e-1 (L2s
+order), 7.8e-3 .. 6.25e-2 (L2s FD) of a 2 mm band — seam ratios up to
+1.4955 on the shrink side, above the 1.3 in-plane advisory from h = 2^-6
+— on x only. Along the band POSITION `x_c`, the FD gate holds at
+Richardson-valid steps (3B/|g| 2.4e-2 / 1.2e-4) on both observables, but
+the order gate is INCONCLUSIVE on both (1 and 3 eligible points; the
+gradient is a 43x cancellation of lead and tail contributions): `x_c` is
+FD-supported and NOT order-verified by this lane. The design directions
+span 0.80 (L1) / 0.68 (L2s) of the cell-space gradient norm; the verified
+direction alone 0.80 / 0.67.
+
+Not covered (program 5.7, unchanged): coordinate-rasterized geometry,
+ports, an absorber, the y axis, `interface_eps='dual_average'` under
+trace, seam ratios beyond 1.4955, and any x_c order claim.
+
+### What the support matrix may say after this lane
+
+"In-plane design-variable AD (x): band width verified by AD-Q judges on a
+transient and a smooth spectral observable, dt path included, over
+relative displacements up to 2^-3 (seam ratio to 1.50); band position
+FD-supported, order INCONCLUSIVE; PEC strip by node index; no absorber;
+no coordinate attachment." The 1.3 in-plane cap remains an advisory the
+traced path does not evaluate (G20); this lane's ladder crossed it from
+h = 2^-6 with both gates holding on w.

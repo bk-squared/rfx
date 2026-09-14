@@ -180,7 +180,12 @@ def test_revert_proof_replay():
     assert d["forward_values_identical"] is True
     assert d["loss0_matches_first"] is True and d["loss0"] == first["loss0"]
     share = dict(zip(e6.NAMES, d["dt_path_share"]))
-    assert share["x_c"] == 0.0
+    # Pre-declared expectation (program 5.3): x_c share exactly 0. Measured
+    # -1.48e-4 (float32 recompilation under stop_gradient(dt), amplified by the
+    # 43x lead/tail cancellation; note "Diagnostic"). The record is pinned, the
+    # expectation is not rewritten into a pass.
+    assert share["x_c"] == -0.0001483932070827205
+    assert share["x_c"] == (d["g_param_true"][1] - d["g_param_nodt"][1]) / d["g_param_true"][1]
     for name, r in d["directions"].items():
         pts = _points(r["fd"]["steps"])
         assert r["sigma_eff"] == first["directions"][name]["sigma_eff"]
@@ -197,6 +202,40 @@ def test_revert_proof_replay():
     assert d["xc_unchanged"] == (xc["order"]["verdict"] == xc["first_attempt_order"]
                                  and xc["fd"]["verdict"] == xc["first_attempt_fd"])
     assert d["requirement_met"] == (d["w_fired_on_order"] and d["xc_unchanged"])
+
+
+def test_recorded_outcomes_are_pinned():
+    """Recorded results, not passes: w HELD on both gates on both observables;
+    x_c INCONCLUSIVE on order (1 / 3 eligible points) and HELD on FD; the
+    revert-proof fired on w (R1 1.022, dt share 0.588) with x_c unchanged;
+    x_c's dt share is NOT exactly zero (-1.5e-4, diagnostic below)."""
+    mc, l1, l2, rv = _load("map_checks"), _load("l1"), _load("l2s"), _load("revert_l1_nodt")
+    assert mc["all_pass"] is True
+    for d in (l1, l2):
+        w, xc = d["directions"]["w"], d["directions"]["x_c"]
+        assert w["both_held"] and 1.8 <= w["order"]["R1"]["slope"] <= 2.2 and w["fd"]["n_informative"] >= 4
+        assert xc["order"]["verdict"] == "INCONCLUSIVE" and xc["fd"]["verdict"] == "HELD"
+        assert d["verified_controls"] == ["w"]
+    assert l1["directions"]["x_c"]["order"]["points"] == 1 and l2["directions"]["x_c"]["order"]["points"] == 3
+    assert l2["directions"]["x_c"]["order_1ulp"]["verdict"] == "HELD"     # reported alongside, not primary
+    assert rv["requirement_met"] is True and rv["directions"]["w"]["fd"]["verdict"] == "FIRED"
+    assert rv["directions"]["w"]["order"]["R1"]["slope"] < 1.3 and rv["dt_path_share"][0] > 0.5
+    assert rv["dt_path_share"][1] != 0.0 and abs(rv["dt_path_share"][1]) < 1e-3
+    assert 0.80 <= l1["coverage_verified"]["fraction"] <= 0.81 and 0.67 <= l2["coverage_verified"]["fraction"] <= 0.68
+
+
+def test_revert_cellwise_diagnostic_replay():
+    d = _load("diag_revert_cellwise")
+    l1, rv = _load("l1"), _load("revert_l1_nodt")
+    gt, gn = np.asarray(d["g_cell_true"]), np.asarray(d["g_cell_nodt"])
+    np.testing.assert_array_equal(gt, l1["g_cell"])
+    diff = gt - gn
+    non = np.r_[0:20, 40:60]
+    assert not d["nontied_diff_is_zero"] and np.max(np.abs(diff[non])) == d["nontied_max_abs_diff"]
+    assert abs(float(e6.J_PARAM[:, 1] @ diff / (e6.J_PARAM[:, 1] @ gt)) - d["chain_xc_share"]) <= 1e-12
+    assert abs(float(e6.J_PARAM[:, 0] @ diff / (e6.J_PARAM[:, 0] @ gt)) - d["chain_w_share"]) <= 1e-12
+    assert abs(d["chain_w_share"] - rv["dt_path_share"][0]) <= 1e-6
+    assert abs(d["xc_lead_contrib_true"] + d["xc_tail_contrib_true"] - rv["g_param_true"][1]) <= 1e-6
 
 
 def test_coverage_summary_replay():

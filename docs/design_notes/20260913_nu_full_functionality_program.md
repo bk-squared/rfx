@@ -807,3 +807,22 @@ located. The scan of the rectangular DFT window ends recorded in the
 lane note's second pass (about 3 % of `R_meas` on this instrument, TE10
 cutoff ringing) is the other Lane 1 finding that later lanes reusing
 the E1 observable should read before quoting sub-3 % agreement.
+
+## Addendum (Lane 2 result, 2026-09-14; sections 1-7 above not edited)
+
+Lane 2 (E6, `20260913_nu_lane2_inplane_designvar_ad_predeclaration.md`)
+executed once as pre-declared: map checks m1-m8 all pass; the band width
+`w` HELD on both AD-Q gates on the transient (R1 1.945, 3B/|g| 2.0e-3)
+and on the physical-time-Hann comb-integrated spectral observable (R1
+1.962, 3B/|g| 7.2e-4), dt path included (share 0.588); the revert-proof
+FIRED as required (R1 1.022, err/3B 294) with `x_c` unchanged. The band
+position `x_c` is FD-supported (3B/|g| 2.4e-2 / 1.2e-4) and INCONCLUSIVE
+on order on both observables (1 / 3 eligible points; its gradient is a
+43x lead/tail cancellation). Coverage 0.80 (L1) / 0.68 (L2s). The 5.2
+`pec_mask_override` wording is realized as `run_nonuniform(pec_edge_masks
+=...)`; the 5.3 expectation "x_c dt share exactly 0" measured -1.5e-4 —
+float32 recompilation under `stop_gradient(dt)` amplified by the
+cancellation, recorded with a cell-wise diagnostic; the frozen
+requirement (verdicts unchanged) held. G12 is answered for this fixture:
+the smooth spectral observable carries no ripple (Richardson-valid over
+7.8e-3 .. 6.25e-2). No `rfx/` change.
