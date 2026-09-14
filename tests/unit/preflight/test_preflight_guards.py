@@ -676,7 +676,7 @@ def test_preflight_returns_back_compatible_structured_issues():
     sim.add_source((0.01, 0.01, 0.0225), component="ez")  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
     sim.add_probe((0.01, 0.01, 0.022), component="ez")
     report = sim.preflight()
-    assert report, "expected a preflight finding for a source/probe in CPML"
+    assert len(report), "expected a preflight finding for a source/probe in CPML"
     for issue in report:
         assert isinstance(issue, PreflightIssue)
         assert isinstance(issue, str)          # back-compat: still a string
@@ -702,7 +702,9 @@ def test_preflight_report_is_a_list_with_canonical_api():
     assert isinstance(report, PreflightReport) and isinstance(report, list)
     # list[str] ops the 65 legacy call sites rely on
     assert isinstance("\n".join(report), str)
-    assert len(report) == len(list(report)) and bool(report)
+    # bool(report) is NOT in this list: it raises by design (#980, see
+    # tests/unit/preflight/test_preflight_report_truthiness.py).
+    assert len(report) == len(list(report)) and len(report) > 0
     # canonical report API
     assert report.issues == list(report)
     assert report.ok == (not report.errors)
@@ -892,7 +894,7 @@ def test_to_dict_and_to_json_roundtrip_carry_code_and_severity():
     import json
 
     report = _bad_sim_probe_in_cpml().preflight()
-    assert report, "expected at least one issue to serialize"
+    assert len(report), "expected at least one issue to serialize"
     d = report.to_dict()
     assert d["n_issues"] == len(report)
     for src, rec in zip(report, d["issues"]):
@@ -926,7 +928,7 @@ def test_raise_for_failure_is_errors_only_gate():
     """report.raise_for_failure() is the SOFTER pre-launch gate: it raises only
     on error-severity, letting advisory warnings through (unlike strict=True)."""
     report = _bad_sim_probe_in_cpml().preflight()   # warnings only, no errors
-    assert report and report.ok          # ok == no error-severity issues
+    assert len(report) and report.ok     # ok == no error-severity issues
     report.raise_for_failure()           # must NOT raise on warning-only report
 
 

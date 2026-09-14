@@ -120,7 +120,7 @@ def main() -> None:
     # idealized material can make a resonance Q misleading.
     report = sim.preflight()
     loss_advisory = bool(report.by_code("lossless_q"))
-    if report:
+    if len(report):   # PreflightReport refuses bool() (#980)
         raise RuntimeError("Vacuum cavity has unexpected preflight advisories")
     print(f"Vacuum-cavity loss advisory observed: {loss_advisory}")
 

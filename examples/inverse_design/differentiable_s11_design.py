@@ -122,7 +122,7 @@ if __name__ == "__main__":
     # Preflight runs VISIBLY (never optimize against a setup you have not
     # preflighted — issues #149/#150 both hid behind suppressed warnings).
     issues = sim.preflight()
-    if issues:
+    if len(issues):   # PreflightReport refuses bool() (#980)
         raise SystemExit(f"preflight reported {len(issues)} issue(s) — fix the setup first")
     grid = sim._build_grid()
     eps_base = jnp.ones(grid.shape, dtype=jnp.float32)
