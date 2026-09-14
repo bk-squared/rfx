@@ -2491,6 +2491,21 @@ class _ExecuteMixin:
                     )
 
             # Check 4 — CPML vs local slab on outer boundary ranks.
+            #
+            # SCOPE NOTE (B0 round 2, 2026-09-14): this is a DIFFERENT
+            # condition from the uniform lane's
+            # ``rfx.runners.distributed_v2.check_x_absorber_fits_ranks``
+            # (``cpml_layers <= nx_per`` / ``<= nx_per - pad_x``, derived
+            # from the literal window slices) and from
+            # ``check_x_absorber_faces_are_absorbing``. ``cpml_layers*2 >=
+            # nx_local_real`` is stricter for a rank that owns both outer
+            # faces and says nothing about a face that declares no
+            # absorber at all. It is left untouched on purpose: this is
+            # the NU-forward lane, B0 is the uniform lane, and rewriting a
+            # guard that is not silently wrong to match one that is newer
+            # would be a change with no measurement behind it. The two
+            # lanes therefore state the x-absorber fit differently, which
+            # is recorded in the B0 design note's open items.
             cpml_layers = int(getattr(self, "_cpml_layers", 0) or 0)
             if self._boundary == "cpml" and cpml_layers > 0:
                 for rank in (0, n_devices - 1):

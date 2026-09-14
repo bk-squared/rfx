@@ -39,8 +39,12 @@ Two conventions, stated rather than left implicit:
    centre the same disagreement is ``3.261566e-04`` on a ``7.734966e-01`` peak.
    Cause: the distributed local kernels are unconditionally non-periodic
    (``rfx/runners/distributed.py:351``, and again at :380/:415/:440) and
-   ``sim._periodic_axes`` occurs ZERO times in
-   ``rfx/runners/distributed_v2.py`` (grep, 2026-09-14).
+   ``sim._periodic_axes`` occurred ZERO times in
+   ``rfx/runners/distributed_v2.py`` **on d56f68eb** (grep, 2026-09-14).
+   On HEAD ``grep -c`` gives 4 lines, all inside the admission gate --
+   pinned by ``test_the_runner_still_never_reads_periodic_axes``, which
+   compares the file count against the gate count rather than asserting
+   either number.
 
 2. **Extended lumped port** (``impedance=50``, ``extent=3e-3``)::
 
@@ -63,9 +67,11 @@ Two conventions, stated rather than left implicit:
 
    With the documented ``waveform=None`` default the lane instead died inside
    ``make_port_source`` with ``TypeError: Expected a callable value, got
-   None`` -- a crash that names no feature. Cause: ``excite`` occurs ZERO
-   times in either distributed runner; ``rfx/runners/uniform.py:421,440``
-   honours it.
+   None`` -- a crash that names no feature. Cause: ``excite`` occurred ZERO
+   times in either distributed runner **on d56f68eb**; on HEAD ``grep -c``
+   gives 15 lines in ``distributed_v2.py``, all inside the admission gate.
+   ``rfx/runners/uniform.py:421,440`` honours it (the ``setup_wire_port``
+   call itself starts at :419 and runs to :420).
 
 4. **Flux monitor / NTFF box**::
 
@@ -98,13 +104,28 @@ Two conventions, stated rather than left implicit:
    the 99.9994% probe is the one a cell inside it. The earlier draft of this
    note quoted the control as ``9.7e-05`` of peak; that digit belongs to no
    fixture that could be reproduced and is replaced by the measured
-   2.274240e-07 above. (For the record, the shipped ``_build`` DEFAULT
-   source at (6, 6, 6) mm -- which on a 6 mm domain sits on the x-hi PEC
-   plane and is discarded -- gives a different silent-wrong on the same
-   model: native peak 5.554087e-03 vs a distributed peak of 2.499657e-08,
-   rel 1.000003, and its 24 mm control sits at 3.05e-03 of peak, ABOVE the
-   1e-3 CPML parity tolerance. That last number sizes the S5 gap for lane B
-   and is recorded in the design note's S5.)
+   2.274240e-07 above.
+
+   **The arithmetic bound is NECESSARY, NOT SUFFICIENT** (round-2 review,
+   re-measured on pristine d56f68eb, 2 devices, 60 steps). The case that
+   satisfies it EXACTLY, ``n == nx_per - pad_x`` -- same ASYM spec at
+   7x8x8 mm, ``cpml_layers=8`` (nx=16, pad_x=0, nx_per=8), same source and
+   probe row -- is wrong by the same order as the refused one::
+
+       native peak abs(Ez) (x=3 mm)    = 4.420052e+00
+       max|Ez_distributed - Ez_native| = 2.040125e+00   (46.16%)
+       probe x=5 mm  native 1.800406e-01 vs dist 5.905863e-05   (99.97%)
+       probe x=6 mm  native 4.441055e-02 vs dist 1.295477e-07   (100.0%)
+       warnings raised                 = 0
+
+   So the window overflow is not the mechanism. The mechanism is the
+   PHANTOM x window -- the lane applies both x-face CPML windows whenever
+   ``boundary='cpml'`` and ``cpml_layers>0``, never reading
+   ``grid.face_pads`` -- and that is class 6 below, refused separately.
+   The decisive measurement: the asymmetric 24 mm model is wrong by
+   1.610351e-04 / 5.086e-02 of peak at n_devices=2 AND by the identical
+   1.610351e-04 / 5.086e-02 at n_devices=1, where there is no slab to
+   overflow.
 
    One cell of overflow keeps every array shape valid, so nothing raises.
    Two or more cells overflow past the slab end and XLA raises a
@@ -115,7 +136,50 @@ Two conventions, stated rather than left implicit:
    earlier draft attached that quote to cannot produce it -- it gives
    ``(8, 1, 1), (6, 25, 25)``.
 
-6. **Ghost-width formula.** ``rfx/api/_execute.py`` computed
+6. **Phantom x CPML window at a non-absorbing x face.** The lane applies
+   BOTH x-face CPML windows whenever ``boundary='cpml'`` and
+   ``cpml_layers>0``, never reads ``grid.face_pads``, and uses a non-zero
+   ``ce_xhi = dt/(eps_r*EPS_0)`` at the face -- so it ABSORBS at a face the
+   caller asked to reflect. Found in round 2 of the review, because the
+   class-5 arithmetic admits it. MEASURED on pristine d56f68eb, 2 devices,
+   0 warnings every time::
+
+       x_lo='cpml'/x_hi='pec', y/z cpml, cpml_layers=8, 24x8x8 mm,
+       source (6,6,6) mm, probes x=12/22 mm, 60 steps:
+           max|dEz| = 1.610351e-04 on a 3.165971e-03 row peak  (5.086e-02)
+           the x=22 mm probe alone: 1.610351e-04 on its own 1.619078e-04
+                                    peak  ->  99.46% wrong
+           at 100 steps the row figure grows to 7.890e-02
+           at n_devices=1: the IDENTICAL 1.610351e-04 / 5.086e-02
+       x='pec'/'pec', y/z cpml, cpml_layers=8, nx=16/20/40:
+           2.74% / 3.06% / 3.07% at the source probe,
+           99.2%-100.0% at every probe inside the phantom window
+       x_lo='pmc'/x_hi='cpml', y/z cpml, dx=5 mm, 16x8x8 cells:
+           54.1% of peak at 30 steps, 93.5% at 80 steps
+
+   Negative control (both x faces absorbing): ``boundary='cpml'``,
+   ``cpml_layers=8``, 24x8x8 mm, probes 12/22 mm, 60 steps ->
+   5.820766e-09 on a 3.170117e-03 peak = 1.836e-06 of peak at 2 devices
+   (1.395e-06 at 1 device). Parity. The refusal costs the symmetric
+   absorber nothing.
+
+7. **The exported v1 pmap runner was ungated for all of 1-6.**
+   ``rfx/runners/__init__.py`` re-exports ``run_distributed`` from
+   ``rfx.runners.distributed``, NOT from ``distributed_v2``, and the first
+   round of this change gated only ``distributed_v2`` and the
+   ``run(devices=...)`` dispatch. MEASURED on that first-round tree with
+   the committed ``_build`` fixture at 23x12x12 mm (nx=24, evenly
+   divisible so the "not evenly divisible" ValueError could not bounce
+   it), 40 steps, 2 devices, 0 warnings every time::
+
+       extent port    pmap energy 0.000000e+00  vs native 9.951533e-04
+       excite=False   pmap energy 1.982867e-03  vs native 0.0
+       flux monitor   result.flux_monitors is None
+       periodic 'y'   max|dEz| 1.963800e-04 on a 1.090239e-03 peak (18%)
+       x absorber     x_lo='cpml'/x_hi='pec', cpml_layers=8, 5x8x8 mm
+                      (nx=14, nx_per=7): 2.207114e+00 on 4.416774e+00 (50%)
+
+8. **Ghost-width formula.** ``rfx/api/_execute.py`` computed
    ``floor(K/2)+1`` while ``rfx/runners/distributed_nu.build_sharded_nu_grid``
    uses ``ghost = K``::
 
@@ -126,6 +190,21 @@ Two conventions, stated rather than left implicit:
    The preflight was SHORT by one cell from K=3 up, i.e. it would clear a
    configuration the builder cannot shard. There is now one source of truth,
    :func:`rfx.runners.distributed_nu.nu_ghost_width`.
+
+NOT closed here, and recorded so the "position-independent" scope of this
+file is not read as "no other silent class remains": a source whose x cell
+is the FIRST REAL CELL of rank 1 (global index == nx_per). MEASURED on
+pristine d56f68eb, symmetric ``boundary='cpml'``, ``cpml_layers=8``, 2
+devices, 60 steps, 0 warnings -- 4x8x8 mm (nx=21, nx_per=11) with the
+source at x=3 mm (global 11) gives native 4.422122e+00 vs distributed
+4.557471e+00 at the source probe and 8.203998e-01 vs 6.845230e-01 one cell
+before (3.07e-02 of peak); 24x8x8 mm (nx=41, nx_per=21) with the source at
+x=13 mm (global 21) gives 4.422516e+00 vs 4.558136e+00, the same 3.07e-02.
+Moving the source ONE cell earlier, onto the last cell of rank 0, restores
+1.08e-07 parity. That is 30x the shipped CPML tolerance of 1e-3
+(``test_distributed.py``), it is position-DEPENDENT in the source rather
+than in the absorber, and it belongs to the cut-plane census (lane B2), not
+to this file.
 
 The GREEN assertions here are the refusals. The negative controls at the
 bottom reuse the fixtures and tolerances of the shipped parity tests in
@@ -458,6 +537,12 @@ def test_x_absorber_refusal_reports_the_slab_arithmetic():
     assert "n_devices=1" not in msg, msg
     assert "omit devices=" in msg, msg
     assert "reduce cpml_layers" in msg, msg
+    # Round 2: the message must not attribute the 49.98% to the overflow.
+    # Measured: the case that satisfies this bound EXACTLY is 46.16% wrong,
+    # so the overflow is not the dominant term and the message says so.
+    assert "NECESSARY, NOT SUFFICIENT" in msg, msg
+    assert "46.16%" in msg, msg
+    assert "check_x_absorber_faces_are_absorbing" in msg, msg
 
 
 def test_x_absorber_refusal_also_fires_through_the_public_dispatch():
@@ -470,8 +555,21 @@ def test_the_x_absorber_condition_is_the_window_arithmetic():
 
     The x-hi window is ``[nx_per + ghost - pad_x - n, nx_per + ghost -
     pad_x)`` on a slab whose owned cells are ``[ghost, ghost + nx_per)``, so
-    ``n == nx_per - pad_x`` is the last admissible depth and ``n + 1`` is
-    the first refused one.
+    ``n == nx_per - pad_x`` is the last depth this CHECK admits and
+    ``n + 1`` is the first it refuses.
+
+    "Admits" means this check alone, and the bound is a NECESSARY
+    condition only -- passing it does not make the configuration right.
+    Measured on pristine d56f68eb at exactly ``n == nx_per - pad_x``
+    (ASYM spec, cpml_layers=8, 7x8x8 mm -> nx=16, pad_x=0, nx_per=8,
+    source (3, 4, 4) mm, probes 1/3/5/6 mm, 2 devices, 60 steps): max|dEz|
+    2.040125e+00 on a 4.420052e+00 peak = 46.16% of peak, with the x=5 and
+    x=6 mm probes 99.97% and 100.0% wrong on their own peaks and 0
+    warnings -- the same order as the refused 6 mm case. What makes it
+    wrong is the phantom x-hi window at the PEC face, which
+    :func:`check_x_absorber_faces_are_absorbing` refuses separately
+    (class 6). This test pins the arithmetic; the class-6 tests below pin
+    the sufficiency.
     """
     from rfx.runners.distributed_v2 import check_x_absorber_fits_ranks
     for pad_x in (0, 1, 3):
@@ -489,17 +587,132 @@ def test_the_x_absorber_condition_is_the_window_arithmetic():
             check_x_absorber_fits_ranks(cpml_layers=nx_per + 1, **kw)
 
 
+def _sym_cpml(cpml_layers=8, domain_x_mm=24):
+    """A SYMMETRIC absorber: both x faces CPML, so classes 5 and 6 admit.
+
+    ``boundary='cpml'`` pads the absorber OUTSIDE the requested domain on
+    both x faces (``rfx/grid.py``), so ``pad_x_lo == pad_x_hi ==
+    cpml_layers > 0`` and ``nx_per > cpml_layers`` holds by construction
+    at 2 devices. This is the negative control for BOTH slab checks.
+    """
+    return _build(boundary="cpml", cpml_layers=cpml_layers,
+                  domain=(domain_x_mm * 1e-3, 8e-3, 8e-3))
+
+
 def test_a_fitting_x_absorber_is_not_refused():
-    """Negative control for class 5: the SAME fixture with a wider domain
-    (nx=33, nx_per=17, so the 8-layer absorber fits) ran on main at
-    1.005828e-06 on a 4.422700e+00 peak = 2.274240e-07 of peak, and must
-    keep running."""
-    res = _run_distributed(_asym(8, 24), n_steps=8)
-    assert res.time_series is not None
+    """Negative control for classes 5 AND 6: a symmetric 8-layer absorber
+    on a 24 mm domain (nx=41, pad_x=1, nx_per=21) both fits the slab and
+    has an absorber on every x face it drives a window at.
+
+    Measured on pristine d56f68eb with this exact fixture (probes at
+    x=12/22 mm, 60 steps): max|dEz| 5.820766e-09 on a 3.170117e-03 peak =
+    1.836e-06 of peak at 2 devices, 1.395e-06 at 1 device -- parity, three
+    orders inside the shipped CPML tolerance of 1e-3. Asserted here at
+    that shipped tolerance, unweakened.
+
+    The previous version of this control was ``_asym(8, 24)``, which fits
+    the slab but leaves ``x_hi='pec'`` with a phantom absorber -- and is
+    5.086e-02 of peak wrong. It is now a class-6 RED case; see
+    ``test_the_fitting_asymmetric_absorber_is_refused_by_class_6``.
+    """
+    single = _sym_cpml().run(n_steps=60, skip_preflight=True)
+    multi = _run_distributed(_sym_cpml(), n_steps=60)
+    ts_s = np.asarray(single.time_series)
+    ts_m = np.asarray(multi.time_series)
+    assert ts_s.shape == ts_m.shape
+    peak = np.max(np.abs(ts_s)) + 1e-30
+    rel = np.max(np.abs(ts_s - ts_m)) / peak
+    assert rel < 1e-3, f"symmetric CPML distributed error {rel:.2e}"
 
 
 # ---------------------------------------------------------------------------
-# 6. One ghost-width formula
+# 6. Phantom x CPML window at a non-absorbing x face
+# ---------------------------------------------------------------------------
+
+def test_the_fitting_asymmetric_absorber_is_refused_by_class_6():
+    """RED: ``_asym(8, 24)`` PASSES the class-5 arithmetic (nx=33, pad_x=1,
+    nx_per=17, so an 8-layer window fits) and is still wrong, because
+    ``x_hi='pec'`` gets an absorber it never asked for.
+
+    Measured on pristine d56f68eb, 2 devices, 60 steps, 0 warnings, with
+    ``_build``'s default centre source (6, 6, 6) mm and default probe row
+    x=12/22 mm on the same 24x8x8 mm ASYM model: max|dEz| 1.610351e-04 on
+    a 3.165971e-03 row peak = 5.086e-02 of peak, and the x=22 mm probe --
+    2 mm inside the PEC face -- 99.46% wrong on its own 1.619078e-04 peak.
+    At 100 steps the row figure is 7.890e-02. At n_devices=1 it is the
+    identical 1.610351e-04 / 5.086e-02, which is how we know the window
+    and not the decomposition is the mechanism.
+    """
+    with pytest.raises(ValueError, match="declares no CPML absorber"):
+        _run_distributed(_asym(8, 24), n_steps=8)
+
+
+def test_the_phantom_window_refusal_names_the_face_and_the_way_out():
+    with pytest.raises(ValueError) as excinfo:
+        _run_distributed(_asym(8, 24), n_steps=8)
+    msg = str(excinfo.value)
+    assert "x face x-hi declares no CPML absorber" in msg, msg
+    assert "grid.pad_x_lo=8" in msg and "grid.pad_x_hi=0" in msg, msg
+    assert "never reads grid.face_pads" in msg, msg
+    # the three ways out, each nameable
+    assert "BoundarySpec(x='cpml')" in msg, msg
+    assert "cpml_layers=0" in msg, msg
+    assert "omit devices=" in msg, msg
+
+
+def test_the_phantom_window_refusal_fires_through_the_public_dispatch():
+    with pytest.raises(ValueError, match="declares no CPML absorber"):
+        _run_api(_asym(8, 24), n_steps=8)
+
+
+def test_a_pmc_x_face_is_refused_too():
+    """The same defect with a PMC reflector instead of a PEC one.
+
+    This is the configuration
+    ``tests/unit/boundaries/test_boundary_pmc_distributed.py``'s
+    ``test_pmc_distributed_v2_x_lo_owner_and_non_owner`` used to run: on
+    pristine d56f68eb, dx=5 mm, 16x8x8 cells, ``x=Boundary(lo='pmc',
+    hi='cpml')`` with y/z CPML, it was 54.1% of peak wrong at that test's
+    own 30 steps (1.350925e-01 on 2.498208e-01) and 93.5% at 80, with the
+    probes 1 and 2 cells off the PMC face 100% wrong on their own peaks
+    and 0 warnings. That test now composes the PMC face with PEC.
+    """
+    spec = BoundarySpec(x=Boundary(lo="pmc", hi="cpml"),
+                        y=Boundary(lo="cpml", hi="cpml"),
+                        z=Boundary(lo="cpml", hi="cpml"))
+    sim = _build(boundary=spec, cpml_layers=8, domain=(24e-3, 8e-3, 8e-3))
+    with pytest.raises(ValueError) as excinfo:
+        _run_distributed(sim, n_steps=8)
+    assert "x face x-lo declares no CPML absorber" in str(excinfo.value)
+
+
+def test_the_phantom_window_check_is_a_no_op_when_both_faces_absorb():
+    """Unit boundary of class 6, simulation-free: it fires exactly when a
+    pad is 0, and never otherwise."""
+    from rfx.runners.distributed_v2 import (
+        check_x_absorber_faces_are_absorbing,
+    )
+    assert check_x_absorber_faces_are_absorbing(
+        cpml_layers=8, pad_x_lo=8, pad_x_hi=8, n_devices=2) is None
+    # per-face thicknesses differ but both absorb: still admitted
+    assert check_x_absorber_faces_are_absorbing(
+        cpml_layers=8, pad_x_lo=6, pad_x_hi=10, n_devices=2) is None
+    for lo, hi, face in ((0, 8, "x-lo"), (8, 0, "x-hi"), (0, 0, "x-lo")):
+        with pytest.raises(ValueError, match="declares no CPML absorber"):
+            check_x_absorber_faces_are_absorbing(
+                cpml_layers=8, pad_x_lo=lo, pad_x_hi=hi, n_devices=2)
+
+
+def test_a_pec_only_model_never_reaches_the_phantom_window_check():
+    """``boundary='pec'`` builds no CPML window at all, so class 6 must not
+    fire on it -- the check is guarded on ``use_cpml``, and the default PEC
+    fixture still runs distributed (the parity control below)."""
+    res = _run_distributed(_build())
+    assert np.max(np.abs(np.asarray(res.time_series))) > 0
+
+
+# ---------------------------------------------------------------------------
+# 8. One ghost-width formula (docstring item 8; not an admission class)
 # ---------------------------------------------------------------------------
 
 def test_ghost_width_is_the_builders_value_for_k_1_to_4():
@@ -825,3 +1038,199 @@ def test_the_absorber_remedy_never_recommends_a_one_device_run():
                                     ghost=1, cpml_layers=15)
     msg = str(excinfo.value)
     assert "n_devices=2 is the largest count above 1 that fits" in msg, msg
+
+
+# ---------------------------------------------------------------------------
+# The EXPORTED v1 pmap runner is gated too (round-2 review, BLOCKING 3)
+# ---------------------------------------------------------------------------
+# ``rfx/runners/__init__.py`` re-exports ``run_distributed`` from
+# ``rfx.runners.distributed`` -- the pmap runner -- not from
+# ``distributed_v2``.  The first round of this change gated
+# ``distributed_v2.run_distributed`` and the ``run(devices=...)`` dispatch
+# and left ``rfx.runners.run_distributed`` running all five classes.  The
+# 23 mm domain below is deliberate: nx=24 is evenly divisible by 2, so the
+# runner's own "not evenly divisible" ValueError cannot bounce the call and
+# hide the gap (it is what made the 24 mm fixtures look safe).
+
+def _run_v1(sim, n_steps=N_STEPS, n_devices=2):
+    from rfx.runners.distributed import run_distributed as run_v1
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return run_v1(sim, n_steps=n_steps, devices=_devices()[:n_devices])
+
+
+V1_DOMAIN = (23e-3, 12e-3, 12e-3)   # nx = 24, divisible by 2 devices
+
+
+def test_the_exported_runner_is_the_pmap_one_and_it_is_gated():
+    """The export is the fact that makes the gap reachable, so pin it."""
+    import rfx.runners as R
+    assert R.run_distributed.__module__ == "rfx.runners.distributed", (
+        "if this export moves to distributed_v2 the four tests below still "
+        "pass but stop testing the pmap runner -- re-point them"
+    )
+
+
+@pytest.mark.parametrize("name,make,match", [
+    ("periodic",
+     lambda: _build(periodic="y", domain=V1_DOMAIN),
+     "periodic / Bloch"),
+    ("extent port",
+     lambda: _build(port=dict(impedance=50.0, extent=3e-3),
+                    domain=V1_DOMAIN),
+     r"extent="),
+    ("passive port",
+     lambda: _build(port=dict(impedance=50.0, excite=False,
+                              waveform=GaussianPulse(f0=7.5e9,
+                                                     bandwidth=0.8)),
+                    domain=V1_DOMAIN),
+     "excite=False"),
+    ("flux monitor",
+     lambda: _build(flux=True, domain=V1_DOMAIN),
+     "add_flux_monitor"),
+    ("ntff box",
+     lambda: _build(ntff=True, domain=V1_DOMAIN),
+     "add_ntff_box"),
+])
+def test_the_v1_pmap_runner_refuses_the_four_feature_classes(name, make,
+                                                             match):
+    """RED on the first-round tree, at nx=24 with 0 warnings every time:
+    extent port -> pmap probe energy 0.000000e+00 vs native 9.951533e-04;
+    excite=False -> pmap 1.982867e-03 vs native 0.0; flux ->
+    result.flux_monitors is None; periodic 'y' -> max|dEz| 1.963800e-04 on
+    a 1.090239e-03 peak (18% of peak)."""
+    with pytest.raises(NotImplementedError, match=match):
+        _run_v1(make())
+
+
+def test_the_v1_refusal_names_the_v1_lane():
+    """The message must name the lane the caller actually used, or a v1
+    caller is told to change something in a file they never called."""
+    with pytest.raises(NotImplementedError) as excinfo:
+        _run_v1(_build(flux=True, domain=V1_DOMAIN))
+    assert "distributed (v1) pmap runner" in str(excinfo.value)
+
+
+def test_the_v1_pmap_runner_refuses_an_x_absorber_that_spans_ranks():
+    """RED on the first-round tree: ``x_lo='cpml'``/``x_hi='pec'`` with y/z
+    CPML, ``cpml_layers=8``, 5x8x8 mm at dx=1 mm (nx=14, nx_per=7, so an
+    8-layer window overflows by one cell) ran at max|dEz| 2.207114e+00 on a
+    4.416774e+00 peak -- 50% of peak, 0 warnings.
+
+    Both slab checks apply to this fixture; class 5 is the one that fires
+    first and it is the more specific message, so it is the one asserted.
+    """
+    sim = _build(boundary=ASYM_SPEC, cpml_layers=8,
+                 domain=(5e-3, 8e-3, 8e-3), source=(2e-3, 4e-3, 4e-3),
+                 probes=(1e-3, 2e-3, 4e-3))
+    with pytest.raises(ValueError) as excinfo:
+        _run_v1(sim, n_steps=8)
+    msg = str(excinfo.value)
+    assert "x CPML absorber" in msg, msg
+    assert "distributed (v1) pmap runner" in msg, msg
+
+
+def test_the_v1_pmap_runner_refuses_a_phantom_window_at_one_device():
+    """Class 6 must fire on the v1 runner at n_devices=1 as well.
+
+    MEASURED on pristine d56f68eb through this runner with ONE device
+    (ASYM spec, cpml_layers=8, 24x8x8 mm, ``_build`` default source and
+    probes x=12/22 mm, 60 steps): max|dEz| 1.610351e-04 on a 3.165971e-03
+    peak = 5.086e-02 of peak, the x=22 mm probe 99.46% wrong on its own
+    peak, 0 warnings -- bit-for-bit the same wrongness as at 2 devices, so
+    the single-device fast path is not a way around the defect. The
+    symmetric control through the same call is 1.395e-06 of peak.
+
+    Note this is NOT reachable from ``sim.run(devices=[one_device])``:
+    ``rfx/api/_execute.py`` dispatches distributed only for
+    ``len(devices) > 1``. It is reachable from
+    ``rfx.runners.run_distributed`` and as ``distributed_v2``'s
+    ``n_devices == 1`` delegate.
+    """
+    with pytest.raises(ValueError, match="declares no CPML absorber"):
+        _run_v1(_asym(8, 24), n_steps=8, n_devices=1)
+
+
+def test_the_v1_pmap_runner_still_runs_a_symmetric_absorber_at_one_device():
+    """Negative control for the two v1 slab checks: parity, unweakened.
+
+    Pristine d56f68eb, this fixture through the v1 runner at one device:
+    1.395464e-06 of peak (2 devices: 1.836136e-06). Asserted at the
+    shipped CPML tolerance of 1e-3.
+    """
+    single = _sym_cpml().run(n_steps=60, skip_preflight=True)
+    multi = _run_v1(_sym_cpml(), n_steps=60, n_devices=1)
+    ts_s = np.asarray(single.time_series)
+    ts_m = np.asarray(multi.time_series)
+    assert ts_s.shape == ts_m.shape
+    peak = np.max(np.abs(ts_s)) + 1e-30
+    rel = np.max(np.abs(ts_s - ts_m)) / peak
+    assert rel < 1e-3, f"v1 symmetric CPML error {rel:.2e}"
+
+
+# Ordering note: the v1 gate went in AFTER ``_refuse_f0``, so the
+# pre-existing thin-conductor refusal keeps firing first. That is pinned
+# where it already lives --
+# ``tests/unit/materials/test_sheet_impedance.py::test_g9_distributed_runners_refuse``
+# calls the v1 runner on a sheet-bearing sim and asserts the f0 message; it
+# would go red if the gate had been placed above ``_refuse_f0``.
+
+
+# ---------------------------------------------------------------------------
+# The refusals also fire on the DEFAULT run(devices=...) path
+# ---------------------------------------------------------------------------
+# Every other ``_run_api`` call in this file passes ``skip_preflight=True``,
+# which pins nothing about the default path. MEASURED on pristine d56f68eb
+# through ``sim.run(n_steps=..., devices=[d0, d1])`` with NO
+# ``skip_preflight``: all six ran. periodic 'y' peak 8.938612e-04 with 0
+# warnings; extent port peak exactly 0.0 with 0 warnings; excite=False peak
+# 1.910045e-02 with 0 warnings; flux and ntff returned
+# ``flux_monitors=None`` / ``ntff_data=None`` (the NTFF case with one
+# advisory about PEC + far-field, which says nothing about the drop); and
+# ``_asym(8, 6)`` ran with one advisory about a probe near the absorber.
+# So "no refusal and no warning" held through the default path too, and now
+# it is a pinned fact rather than a measured one.
+
+@pytest.mark.parametrize("name,make,exc,match", [
+    ("periodic", lambda: _build(periodic="y"),
+     NotImplementedError, "periodic / Bloch"),
+    ("extent port", lambda: _build(port=dict(impedance=50.0, extent=3e-3)),
+     NotImplementedError, r"extent="),
+    ("passive port",
+     lambda: _build(port=dict(impedance=50.0, excite=False,
+                              waveform=GaussianPulse(f0=7.5e9,
+                                                     bandwidth=0.8))),
+     NotImplementedError, "excite=False"),
+    ("flux monitor", lambda: _build(flux=True),
+     NotImplementedError, "add_flux_monitor"),
+    ("ntff box", lambda: _build(ntff=True),
+     NotImplementedError, "add_ntff_box"),
+    ("x absorber", lambda: _asym(8, 6), ValueError, "x CPML absorber"),
+    ("phantom window", lambda: _asym(8, 24), ValueError,
+     "declares no CPML absorber"),
+])
+def test_every_class_is_refused_on_the_default_preflight_path(name, make,
+                                                              exc, match):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(exc, match=match):
+            make().run(n_steps=8, devices=_devices())
+
+
+# ---------------------------------------------------------------------------
+# The ghost-width helper refuses a fractional interval
+# ---------------------------------------------------------------------------
+
+def test_a_fractional_exchange_interval_is_refused_not_truncated():
+    """``nu_ghost_width`` did ``int(exchange_interval)`` BEFORE the ``k < 1``
+    check, so K=2.5 silently became a ghost width of 2 -- a halo half a cell
+    short of the interval it is sized for. Consistent across both call
+    sites, so it produced no disagreement to fail on."""
+    from rfx.runners.distributed_nu import nu_ghost_width
+    with pytest.raises(ValueError, match="integer number of steps"):
+        nu_ghost_width(2.5)
+    with pytest.raises(ValueError, match="must be >= 1"):
+        nu_ghost_width(0)
+    # an integral float is still the same integer, and still accepted
+    assert nu_ghost_width(3.0) == 3
+    assert nu_ghost_width(3) == 3

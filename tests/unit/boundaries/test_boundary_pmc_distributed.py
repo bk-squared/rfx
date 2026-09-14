@@ -190,6 +190,24 @@ def test_pmc_distributed_v2_x_lo_owner_and_non_owner():
     Negative assertion: an interior global-x index that lives on rank 1
     (``nx // 2 + 2``) must NOT be zeroed. A "zero everywhere" bug would
     pass the positive assertion and fail this one.
+
+    The y/z faces are PEC here, not CPML (changed 2026-09-14, B0 round
+    2).  This test used to compose ``x=Boundary(lo='pmc', hi='cpml')``
+    with ``y='cpml', z='cpml'``, and that configuration is now REFUSED by
+    ``check_x_absorber_faces_are_absorbing`` -- because it was 54.1 %
+    wrong at 30 steps (this test's own step count) and 93.5 % at 80,
+    against the single-device lane, with 0 warnings: the distributed lane
+    drives a 16-layer CPML window into the PMC face it is told to
+    reflect.  MEASURED on pristine d56f68eb with exactly the grid below
+    (dx=5 mm, 16x8x8 cells, source and probe as written, plus Ez probes
+    at x = 1..5 cells): max|dEz| 1.350925e-01 on a 2.498208e-01 peak at
+    30 steps, 1.021969e+00 on 1.093201e+00 at 80 steps, and 100 % of
+    their own peak wrong at x = 1 and 2 cells.  The assertions here are a
+    zero-PATTERN on the PMC face and a non-zero off it, so they never saw
+    it -- and they are equally valid on a reflector-only composition,
+    which is what they now run on.  The x-slab decomposition, the owning
+    / non-owning rank split and the ``_apply_pmc_local`` hook under test
+    are unchanged.
     """
     devices = _require_two_devices()
 
@@ -200,8 +218,8 @@ def test_pmc_distributed_v2_x_lo_owner_and_non_owner():
         domain=(nx * dx, ny * dx, nz * dx),
         dx=dx,
         boundary=BoundarySpec(
-            x=Boundary(lo="pmc", hi="cpml"),
-            y="cpml", z="cpml",
+            x=Boundary(lo="pmc", hi="pec"),
+            y="pec", z="pec",
         ),
     )
     sim.add_source(

@@ -492,11 +492,15 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
        the same sentence again at :380, :415 and :440 -- and
        no kernel or stepper in ``rfx/runners/distributed_v2.py`` reads
        ``sim._periodic_axes``: on main (d56f68eb) the string did not occur
-       in the file at all, and on this branch its only three occurrences
-       are inside this gate (the read below, this sentence and the refusal
-       message), pinned by
-       ``test_the_runner_still_never_reads_periodic_axes``.  A periodic
-       axis therefore became an open ghost-coupled axis with nothing said.
+       in the file at all, and on this branch every occurrence is inside
+       this gate -- prose lines included, which is why an earlier draft of
+       this sentence miscounted them as three: the substring also appears
+       inside the test NAME
+       ``test_the_runner_still_never_reads_periodic_axes``.  Do not trust
+       a hand count here; that test compares the whole-file count against
+       the gate count, so it stays correct as this docstring is edited.
+       A periodic axis therefore became an open ghost-coupled axis with
+       nothing said.
     2. **Extended lumped ports** (``impedance > 0`` with ``extent`` set).
        ``distributed_v2.py`` forks on ``impedance > 0.0 and extent is
        None`` then ``elif impedance == 0.0``; a wire port satisfies
@@ -596,7 +600,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
             "read 9.95e-04 (peak |Ez| 1.41e-02). Use a single-cell lumped "
             "port (drop extent=), or omit devices=... : the single-device "
             "run() lane realizes wire ports "
-            "(rfx/runners/uniform.py:420, setup_wire_port)."
+            "(rfx/runners/uniform.py:419-420, setup_wire_port)."
         )
 
     passive = [
@@ -718,23 +722,52 @@ def check_x_absorber_fits_ranks(*, nx, n_devices, nx_per, pad_x, ghost,
     ``(20, 1, 1)`` is the 20-layer psi profile and the ``15`` is the
     clipped window ``nx_local - (ghost + pad_x)``.
 
-    The condition is on ``sim._boundary == "cpml"`` and
-    ``grid.cpml_layers > 0``, NOT on the x faces actually being CPML, and
-    that is deliberate: ``_apply_cpml_e_distributed`` (and its H twin)
-    applies BOTH x-face windows unconditionally, without consulting
-    ``grid.face_pads`` -- the S5 gap the direction note records.  So
-    ``BoundarySpec(x=('pec', 'pec'), y=('cpml', 'cpml'), z=('cpml',
-    'cpml'))`` with ``cpml_layers=8`` still drives an 8-layer x window into
-    a slab with no x pad at all, and on pristine main (d56f68eb, 2
-    devices) that died in XLA -- 6x8x8 mm at dx=1 mm gave "mul got
-    incompatible shapes for broadcasting: (8, 1, 1), (5, 25, 25)" and
-    8x8x8 mm gave "(8, 1, 1), (6, 25, 25)".  Refusing it is therefore not
-    an over-refusal of a working case.  But the caller declared NO x
-    absorber, so ``pad_x_lo`` / ``pad_x_hi`` are read here for the sole
-    purpose of saying so in the message instead of blaming an absorber
-    that was never asked for; the arithmetic itself is unchanged.  Once
-    lane B closes S5 (x windows gated on ``face_pads``), this condition
-    should be narrowed to the faces that really are CPML.
+    **This bound is NECESSARY, NOT SUFFICIENT** (round-2 review,
+    measured 2026-09-14 on pristine d56f68eb, 2 CPU devices, 60 steps).
+    Satisfying it does not make the run right, and the arithmetic is not
+    what produces the 49.98% above.  The ADMITTED boundary case
+    ``n == nx_per - pad_x`` -- the same ``ASYM`` spec at domain 7x8x8 mm,
+    ``cpml_layers=8`` (nx=16, pad_x=0, nx_per=8), source (3, 4, 4) mm,
+    probe row x = 1/3/5/6 mm -- is::
+
+        native peak |Ez| (x=3 mm)       4.420052e+00
+        max|dEz|                        2.040125e+00   (46.16% of peak)
+        probe x=5 mm                    native 1.800406e-01 vs
+                                        distributed 5.905863e-05  (99.97%)
+        probe x=6 mm                    native 4.441055e-02 vs
+                                        distributed 1.295477e-07  (100.0%)
+        warnings raised                 0
+
+    i.e. the same magnitude as the REFUSED 6 mm case, with the window
+    arithmetic satisfied.  The dominant mechanism is not the overflow but
+    the PHANTOM x window itself: the runner applies BOTH x-face windows
+    whenever ``sim._boundary == "cpml"`` and ``grid.cpml_layers > 0``,
+    without consulting ``grid.face_pads``, and ``ce_xhi = dt / (eps_r *
+    EPS_0)`` is non-zero at a PEC face
+    (``rfx/runners/distributed.py``, the ``ce_xhi`` / ``xhi`` slices), so
+    the lane absorbs at the reflector.  That is decided by measurement,
+    not by reading: the same asymmetric model at 24x8x8 mm reads
+    max|dEz| = 1.610351e-04 on a 3.165971e-03 peak = 5.086e-02 of peak at
+    n_devices=2 AND the identical 1.610351e-04 / 5.086e-02 at
+    n_devices=1, where there is no slab to overflow at all.  A phantom
+    window, not a decomposition artifact.
+
+    So this check stays as the arithmetic guard it is -- past the bound
+    the window slides into the halo or dies in XLA, both worth refusing --
+    and the phantom window is refused separately and unconditionally by
+    :func:`check_x_absorber_faces_are_absorbing` (class 6), which is what
+    actually covers ``BoundarySpec(x=('pec', 'pec'), ...)`` and the
+    asymmetric composition.  ``pad_x_lo`` / ``pad_x_hi`` are still read
+    here for the message only, so a caller who asked for no x absorber is
+    not told to shrink one.
+
+    Coverage limit, recorded rather than papered over: the inequality is
+    verified end to end only at ``ghost == 1``, which
+    :func:`run_distributed` hardcodes.  The ``ghost > 1`` branch has a
+    brute-force check against the literal window slices (nx_per 1..13,
+    ghost in {1, 2}, pad_x 0..3, n 1..19: 0 mismatches) but NO simulation
+    coverage; the call site already forwards ``ghost``, so nothing needs
+    changing the day it stops being 1.
 
     Parameters
     ----------
@@ -819,15 +852,144 @@ def check_x_absorber_fits_ranks(*, nx, n_devices, nx_per, pad_x, ghost,
         f"n_devices={n_devices} gives nx_per={nx_per} owned cells per rank "
         f"(pad_x={pad_x} alignment cell(s) on the last rank, ghost={ghost}) "
         f"-- {'; '.join(faces)}. The distributed CPML window would reach "
-        "into the ghost halo, which either silently absorbs in the wrong "
-        "cell (measured on main, 2 devices, 60 steps, x_lo='cpml'/"
-        "x_hi='pec', 6x8x8 mm at dx=1 mm, cpml_layers=8, field source at "
-        "(3, 4, 4) mm, Ez probes at x=1/3/5/6 mm: max|dEz| 2.207244 on a "
-        "4.416633 peak = 49.98%, and the probe one cell inside the x-hi "
-        "face wrong by 99.9994% of its own peak, with no warning) or dies "
-        f"in XLA with a broadcasting error that names no feature. {remedy}, "
-        "or omit devices=... entirely (the single-device run() lane has no "
-        f"slab to overflow).{_declared}"
+        "into the ghost halo, so it silently absorbs in a halo cell "
+        "instead of the owned cell it should (one cell of overflow keeps "
+        "the window's LENGTH, so no shape check catches it), or at two "
+        "cells of overflow dies in XLA with a broadcasting error that "
+        f"names no feature. {remedy}, or omit devices=... entirely (the "
+        "single-device run() lane has no slab to overflow). NOTE ON "
+        "MAGNITUDE: this bound is NECESSARY, NOT SUFFICIENT, and the "
+        "overflow is not the dominant error term -- measured on main, 2 "
+        "devices, 60 steps, x_lo='cpml'/x_hi='pec' with y/z CPML, "
+        "cpml_layers=8, field source (3, 4, 4) mm, Ez probes x=1/3/5/6 mm, "
+        "the overflowing 6x8x8 mm case was max|dEz| 2.207244 on a 4.416633 "
+        "peak (49.98%) while the 7x8x8 mm case that satisfies this bound "
+        "EXACTLY was 2.040125 on 4.420052 (46.16%), both with 0 warnings. "
+        "The shared cause is the phantom x window at the non-absorbing "
+        "face, refused separately by "
+        f"check_x_absorber_faces_are_absorbing().{_declared}"
+    )
+
+
+def check_x_absorber_faces_are_absorbing(*, cpml_layers, pad_x_lo, pad_x_hi,
+                                         n_devices,
+                                         lane="distributed multi-device run()"):
+    """Refuse a CPML x window driven at an x face that declares no absorber.
+
+    Class 6 of the admission gate, added in round 2 of the B0 review
+    because the class-5 arithmetic bound turned out to be necessary and
+    NOT sufficient: the configuration that satisfies it exactly is just as
+    wrong, and for a different reason.
+
+    The distributed lane applies BOTH x-face CPML windows whenever
+    ``sim._boundary == "cpml"`` and ``grid.cpml_layers > 0``.  It never
+    reads ``grid.face_pads``, and the per-face E coefficient it uses is
+    ``ce_xhi = dt / (eps_r * EPS_0)`` -- non-zero at a PEC or PMC face.
+    So on a face whose ``BoundarySpec`` token is ``pec`` / ``pmc`` (or on
+    an x axis left out of ``cpml_axes``), where ``grid.pad_x_lo`` /
+    ``grid.pad_x_hi`` is 0 because no absorber was padded outside the
+    domain (``rfx/grid.py``, ``_face_pad``), the lane drives a
+    ``cpml_layers``-deep absorber into the reflector.  The reflection the
+    caller asked for is absorbed instead, with no error and no warning.
+
+    MEASURED on pristine main (d56f68eb, 2026-09-14, 2 virtual CPU
+    devices), all with 0 warnings:
+
+    * ``BoundarySpec(x=(cpml, pec), y=(cpml, cpml), z=(cpml, cpml))``,
+      ``cpml_layers=8``, 24x8x8 mm at dx=1 mm, field source (6, 6, 6) mm,
+      Ez probes at x = 12 / 22 mm, 60 steps: max|dEz| **1.610351e-04** on
+      a 3.165971e-03 row peak = **5.086e-02 of peak**, and the x = 22 mm
+      probe (2 mm inside the ``x_hi='pec'`` face) is **99.46 % wrong on
+      its own peak** (1.610351e-04 of 1.619078e-04).  At 100 steps the
+      row figure grows to 7.890e-02.  The SAME model at ``n_devices=1``
+      gives the identical 1.610351e-04 / 5.086e-02, which is how we know
+      this is the window and not the decomposition.
+    * the same spec at 7x8x8 mm -- the exactly-admitted class-5 case
+      ``n == nx_per - pad_x`` -- is 46.16 % wrong at the source probe and
+      99.97 % / 100.0 % wrong at x = 5 / 6 mm.
+    * ``BoundarySpec(x=(pec, pec), y=(cpml, cpml), z=(cpml, cpml))``,
+      ``cpml_layers=8``, domains 15 / 19 / 39 mm (nx = 16 / 20 / 40,
+      pad_x_lo = pad_x_hi = 0): 2.74 % / 3.06 % / 3.07 % wrong at the
+      source probe and 99.2 %-100.0 % wrong at every probe inside the
+      phantom window.
+    * ``BoundarySpec(x=(pmc, cpml), y=cpml, z=cpml)``, dx=5 mm,
+      16x8x8 cells -- the configuration of
+      ``tests/unit/boundaries/test_boundary_pmc_distributed.py``'s
+      ``test_pmc_distributed_v2_x_lo_owner_and_non_owner`` -- is 54.1 %
+      wrong at 30 steps and 93.5 % at 80 steps, and 100 % wrong at every
+      probe within 5 cells of the PMC face.  That test asserts a
+      zero-PATTERN on the PMC face and never a value, which is why it was
+      green; it now composes its PMC face with PEC instead of CPML so the
+      same structural claim is made on a configuration this lane can
+      actually realize.
+
+    Negative control, same fixture with both x faces absorbing
+    (``boundary='cpml'``, ``cpml_layers=8``, 24x8x8 mm, probes 12/22 mm,
+    60 steps): max|dEz| 5.820766e-09 on a 3.170117e-03 peak =
+    1.836e-06 of peak at 2 devices (1.395e-06 at 1 device) -- parity,
+    three orders inside the shipped CPML tolerance of 1e-3
+    (``tests/unit/runners/test_distributed.py``).  So this refusal costs
+    the symmetric absorber nothing.
+
+    Scope. This is an admission refusal, not the fix.  The fix is to gate
+    the x windows on ``grid.face_pads``, which is lane B's subject (the
+    distributed CPML outer termination) and changes physics rather than
+    admission; until it lands, the honest answer for these configurations
+    is to refuse them.  When lane B lands, delete this function and narrow
+    class 5 to the faces that really are CPML.
+
+    Parameters
+    ----------
+    cpml_layers : int
+        ``grid.cpml_layers`` -- the depth the lane will drive at BOTH x
+        faces.  Only called when it is > 0 and the boundary is CPML.
+    pad_x_lo, pad_x_hi : int
+        ``grid.pad_x_lo`` / ``grid.pad_x_hi``: the absorber padding
+        outside the requested domain on each x face, 0 exactly when that
+        face is ``pec`` / ``pmc`` / ``periodic`` or the x axis is not in
+        ``cpml_axes``.
+    n_devices : int
+        Reported in the message only; the defect does not depend on it
+        (measured identical at 1 and 2 devices).
+
+    Raises
+    ------
+    ValueError
+        Naming the face(s), the depth, and the three ways forward.
+    """
+    off = [
+        face for face, pad in (("x-lo", pad_x_lo), ("x-hi", pad_x_hi))
+        if pad == 0
+    ]
+    if not off:
+        return
+    _faces = " and ".join(off)
+    raise ValueError(
+        f"x face {_faces} declares no CPML absorber but the {lane} path "
+        f"drives a {cpml_layers}-layer CPML window there anyway: the "
+        "distributed lane applies BOTH x-face windows whenever "
+        "boundary='cpml' and cpml_layers>0 and never reads "
+        "grid.face_pads, and its x-face E coefficient dt/(eps_r*EPS_0) is "
+        "non-zero at a reflector, so the lane ABSORBS at a face you asked "
+        f"to reflect (grid.pad_x_lo={pad_x_lo}, grid.pad_x_hi={pad_x_hi}, "
+        f"grid.cpml_layers={cpml_layers}, n_devices={n_devices}). "
+        "Measured on main before this refusal, 2 CPU devices, 0 warnings: "
+        "x_lo='cpml'/x_hi='pec' with y/z CPML, cpml_layers=8, 24x8x8 mm "
+        "at dx=1 mm, field source (6, 6, 6) mm, Ez probes at x=12/22 mm, "
+        "60 steps gave max|dEz| 1.610351e-04 on a 3.165971e-03 peak = "
+        "5.09e-02 of peak, with the x=22 mm probe 99.46% wrong on its own "
+        "peak (7.89e-02 of peak at 100 steps); x='pec'/'pec' with y/z "
+        "CPML at nx=16/20/40 was 2.7-3.1% wrong at the source and "
+        "99.2-100% wrong at every probe inside the phantom window; and "
+        "x_lo='pmc'/x_hi='cpml' was 54% wrong at 30 steps and 93% at 80. "
+        "The same model at n_devices=1 is wrong by the identical amount, "
+        "so this is the window and not the decomposition. Three ways "
+        "forward: make BOTH x faces absorbing (BoundarySpec(x='cpml') "
+        "with the x axis in cpml_axes), or drop the absorber entirely "
+        "(boundary='pec' / cpml_layers=0, which stops the lane building "
+        "any CPML window), or omit devices=... : the single-device run() "
+        "lane reads grid.face_pads and realizes the reflector (it is the "
+        "reference every number above is measured against)."
     )
 
 
@@ -1058,6 +1220,18 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             pad_x_lo=getattr(grid, "pad_x_lo", None),
             pad_x_hi=getattr(grid, "pad_x_hi", None),
             lane="distributed (v2) runner",
+        )
+        # ---- class 6: the phantom x window at a non-absorbing x face ----
+        # AFTER class 5 on purpose: when both apply (the asymmetric
+        # fixture at a too-small nx_per) the arithmetic message is the
+        # more specific one, and it is the one the class-5 tests pin.
+        # Class 6 is what catches the configurations class 5 ADMITS and
+        # that are wrong anyway -- measured 46% at the exact arithmetic
+        # boundary, and identical at n_devices=1.
+        check_x_absorber_faces_are_absorbing(
+            cpml_layers=n_cpml,
+            pad_x_lo=grid.pad_x_lo, pad_x_hi=grid.pad_x_hi,
+            n_devices=n_devices, lane="distributed (v2) runner",
         )
 
     # Phase B: NU + CPML + distributed is not implemented yet.

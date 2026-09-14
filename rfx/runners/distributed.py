@@ -1312,6 +1312,37 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         )
         return sim.run(n_steps=n_steps)
 
+    # ---- Admission gate (B0, round 2): classes 1-4 -----------------------
+    # This runner is EXPORTED as ``rfx.runners.run_distributed``
+    # (rfx/runners/__init__.py re-exports THIS module's function, not
+    # distributed_v2's), and it is also distributed_v2's n_devices == 1
+    # delegate.  Until round 2 of the B0 review it was an ungated silent
+    # path for all five classes: MEASURED on the branch that added the
+    # gate to distributed_v2 only, with the committed ``_build`` fixture
+    # at domain 23x12x12 mm (nx=24, evenly divisible so the "not evenly
+    # divisible" ValueError below cannot bounce it), 40 steps, 2 virtual
+    # CPU devices, 0 warnings every time:
+    #
+    #   extent port      pmap probe energy 0.000000e+00 vs native
+    #                    9.951533e-04
+    #   excite=False     pmap 1.982867e-03 vs native 0.0
+    #   flux monitor     result.flux_monitors is None
+    #   periodic 'y'     max|dEz| 1.963800e-04 on a 1.090239e-03 peak (18%)
+    #   x absorber       x_lo='cpml'/x_hi='pec', cpml_layers=8, 5x8x8 mm
+    #     spanning ranks (nx=14, nx_per=7): max|dEz| 2.207114e+00 on a
+    #                    4.416774e+00 peak (50%)
+    #
+    # Placed after the two FALLBACKS above for the same reason as in
+    # distributed_v2: TFSF and waveguide models run whole on one device,
+    # which is a right answer, and that lane honours all five features.
+    # Placed after ``_refuse_f0`` above so the pre-existing thin-conductor
+    # refusal keeps firing first.
+    from rfx.runners.distributed_v2 import (
+        refuse_unsupported_distributed_features,
+    )
+    refuse_unsupported_distributed_features(
+        sim, lane="distributed (v1) pmap runner")
+
     from rfx.api import Result
 
     if devices is None:
@@ -1383,6 +1414,37 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # Determine boundary type
     use_cpml = sim._boundary == "cpml" and grid.cpml_layers > 0
     n_cpml = grid.cpml_layers if use_cpml else 0
+
+    # ---- Admission gate (B0, round 2): classes 5 and 6 -------------------
+    # Position-dependent, so here rather than at the API boundary. This
+    # runner requires nx % n_devices == 0 above, so its alignment pad is
+    # always 0 -- which is why ``pad_x=0`` is passed literally and not
+    # read from a variable that does not exist on this lane.
+    if use_cpml:
+        from rfx.runners.distributed_v2 import (
+            check_x_absorber_faces_are_absorbing,
+            check_x_absorber_fits_ranks,
+        )
+        check_x_absorber_fits_ranks(
+            nx=nx, n_devices=n_devices, nx_per=nx_per, pad_x=0,
+            ghost=ghost, cpml_layers=n_cpml,
+            pad_x_lo=getattr(grid, "pad_x_lo", None),
+            pad_x_hi=getattr(grid, "pad_x_hi", None),
+            lane="distributed (v1) pmap runner",
+        )
+        # Class 6 fires at n_devices == 1 too, and must: MEASURED on
+        # pristine d56f68eb through THIS runner with one device,
+        # x_lo='cpml'/x_hi='pec', cpml_layers=8, 24x8x8 mm, probes at
+        # x=12/22 mm, 60 steps -- max|dEz| 1.610351e-04 on a 3.165971e-03
+        # peak (5.086e-02), the x=22 mm probe 99.46% wrong on its own
+        # peak, 0 warnings, i.e. bit-for-bit the same wrongness as at two
+        # devices. The phantom window does not need a slab to be wrong.
+        # The symmetric control on the same fixture is 1.395e-06 of peak.
+        check_x_absorber_faces_are_absorbing(
+            cpml_layers=n_cpml,
+            pad_x_lo=grid.pad_x_lo, pad_x_hi=grid.pad_x_hi,
+            n_devices=n_devices, lane="distributed (v1) pmap runner",
+        )
 
     # Build sources and probes on the full grid
     # First pass: fold lumped port impedances into materials (must happen

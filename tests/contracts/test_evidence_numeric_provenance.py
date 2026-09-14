@@ -671,8 +671,21 @@ CLASSIFICATION: dict[str, str] = {
     # tests/unit/runners/test_distributed_admission_refusals.py's `_build()`
     # and `_asym()` carry the source position and the probe row explicitly,
     # and its module docstring states the summation convention, so every
-    # number is re-derivable by running those fixtures against a d56f68eb
-    # tree. Classified, not deleted.
+    # number is re-derivable by running those fixtures AS COMMITTED against
+    # a d56f68eb tree. Classified, not deleted.
+    #
+    # Round 2 (2026-09-14) corrected the one number for which that claim was
+    # false: the note sized the phantom-x-window gap at "9.653624e-06 on a
+    # 3.165971e-03 peak = 3.05e-03 of peak" and attributed it to `_build`'s
+    # default probe row, but that digit reproduces only with a SINGLE probe
+    # at x=12 mm. `_build`'s default row for a 24 mm domain is x=12 and
+    # 22 mm, whose max is 1.610351e-04 = 5.086e-02 of the row peak -- 17x
+    # larger, and the x=22 mm probe is 99.46% wrong on its own peak. The
+    # note now quotes the row value and prints the probe row next to every
+    # relative figure that depends on one. This is the SECOND number in
+    # this note to fail that way (the first was `9.7e-05`, caught in round
+    # 1), which is why the rule is written down in the note's S6 rather
+    # than applied case by case.
     "docs/design_notes/2026-09-14_distributed_admission_refusals.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260829_spec01_multiband_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260830_issue786_convergence_floor.md": NO_ARTIFACT_REFERENCE,
