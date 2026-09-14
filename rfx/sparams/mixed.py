@@ -330,7 +330,16 @@ def compute_mixed_s_matrix(
     ]
     h_stencils = [msl_h_plane_stencil(grid, mp, xs[0])
                   for mp, xs in zip(msl_ports, probe_xs)]
-    from rfx.api._preflight import msl_probe_clearance_for_port
+    # Resolved in rfx.preflight.msl, NOT through the rfx.api._preflight
+    # re-export, so that this reader and preflight's own reader
+    # (_check_msl_port_geometry, which lives in that module and looks the
+    # name up in its globals) share ONE lookup target. #980 Phase 3 leg 1
+    # moved both; before it, a single monkeypatch on rfx.api._preflight
+    # covered the two, and
+    # tests/unit/ports/test_msl_clearance_diagnostic.py asserts that it
+    # still does -- the re-export would have split them into two bindings
+    # of which only one is ever patched.
+    from rfx.preflight.msl import msl_probe_clearance_for_port
     probe_clearance = tuple(msl_probe_clearance_for_port(
         self, pe, grid, probe_coordinates=xs,
     ) for pe, xs in zip(entries, probe_xs))

@@ -399,6 +399,107 @@ def test_the_declared_reexport_surface_is_the_whole_import_block():
 
 
 # ===========================================================================
+# Deliverable 2c: methods moved off the mixin are bound back, with their
+# pre-move __qualname__.
+# ===========================================================================
+#
+# A moved check body becomes a module-level ``def`` whose first parameter is
+# still ``self``, bound back into the _PreflightMixin class body by a
+# CLASS-scoped import. Two things can go wrong quietly.
+#
+# The binding can go missing for one name out of five and nothing in the
+# module-namespace lock notices, because these are class members, not module
+# globals -- the first caller to reach that check raises AttributeError at
+# runtime instead.
+#
+# And the module foot can forget to restore __qualname__. Python sets it from
+# where a function is DEFINED, so a moved body reads the bare name; the
+# rewrite loop in rfx/api/__init__.py only rewrites a member whose qualname is
+# exactly "<mixin>.<name>" and SKIPS anything else, so the restore is what
+# makes Simulation.<name> appear in a TypeError. Nothing else pins it for
+# PRIVATE members: tests/unit/autodiff/test_design_mask_removed.py walks
+# public members only, and every name below is private.
+# ---------------------------------------------------------------------------
+_REBOUND_ON_MIXIN = {
+    "rfx.preflight.msl": (
+        "_check_msl_port_geometry", "_msl_assemble_once",
+        "_msl_conductor_gap", "_msl_declared_face_geometry",
+        "_msl_realized_substrate",
+    ),
+}
+
+
+def test_moved_mixin_methods_are_rebound_objects_with_their_qualname():
+    """Each moved check body is still the SAME object on ``_PreflightMixin``,
+    and still reports ``Simulation.<name>``."""
+    import importlib
+
+    from rfx import Simulation
+    from rfx.api._preflight import _PreflightMixin
+
+    for modname, names in _REBOUND_ON_MIXIN.items():
+        leg = importlib.import_module(modname)
+        for name in names:
+            assert hasattr(leg, name), f"{modname} lost {name}"
+            assert name in vars(_PreflightMixin), (
+                f"_PreflightMixin no longer binds {name}; the class-scoped "
+                f"import of {modname} is incomplete, and nothing fails until "
+                "a run reaches that check")
+            assert vars(_PreflightMixin)[name] is getattr(leg, name), (
+                f"_PreflightMixin.{name} is a copy of {modname}.{name}, not "
+                "the object itself")
+            assert getattr(Simulation, name).__qualname__ == f"Simulation.{name}", (
+                f"Simulation.{name}.__qualname__ is "
+                f"{getattr(Simulation, name).__qualname__!r}. A moved body "
+                f"must restore __qualname__ = '_PreflightMixin.{name}' at the "
+                "foot of its leg module, or rfx/api/__init__.py's rewrite "
+                "loop skips it and the mixin name leaks into TypeError text")
+
+
+def test_the_class_scoped_imports_are_the_declared_rebind_surface():
+    """The tuples above must name exactly what ``_PreflightMixin`` imports.
+
+    Read off the source, inside the class body only, so a method moved to a
+    leg module without being pinned here is caught -- and so the module-level
+    re-export surface and this one cannot be confused for each other.
+    """
+    import ast
+
+    src = (_REPO / "rfx" / "api" / "_preflight.py").read_text(encoding="utf-8")
+    mixin = [n for n in ast.parse(src).body
+             if isinstance(n, ast.ClassDef) and n.name == "_PreflightMixin"]
+    assert len(mixin) == 1, "rfx/api/_preflight.py no longer defines exactly one _PreflightMixin"
+
+    bound: dict[str, list[str]] = {m: [] for m in _REBOUND_ON_MIXIN}
+    stray = []
+    for node in mixin[0].body:
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if not (node.module or "").startswith("rfx.preflight"):
+            continue
+        if node.module not in bound:
+            stray.append((node.lineno, node.module))
+            continue
+        for alias in node.names:
+            assert alias.name != "*", (
+                f"class-body line {node.lineno} rebinds {node.module} with "
+                "`import *`; name the methods")
+            assert alias.asname is None, (
+                f"class-body line {node.lineno} renames {alias.name}; a "
+                "rebound method must keep the name it had")
+            bound[node.module].append(alias.name)
+    assert not stray, (
+        f"_PreflightMixin imports {stray} from a leg module with no pinned "
+        "rebind tuple; add it to _REBOUND_ON_MIXIN")
+    for modname, declared in _REBOUND_ON_MIXIN.items():
+        got = bound[modname]
+        assert sorted(got) == sorted(declared), (
+            f"the {modname} class-scoped import and its pinned tuple "
+            f"disagree: block-only={sorted(set(got) - set(declared))}, "
+            f"pinned-only={sorted(set(declared) - set(got))}")
+
+
+# ===========================================================================
 # Fixtures.
 # ===========================================================================
 #

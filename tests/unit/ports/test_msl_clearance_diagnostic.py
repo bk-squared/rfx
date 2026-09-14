@@ -13,6 +13,7 @@ import pytest
 
 from rfx import Box, MSLProbeClearance, MSLSMatrixResult, MixedSMatrixResult, Simulation
 import rfx.api._preflight as preflight
+import rfx.preflight.msl as preflight_msl
 
 U = 2.0**-12
 F_MAX = 20e9
@@ -213,14 +214,23 @@ def test_preflight_and_result_use_the_resolved_auto_ladder(monkeypatch, directio
     # allowed offset [10,18], so the existing midpoint is 14.
     assert resolved.n_probe_offset == 14
     seen = []
-    real_assessment = preflight.msl_probe_clearance_for_port
+    real_assessment = preflight_msl.msl_probe_clearance_for_port
 
     def observe(sim_arg, entry, grid_arg, **kwargs):
         record = real_assessment(sim_arg, entry, grid_arg, **kwargs)
         seen.append((entry.n_probe_offset, record))
         return record
 
-    monkeypatch.setattr(preflight, "msl_probe_clearance_for_port", observe)
+    # ONE patch, TWO readers, and the assertions below check them
+    # separately: sim.preflight() reaches the helper from
+    # _check_msl_port_geometry, which lives in rfx/preflight/msl.py since
+    # #980 Phase 3 leg 1 and therefore looks the name up in THAT module's
+    # globals; sim.compute_msl_s_matrix() reaches it from
+    # rfx/sparams/msl.py, whose function-local import was pointed at the
+    # same module for exactly this reason. Patching the rfx.api._preflight
+    # re-export instead would rebind a third name that neither reader
+    # consults, and both halves below would go quiet at once.
+    monkeypatch.setattr(preflight_msl, "msl_probe_clearance_for_port", observe)
     sim.preflight(strict=False, check_ntff=False)
     assert seen and all(offset == 14 for offset, _ in seen)
     preflight_record = seen[-1][1]
