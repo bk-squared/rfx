@@ -52,9 +52,9 @@ One member of the family is shared and STAYS shared.
 ``_preflight_face_layers`` computes the allocated absorbing layers per face,
 and outside the two absorber checks that own it three other bodies call it
 by ``self.``: ``_validate_cfg_multiband_grading`` and
-``_validate_cfg_nonuniform_limitations``, which stay in the facade, and
-``_validate_cfg_pec_face_short_of_domain_wall``, which left with leg 2 and
-lives in ``rfx/preflight/pec_geometry.py``. Every one of those is an
+``_validate_cfg_nonuniform_limitations``, which left with leg 5 and live in
+``rfx/preflight/mesh.py``, and ``_validate_cfg_pec_face_short_of_domain_wall``,
+which left with leg 2 and lives in ``rfx/preflight/pec_geometry.py``. Every one of those is an
 attribute lookup on the composed ``Simulation``, never a module-global read,
 so moving the body here changes nothing for them: it is bound back onto
 ``_PreflightMixin`` and the MRO resolves it exactly as before. That is also

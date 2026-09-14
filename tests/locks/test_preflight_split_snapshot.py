@@ -616,12 +616,40 @@ _REBOUND_ON_MIXIN = {
     # watch is _preflight_face_layers: it is the only member of any leg so
     # far that is called by ``self.`` from bodies in THREE other families --
     # _validate_cfg_multiband_grading and _validate_cfg_nonuniform_limitations
-    # in the facade, and _validate_cfg_pec_face_short_of_domain_wall over in
-    # rfx/preflight/pec_geometry.py. Those are attribute lookups on the
+    # (leg 5, rfx/preflight/mesh.py) and _validate_cfg_pec_face_short_of_
+    # domain_wall over in rfx/preflight/pec_geometry.py. Those are lookups on the
     # composed Simulation, so the rebind below is the whole of what keeps
     # them resolving; drop it and three families outside the absorber one
     # raise AttributeError at their first call, which no module-level lock
     # in this file would see.
+    # Leg 5. None of these twelve was a @staticmethod either. Two things to
+    # watch. _validate_mesh_quality is the only rebound member reached from
+    # preflight() rather than from _validate_simulation_config, so its
+    # advisories land FIRST in every report and a lost rebind would show up
+    # as an AttributeError on the very first check rather than deep in the
+    # sequence. And four of the twelve read a class-BODY constant of the
+    # mixin by self. -- _MULTIBAND_RATIO_CAP / _INPLANE_RATIO_CAP in
+    # _validate_cfg_multiband_grading, _AXIS_OF_COMPONENT in the two
+    # graded-node advisories -- which is why those three constants stay in
+    # the facade class body and are pinned separately above. The other
+    # cross-family edges are self._campaign_ctx (realization, still in the
+    # facade) and self._preflight_face_layers (absorber, in
+    # rfx/preflight/absorber.py): both attribute lookups on the composed
+    # Simulation, so mesh.py imports neither module.
+    "rfx.preflight.mesh": (
+        "_check_numerical_dispersion",
+        "_graded_node_report",
+        "_validate_cfg_floquet_nonuniform",
+        "_validate_cfg_graded_box_rasterization",
+        "_validate_cfg_multiband_grading",
+        "_validate_cfg_nonuniform_limitations",
+        "_validate_cfg_source_on_graded_node",
+        "_validate_cfg_subgrid_limitations",
+        "_validate_cfg_thin_conductor_graded_node",
+        "_validate_cfg_wire_port_on_graded_node",
+        "_validate_mesh_quality",
+        "_validate_thin_metal_on_nu_mesh",
+    ),
     "rfx.preflight.absorber": (
         "_preflight_face_layers",
         "_validate_cfg_absorber_budget_vs_grid",
