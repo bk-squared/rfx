@@ -520,6 +520,24 @@ _REEXPORTED_FROM_MESH = (
     "_local_cell",
 )
 
+#: The seven names #980 Phase 3 leg 7 -- the last motion leg -- moved to
+#: ``rfx.preflight.realization``: the three conductor-realization CLASSES and
+#: the four numpy leaves only they read. Nothing outside the facade imports
+#: any of them and nothing patches any of them (the one patch that names a
+#: realization member,
+#: ``tests/unit/ports/test_msl_preflight_conductor_gap.py:307``, sets
+#: ``_assemble_realized`` on the INSTANCE, which shadows the class member
+#: wherever the body lives). So this block exists for the namespace surface
+#: above -- and, for the three classes, for the identity test below: a
+#: re-typed ``_RealizedPEC`` would leave two classes behind one name and every
+#: ``isinstance`` reading it would silently test the wrong one, exactly the
+#: failure ``PreflightWarning`` was pinned against in leg 0.
+_REEXPORTED_FROM_REALIZATION = (
+    "_CampaignStaticsContext", "_EntryRealization", "_RealizedPEC",
+    "_realized_edges_np", "_shape_bounds", "_shift_back_np",
+    "_wall_nodes_on_plane",
+)
+
 #: Every leg's re-export block, keyed by the module it pulls from. The
 #: identity and whole-block tests below walk this, so a new leg adds one row
 #: here instead of a second copy of either test.
@@ -528,6 +546,7 @@ _REEXPORT_BLOCKS = {
     "rfx.preflight.mesh": _REEXPORTED_FROM_MESH,
     "rfx.preflight.msl": _REEXPORTED_FROM_MSL,
     "rfx.preflight.pec_geometry": _REEXPORTED_FROM_PEC_GEOMETRY,
+    "rfx.preflight.realization": _REEXPORTED_FROM_REALIZATION,
     "rfx.preflight.waveguide": _REEXPORTED_FROM_WAVEGUIDE,
 }
 
