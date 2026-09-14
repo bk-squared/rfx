@@ -961,21 +961,196 @@ def test_gated_row_retains_the_signed_ratio_and_the_bounds_that_judged_it(
 ) -> None:
     """An asymmetric interval cannot be audited from an absolute ``|ln Q|``:
     the side decides. The row keeps the signed value and both bounds, so the
-    retained artifact re-derives its own verdict without the judge."""
+    retained artifact re-derives its own verdict without the judge.
+
+    The bounds it keeps are this pair's own -- the transform evaluated at
+    ``ln(f_rfx/f_ref)`` (#945, second correction), NOT the fixed-frequency
+    image. Asserting the shifted pair is the point: with the unshifted one
+    stored, a reader re-deriving the verdict from the row would get a
+    different inequality from the one the judge evaluated."""
     verdict = _judge(RFX_TODAY)
     gated = verdict.q_gated_rows
     assert gated
     for row in gated:
         assert row.q_log_ratio == pytest.approx(abs(row.q_log_ratio_signed))
         lower, upper = rmj.q_log_bounds(row.ref_freq, row.ref_Q,
-                                        verdict.record_length)
+                                        verdict.record_length,
+                                        rfx_freq=row.rfx_freq)
         assert row.q_log_lower == lower and row.q_log_upper == upper
         assert row.q_pass is (lower <= row.q_log_ratio_signed <= upper)
+        # and the stored pair really is the shifted one -- non-vacuous only
+        # because these rows have a nonzero frequency disagreement
+        assert row.q_log_freq_term != 0.0
+        unshifted_lower, _unshifted_upper = rmj.q_log_bounds(
+            row.ref_freq, row.ref_Q, verdict.record_length)
+        assert row.q_log_lower != unshifted_lower
+        assert row.q_log_lower == pytest.approx(
+            unshifted_lower + row.q_log_freq_term)
     # ungated rows carry no bounds at all rather than misleading defaults
     for row in verdict.rows:
         if not row.q_gated:
             assert row.q_log_ratio_signed is None
             assert row.q_log_lower is None and row.q_log_upper is None
+            assert row.q_log_freq_term is None
+            assert row.q_log_rate_ratio_signed is None
+
+
+# --- #945 reopened: the frequency term the fixed-frequency inversion drops --
+#
+# ``rate_interval_to_log_q_bounds`` inverts the rate interval correctly AT ONE
+# FREQUENCY. The two solvers report two. cv02 gates the frequency disagreement
+# separately at 5%; without the ``ln(f_rfx/f_ref)`` term every bit of that
+# disagreement is charged to the Q gate as well.
+
+
+def test_issue945_a_frequency_error_is_not_charged_to_the_q_gate() -> None:
+    """The PI's counterexample, driven through ``judge``. RED before the fix.
+
+    ``f_ref = 1``, ``Q_ref = 100``, ``T = tau/0.02`` gives ``s = 0.02``. The
+    rfx mode sits 4.9% low in frequency -- INSIDE the 5% frequency gate -- and
+    its decay rate is EXACTLY the reference's, i.e. dead centre of the
+    declared rate interval ``[1-s, 1+s]``. Because ``Q = pi f / alpha``, an
+    equal rate at a 4.9% lower frequency IS a 4.9% lower Q, so the
+    fixed-frequency reading saw ``ln(Q_rfx/Q_ref) = -0.0502`` -- exactly
+    ``ln(f_rfx/f_ref)`` -- against bounds ``[-0.0198, +0.0202]`` and failed a
+    mode that is on the reference's own decay rate."""
+    f_ref, q_ref = 1.0, 100.0
+    alpha_ref = math.pi * f_ref / q_ref
+    s = 0.02
+    record = (q_ref / (math.pi * f_ref)) / s          # T = tau / s
+
+    f_rfx = 0.951                                     # 4.9% low
+    q_rfx = math.pi * f_rfx / alpha_ref               # SAME decay rate
+
+    # a second, exact pair so the count gate is met without a second defect
+    verdict = rmj.judge(
+        [rmj.ReferenceMode(f_ref, q_ref), rmj.ReferenceMode(2.0, 100.0)],
+        [rmj.SolverMode(f_rfx, q_rfx), rmj.SolverMode(2.0, 100.0)],
+        record, f_min=0.5, f_max=2.5)
+    row = verdict.rows[0]
+
+    # the premise: the window really is s = 0.02 and the row really is gated
+    assert row.q_window == pytest.approx(s)
+    assert row.q_gated is True
+    # the frequency error is inside the gate cv02 judges frequency with
+    assert row.freq_err_pct == pytest.approx(4.9, abs=1e-9)
+    assert verdict.gates["max_err"] is True
+    # the decay rate is dead centre of the declared interval
+    alpha_rfx = math.pi * f_rfx / q_rfx
+    assert alpha_rfx / alpha_ref == pytest.approx(1.0, abs=1e-15)
+    assert row.q_log_rate_ratio_signed == pytest.approx(0.0, abs=1e-12)
+    # what the fixed-frequency reading saw, and where it came from
+    assert row.q_log_ratio_signed == pytest.approx(math.log(f_rfx / f_ref))
+    assert row.q_log_freq_term == pytest.approx(math.log(f_rfx / f_ref))
+    unshifted = rmj.rate_interval_to_log_q_bounds(s)
+    assert not (unshifted[0] <= row.q_log_ratio_signed <= unshifted[1]), (
+        "the counterexample is vacuous unless the UNSHIFTED interval rejects "
+        "it -- that rejection is the defect")
+    # and the shipped gate admits it
+    assert row.q_pass is True
+    assert verdict.gates["q"] is True
+    assert verdict.passed is True
+
+
+def test_issue945_the_q_gate_still_bites_at_exact_frequency() -> None:
+    """The mirror of the test above: the fix must not turn the gate off.
+
+    Same rig, frequency EXACT (so the term is zero and nothing is subtracted),
+    decay rate 1.5x the declared scale off. The row must FAIL -- on both
+    sides, because the interval is two-sided."""
+    f_ref, q_ref = 1.0, 100.0
+    alpha_ref = math.pi * f_ref / q_ref
+    s = 0.02
+    record = (q_ref / (math.pi * f_ref)) / s
+
+    for direction in (+1.0, -1.0):
+        alpha_rfx = alpha_ref * (1.0 + direction * 1.5 * s)
+        q_rfx = math.pi * f_ref / alpha_rfx            # frequency EXACT
+        verdict = rmj.judge(
+            [rmj.ReferenceMode(f_ref, q_ref), rmj.ReferenceMode(2.0, 100.0)],
+            [rmj.SolverMode(f_ref, q_rfx), rmj.SolverMode(2.0, 100.0)],
+            record, f_min=0.5, f_max=2.5)
+        row = verdict.rows[0]
+        assert row.q_gated is True
+        assert row.freq_err_pct == pytest.approx(0.0)
+        assert row.q_log_freq_term == 0.0
+        assert row.q_log_rate_ratio_signed == pytest.approx(
+            math.log1p(direction * 1.5 * s))
+        assert row.q_pass is False, direction
+        assert verdict.gates["q"] is False
+        assert verdict.passed is False
+
+    # and 0.5x the scale, the same way, passes -- so the failures above are
+    # the gate biting and not the rig being broken
+    for direction in (+1.0, -1.0):
+        alpha_rfx = alpha_ref * (1.0 + direction * 0.5 * s)
+        verdict = rmj.judge(
+            [rmj.ReferenceMode(f_ref, q_ref), rmj.ReferenceMode(2.0, 100.0)],
+            [rmj.SolverMode(f_ref, math.pi * f_ref / alpha_rfx),
+             rmj.SolverMode(2.0, 100.0)],
+            record, f_min=0.5, f_max=2.5)
+        assert verdict.gates["q"] is True, direction
+
+
+def test_issue945_the_row_reports_the_frequency_term_and_the_rate_term(
+) -> None:
+    """Both halves of the subtraction are on the row and in the report.
+
+    A reader must be able to see WHAT was subtracted, not just that the
+    verdict changed: the row carries ``q_log_freq_term = ln(f_rfx/f_ref)``
+    and ``q_log_rate_ratio_signed = ln(alpha_rfx/alpha_ref)``, they satisfy
+    the identity that defines them, and the rate term is inside the DECLARED
+    interval ``[log1p(-s), log1p(s)]`` exactly when the row passes."""
+    verdict = _judge(RFX_TODAY)
+    gated = verdict.q_gated_rows
+    assert gated
+    for row in gated:
+        # the identity: ln(alpha_rfx/alpha_ref) = ln(f) - ln(Q)
+        assert row.q_log_freq_term == pytest.approx(
+            math.log(row.rfx_freq / row.ref_freq), rel=1e-15)
+        assert row.q_log_rate_ratio_signed == pytest.approx(
+            row.q_log_freq_term - row.q_log_ratio_signed, rel=1e-15)
+        # and it is the quantity the DECLARED interval bounds
+        s = row.q_window
+        rate_lower = -math.inf if s >= 1.0 else math.log1p(-s)
+        rate_upper = math.log1p(s)
+        in_rate_interval = (
+            rate_lower <= row.q_log_rate_ratio_signed <= rate_upper)
+        assert row.q_pass is in_rate_interval
+
+    # the printed report says what was subtracted, per row
+    text = rmj.format_report(verdict)
+    assert "shifted by ln(f_rfx/f_ref)" in text
+    assert "ln(alpha_rfx/alpha_ref)" in text
+    for row in gated:
+        assert f"{row.q_log_freq_term:+.6f}" in text
+
+    # and the persisted row carries both keys (the script uses asdict)
+    payload = json.loads(json.dumps(
+        [dataclasses.asdict(row) for row in verdict.rows]))
+    for was, row in zip(payload, verdict.rows):
+        assert was["q_log_freq_term"] == (
+            None if row.q_log_freq_term is None else row.q_log_freq_term)
+        assert "q_log_rate_ratio_signed" in was
+
+
+def test_issue945_the_frequency_term_is_refused_on_an_unphysical_frequency(
+) -> None:
+    """``ln(f_rfx/f_ref)`` needs two positive frequencies. A non-positive or
+    non-finite one is a caller bug and is refused rather than clamped into a
+    plausible answer -- the same rule :func:`rate_interval_to_log_q_bounds`
+    already applies to a negative rate scale."""
+    assert rmj.log_frequency_term(0.15, None) == 0.0
+    assert rmj.log_frequency_term(0.15, 0.15) == 0.0
+    assert rmj.log_frequency_term(1.0, 2.0) == pytest.approx(math.log(2.0))
+    for bad in (0.0, -1.0, math.inf, math.nan):
+        with pytest.raises(ValueError):
+            rmj.log_frequency_term(1.0, bad)
+        with pytest.raises(ValueError):
+            rmj.log_frequency_term(bad, 1.0)
+    for bad in (math.inf, -math.inf, math.nan):
+        with pytest.raises(ValueError):
+            rmj.rate_interval_to_log_q_bounds(0.5, bad)
 
 
 def test_the_persisted_ingredient_payload_round_trips_through_json() -> None:

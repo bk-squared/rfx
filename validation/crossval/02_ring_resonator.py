@@ -486,7 +486,13 @@ rfx_freqs_meep = [f * a / C0 for f, Q, amp in rfx_modes]
 # rfx quantity enters it) -- but "not fitted" is not "derived": the 1/T form is a
 # policy envelope, refuted as this estimator's error law in #907. What IS derived
 # is the transform of that scale into Q bounds (#945,
-# ring_mode_judge.rate_interval_to_log_q_bounds). The three ingredients are named
+# ring_mode_judge.rate_interval_to_log_q_bounds), applied at each pair's OWN two
+# frequencies: the interval bounds the decay-RATE ratio and alpha = pi f / Q
+# carries both f and Q, so each row's bounds are the transform shifted by
+# ln(f_rfx/f_ref) and the artifact records that term per row (q_log_freq_term)
+# beside the rate ratio it produces (q_log_rate_ratio_signed). Without the shift a
+# frequency error admitted by the 5% gate below was charged to the Q gate as well.
+# The three ingredients are named
 # separately in ring_mode_judge.Q_GATE_INGREDIENTS and printed by the report.
 # See docs/design_notes/20260831_cv02_ring_judge_predeclaration.md.
 record_T_meep = analysis_duration * C0 / a
@@ -613,8 +619,11 @@ _doc = {
         "note": ("the per-mode 'q_window' is the DECLARED rate scale "
                  "s = tau_ref/T (policy, not this estimator's error law, "
                  "#907); the gate is its exact transform into log-Q bounds "
-                 "(derived, #945), stored per row as q_log_lower / "
-                 "q_log_upper beside the signed q_log_ratio_signed"),
+                 "(derived, #945) evaluated at that pair's own frequencies, "
+                 "stored per row as q_log_lower / q_log_upper beside the "
+                 "signed q_log_ratio_signed, the shift q_log_freq_term = "
+                 "ln(f_rfx/f_ref) and the quantity the interval actually "
+                 "bounds, q_log_rate_ratio_signed = ln(alpha_rfx/alpha_ref)"),
         "q_gate_character": ring_mode_judge.Q_GATE_CHARACTER,
         "q_gate_ingredients": [
             _dataclasses.asdict(_ing)

@@ -384,3 +384,88 @@ length reproduces all five gates PASS. The run-length contingency #907
 describes is still present and still pinned by
 `test_verdict_lane_q_gate_is_run_length_contingent`, which remains a
 characterization test of current behaviour.
+
+---
+
+## Correction 5 (2026-09-14) — the transform is applied at each pair's own two frequencies (#945, reopened)
+
+Correction 4(a) fixed the shape of the Q interval and left a second error in
+the same line: the inverted interval was compared against a Q ratio measured
+at a *different* frequency from the reference's. #945 was reopened on
+2026-09-13 with the counterexample below. The sections above are left as
+written; this is the record.
+
+**The algebra, in three lines.** A mode's amplitude decay rate is
+`alpha = pi f / Q`, so
+
+    alpha_rfx / alpha_ref  =  (f_rfx / f_ref) * (Q_ref / Q_rfx)
+
+    ln(alpha_rfx/alpha_ref)  =  ln(f_rfx/f_ref) - ln(Q_rfx/Q_ref)
+
+and the declared interval `alpha_rfx/alpha_ref in [1-s, 1+s]` therefore maps to
+
+    ln(Q_rfx/Q_ref)  in  [ ln(f_rfx/f_ref) - log1p(s),
+                           ln(f_rfx/f_ref) - log1p(-s) ]
+
+i.e. Correction 4(a)'s interval **shifted by `ln(f_rfx/f_ref)`**. The inversion
+`Q/Q_ref in [1/(1+s), 1/(1-s)]` is the special case `f_rfx = f_ref`.
+
+**What the missing term did.** `judge()` compared `ln(Q_rfx/Q_ref)` against the
+unshifted interval, so the whole of a frequency disagreement — which cv02 gates
+separately, at 5% — was charged to the Q gate as well. Reproduction on
+`origin/main` at commit `88651a1c`: `f_ref = 1`, `Q_ref = 100`, `T = tau/0.02`
+(so `s = 0.02`), and an rfx mode 4.900% low in frequency whose decay rate is
+**exactly** the reference's, `alpha_rfx/alpha_ref = 1.000000` — dead centre of
+the declared rate interval:
+
+    freq error = 4.900%   (max_err gate < 5.0%: PASS)
+    ln(Q_rfx/Q_ref) = -0.050241
+    bounds          = [-0.019803, +0.020203]
+    ln(f_rfx/f_ref) = -0.050241   <-- the missing term
+    q_gated = True   q_pass = False
+
+`ln(Q_rfx/Q_ref)` equals the frequency term exactly, because at an equal decay
+rate a 4.9% lower frequency *is* a 4.9% lower Q. The gate rejected a mode
+sitting on the reference's own decay rate, for a frequency error its own
+frequency gate admits. After the fix the bounds read `[-0.070044, -0.030039]`
+and `q_pass = True`.
+
+**The tolerance did not move; the comparand did.** `s = tau_ref/T` is still
+built from the reference alone (`q_window`), so the envelope is still not
+fitted to the agreement it judges — §4's surviving claim about the window's
+*arguments* is untouched. What now carries both solvers' measurements is the
+quantity being compared: a decay-rate ratio is a function of both `(f, Q)`
+pairs because a rate is. Ingredient 2 in `Q_GATE_INGREDIENTS` states this: the
+transform is derived, and it is evaluated at each mode's own realized
+frequency pair.
+
+Each gated row now records what was subtracted, so the artifact is readable
+without redoing the algebra: `q_log_freq_term = ln(f_rfx/f_ref)`,
+`q_log_rate_ratio_signed = ln(alpha_rfx/alpha_ref)`, and `q_log_lower` /
+`q_log_upper` — the **shifted** bounds that actually judged the row. Both keys
+are additions; nothing was renamed or removed.
+
+**What did not change.** No gate constant, window or tolerance moved. Re-driving
+today's judge on the committed record's own stored inputs
+(`_02_ring_resonator_results/crossval.json`, commit `296cabad`,
+2026-09-06T17:07:57Z) reproduces all five gates PASS and every row's `q_pass`,
+before and after: the two gated rows' frequency terms are `+0.000515` and
+`+0.000306` against windows `0.7982` and `2.8295`, three to four orders of
+magnitude of margin. That record is still pinned as-is by `CV02_RECORD_PIN`,
+for the reason Correction 4(d) gives — it is the only copy predating the
+transform, so re-driving the judge on it is the falsifier for "the transform
+moved a committed verdict", and regenerating it would void the falsifier
+rather than refresh it.
+
+The run-length contingency #907 describes is untouched, and
+`test_verdict_lane_q_gate_is_run_length_contingent` stays a characterization
+test of current behaviour: on that fixture the frequency term is `-2.8e-4`
+against a window that shrinks from `0.7472` to `0.0642`, so the longer record
+still fails. The frequency term is not the fix for #907 and is not offered as
+one.
+
+Pinned by `test_issue945_a_frequency_error_is_not_charged_to_the_q_gate`
+(the counterexample above), `test_issue945_the_q_gate_still_bites_at_exact_frequency`
+(the mirror: at an exact frequency, a rate 1.5x the declared scale off still
+fails, both sides), `test_issue945_the_row_reports_the_frequency_term_and_the_rate_term`
+and `test_issue945_the_frequency_term_is_refused_on_an_unphysical_frequency`.

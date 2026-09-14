@@ -36,7 +36,8 @@ Gates (all evaluated only when the external reference is present):
 ``max_err``   max relative frequency error over ALL assigned pairs < 5%
 ``q``         for every mode whose decay the record actually observed,
               the Q interval obtained by transforming the decay-rate
-              interval; it is asymmetric when ``tau_ref/T > 0``
+              interval **at that pair's own two frequencies**; it is
+              asymmetric when ``tau_ref/T > 0``
 ============  ==========================================================
 
     The ``q`` gate is built from THREE separable ingredients, and only one
@@ -169,17 +170,35 @@ Q_GATE_INGREDIENTS: tuple[GateIngredient, ...] = (
     GateIngredient(
         name="rate_to_q_transform",
         kind="derived",
-        quantity="ln(Q_rfx/Q_ref) in [-log1p(s), -log1p(-s)], upper = +inf for s >= 1",
-        basis=(
-            "Q = pi f / alpha at fixed f, so Q is monotone DECREASING in the "
-            "decay rate alpha and the rate interval [1-s, 1+s] maps to the "
-            "reciprocal interval [1/(1+s), 1/(1-s)]. Exact algebra, no "
-            "choice in it. The symmetric +-log1p(s) window this replaced "
-            "rejected a mode whose rate differed by exactly the tolerance "
-            "the gate claimed to allow, and stayed finite where the "
-            "transformed interval is unbounded."
+        quantity=(
+            "ln(Q_rfx/Q_ref) - ln(f_rfx/f_ref) in [-log1p(s), -log1p(-s)], "
+            "upper = +inf for s >= 1"
         ),
-        source="#945; PR #999; rate_interval_to_log_q_bounds",
+        basis=(
+            "Q = pi f / alpha, so alpha_rfx/alpha_ref = "
+            "(f_rfx/f_ref) * (Q_ref/Q_rfx) and the declared rate interval "
+            "[1-s, 1+s] maps to Q_rfx/Q_ref in "
+            "[(f_rfx/f_ref)/(1+s), (f_rfx/f_ref)/(1-s)]. Exact algebra, no "
+            "choice in it. TWO corrections got it here and both are in that "
+            "one line. (i) Q is monotone DECREASING in alpha, so the interval "
+            "inverts end for end; the symmetric +-log1p(s) window this "
+            "replaced rejected a mode whose rate differed by exactly the "
+            "tolerance the gate claimed to allow, and stayed finite where the "
+            "transformed interval is unbounded. (ii) The inversion holds at "
+            "FIXED frequency, so the transform is applied at each mode's own "
+            "realized frequency pair: without the ln(f_rfx/f_ref) term a "
+            "frequency error admitted by the 5% freq gate was charged to the "
+            "Q gate, and a mode whose decay rate was exactly the reference's "
+            "failed it (4.9% low in f, alpha ratio 1.000000, s = 0.02 -> "
+            "ln(Q_rfx/Q_ref) = -0.0502 against bounds [-0.0198, +0.0202]). "
+            "The tolerance s itself is still reference-only (q_window); what "
+            "the frequency term enters is the COMPARAND -- the decay-rate "
+            "ratio, which is a function of both measured pairs because a rate "
+            "is. Pinned by test_issue945_a_frequency_error_is_not_charged_to_"
+            "the_q_gate."
+        ),
+        source="#945 (PR #999 for (i); reopened 2026-09-13 for (ii)); "
+               "rate_interval_to_log_q_bounds + log_frequency_term",
     ),
     GateIngredient(
         name="discretization_budget",
@@ -242,6 +261,23 @@ class PairRow:
     #: other. Kept beside the bounds that judged it so the verdict is
     #: re-derivable from the retained record without re-running the judge.
     q_log_ratio_signed: float | None = None
+    #: ``ln(f_rfx/f_ref)`` -- the term the fixed-frequency inversion assumed
+    #: away (#945, second correction). The declared interval bounds the
+    #: DECAY-RATE ratio, and ``alpha = pi f / Q`` carries both frequencies, so
+    #: the Q bounds below are this row's transform shifted by this number.
+    #: Reported so a reader can see what was subtracted rather than having to
+    #: re-derive it from the two frequency columns.
+    q_log_freq_term: float | None = None
+    #: ``ln(alpha_rfx/alpha_ref) = q_log_freq_term - q_log_ratio_signed`` --
+    #: the quantity the declared interval ``[1-s, 1+s]`` actually bounds,
+    #: stated directly so the gate can be checked against ``q_window`` without
+    #: re-doing the algebra. The verdict is evaluated in log-Q space (the
+    #: bounds below), which is the same inequality; only the last bit can
+    #: differ between the two routes, exactly on a boundary.
+    q_log_rate_ratio_signed: float | None = None
+    #: The bounds that judged this row: the transform of ``q_window``
+    #: SHIFTED by ``q_log_freq_term``. Not ``rate_interval_to_log_q_bounds``
+    #: of ``q_window`` alone unless the two frequencies happen to coincide.
     q_log_lower: float | None = None
     q_log_upper: float | None = None
     q_gated: bool = False
@@ -430,7 +466,37 @@ def q_window(ref_freq: float, ref_Q: float, record_length: float
     return t_over_tau, tau / record_length
 
 
-def rate_interval_to_log_q_bounds(s: float) -> tuple[float, float]:
+def log_frequency_term(ref_freq: float, rfx_freq: float | None) -> float:
+    """``ln(f_rfx/f_ref)`` for one assigned pair -- what the fixed-frequency
+    inversion assumed away (#945, second correction).
+
+    The Q gate's declared interval bounds the DECAY-RATE ratio, and a rate
+    carries a frequency: ``alpha = pi f / Q`` gives
+
+        alpha_rfx / alpha_ref  =  (f_rfx / f_ref) * (Q_ref / Q_rfx)
+
+    so ``ln(alpha_rfx/alpha_ref) = ln(f_rfx/f_ref) - ln(Q_rfx/Q_ref)``. Reading
+    the Q ratio alone against a fixed-frequency interval charges the frequency
+    disagreement -- which cv02 gates separately, at 5% -- to the Q gate.
+
+    Returns ``0.0`` when there is no partner (``rfx_freq is None``), i.e. the
+    unshifted fixed-frequency transform; an unmatched row is not Q-gated
+    anyway. Raises ``ValueError`` on a non-positive or non-finite frequency:
+    a mode at ``f <= 0`` has no rate ratio, and taking ``abs`` or clamping
+    would invent one.
+    """
+    if rfx_freq is None:
+        return 0.0
+    for name, value in (("ref_freq", ref_freq), ("rfx_freq", rfx_freq)):
+        if not math.isfinite(value) or value <= 0.0:
+            raise ValueError(
+                f"{name} must be finite and > 0 to form ln(f_rfx/f_ref), "
+                f"got {value!r}")
+    return math.log(rfx_freq / ref_freq)
+
+
+def rate_interval_to_log_q_bounds(s: float, log_freq_ratio: float = 0.0
+                                 ) -> tuple[float, float]:
     """The transform (ingredient 2). Pure, exact, DERIVED -- the whole of #945.
 
     This is the one ingredient of the ``q`` gate that is derived rather than
@@ -439,17 +505,35 @@ def rate_interval_to_log_q_bounds(s: float) -> tuple[float, float]:
     provenance (see :func:`q_window`) or about ingredient 3's absence.
 
     Takes the fractional decay-rate scale ``s >= 0`` -- i.e. the declared
-    admissible rate interval ``alpha_rfx/alpha_ref in [1-s, 1+s]`` -- and
-    returns the exact image of that interval in ``ln(Q_rfx/Q_ref)``.
+    admissible rate interval ``alpha_rfx/alpha_ref in [1-s, 1+s]`` -- together
+    with this pair's ``log_freq_ratio = ln(f_rfx/f_ref)``, and returns the
+    exact image of that interval in ``ln(Q_rfx/Q_ref)``.
 
-    At fixed frequency ``Q = pi f / alpha``, so ``Q`` is monotone
-    **decreasing** in ``alpha`` and the interval inverts end for end::
+    ``Q = pi f / alpha``, so ``Q`` is monotone **decreasing** in ``alpha`` and
+    the interval inverts end for end::
 
-        alpha/alpha_ref in [1-s, 1+s]   =>   Q/Q_ref in [1/(1+s), 1/(1-s)]
+        alpha/alpha_ref in [1-s, 1+s]
+            =>  Q_rfx/Q_ref in [ (f_rfx/f_ref)/(1+s), (f_rfx/f_ref)/(1-s) ]
 
-    In logs that is ``[-log1p(s), -log1p(-s)]``: asymmetric for every
-    ``s > 0``, because ``(1+s)(1-s) = 1-s^2 < 1``.  The lower (rfx too lossy)
-    side is the one the old symmetric ``+-log1p(s)`` window got right.
+    In logs that is ``[-log1p(s), -log1p(-s)]`` shifted by
+    ``log_freq_ratio``: asymmetric for every ``s > 0``, because
+    ``(1+s)(1-s) = 1-s^2 < 1``.  The lower (rfx too lossy) side is the one the
+    old symmetric ``+-log1p(s)`` window got right.
+
+    **The frequency term is not optional algebra** (#945, reopened
+    2026-09-13). The inversion above holds at one frequency; the two solvers
+    report two. cv02 admits a 5% frequency disagreement on its own gate, and
+    with ``log_freq_ratio`` dropped every bit of that disagreement lands on
+    the Q gate instead: at ``s = 0.02``, a mode 4.9% low in frequency whose
+    decay rate is EXACTLY the reference's reads
+    ``ln(Q_rfx/Q_ref) = -0.0502`` against bounds ``[-0.0198, +0.0202]`` and
+    fails. The default ``0.0`` keeps the pure fixed-frequency image available
+    for tests and for callers who have no partner frequency; the judge always
+    passes the measured one.
+
+    The scale ``s`` is still built from the reference alone
+    (:func:`q_window`) -- the frequency term enters the COMPARAND, not the
+    tolerance, so the envelope is still not fitted to the agreement it judges.
 
     ``s >= 1`` is not an edge case here -- cv02's committed mode 2 runs at
     ``s = 2.83``.  The admissible rate interval then reaches zero, an
@@ -468,27 +552,39 @@ def rate_interval_to_log_q_bounds(s: float) -> tuple[float, float]:
     """
     if math.isnan(s) or s < 0.0:
         raise ValueError(f"rate scale s must be >= 0 and not NaN, got {s!r}")
-    lower = -math.log1p(s)
-    upper = float("inf") if s >= 1.0 else -math.log1p(-s)
+    if not math.isfinite(log_freq_ratio):
+        raise ValueError(
+            "log_freq_ratio must be finite (it is ln(f_rfx/f_ref) for one "
+            f"assigned pair), got {log_freq_ratio!r}")
+    lower = -math.log1p(s) + log_freq_ratio
+    upper = (float("inf") if s >= 1.0
+             else -math.log1p(-s) + log_freq_ratio)
     return lower, upper
 
 
-def q_log_bounds(ref_freq: float, ref_Q: float, record_length: float
-                 ) -> tuple[float, float]:
-    """Log-Q bounds for one reference mode: policy scale, then transform.
+def q_log_bounds(ref_freq: float, ref_Q: float, record_length: float,
+                 *, rfx_freq: float | None = None) -> tuple[float, float]:
+    """Log-Q bounds for one assigned pair: policy scale, then transform.
 
     Composes the two ingredients that exist -- :func:`q_window` (declared
     policy, ingredient 1) and :func:`rate_interval_to_log_q_bounds` (derived,
-    ingredient 2).  Ingredient 3 (a discretization budget) is absent, so
-    these bounds do not encode any permitted solver-vs-solver disagreement;
-    see :data:`Q_GATE_CHARACTER`.
+    ingredient 2), the latter evaluated at this pair's own frequencies via
+    :func:`log_frequency_term`.  Ingredient 3 (a discretization budget) is
+    absent, so these bounds do not encode any permitted solver-vs-solver
+    disagreement; see :data:`Q_GATE_CHARACTER`.
 
-    A non-positive record gives ``s = inf`` and hence an unrestrictive pair.
-    Such a row is not Q-gated by :func:`judge` anyway, because its ``T/tau``
-    is below :data:`Q_RECORD_MIN_EFOLDS`.
+    ``rfx_freq`` is the assigned rfx mode's frequency. Omitting it returns
+    the fixed-frequency image, which is the right answer only when the two
+    frequencies agree -- the judge always passes the measured one (#945).
+
+    A non-positive record gives ``s = inf`` and hence an unrestrictive pair
+    (the frequency shift leaves ``(-inf, +inf)`` unchanged). Such a row is not
+    Q-gated by :func:`judge` anyway, because its ``T/tau`` is below
+    :data:`Q_RECORD_MIN_EFOLDS`.
     """
     _t_over_tau, window = q_window(ref_freq, ref_Q, record_length)
-    return rate_interval_to_log_q_bounds(window)
+    return rate_interval_to_log_q_bounds(
+        window, log_frequency_term(ref_freq, rfx_freq))
 
 
 def format_q_window_provenance() -> str:
@@ -552,12 +648,22 @@ def judge(
                 abs(partner.freq - ref_mode.freq) / abs(ref_mode.freq) * 100.0
             )
             errs.append(row.freq_err_pct)
-            if row.q_gated and partner.Q > 0 and ref_mode.Q > 0:
+            if (row.q_gated and partner.Q > 0 and ref_mode.Q > 0
+                    and partner.freq > 0 and ref_mode.freq > 0):
                 signed_log_ratio = math.log(partner.Q / ref_mode.Q)
                 row.q_log_ratio = abs(signed_log_ratio)
                 row.q_log_ratio_signed = signed_log_ratio
+                # The declared interval bounds the decay-RATE ratio, and
+                # alpha = pi f / Q carries both frequencies (#945). Gate in
+                # log-Q space against the transform shifted by this pair's own
+                # ln(f_rfx/f_ref), so the row's stored bounds reproduce its own
+                # verdict; the rate ratio is reported beside it.
+                freq_term = log_frequency_term(ref_mode.freq, partner.freq)
+                row.q_log_freq_term = freq_term
+                row.q_log_rate_ratio_signed = freq_term - signed_log_ratio
                 q_lower, q_upper = q_log_bounds(
-                    ref_mode.freq, ref_mode.Q, record_length
+                    ref_mode.freq, ref_mode.Q, record_length,
+                    rfx_freq=partner.freq,
                 )
                 row.q_log_lower = q_lower
                 row.q_log_upper = q_upper
@@ -599,8 +705,9 @@ def format_report(verdict: Verdict, freq_tol_pct: float = FREQ_TOL_PCT) -> str:
         f"s = tau_ref/T"
     )
     lines.append(
-        "  (the gate is the transformed interval [-log1p(s), -log1p(-s)], "
-        "printed per row as 'Q bounds')"
+        "  (the gate is the transformed interval [-log1p(s), -log1p(-s)] "
+        "shifted by that pair's ln(f_rfx/f_ref), printed per row as "
+        "'Q bounds'; the interval bounds ln(alpha_rfx/alpha_ref), #945)"
     )
     lines.append("")
     lines.append(
@@ -635,6 +742,13 @@ def format_report(verdict: Verdict, freq_tol_pct: float = FREQ_TOL_PCT) -> str:
                 f"{'Q bounds':>9} signed ln(Q_rfx/Q_ref) = "
                 f"{row.q_log_ratio_signed:+.4f} in "
                 f"[{row.q_log_lower:+.4f}, {upper}]"
+            )
+            lines.append(
+                f"  {'':>10} {'':>9} {'':>10} {'':>9} "
+                f"{'(bounds':>9} shifted by ln(f_rfx/f_ref) = "
+                f"{row.q_log_freq_term:+.6f}; declared quantity "
+                f"ln(alpha_rfx/alpha_ref) = "
+                f"{row.q_log_rate_ratio_signed:+.4f})"
             )
     for mode in verdict.surplus:
         lines.append(
