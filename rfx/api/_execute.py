@@ -2457,7 +2457,7 @@ class _ExecuteMixin:
             # narrowed by one cell per face in round 3 because a one-cell
             # window overflow is a measured no-op -- derived
             # from the literal window slices) and from
-            # ``check_x_absorber_faces_are_absorbing``. ``cpml_layers*2 >=
+            # ``check_absorber_faces_are_absorbing``. ``cpml_layers*2 >=
             # nx_local_real`` is stricter for a rank that owns both outer
             # faces and says nothing about a face that declares no
             # absorber at all. It is left untouched on purpose: this is

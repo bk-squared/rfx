@@ -1,10 +1,22 @@
 # Distributed admission refusals — closing seven silently-wrong paths (B0)
 
-2026-09-14. Branch `agent/distributed-admission-refusals`, rebased onto
-`origin/main` **7b511591**. The round-1 and round-2 RED numbers were measured
-on d56f68eb, which is identical to 7b511591 in every runtime file this lane
-touches; round-3 numbers are measured on 7b511591 and say so beside each
-figure.
+2026-09-14, last revised 2026-09-15 (round 4). Branch
+`agent/distributed-admission-refusals`. **The tree this PR lands on is
+`origin/main` 883615c6** — 14 commits ahead of the 7b511591 the branch was
+rebased onto. Those 14 commits move a lot elsewhere (the #980 split of
+`rfx/api/_preflight.py` and `_sparams.py` into the `rfx/preflight/` and
+`rfx/sparams/` packages), but across every file this lane touches —
+`rfx/runners/`, `rfx/grid.py`, `rfx/nonuniform.py`, `rfx/boundaries/`,
+`rfx/api/_execute.py` — `git diff 7b511591 883615c6` is **one file, one
+line**: `if not issues:` → `if not len(issues):` at
+`rfx/api/_execute.py:1067`, unrelated to the gate. Every RED
+number in this note reproduces to the printed digit on 883615c6; round 4
+re-derived them all there, so the rebase before the PR is a fast-forward as
+far as the measurements are concerned. Provenance of each figure, kept
+because a number without its tree is not re-derivable: round-1 and round-2
+numbers were measured on d56f68eb (identical to 7b511591 in every runtime
+file this lane touches), round-3 on 7b511591, round-4 on 883615c6, and each
+says so beside itself.
 
 Direction note:
 `rfx-research-notes/accel-import-20260913/DIRECTION-distributed-preflight.md`
@@ -17,10 +29,11 @@ position-dependent slab checks.
 this change now refuses **seven** silently-wrong paths, because measurement
 found two more while checking the five:
 
-- **class 6**, the *phantom x CPML window*: the lane drives both x-face
-  absorber windows whenever `boundary='cpml'` and `cpml_layers > 0`, without
-  reading `grid.face_pads`, so an x face declared `pec`/`pmc` gets absorbed
-  at. The first draft of this note filed that as "S5", a numbers-only gap
+- **class 6**, the *phantom CPML window*: the lane drives every face's
+  absorber window whenever `boundary='cpml'` and `cpml_layers > 0`, without
+  reading `grid.face_pads`, so a face declared `pec`/`pmc` gets absorbed at.
+  Round 2 found and refused this on the two x faces; round 4 measured it on
+  the y and z faces too and widened the check (§2.6.1). The first draft of this note filed that as "S5", a numbers-only gap
   for lane B, and sized it at 3.05e-03 of peak. Both were wrong: it is
   5.09e-02 of peak on the committed fixture, up to **100 % of a probe's own
   peak** next to the face, and it is a silent path with 0 warnings — the
@@ -29,6 +42,23 @@ found two more while checking the five:
   is the pmap runner in `rfx/runners/distributed.py`, not `distributed_v2`,
   and the first round gated only `distributed_v2` and the `run(devices=...)`
   dispatch. All five classes rode straight through the exported name. §2.7.
+
+**Round 4 (2026-09-15, after review).** Class 6 was **under-refusing**, and
+one shipped number was not re-derivable:
+
+- **class 6 was x-only while the defect is on all six faces.**
+  `_init_cpml_distributed` (`rfx/runners/distributed.py`) builds ONE scalar
+  `_cpml_profile` and the shmap kernel applies it at y-lo/y-hi/z-lo/z-hi
+  unconditionally, so a `pec`/`pmc` y or z face composed with
+  `boundary='cpml'` carries the identical phantom window — and was
+  **ADMITTED**. Measured 90.58 % wrong at the source probe. Class 6 now
+  reads all six entries of `grid.face_pads`. §2.6.1.
+- **the `x=('pec','pec')` "2.7–3.1 % at the source" row is replaced by the
+  face-probe figures**, which do not depend on where the source sits, in the
+  message, the docstring and this note. §2.6.
+- the class-6 remedy text no longer offers an x-only way forward: a caller
+  with y/z reflectors who followed "make BOTH x faces absorbing" landed in
+  the 90.58 % gap with 0 warnings. §2.6.1.
 
 **Round 3 (2026-09-14, after review).** One of the seven was **over-refusing**
 and is narrowed by measurement: class 5 refused a one-cell window overflow
@@ -48,18 +78,50 @@ find it:
 - `refuse_unsupported_distributed_features()` (classes 1–4) at the two runner
   entry points and the `run(devices=...)` dispatch;
 - `check_x_absorber_fits_ranks()` (class 5) and
-  `check_x_absorber_faces_are_absorbing()` (class 6) inside both runners;
+  `check_absorber_faces_are_absorbing()` (class 6, all six faces since
+  round 4) inside both runners;
 - the same six-class gate in the **v1 pmap runner** `rfx/runners/distributed.py`
   (class 7), which is the exported `rfx.runners.run_distributed`;
 - one ghost-width formula, `rfx.runners.distributed_nu.nu_ghost_width` (§4);
-- **a rewrite of one pre-existing test.**
-  `tests/unit/boundaries/test_boundary_pmc_distributed.py`'s
-  `test_pmc_distributed_v2_x_lo_owner_and_non_owner` moved from
-  `x=Boundary(lo='pmc', hi='cpml')` with `y=z='cpml'` to
-  `x=Boundary(lo='pmc', hi='pec')` with `y=z='pec'`, because class 6 refuses
-  the configuration it used to run. It was running on a 54.1 %-wrong
-  configuration and asserting only a zero-pattern, so nothing it claimed is
-  lost — but a changed shipped test must be declared, not discovered. §2.6.
+- a `face_pads` property on `rfx.nonuniform.NonUniformGrid` (round 4), beside
+  the `axis_pads` one it already had. `distributed_v2` reaches the class-6
+  check with an **NU** grid — the `is_nu and use_cpml` NotImplementedError
+  below it is a documented backstop, not a guard that runs first — so once
+  the check reads `grid.face_pads` the NU grid has to answer it, or a direct
+  NU + CPML + `devices=` runner call raises `AttributeError` where it used to
+  raise a named refusal. The six fields were already on the dataclass; this
+  only gives them the name `Grid` uses. Pinned by
+  `test_the_nu_grid_answers_face_pads_so_the_check_can_read_it`, which also
+  checks the tuple order against a real `Grid` rather than against the
+  attribute names, and re-asserts the Phase-C refusal end to end;
+- **a rewrite of THREE pre-existing tests**, each of them a false green on
+  a configuration class 6 refuses. A changed shipped test must be declared,
+  not discovered:
+  - `tests/unit/boundaries/test_boundary_pmc_distributed.py`'s
+    `test_pmc_distributed_v2_x_lo_owner_and_non_owner` moved from
+    `x=Boundary(lo='pmc', hi='cpml')` with `y=z='cpml'` to
+    `x=Boundary(lo='pmc', hi='pec')` with `y=z='pec'` (round 2). It was
+    running on a 54.08 %-wrong configuration and asserting only a
+    zero-pattern, so nothing it claimed is lost. §2.6.
+  - `tests/unit/boundaries/test_boundary_pmc_composition.py`'s
+    `test_oq9_distributed_v2_cpml_path_enforces_pec_face_via_cpml_init`
+    split in two (round 4). Its `x='cpml'`, `y='cpml'`,
+    `z=Boundary(lo='pec', hi='cpml')` fixture was **90.58 %** wrong at
+    `devices=devices[:2]` and stayed green for the same reason — a
+    zero-pattern assertion and never a value. Its structural claim (PEC
+    enforced through the per-face CPML profile, no scan-body hook) is true
+    on the lane that implements it, so it now runs single-device with its
+    assertions unchanged, and a sibling test pins what the distributed lane
+    owes the fixture: a named refusal. §2.6.1.
+  - `tests/unit/boundaries/test_boundary_pmc_distributed.py`'s
+    `test_pmc_distributed_legacy_mixed_z` moved from `x="cpml", y="cpml"`
+    to `x="pec", y="pec"` (round 4). With x/y CPML both z pads are 0, so
+    the lane drove its 16-layer window at the PMC z_lo and the PEC z_hi:
+    **6.10 %** of peak wrong at the test's own 30 steps and 15.49 % at 80,
+    while all four of its zero-pattern assertions held. A liveness
+    assertion was added with the fixture change — four "is zero" claims
+    with no energised-interior check also pass on a dead grid, and this
+    test had none. §2.6.1.
 
 This is lane B0 in the direction note's §6 table, deliberately placed before
 lane B: until the silently-wrong paths are closed, every measurement taken
@@ -380,9 +442,11 @@ in XLA naming no feature. It earns its place as the check that turns that
 `TypeError` into a message with a feature, a face and a remedy in it, and the
 numbers that are not its own live in this note rather than in the message.
 
-### 2.6 Phantom x CPML window at a non-absorbing x face — absorbing at a reflector
+### 2.6 Phantom CPML window at a non-absorbing face — absorbing at a reflector (the x faces; y/z in §2.6.1)
 
-The runner applies **both** x-face CPML windows whenever
+This section is the **x** faces, where the class was found in round 2; §2.6.1
+is the same class on the y and z faces, where round 4 found it admitted. The
+runner applies **both** x-face CPML windows whenever
 `sim._boundary == "cpml"` and `grid.cpml_layers > 0`. It never consults
 `grid.face_pads`, and its per-face E coefficient is
 `ce_xhi = dt / (eps_r * EPS_0)` — non-zero at a PEC or PMC face. So a face
@@ -415,16 +479,42 @@ device. Parity, three orders inside the shipped CPML tolerance of 1e-3.
 common case, because `boundary='cpml'` pads both x faces outside the
 requested domain by construction.
 
-**Round 3, on the three `x=(pec,pec)` rows.** An earlier draft gave them as
-"2.74 % / 3.06 % / 3.07 % at the source" with **no source position and no
-probe row**, in violation of this note's own §6 rule, and they are not
-re-derivable as written: with the fixture stated above the source-probe figure
-is 1.76 % / 0.063 % / 0.0033 % — it *decays* with domain length, because the
-source moves away from the phantom window while the window itself stays
-`cpml_layers` deep. The figure that does not depend on where the source sits
-is the one on the **face probes**, 99.4–100 % of their own peak in all three
-domains, and that is what lane B has to size against. The row is replaced by
-the three fully-stated rows above.
+**Round 3, corrected in round 4, on the three `x=(pec,pec)` rows.** An
+earlier draft gave them as "2.74 % / 3.06 % / 3.07 % at the source" with **no
+source position and no probe row**, in violation of this note's own §6 rule,
+and they are not re-derivable as written. Round 3 replaced them with the three
+fully-stated rows above but mislabelled its own replacement, saying "the
+source-probe figure is 1.76 % / 0.063 % / 0.0033 %". Only the first of those
+three is a source-probe figure. The other two are **row figures** —
+max abs(d) over the whole probe row divided by the row peak — and on those two
+domains the max sits on the **x = 2 mm face probe**, not on the source probe.
+Measured on 883615c6 with the fixture stated above, both quantities, so the
+labels can never be crossed again:
+
+| domain | source probe, on its own peak | row max abs(d) / row peak | where the row max sits |
+|---|---|---|---|
+| 15 mm (nx=16), src x=7 mm | 7.786655e-02 of 4.421772e+00 = **1.7610 %** | 1.760981e-02 | the source probe (x=7 mm) |
+| 19 mm (nx=20), src x=9 mm | 9.970665e-04 of 4.422243e+00 = **0.0225 %** | 6.308181e-04 | the **x=2 mm face probe** |
+| 39 mm (nx=40), src x=19 mm | 9.536743e-07 of 4.422517e+00 = **0.00002 %** | 3.307773e-05 | the **x=2 mm face probe** |
+
+The source-probe figure *decays* with domain length, because the source moves
+away from the phantom window while the window itself stays `cpml_layers`
+deep — which is exactly why it is the wrong quantity to ship. The figure that
+does not depend on where the source sits is the one on the **face probes**,
+99.4–100 % of their own peak in all three domains, and that is what lane B has
+to size against and what the shipped message and docstring now quote.
+
+**Reachability — why this is a refusal and not a warning.** A caller who
+probes only far from the faces cannot see this class at any tolerance the
+suite uses, so no threshold would have caught it. Measured on 883615c6,
+`x=(pec,pec)` with y/z CPML, `cpml_layers=8`, 39 mm (nx=40), source x = 19 mm,
+**the centre probe alone and 200 steps** — the shape of the shipped
+`tests/unit/runners/test_distributed.py` parity tests: 8.356664e-04 on a
+9.237972e+00 peak = **9.045994e-05 of peak**, which is *inside* the shipped
+1e-3 CPML tolerance, while the face probes on the same run are 99.4–99.9 %
+wrong. A warn-and-continue would read as "passes" to exactly the fixtures most
+likely to be written. That is the argument for refusing rather than warning,
+and it is why the probe row is part of every figure above.
 
 Two things follow.
 
@@ -446,32 +536,147 @@ Two things follow.
   moved.
 
 **Newly refused configurations, named.** Class 6 fires on *any* distributed
-model with `boundary='cpml'`, `cpml_layers > 0` and `grid.pad_x_lo == 0` or
-`grid.pad_x_hi == 0`. That is wider than the `pec`/`pmc`-composed faces the
-measurements above use: `rfx/grid.py:109-110` also sets both x pads to 0 when
-the x axis is simply **left out of `cpml_axes`**, so such a model is refused
-too. Nothing in-tree does it (the whole suite is green, and the api-level
-`Simulation` has no `cpml_axes` parameter — the route exists for callers that
-construct a `Grid` or call a low-level entry point themselves), but it is a
-behaviour change and it belongs on this list rather than in a diff.
+model with `boundary='cpml'`, `cpml_layers > 0` and **any** entry of
+`grid.face_pads` equal to 0 (round 4; it was the two x pads before — §2.6.1).
+That is wider than the `pec`/`pmc`-composed faces the measurements above use:
+`rfx/grid.py:110-111` also sets an axis's pads to 0 when the axis is simply
+**left out of `cpml_axes`**, so such a model is refused too. For a 3-D model
+nothing in-tree does it (the api-level `Simulation` has no `cpml_axes`
+parameter — the route exists for callers that construct a `Grid` or call a
+low-level entry point themselves). For a **2-D** model that route is taken by
+the grid builder itself, which drops `z` from `cpml_axes`, so every 2-D CPML
+distributed model is now refused — and it died inside XLA before, so nothing
+that worked is taken away (§2.6.1). Both are behaviour changes and belong on
+this list rather than in a diff.
 
 **A per-face gap class 6 does *not* close.** Both slab checks read
-`n = grid.cpml_layers` for both faces, which matches the kernel — the
+`n = grid.cpml_layers` for every face, which matches the kernel — the
 distributed CPML windows also ignore `grid.face_layers`
-(`rfx/grid.py:111`). So a model with `face_layers` `x_lo=6` / `x_hi=10` is
-**admitted** by class 6 (both pads are non-zero; pinned simulation-free at
-`test_the_phantom_window_check_is_a_no_op_when_both_faces_absorb`) while the
-lane drives `cpml_layers` deep at both faces regardless. That is a further
-silent per-face gap, unmeasured here, and it hands to lane B alongside the
-phantom window: the same `grid.face_pads` gating that fixes one should read
+(`rfx/grid.py:112`). So a model with `face_layers` `x_lo=6` / `x_hi=10` (or
+the y/z equivalent) is **admitted** by class 6 (both pads are non-zero;
+pinned simulation-free at
+`test_the_phantom_window_check_reads_all_six_pads`, whose
+`face_pads=(6, 10, 8, 8, 7, 9)` row is exactly this case) while the lane
+drives `cpml_layers` deep at every face regardless. That is a further silent
+per-face gap, unmeasured here, and it hands to lane B alongside the phantom
+window: the same `grid.face_pads` gating that fixes one should read
 `face_layers` for the depth.
 
-**This is an admission refusal, not the fix.** The fix is to gate the x
-windows on `grid.face_pads`, which changes physics rather than admission and
-is lane B's subject (the distributed CPML outer termination). Until it
+**This is an admission refusal, not the fix.** The fix is to gate **every**
+face window on `grid.face_pads`, which changes physics rather than admission
+and is lane B's subject (the distributed CPML outer termination). Until it
 lands, refusing is the honest answer; when it lands,
-`check_x_absorber_faces_are_absorbing` should be deleted and class 5
+`check_absorber_faces_are_absorbing` should be deleted and class 5
 narrowed to the faces that really are CPML.
+
+### 2.6.1 The same phantom window is on the y and z faces — round 4
+
+Class 6 shipped as an **x-face** refusal for two rounds, and both this note's
+§5 and the check's own docstring described the phantom window as an x-face
+problem. The consistency lens found that wrong by reading the kernel and then
+measuring it. `_init_cpml_distributed` (`rfx/runners/distributed.py`) builds
+**one** scalar profile, `_cpml_profile(grid.cpml_layers, grid.dt, grid.dx,
+...)`, and the shmap step body applies it at y-lo / y-hi / z-lo / z-hi
+**unconditionally** — it consults `grid.face_pads` on no axis, not just on x.
+Neither runner reads `grid.pad_y_*` or `grid.pad_z_*` anywhere (pinned by
+`test_the_runners_still_never_read_the_y_z_face_pads`). The single-device lane
+does not share the defect: its `init_cpml` clamps each face's profile to that
+face's allocated pad (`rfx/boundaries/cpml.py`), which is the mechanism
+`tests/unit/boundaries/test_boundary_pmc_composition.py`'s OQ9 docstring
+describes — and describes only for that lane.
+
+MEASURED on `origin/main` 883615c6, with **identical digits** on this
+branch's HEAD 461cfe53 and on the base 7b511591 (so this is a pre-existing
+class, not a regression this branch introduced): 24×8×8 mm at dx = 1 mm,
+`cpml_layers=8`, `amplitude_kind='field'` Ez source at (6, 4, 4) mm, Ez probes
+at x = 6 / 12 / 20 mm, 60 steps, 2 virtual CPU devices, **0 warnings every
+time**, and every row ADMITTED on HEAD before this round:
+
+| spec | source probe x=6 mm | probe x=12 mm | probe x=20 mm |
+|---|---|---|---|
+| `x='cpml'`, `y='cpml'`, `z=Boundary(lo='pec', hi='cpml')` | **90.5782 %** of own peak (max abs(dEz) 4.003862e+00 on 4.420338e+00) | **409.4824 %** of own peak | **281.3395 %** of own peak |
+| the same at `n_devices=1` through the v1 pmap runner | 90.5782 % | 409.4823 % | 281.3395 % — bit-for-bit |
+| `z=Boundary(lo='pec', hi='pec')` | 81.2831 % | max abs(dEz) **2.615769e+00** on a 5.171041e-03 probe peak | 1.967369e+00 on 8.379044e-04 |
+| `y=Boundary(lo='pmc', hi='cpml')` | 48.6214 % | **521.9300 %** of own peak (3.988669e-02 on 7.642152e-03) | 368.9100 % |
+| `y=Boundary(lo='pec', hi='pec')` | **373.3991 %** of own peak (1.649596e+01 on 4.417783e+00) | 1.144e+05 % | 6.830e+06 % |
+| SYMMETRIC control — all six faces absorbing | **1.078195e-07 of peak** (4.768372e-07 on 4.422548e+00) | — | — |
+
+**A second shipped test was running on it.** The first row is the exact
+boundary composition of
+`tests/unit/boundaries/test_boundary_pmc_composition.py::test_oq9_distributed_v2_cpml_path_enforces_pec_face_via_cpml_init`,
+which ran at `devices=devices[:2]` and stayed green on a 90.58 %-wrong run,
+because it asserts a zero-**pattern** on the PEC face (`ex[:,:,0]`,
+`ey[:,:,0]`) and never a value. That is the identical false green the x face
+had in `test_boundary_pmc_distributed.py` (§2.6). Its structural claim — PEC
+enforced through the per-face CPML profile, no scan-body hook — is true, on
+the lane that implements it, so the test now makes it on the single-device
+lane (`test_oq9_uniform_cpml_path_enforces_pec_face_via_cpml_init`,
+assertions unchanged) and a sibling
+(`test_oq9_distributed_v2_refuses_the_pec_face_composition`) pins what the
+distributed lane owes the same fixture: a named refusal. Nothing was deleted
+and no tolerance moved.
+
+**And a third, found only because the re-run list was widened.**
+`tests/unit/boundaries/test_boundary_pmc_distributed.py::test_pmc_distributed_legacy_mixed_z`
+uses `x="cpml", y="cpml", z=Boundary(lo="pmc", hi="pec")` at dx = 5 mm,
+16×8×24 cells, default `cpml_layers` (16), and calls the **v1 pmap runner
+directly at one device** to exercise its `_apply_pmc_local` hook. Both z
+pads are 0 (`grid.face_pads == (16, 16, 16, 16, 0, 0)`), so the lane drives
+a 16-layer window at the PMC z_lo *and* at the PEC z_hi. MEASURED on
+883615c6 with that fixture exactly: the Ex probe trace is **6.1030 %** of
+peak wrong at the test's own 30 steps (max abs(dEx) 2.869174e-02 on a
+4.701230e-01 peak) and **15.4906 %** at 80 steps, 0 warnings — and all four
+of its zero-pattern assertions (`hx[:,:,0]`, `hy[:,:,0]`, `ex[:,:,-1]`,
+`ey[:,:,-1]`) held on that run. Same remedy as the other two: it now
+composes x and y with `pec`, where the four zeros are exact, the hooks and
+the pmap scan body under test are untouched, and the model runs at parity
+with the single-device lane (rel 1.361770e-07). A liveness assertion was
+added at the same time, because four "is zero" claims with no
+energised-interior check pass on a dead grid too.
+
+That this test was found by *widening the re-run list* and not by reading
+the diff is the argument for MATERIAL 8 being a replacement rather than an
+addition: two of the three false greens in this class live in
+`tests/unit/boundaries`, which round 3's sweep never ran.
+
+**Why widen rather than hand it to lane B.** Round 2 already made that
+mistake once on the x face: the first draft of this note filed the phantom
+window as "S5", a numbers-only gap for lane B, and it was in fact a silent
+path with 0 warnings and up to 100 % of a probe's own peak — the same class
+as the five. The y/z faces are the same defect by the same mechanism at the
+same magnitude, and leaving them admitted while refusing x would ship a gate
+that is fail-closed on one axis and fail-open on two. So class 6 reads all
+six pads and both runners pass `grid.face_pads`.
+
+**The remedy text was unsafe, and that is the sharper half of this.** The
+round-3 message offered "make BOTH x faces absorbing (`BoundarySpec(x='cpml')`
+...)" as a way forward. A caller with y/z reflectors who followed it — say
+`x='cpml'`, `y='cpml'`, `z=Boundary(lo='pec', hi='cpml')` — got the
+90.58 %-wrong run in the table above, admitted, with 0 warnings. The gate
+would have *routed* people into the gap. The message now says **all six
+faces absorbing**, spells out that an x-only fix is the 90.58 % row, and names
+omitting `devices=` as the way out for a model that cannot make all six
+absorbing.
+
+**2-D models are refused, and gain by it.** `rfx/grid.py` drops `z` from
+`cpml_axes` when `mode` starts with `2d`, so every 2-D CPML model has
+`pad_z_lo == pad_z_hi == 0` and lands here. Nothing is taken away: measured on
+883615c6, `mode='2d_tmz'` and `'2d_tez'` at 24×8×8 mm, dx = 1 mm,
+`boundary='cpml'`, `cpml_layers=8`, 2 devices, the run **died inside XLA**
+with `ValueError: Incompatible types for broadcasting: input
+type=float32[23,25,8] and requested type=float32[23,25,1]` — an error that
+names no feature, no face and no remedy. The refusal replaces that with a
+named one. Nothing in-tree combines 2-D with `boundary='cpml'` and
+`devices=` (`tests/unit/api/test_api.py`'s 2-D distributed cases use `upml`,
+already refused, and `pec`).
+
+**Still not closed, and now stated on all six faces rather than one.** The
+per-face `grid.face_layers` depth is still ignored by the kernel and by this
+check: a model with `face_layers` `x_lo=6` / `x_hi=10` (or the y/z
+equivalent) is ADMITTED because both pads are non-zero, while the lane drives
+`cpml_layers` deep everywhere. Unmeasured, and it hands to lane B with the
+phantom window — the same `grid.face_pads` gating that fixes one should read
+`face_layers` for the depth.
 
 ### 2.7 The exported v1 pmap runner was ungated for all of 1–6
 
@@ -503,7 +708,7 @@ by calling the same two entry points from `rfx/runners/distributed.py`:
 `refuse_unsupported_distributed_features(sim, lane='distributed (v1) pmap
 runner')` after the TFSF / waveguide fallbacks and after `_refuse_f0`, and
 `check_x_absorber_fits_ranks(...)` plus
-`check_x_absorber_faces_are_absorbing(...)` once `use_cpml` is known
+`check_absorber_faces_are_absorbing(...)` once `use_cpml` is known
 (`pad_x=0` literally, because this runner requires `nx % n_devices == 0`).
 Pinned by nine tests, including one that asserts the export really is the
 pmap module — if that export ever moves to `distributed_v2` the other tests
@@ -539,17 +744,25 @@ and (round 2) `distributed.run_distributed()`, the exported pmap runner:
   cells past it XLA dies on a broadcast that names no feature), and the
   docstring says so rather than implying that passing it means the run is
   right.
-- `check_x_absorber_faces_are_absorbing(*, cpml_layers, pad_x_lo, pad_x_hi,
-  n_devices, lane=...)` — **class 6**, `ValueError`, round 2. Fires when
-  `grid.pad_x_lo == 0` or `grid.pad_x_hi == 0` while the lane is building
-  CPML windows. Called immediately after `check_x_absorber_fits_ranks` in
-  both runners, deliberately **after** it: when both apply (the asymmetric
-  fixture at a too-small `nx_per`) the arithmetic message is the more
-  specific one and it is the one the class-5 tests pin. The message names
-  the face, the depth, both pads, and three ways forward — make both x faces
-  absorbing, drop the absorber entirely, or omit `devices=...`. It fires at
-  `n_devices == 1` too, and must: §2.6's `n_devices=1` row is identical to
-  its 2-device row.
+- `check_absorber_faces_are_absorbing(*, cpml_layers, face_pads, n_devices,
+  lane=...)` — **class 6**, `ValueError`, round 2, **widened to all six faces
+  in round 4** (§2.6.1). Fires when ANY entry of `grid.face_pads` is 0 while
+  the lane is building CPML windows. `face_pads` — the six-tuple — is the
+  parameter rather than the two x pads because `grid.face_pads` is precisely
+  the attribute the runner fails to read; taking the two x pads is what made
+  the y/z gap invisible for two rounds. Called immediately after
+  `check_x_absorber_fits_ranks` in both runners, deliberately **after** it:
+  when both apply (the asymmetric fixture at a too-small `nx_per`) the
+  arithmetic message is the more specific one and it is the one the class-5
+  tests pin. The message names the face(s), the depth, all six pads, and the
+  ways forward — make **all six** faces absorbing, drop the absorber
+  entirely, or omit `devices=...`. It fires at `n_devices == 1` too, and
+  must: §2.6's and §2.6.1's `n_devices=1` rows are identical to their
+  2-device rows.
+
+  Round 4 renamed it from `check_x_absorber_faces_are_absorbing`: the old
+  name asserted the x-only scope that was the defect. The symbol is new on
+  this branch, so nothing outside it refers to the old name.
 
 Round 2 also added the gate to `rfx/runners/distributed.py` (§2.7), which is
 what `rfx.runners.run_distributed` actually names: the feature gate after the
@@ -678,14 +891,23 @@ true.
   cell, a dispersive pole or a source index. B0 is position-independent by
   construction, with class 5 the single exception, because the absorber's
   position is fixed by the frame.
-- **The FIX for the phantom x window (what was "S5").** Refusing it is
-  round 2's answer (§2.6, class 6); making it *work* is not. Gating the x
-  windows on `grid.face_pads` so that a `pec`/`pmc` x face gets no absorber
-  correction is a physics change in the distributed CPML outer termination,
-  i.e. lane B's subject, and it is what lets class 6 be deleted and class 5
-  narrowed to the faces that really are CPML. What lane B needs to carry
-  over is the **size**, and the first draft of this note got it wrong twice
-  — both corrected here by measurement:
+- **The FIX for the phantom window on ALL SIX faces (what was "S5").**
+  Refusing it is round 2's answer for x and round 4's for y and z (§2.6,
+  §2.6.1, class 6); making it *work* is not. Gating **every** face window on
+  `grid.face_pads`, and reading `grid.face_layers` for the depth, so that a
+  `pec`/`pmc` face gets no absorber correction on any axis, is a physics
+  change in the distributed CPML outer termination — lane B's subject — and
+  it is what lets class 6 be deleted and class 5 narrowed to the faces that
+  really are CPML. Round 4 re-sized this item: it is not an x-face item.
+  `_init_cpml_distributed` builds one scalar profile and the kernel drives it
+  at y-lo/y-hi/z-lo/z-hi unconditionally, so lane B has to fix four more
+  faces than the first three rounds of this note said, and the y/z magnitude
+  is **larger** than the x one it was sized against — 90.58 % of the source
+  probe's own peak and 409 % / 281 % downstream (§2.6.1), against 5.09e-02 of
+  the row peak on x. **Lane B should size the fix against 9e-01, not 5e-02**,
+  and it should not assume the x face is the worst one. What lane B needs to
+  carry over is the **size**, and the first draft of this note got it wrong
+  twice on x alone — both corrected here by measurement:
 
   - the draft said "with `_build`'s default centre source at x = 6 mm the
     same 24 mm control sits at 9.653624e-06 on a 3.165971e-03 peak =
@@ -719,9 +941,15 @@ true.
   through one correction. Round 3 caught it a third and a fourth time — the
   `(5, 25, 25)` / `(6, 25, 25)` shape pairs attributed to the ASYM spec
   (§2.5) and the `2.74 / 3.06 / 3.07 %` row with no fixture at all (§2.6).
-  The lesson is in §6: a quoted relative figure needs its **source position
-  and probe row** printed next to it, not just its fixture name, and a quoted
-  *error string* needs the spec that produced it.
+  Round 4 caught it a **fifth** time, in round 3's own replacement for that
+  row: "the source-probe figure is 1.76 % / 0.063 % / 0.0033 %" mixed one
+  source-probe figure with two row figures whose maxima sit on a face probe
+  (§2.6). The lesson is in §6: a quoted relative figure needs its **source
+  position, probe row AND which probe the max sits on** printed next to it,
+  not just its fixture name, and a quoted *error string* needs the spec that
+  produced it. Round 4's rule, added because relabelling was not enough
+  twice: when a row figure and a per-probe figure are both interesting,
+  print **both**, in a table with a column saying where the max sits.
 - **The NU-forward distributed lane is not gated by classes 1–4.**
   `rfx/api/_execute.py`'s NU-forward branch (~:2318–2340) refuses flux
   monitors and DFT planes with its own checks but never calls
@@ -734,19 +962,28 @@ true.
 
 ## 6. Tests
 
-`tests/unit/runners/test_distributed_admission_refusals.py`, 64 tests (40
-after round 1). For each of the five original classes: the refusal through
+`tests/unit/runners/test_distributed_admission_refusals.py`, **83 tests**
+(40 after round 1; 65 after round 3 — round 3's note said 64, and
+`pytest --collect-only` said 65, so that digit was wrong too; 82 after
+round 4). Counted with `pytest --collect-only -q` on the tree this note
+describes, not from memory — and the round-3 digit was checked the same way,
+against `git show HEAD~1:...`, which is how the off-by-one was confirmed
+rather than assumed. For each of the five original classes: the refusal through
 `sim.run(devices=...)`, the refusal inside `run_distributed()`, and an
 assertion on the message content (the feature name, the cause, the way out).
 Class 5 additionally gets a simulation-free unit test of the exact window
-boundary — `n == nx_per - pad_x` admitted, `n + 1` refused, for
-`pad_x ∈ {0, 1, 3}` — whose docstring now records that the bound is
-necessary only, with the 46.16 % measurement of the admitted case.
+boundary. Round 3 moved that boundary out by one cell on each face and round 4
+fixed this sentence, which had kept the pre-round-3 wording: the last depth
+the check **admits** is `n == nx_per - pad_x + 1` (x-hi) / `nx_per + 1`
+(x-lo), and one deeper is the first it **refuses**, for `pad_x ∈ {0, 1, 3}` —
+which is what the test body has pinned since round 3. Its docstring also
+records that the bound is necessary only, with the 46.16 % measurement of a
+case one cell inside it.
 
 Round 2 added, and each one is a fact the first round left unpinned:
 
 - **class 6** (§2.6): the refusal through both entry points, the message
-  content (face, both pads, the three ways out), a PMC variant, a
+  content (face, all six pads, the ways out), a PMC variant, a
   simulation-free unit test of the `pad == 0` boundary including the
   "different per-face thickness, both absorbing" admit, and the proof that
   `boundary='pec'` never reaches the check;
@@ -783,6 +1020,56 @@ declares none of the classes. The class-5 control changed fixture in round 2
 a class-6 RED case and the control is a symmetric absorber, which is the
 only configuration that really is admitted. **No tolerance anywhere in the
 repository was weakened for this change**, in either round.
+
+Round 4 added (§2.6.1), all on the widened class 6:
+
+- the y/z refusal through the runner, through `sim.run(devices=...)` and
+  through the exported v1 pmap runner, parametrised over four RED specs —
+  `z=(pec,cpml)`, `z=(pec,pec)`, `y=(pmc,cpml)`, `y=(pec,pec)` — each
+  asserting the faces it names;
+- the y/z refusal at `n_devices == 1` through the v1 runner, which is where
+  the bit-for-bit 1-device measurement was taken;
+- a simulation-free unit test that walks all six entries of
+  `grid.face_pads` one at a time, plus the all-six-off message and the
+  rejection of a two-tuple (so a caller cannot pass the old `pad_x_lo,
+  pad_x_hi` shape and be silently half-checked);
+- `test_the_remedy_never_points_at_the_x_only_composition`, which asserts the
+  message contains no `BoundarySpec(x='cpml')` and no "BOTH x faces" — the
+  remedy that routed callers into the gap;
+- `test_a_2d_cpml_model_gets_a_named_refusal_instead_of_an_xla_crash`, on
+  both 2-D modes;
+- `test_the_runners_still_never_read_the_y_z_face_pads`, the refusal's
+  premise checked rather than trusted: if either runner grows a
+  `grid.pad_y_*` / `grid.pad_z_*` / per-face `face_layers` read, or stops
+  building the single scalar `_cpml_profile`, this fails and class 6 must be
+  re-derived;
+- a six-face symmetric parity control at the shipped 1e-3, unweakened;
+- and in `tests/unit/boundaries/`, the two test rewrites described in
+  §2.6.1: the OQ9 split in `test_boundary_pmc_composition.py` (the
+  structural claim on the uniform lane, assertions unchanged, plus the
+  distributed lane's named refusal beside it) and
+  `test_pmc_distributed_legacy_mixed_z` moved to a reflector-only x/y
+  composition in `test_boundary_pmc_distributed.py`, with a liveness
+  assertion added — its four "is zero" claims had no energised-interior
+  check, and four such claims pass on a dead grid.
+
+**The pre-PR re-run list.** Round 3's sweep ran `tests/unit/runners`,
+`tests/contracts`, `tests/locks` and ruff, and that is not enough for a
+change to a **shared runner**. Round 4's lens found seven more files with
+`devices=` / `distributed=True` callers that the sweep never ran —
+`tests/unit/boundaries` (beyond the one pmc file), `tests/unit/grid/
+test_precision_lane_guard.py`, `tests/unit/autodiff/
+test_observables_dft_field.py`, `tests/unit/materials/
+test_sheet_impedance.py`, `tests/contracts/
+test_declared_solver_and_monitor_domain.py`, `tests/unit/autodiff/
+test_jacobian_fwd.py`, `tests/unit/autodiff/test_progressive_optimize.py` —
+and `tests/unit/boundaries` is where the second false green (§2.6.1) was
+hiding. So the list is now: **the whole fast suite the CI runs** (the entire
+`tests/` tree under the default `addopts`, i.e. `-m 'not gpu and not slow and
+not slow_physics'`), not a directory sample. `tests/unit/boundaries` and
+`tests/unit/materials/test_sheet_impedance.py` are named explicitly because
+they carry distributed callers and are easy to miss. The count from that run
+is recorded in §8.3.
 
 One process note, because it is the second time the same thing happened. A
 relative figure quoted without its probe row is not reproducible even when
@@ -842,12 +1129,12 @@ Recorded so that "unmentioned" is not read as "unexamined".
   (`grep -c devices rfx/api/_sparams.py` → 0), so it never reaches a
   distributed lane.
 - **`run(devices=[one_device])` is unchanged; the new single-device refusals
-  reach *direct runner callers* only.** `rfx/api/_execute.py:3669` dispatches
+  reach *direct runner callers* only.** `rfx/api/_execute.py:3671` dispatches
   distributed only for `len(devices) > 1`, so the public single-device path
   still runs the uniform lane and still returns
   `flux_monitors == ['flux_x_0']`. Two gates in `rfx/runners/distributed.py`
-  do fire at `n_devices == 1` — the classes 1–4 gate at `:1364` and **class 6
-  at `:1463`** — and both are reachable only through
+  do fire at `n_devices == 1` — the classes 1–4 gate at `:1373` and **class 6
+  at `:1473`** — and both are reachable only through
   `rfx.runners.run_distributed(sim, devices=[d0])` or as `distributed_v2`'s
   `n_devices == 1` delegate, never through `sim.run(devices=[d])`. Both are
   correct refusals of genuinely silent paths rather than working paths taken
@@ -956,3 +1243,170 @@ Checked and **not** changed:
   the `TypeError: mul got incompatible shapes` band into a named refusal, and
   that band is reachable at `n_devices >= 3` and through any
   `pec`/`pmc`-composed x face at any device count.
+
+### 8.3 Round-4 review record — what changed and what did not
+
+Measured on `origin/main` 883615c6 unless a row says otherwise. Every RED
+figure below was re-derived on that tree, to the printed digit, before
+anything was edited.
+
+**Changed.**
+
+- **Class 6 widened from two faces to six** (§2.6.1), in both runners, with
+  the parameter changed from `pad_x_lo, pad_x_hi` to `face_pads` and the
+  function renamed `check_x_absorber_faces_are_absorbing` →
+  `check_absorber_faces_are_absorbing`, because the old name asserted the
+  scope that was the defect. RED: `x='cpml'`, `y='cpml'`,
+  `z=Boundary(lo='pec', hi='cpml')` at 24×8×8 mm, dx = 1 mm,
+  `cpml_layers=8`, field Ez source (6, 4, 4) mm, probes x = 6/12/20 mm, 60
+  steps, 2 CPU devices, 0 warnings, ADMITTED on HEAD 461cfe53 and on the base
+  7b511591 with identical digits: **90.5782 %** of the source probe's own
+  peak (max abs(dEz) 4.003862e+00 on 4.420338e+00), **409.4824 %** and
+  **281.3395 %** at x = 12/20 mm. Symmetric control on the same fixture
+  1.078195e-07 of peak.
+- **The `x=('pec','pec')` "2.7–3.1 % wrong at the source" row is gone from
+  the shipped message and docstring**, replaced by the face-probe figures —
+  99.9986/99.9319 %, 99.9917/99.8366 %, 99.9424/99.4168 % — which do not
+  depend on where the source sits. The measured source-probe figures for
+  those three domains are **1.7610 % / 0.0225 % / 0.00002 %**, so
+  "2.7–3.1 %" was not re-derivable with the fixture the branch itself
+  states. The refusal was always right; only the number in it was wrong.
+- **§2.6's own round-3 relabelling was itself wrong** and is now a table with
+  a "where the max sits" column: `0.063 %` and `0.0033 %` were row figures,
+  not source-probe figures, and their maxima sit on the x = 2 mm **face**
+  probe.
+- **The class-6 remedy text no longer offers an x-only way forward.** It said
+  "make BOTH x faces absorbing (`BoundarySpec(x='cpml')` ...)"; a caller with
+  y/z reflectors who followed it got the 90.58 %-wrong run above, admitted,
+  with 0 warnings. It now says "all six faces absorbing", names the x-only
+  composition as the 90.58 % row, and names omitting `devices=` as the only
+  route for a model that cannot make all six absorbing.
+- **The class-5 message's "exact arithmetic limit" is corrected** (§2.5). The
+  46.16 % fixture (`x_lo='cpml'`/`x_hi='pec'`, `cpml_layers=8`, 7×8×8 mm,
+  nx = 16, pad_x = 0, nx_per = 8, n = 8) sits **one cell inside** the bound
+  round 3 installed (x-hi limit `nx_per - pad_x + 1` = 9). "Exact limit" was
+  true of the round-1/2 bound `n <= nx_per - pad_x` and went stale with the
+  narrowing. The docstring at the same check already phrased it correctly.
+- **`check_x_absorber_fits_ranks`' 3-device row no longer implies
+  byte-identity** (§2.5). It said the 8×8×8 mm / 3-device case gave "the same
+  digits as the fitting 2-device run". Correct on rel — 1.548455e-07 both —
+  but, unlike the 11 mm / 4-device row, the traces are **not** byte-identical:
+  3-dev vs 2-dev max abs(d) = **9.536743e-07**, one float32 last bit on a
+  9.238317e+00 peak. Stated as "same rel to 7 digits" now, so the docstring
+  carries one byte-identity claim and not two.
+- **The stale "`n == nx_per - pad_x` admitted, `n + 1` refused" sentence** is
+  fixed in both places it survived round 3 — this note's §6 and
+  `test_the_x_absorber_condition_is_the_window_arithmetic`'s docstring, whose
+  next paragraph already said the opposite and whose body pins `n + 1`
+  admitted / `n + 2` refused.
+- **Line-number citations re-anchored to HEAD** (they had drifted, in one case
+  since before round 3): the v1 runner's gates at
+  `rfx/runners/distributed.py:1373` (classes 1–4) and `:1473` (class 6), not
+  `:1364`/`:1463`; `rfx/api/_execute.py:3671` for
+  `_distributed_run = devices is not None and len(devices) > 1`, not `:3669`;
+  `rfx/grid.py:110-111` for the `cpml_axes` → `return 0` pair and `:112` for
+  the `face_layers` read, not `:109-110`/`:111`.
+- **The note's header names the tree the PR lands on**, 883615c6, with the
+  per-round provenance of every figure kept beside it.
+- **§2.6 gained the reachability argument** (below) and §8's lane-B sizing
+  item was re-sized from 5e-02 to 9e-01 and from one face to six.
+- **The pre-PR re-run list is the whole fast suite**, not a directory sample
+  (§6). Counts in §8.4.
+
+**Checked and not changed.**
+
+- **Class 6's reachability argument, which is why it refuses instead of
+  warning.** At 39 mm with only the centre probe and 200 steps — the shape of
+  the shipped `tests/unit/runners/test_distributed.py` parity tests — the
+  `x=('pec','pec')` phantom-window run is 8.356664e-04 on a 9.237972e+00 peak
+  = **9.045994e-05 of peak**, i.e. *inside* the shipped 1e-3 CPML tolerance,
+  while the face probes on that same run are 99.4–99.9 % wrong. No threshold
+  the suite uses would see it. Recorded in §2.6 and in the check's docstring
+  as the argument for fail-closed.
+- **`check_x_absorber_fits_ranks`' "died inside XLA" band sentence is
+  correct.** Verified at `ghost=1` on the base 7b511591 for every refused row:
+  4 devices at nx = 24/25/22/26/23 all raise `TypeError: mul got incompatible
+  shapes for broadcasting`, and 3 devices at nx = 22 likewise; and every
+  ADMITTED one-cell-overflow row (nx = 28/4dev, nx = 25/3dev, nx = 23/3dev)
+  ran at rel 1.078e-07 vs native on both trees. The round-3 conditional
+  (`clips`) asserts the claim only where it is true, which is what makes it
+  safe at `ghost > 1`. Re-checked on 883615c6 as well, through the public
+  `sim.run(devices=...)` with `x=('pec','pec')` and y/z CPML at
+  `cpml_layers=8`: nx = 24/25/22/26/23 at 4 devices and nx = 22 at 3 all
+  raise `TypeError: mul got incompatible shapes for broadcasting: (8, 1, 1),
+  (7, 25, 25)` / `(5, 25, 25)` / `(6, 25, 25)`. No change; recorded so the
+  reviewer's numbers sit beside the lane's.
+- **The y/z gap is not a regression.** Identical digits on HEAD 461cfe53, on
+  the base 7b511591 and on 883615c6. It is refused rather than handed to lane
+  B because round 2 already made that mistake on the x face, and because a
+  gate that is fail-closed on one axis and fail-open on two is worse than
+  either.
+- **The 2-D refusal takes nothing away.** 2-D + `boundary='cpml'` +
+  `devices=` died inside XLA on main (`Incompatible types for broadcasting:
+  float32[23,25,8]` vs `float32[23,25,1]`), so the refusal replaces an
+  unnamed crash with a named one. Nothing in-tree combines the three.
+- **The `face_layers` depth gap stays open** and is now stated for all six
+  faces rather than for x alone. Unmeasured, hands to lane B.
+
+**Found while doing it, not asked for.** A **third** shipped false green of
+this class,
+`tests/unit/boundaries/test_boundary_pmc_distributed.py::test_pmc_distributed_legacy_mixed_z`
+— `x/y='cpml'` with `z=(pmc,pec)`, 6.1030 % of peak wrong at its own 30
+steps and 15.4906 % at 80, all four zero-pattern assertions holding, 0
+warnings (§2.6.1). It surfaced only because MATERIAL 8 replaced the
+directory sample with the whole fast suite; reading the diff would not have
+shown it, and neither would re-running `tests/unit/runners`. Fixed the same
+way as the other two, with a liveness assertion added.
+
+### 8.4 Round-4 suite run — counts
+
+Round 3's sweep was `tests/unit/runners`, `tests/contracts`, `tests/locks`
+and ruff. That is not a sufficient gate for a change to a **shared runner**,
+and the proof is that the second false green (§2.6.1) was in
+`tests/unit/boundaries`, a directory the sweep never ran. Round 4 ran the
+whole fast suite the CI runs — the entire `tests/` tree under the repo's
+default `addopts`, `-m 'not gpu and not slow and not slow_physics'` — on the
+committed tree, plus the CI ruff gate
+(`ruff check rfx/ tests/ validation/ --select E,F,W --ignore
+E501,F401,E741,E731,E701,E702,E402`).
+
+Whole `tests/` tree, 2026-09-15, on this worktree (macOS arm64, CPU only,
+2 virtual devices from the root `conftest.py`):
+
+```
+5 failed, 9023 passed, 52 skipped, 413 deselected, 32 xfailed
+in 4157.83s (1:09:17)
+```
+
+**All five failures are pre-existing on `origin/main` 883615c6** and none of
+them touches the distributed lane. Checked by running the same five in a
+pristine 883615c6 worktree with none of this branch in it — `5 failed, 12
+passed`, the identical five:
+
+| test | why it fails on main too |
+|---|---|
+| `tests/crossval/test_cv11_normalization_evidence.py::test_historical_tables_do_not_imply_flux_or_ad_coverage` | committed cv11 table vs replay |
+| `tests/crossval/test_slab_family_code_motion_identity.py::test_records_and_masks_are_bit_identical[cv22]` | float64 last digits in a committed artifact — e.g. `mean_mag_abs_diff` replays as `0.0009904761904761554` against a committed `0.000990476190476166` |
+| the same `[cv23]` | as above |
+| `...::test_committed_artifacts_replay_to_the_same_verdicts[cv22]` | as above |
+| the same `[cv23]` | as above |
+
+They are a crossval artifact/platform-arithmetic item for that lane, not a
+B0 regression, and they are recorded here rather than left for the next
+reader to rediscover. Directory counts on the same tree, for the four the
+task list names plus the two round 4 added:
+
+| selection | result |
+|---|---|
+| `tests/unit/runners` + `tests/contracts` + `tests/locks`, one invocation | **2522 passed, 14 skipped, 71 deselected** (10:35) |
+| `tests/unit/boundaries` | **201 passed, 2 skipped, 8 deselected** (3:10) |
+| `tests/unit/runners/test_distributed_admission_refusals.py` alone | **83 passed** |
+| ruff, the CI gate (`--select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402` over `rfx/ tests/ validation/`) | **All checks passed** |
+
+One caveat stated rather than hidden: the whole-tree run above was started
+before this §8.4 paragraph and one docstring line in
+`tests/unit/boundaries/test_boundary_pmc_distributed.py` were written (a
+renamed-symbol reference, no behaviour). `tests/unit/boundaries`,
+`tests/unit/runners`, `tests/contracts` and `tests/locks` were re-run after
+both edits, on the tree exactly as committed; their counts are the ones in
+the table.

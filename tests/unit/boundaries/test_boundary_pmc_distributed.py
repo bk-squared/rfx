@@ -194,7 +194,9 @@ def test_pmc_distributed_v2_x_lo_owner_and_non_owner():
     The y/z faces are PEC here, not CPML (changed 2026-09-14, B0 round
     2).  This test used to compose ``x=Boundary(lo='pmc', hi='cpml')``
     with ``y='cpml', z='cpml'``, and that configuration is now REFUSED by
-    ``check_x_absorber_faces_are_absorbing`` -- because it was 54.1 %
+    ``check_absorber_faces_are_absorbing`` (round 4 renamed it from
+    ``check_x_absorber_faces_are_absorbing`` when it grew from the two x
+    faces to all six) -- because it was 54.1 %
     wrong at 30 steps (this test's own step count) and 93.5 % at 80,
     against the single-device lane, with 0 warnings: the distributed lane
     drives a 16-layer CPML window into the PMC face it is told to
@@ -276,6 +278,29 @@ def test_pmc_distributed_legacy_mixed_z():
       - z_hi PEC: tangential E (ex, ey) at k=-1 is zero.
       - No interference between PMC and PEC hooks (different axis
         ends, different field types).
+      - the interior is energised, so the zeros are boundary conditions
+        and not a source that never turned on.
+
+    B0 round 4 (2026-09-15) moved this fixture from `x="cpml", y="cpml"`
+    to `x="pec", y="pec"`. It was a THIRD instance of the same false green
+    the branch had already fixed twice (see this file's
+    ``test_pmc_distributed_v2_x_lo_owner_and_non_owner`` and
+    ``test_boundary_pmc_composition.py``'s OQ9 pair): with x/y CPML both z
+    pads are 0 (``grid.face_pads == (16, 16, 16, 16, 0, 0)``) and the
+    distributed lane drives its full 16-layer CPML window at the PMC z_lo
+    and the PEC z_hi anyway, because ``_init_cpml_distributed`` builds one
+    scalar profile and the kernel applies it at every face without reading
+    ``grid.face_pads``. MEASURED on ``origin/main`` 883615c6 through this
+    runner at one device, this fixture exactly: the Ex probe trace is
+    **6.1030 %** of peak wrong at this test's own 30 steps (max|dEx|
+    2.869174e-02 on a 4.701230e-01 peak) and **15.4906 %** at 80, with 0
+    warnings — and all four zero-pattern assertions below held on that
+    run, which is exactly why it was green. They are zero-PATTERN claims
+    and never values, so they are equally valid on a reflector-only
+    composition, which the lane realizes at parity (rel 1.361770e-07 vs
+    the single-device lane on the fixture below). The PMC and PEC hooks
+    under test, the pmap scan body and the axis ends are unchanged;
+    B0 class 6 refuses the old composition.
     """
     devices = _require_two_devices()
 
@@ -286,7 +311,7 @@ def test_pmc_distributed_legacy_mixed_z():
         domain=(nx * dx, ny * dx, nz * dx),
         dx=dx,
         boundary=BoundarySpec(
-            x="cpml", y="cpml",
+            x="pec", y="pec",
             z=Boundary(lo="pmc", hi="pec"),
         ),
     )
@@ -325,4 +350,12 @@ def test_pmc_distributed_legacy_mixed_z():
     assert np.allclose(ey[:, :, -1], 0.0), (
         f"z_hi PEC failed on ey: max |ey| = "
         f"{float(np.max(np.abs(ey[:, :, -1]))):.3e}"
+    )
+    # The zeros above are boundary conditions, not an un-driven run. Added
+    # in round 4 with the fixture change: four "is zero" assertions with no
+    # liveness check pass on a dead grid, and this test had none.
+    _ex_interior = float(np.max(np.abs(ex[:, :, nz // 2])))
+    assert _ex_interior > 1e-6, (
+        f"interior Ex too small — source may not have energised: "
+        f"max|Ex[:,:,nz/2]| = {_ex_interior:.3e}"
     )

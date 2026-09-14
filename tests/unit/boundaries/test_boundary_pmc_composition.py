@@ -27,13 +27,24 @@ OQ8 — NTFF + PMC Poynting-flux:
   identically zero — no "silent meaningless flux" error. This test
   pins that algebraic fact at runtime.
 
-OQ9 — `step_fn_cpml` missing PEC face hook (distributed_v2.py):
+OQ9 — `step_fn_cpml` missing PEC face hook:
   Pre-existing architecture: when ``sim._boundary == "cpml"`` and
-  pec_faces is non-empty, the CPML init at ``rfx/boundaries/cpml.py:325-330``
+  pec_faces is non-empty, the CPML init in ``rfx/boundaries/cpml.py``
   bakes PEC into the per-face CPML profile via ``_lo_face_profile``
   / ``_hi_face_profile`` — the CPML machinery enforces PEC on those
-  faces automatically, no scan-body hook required. This test pins
-  that behaviour on the distributed_v2 path.
+  faces automatically, no scan-body hook required.
+
+  Round 4 of the B0 distributed-admission review (2026-09-15) established
+  by measurement that this holds on the SINGLE-DEVICE lane only. The
+  distributed runners have no per-face clamp on ANY axis:
+  ``_init_cpml_distributed`` builds one scalar ``_cpml_profile`` and the
+  kernel drives it at y-lo/y-hi/z-lo/z-hi unconditionally, so this very
+  fixture was 90.58 % wrong at the source probe on ``devices=devices[:2]``
+  with 0 warnings — and stayed green here because the assertions are a
+  zero-PATTERN on the PEC face and never a value. The structural claim is
+  therefore pinned on the uniform lane, where the mechanism exists, and
+  the distributed lane's obligation (a named refusal, B0 class 6) is
+  pinned separately. Both tests are below, with the RED numbers.
 """
 
 from __future__ import annotations
@@ -141,22 +152,18 @@ def test_oq8_ntff_over_pmc_face_gives_zero_poynting():
 
 
 # ---------------------------------------------------------------------------
-# OQ9 — distributed_v2 step_fn_cpml handles PEC faces via CPML init, not hook
+# OQ9 — a PEC face composed with CPML: handled on the uniform lane by the
+#       per-face CPML init, REFUSED on the distributed lane (B0 class 6)
 # ---------------------------------------------------------------------------
 
 
-def test_oq9_distributed_v2_cpml_path_enforces_pec_face_via_cpml_init():
-    """BoundarySpec(x='cpml', y='cpml', z=Boundary(lo='pec', hi='cpml')) routes
-    through distributed_v2::step_fn_cpml (because sim._boundary == 'cpml').
-    step_fn_cpml has NO face hook for PEC; the PEC face is enforced via
-    the per-face CPML profile baked in at init_cpml (cpml.py:325-330).
+def _oq9_sim():
+    """The OQ9 fixture, unchanged from the original test.
 
-    Smoke: after 30 steps tangential E on the PEC z_lo face reads
-    effectively zero (<1e-10) despite interior fields being ~1e-3 scale.
+    ``BoundarySpec(x='cpml', y='cpml', z=Boundary(lo='pec', hi='cpml'))``
+    resolves ``sim._boundary`` to the scalar ``'cpml'``, so it routes
+    through the CPML step body on whichever lane runs it.
     """
-    devices = jax.devices()
-    if len(devices) < 2:
-        pytest.skip("need 2 virtual devices for distributed_v2 routing")
     dx = 5e-3
     nx, ny, nz = 16, 8, 24
     sim = Simulation(
@@ -165,13 +172,35 @@ def test_oq9_distributed_v2_cpml_path_enforces_pec_face_via_cpml_init():
                               z=Boundary(lo="pec", hi="cpml")),
         cpml_layers=6,
     )
+    sim.add_source((nx // 2 * dx, ny // 2 * dx, nz // 2 * dx), "ex")
+    sim.add_probe(((nx // 2 + 1) * dx, ny // 2 * dx, nz // 2 * dx), "ex")
+    return sim, nz
+
+
+def test_oq9_uniform_cpml_path_enforces_pec_face_via_cpml_init():
+    """The OQ9 structural claim, on the lane that actually implements it.
+
+    ``step_fn_cpml`` has NO face hook for PEC; on the SINGLE-DEVICE lane the
+    PEC face is enforced via the per-face CPML profile baked in at
+    ``init_cpml`` (``rfx/boundaries/cpml.py``, which clamps each face's
+    profile to that face's allocated pad -- 0 on a PEC face).
+
+    Smoke: after 30 steps tangential E on the PEC z_lo face reads
+    effectively zero (<1e-10) despite interior fields being ~1e-3 scale.
+
+    Round 4 of the B0 review moved this test from ``devices=devices[:2]`` to
+    the single-device lane, because the DISTRIBUTED lane does not implement
+    the per-face clamp at all and this fixture is 90.58 % wrong there -- see
+    ``test_oq9_distributed_v2_refuses_the_pec_face_composition`` below. The
+    assertions are unchanged; only the lane they are made on is, because it
+    is the lane whose mechanism the docstring describes.
+    """
+    sim, nz = _oq9_sim()
     # sim._boundary is the scalar legacy view; for mixed cpml+pec this
     # resolves to "cpml" so the run goes through step_fn_cpml.
     assert sim._boundary == "cpml"
     assert "z_lo" in sim._boundary_spec.pec_faces()
-    sim.add_source((nx // 2 * dx, ny // 2 * dx, nz // 2 * dx), "ex")
-    sim.add_probe(((nx // 2 + 1) * dx, ny // 2 * dx, nz // 2 * dx), "ex")
-    result = sim.run(n_steps=30, devices=devices[:2], compute_s_params=False)
+    result = sim.run(n_steps=30, compute_s_params=False)
     ex = np.asarray(result.state.ex)
     ey = np.asarray(result.state.ey)
     max_ex_z_lo = float(np.max(np.abs(ex[:, :, 0])))
@@ -193,3 +222,47 @@ def test_oq9_distributed_v2_cpml_path_enforces_pec_face_via_cpml_init():
         f"interior Ex too small — source may not have energised: "
         f"max|Ex[:,:,nz/2]| = {max_ex_interior:.3e}"
     )
+
+
+def test_oq9_distributed_v2_refuses_the_pec_face_composition():
+    """On the DISTRIBUTED lane this composition is refused, and must be.
+
+    The mechanism the test above pins does not exist on the distributed
+    lane: ``_init_cpml_distributed`` (``rfx/runners/distributed.py``) builds
+    ONE scalar ``_cpml_profile(grid.cpml_layers, ...)`` and the kernel
+    applies it at y-lo/y-hi/z-lo/z-hi unconditionally, never reading
+    ``grid.face_pads``.  So a ``pec``/``pmc`` y or z face gets absorbed at.
+
+    RED, measured on ``origin/main`` 883615c6 (identical digits on the B0
+    branch before it was widened, and 0 warnings every time), 24x8x8 mm at
+    dx=1 mm, ``cpml_layers=8``, ``amplitude_kind='field'`` Ez source at
+    (6, 4, 4) mm, Ez probes at x = 6/12/20 mm, 60 steps, 2 virtual CPU
+    devices -- i.e. THIS test's boundary composition::
+
+        source probe x=6 mm    max|dEz| 4.003862e+00 on 4.420338e+00
+                               = 90.5782 % of its own peak
+        probe x=12 mm          409.4824 % of its own peak
+        probe x=20 mm          281.3395 % of its own peak
+        v1 pmap at 1 device    bit-for-bit the same three figures
+        symmetric control      1.078195e-07 of peak
+
+    This test used to run that configuration at ``devices=devices[:2]`` and
+    stay green, because it asserts a zero-PATTERN on the PEC face and never
+    a value -- the same false green the x face had in
+    ``test_boundary_pmc_distributed.py``.  B0 class 6 now refuses it
+    (``rfx.runners.distributed_v2.check_absorber_faces_are_absorbing``), so
+    what the distributed lane owes this fixture is a named refusal, and that
+    is what is asserted here.
+    """
+    devices = jax.devices()
+    if len(devices) < 2:
+        pytest.skip("need 2 virtual devices for distributed_v2 routing")
+    sim, _nz = _oq9_sim()
+    with pytest.raises(ValueError) as excinfo:
+        sim.run(n_steps=30, devices=devices[:2], compute_s_params=False)
+    msg = str(excinfo.value)
+    assert "faces z-lo" in msg or "face z-lo" in msg, msg
+    assert "no CPML absorber" in msg, msg
+    # the refusal must say how to proceed, and the only honest route for a
+    # model that wants a reflector face is the single-device lane.
+    assert "omit devices=" in msg, msg
