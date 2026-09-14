@@ -186,6 +186,40 @@ H5-bis  CORRECTION to H5, written before the sweep was read and before the
           ``|A|`` means the target's own scattering changed and voids the
           comparison.
 
+H8  The constant term is a CANCELLATION RESIDUE of the NTFF surface integral.
+    Pre-declared after H1, H3, H4, H6 and the record were closed and while the
+    H5-bis A/B was still running; this is attempt 1 for a new mechanism, not a
+    retry of any earlier one.
+    Mechanism: on the x_hi face the scattered field is dominated by the FORWARD
+    lobe, whose phase there is ``exp(-j k xi_hi)`` -- the target's position
+    cancels out of it, because moving the target toward the face shortens the
+    propagation by exactly what it adds to the illumination. The transform then
+    multiplies by ``exp(-j k xi_hi)`` for backscatter observation, so that
+    face's contribution to the backscatter far field carries NO ``x0``
+    dependence at all. In the continuum the closed-surface integral is exactly
+    ``A exp(-2 j k x0)``, so those position-independent per-face pieces must sum
+    to zero across the six faces. They cancel only as well as the surface is
+    discretised, and the residue is a constant term -- which is what B is.
+    This predicts exactly what was measured elsewhere: immune to the 3-D
+    absorber depth (the ladder), immune to the auxiliary absorber (the A/B),
+    far larger than the #280 leakage (the vacuum run), and purely longitudinal
+    at leading order (the transverse arm).
+    Check: arm ``faces`` -- re-run the 11 x offsets, and for each one evaluate
+    the backscatter far field SIX times, once per face, by zeroing the other
+    five accumulators (the transform is a sum of independent per-face
+    integrals, so this is exact). Fit each face to ``A_f exp(-2 j k x0) + B_f``
+    at the k already fitted globally.
+      (o) Self-check, gates the arm: ``|sum_f E_f - E_full| / |E_full| <=
+          1e-10`` at every offset. Otherwise the decomposition is invalid and
+          the arm is NON-CLOSING.
+      (p) ``C = sum_f |B_f| / |sum_f B_f|``. H8 TRUE if ``C >= 5`` -- the net
+          constant is the small residue of much larger, nearly cancelling
+          per-face constants. H8 FALSE if ``C <= 1.5`` -- there is no
+          cancellation structure and the constant is simply one face's own
+          contribution.
+      (q) reported, not gated: which face carries the largest ``|B_f|``, and
+          ``|A_f|`` per face.
+
 Record-length / ring-down witness (mandatory before any DFT number is quoted)
 ----------------------------------------------------------------------------
 Arm ``record``: re-run the two x offsets carrying sigma_max and sigma_min at
@@ -987,12 +1021,95 @@ def arm_auxprofile(_args):
     return _emit("auxprofile", out)
 
 
+FACE_NAMES = ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
+GATE_FACES_SELFCHECK = 1e-10
+GATE_FACES_C_TRUE = 5.0
+GATE_FACES_C_FALSE = 1.5
+
+
+def arm_faces(_args):
+    """Split the backscatter far field into its six NTFF face contributions."""
+    th, ph = np.array([np.pi / 2]), np.array([np.pi])
+    per_offset = []
+    worst_selfcheck = 0.0
+    for n in AUXPAD_OFFSETS:
+        grid, mats, n_steps, _, meta = build_case((n, 0, 0))
+        freqs_arr = np.array([F0], dtype=np.float64)
+        tfsf, box = _tfsf_and_ntff(grid, cpml_layers=CPML_LAYERS,
+                                   freqs=freqs_arr)
+        res = run(grid, mats, n_steps, boundary="cpml", tfsf=tfsf, ntff=box)
+        nd = res.ntff_data
+        full = compute_far_field(nd, box, grid, th, ph)
+        e_full = complex(np.asarray(full.E_theta, dtype=np.complex128)[0, 0, 0])
+        faces = {}
+        total = 0j
+        for name in FACE_NAMES:
+            zeroed = {f: jnp.zeros_like(getattr(nd, f))
+                      for f in FACE_NAMES if f != name}
+            one = nd._replace(**zeroed)
+            ff = compute_far_field(one, box, grid, th, ph)
+            v = complex(np.asarray(ff.E_theta, dtype=np.complex128)[0, 0, 0])
+            faces[name] = [v.real, v.imag]
+            total += v
+        sc = abs(total - e_full) / abs(e_full)
+        worst_selfcheck = max(worst_selfcheck, sc)
+        per_offset.append({"offset": n, "E_full": [e_full.real, e_full.imag],
+                           "faces": faces, "selfcheck_rel": float(sc),
+                           "dx": meta["dx"]})
+        print(f"  x{n:+3d} selfcheck {sc:.2e}  |E_full| {abs(e_full):.4e}  "
+              + "  ".join(f"{f}:{abs(complex(*faces[f])):.2e}"
+                          for f in FACE_NAMES))
+    if worst_selfcheck > GATE_FACES_SELFCHECK:
+        print(f"[faces] NON-CLOSING: self-check {worst_selfcheck:.2e} > "
+              f"{GATE_FACES_SELFCHECK}")
+        return _emit("faces", {"rows": per_offset, "closing": False,
+                               "worst_selfcheck": worst_selfcheck})
+    dx = per_offset[0]["dx"]
+    offs = [r["offset"] for r in per_offset]
+    k_fit = _load_latest("fit")["k_fit"]
+    x0 = np.asarray(offs, dtype=float) * dx
+    m = np.stack([np.exp(-2j * k_fit * x0),
+                  np.ones_like(x0, dtype=complex)], axis=1)
+    out = {"rows": per_offset, "closing": True, "k_fit": k_fit,
+           "worst_selfcheck": worst_selfcheck,
+           "gates": {"selfcheck": GATE_FACES_SELFCHECK,
+                     "c_true": GATE_FACES_C_TRUE,
+                     "c_false": GATE_FACES_C_FALSE}}
+    b_sum = 0j
+    abs_b_sum = 0.0
+    for name in FACE_NAMES:
+        e_f = np.array([complex(*r["faces"][name]) for r in per_offset])
+        coef, *_ = np.linalg.lstsq(m, e_f, rcond=None)
+        a_f, b_f = complex(coef[0]), complex(coef[1])
+        resid = float(np.linalg.norm(e_f - m @ coef) / np.linalg.norm(e_f))
+        out[name] = {"A": [a_f.real, a_f.imag], "B": [b_f.real, b_f.imag],
+                     "abs_A": abs(a_f), "abs_B": abs(b_f), "resid": resid}
+        b_sum += b_f
+        abs_b_sum += abs(b_f)
+        print(f"[faces] {name}: |A_f| {abs(a_f):.4e}  |B_f| {abs(b_f):.4e}  "
+              f"arg(B_f) {np.degrees(np.angle(b_f)):+7.1f} deg  "
+              f"resid {resid:.4f}")
+    c_ratio = abs_b_sum / abs(b_sum) if abs(b_sum) else float("inf")
+    if c_ratio >= GATE_FACES_C_TRUE:
+        verdict = "H8 TRUE (the constant is a cancellation residue)"
+    elif c_ratio <= GATE_FACES_C_FALSE:
+        verdict = "H8 FALSE (no cancellation structure)"
+    else:
+        verdict = "H8 INCONCLUSIVE"
+    out.update({"sum_B": [b_sum.real, b_sum.imag], "abs_sum_B": abs(b_sum),
+                "sum_abs_B": abs_b_sum, "C": c_ratio, "verdict": verdict})
+    print(f"[faces] sum|B_f| = {abs_b_sum:.4e}, |sum B_f| = {abs(b_sum):.4e}, "
+          f"C = {c_ratio:.2f} (TRUE>= {GATE_FACES_C_TRUE}, "
+          f"FALSE<= {GATE_FACES_C_FALSE}) -> {verdict}")
+    return _emit("faces", out)
+
+
 ARMS = {
     "raster": arm_raster, "equiv": arm_equiv, "origin": arm_origin,
     "xsweep": arm_xsweep, "ysweep": arm_ysweep, "vacuum": arm_vacuum,
     "record": arm_record, "energy": arm_energy, "cpmlladder": arm_cpmlladder,
     "fit": arm_fit, "auxecho": arm_auxecho, "auxpad": arm_auxpad,
-    "auxprofile": arm_auxprofile,
+    "auxprofile": arm_auxprofile, "faces": arm_faces,
 }
 
 
