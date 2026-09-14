@@ -444,9 +444,45 @@ def _assert_same_result(via_dispatcher, direct, s_field: str, leg: str):
         f"{direct.port_names}")
 
 
+def test_waveguide_lane_matches_the_direct_call_fast_lane():
+    """The one equivalence check the DEFAULT pytest lane runs. Unmarked.
+
+    The four legs below are ``slow_physics``, which ``pyproject.toml``'s
+    ``addopts`` deselects by default -- so without this test, every ordinary
+    ``pytest`` run and the fast CI lane would assert that the dispatcher
+    ROUTES correctly and never once assert that routing there reproduces the
+    direct call. A dispatcher that quietly diverged from its delegate would
+    then reach a reviewer green, and only the weekly suite would catch it.
+    That is the wrong lane for this particular defect: it is a pure-code
+    regression with no physics in it, so it should red on the commit that
+    causes it.
+
+    It deliberately duplicates the ``slow_physics`` waveguide leg below
+    rather than replacing it. The two lanes want different things: the fast
+    lane wants ONE cheap end-to-end witness that the forwarding is real, and
+    the weekly lane wants all four port families. The waveguide default lane
+    is the cheapest fixture that reaches a real solve, which is why it is the
+    one promoted.
+    """
+    kw = dict(normalize=False, num_periods=1)
+    sim = _waveguide_sim()
+    assert sim.s_matrix_lane() == "compute_waveguide_s_matrix", (
+        "this test's premise is that compute_s_matrix() routes here; if the "
+        "row moved, the equivalence below is measuring the wrong pair")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        via = sim.compute_s_matrix(**kw)
+        direct = _waveguide_sim().compute_waveguide_s_matrix(**kw)
+    _assert_same_result(via, direct, "s_params", "waveguide (fast lane)")
+
+
 @pytest.mark.slow_physics
 def test_waveguide_lane_matches_the_direct_call():
-    """Default waveguide lane, ``num_periods=1`` (the #980 lock's leg)."""
+    """Default waveguide lane, ``num_periods=1`` (the #980 lock's leg).
+
+    Kept alongside the unmarked fast-lane copy above so the weekly suite's
+    equivalence set stays complete across all four port families.
+    """
     kw = dict(normalize=False, num_periods=1)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
