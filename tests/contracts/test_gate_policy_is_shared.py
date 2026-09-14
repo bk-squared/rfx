@@ -95,8 +95,15 @@ _QUANTIZED_GATE_FILES = [
     # #888 / #280, PR #1005 review finding 4. Two lanes with the same coverage
     # shape as the flat-JSON ones above -- neither keeps a `gates` dict in a
     # `tests/fixtures/**/fixture.json`, so the _REAL_CASES glob does not reach
-    # either, and their from-outside check is each file's own re-derivation
-    # through gate_from_envelope against a MEASURED envelope pinned in the file.
+    # either -- and what stands in for that is weaker, which is worth naming
+    # rather than dressing up. There is NO from-outside check on these two: each
+    # file re-derives its own bar in-file, through the shared
+    # gate_from_envelope, from a MEASURED envelope pinned beside it. A change to
+    # ENVELOPE_GATE_MULTIPLIER therefore moves both bars, but nothing outside
+    # either file recomputes them independently, so a coherent in-file plant
+    # (move the envelope AND the bar together) is not caught here the way the
+    # discovered lanes' from-outside cross-derivation catches it. Same gap the
+    # E4 / E5 pairs above carry, for the same reason.
     #
     # Both DEVIATE from _QUANTUM_BY_SUFFIX, and in the tightening direction
     # only -- which is why they are listed rather than granted an exception:

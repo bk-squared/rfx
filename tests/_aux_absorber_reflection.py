@@ -41,13 +41,21 @@ PR #1005). Every rig built on this module -- ``FAST_RIG`` and ``FULL_RIG``
 here, ``GRAZE_RIG`` in ``tests/unit/sources/test_tfsf_aux_absorber_reflection.py``
 -- runs at ONE resolution: ``DX_M = 1e-3`` at ``F0_HZ = 10 GHz``, i.e.
 **29.98 cells per free-space wavelength** (``lambda_0 = 29.979 mm``; prose
-elsewhere rounds it to 30). Every ``|B/A|`` this module reports -- and
+elsewhere rounds it to 30). Every 2-D ``|B/A|`` this module reports -- and
 therefore the 80-degree validity domain declared in the note's section 12.5 --
 is measured only there. A CFS-CPML's reflection is a function of
 cells-per-wavelength as well as of angle, so the domain statement reads: *the
 derived absorber meets ``LEAK_BAR`` through 80 degrees AT 29.98 CELLS PER
-WAVELENGTH*. Nothing here measures a coarser or finer mesh, and nothing here
+WAVELENGTH*. No 2-D measurement here uses a coarser or finer mesh, and none
 should be read as covering one.
+
+``measure_aux_echo_1d`` is the exception and is NOT covered by that sentence
+(scoped 2026-09-14 after a verification review; the first version of this
+paragraph said "every ``|B/A|`` this module reports" and swept it in wrongly).
+It runs cv04's own rig and band, 3 to 15 GHz at the same ``DX_M``, so its
+numbers are integrated across roughly **20 to 100 cells per wavelength** -- a
+resolution RANGE. The single-resolution limit is on the angle domain, not on
+the 1-D depth law.
 
 The resolution sweep that would widen the domain to a range is NOT run in this
 lane and is NOT filed as an issue -- the declaration above is what ships, and
@@ -90,11 +98,13 @@ CUTOFF_ARG = math.sqrt(math.log(1000.0))     # cv26's bandwidth_for
 # angles the rig resolves and the one it does not.
 FIT_RESID_LIMIT = 1.0e-2
 
-# Both rigs here -- and GRAZE_RIG in the test file -- run at DX_M / F0_HZ above,
-# 29.98 cells per free-space wavelength. They differ in grid EXTENT and record
-# LENGTH, never in resolution, so none of them says anything about a coarser or
-# finer mesh (module docstring; asserted, not asserted-in-prose, by
+# Both 2-D rigs here -- and GRAZE_RIG in the test file -- run at DX_M / F0_HZ
+# above, 29.98 cells per free-space wavelength. They differ in grid EXTENT and
+# record LENGTH, never in resolution, so none of them says anything about a
+# coarser or finer mesh (module docstring; asserted, not asserted-in-prose, by
 # test_the_declared_domain_names_the_resolution_it_was_measured_at).
+# measure_aux_echo_1d is the exception: cv04's 3-15 GHz band, ~20-100 cells per
+# wavelength. See its docstring.
 #
 # The fast rig: small grid, short record, 48 sample positions. Separates the
 # shipped absorber (5e-02) from the derived one (3e-06) by three decades in
