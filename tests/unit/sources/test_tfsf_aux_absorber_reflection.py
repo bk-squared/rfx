@@ -13,11 +13,12 @@ the shared ``gate_from_envelope`` policy -- never a number chosen to pass. They
 are per angle because the reflection is per angle: the optimum reflection
 target inverts between normal and near-grazing incidence, so no single absorber
 setting minimises every angle and the derivation is taken at the WORST DECLARED
-ANGLE. That angle is **82 degrees**, cv26's three grazing arms
-(``GRAZE_THETA0_DEG``), not the 70 degrees of its primary-rig cap
-``THETA_GATE_MAX_DEG`` -- this paragraph said 70 until the 2026-09-13 review of
-PR #1005, which is the value section 3 of the note derived at and section 12
-corrected. ``test_the_target_was_rederived_at_grazing_not_at_seventy`` below is
+ANGLE. That angle is **82 degrees**, where cv26 declares its three grazing arms,
+not the 70 degrees of its primary-rig cap -- this paragraph said 70 until the
+2026-09-13 review of PR #1005, which is the value section 3 of the note derived
+at and section 12 corrected. (cv26 is PR #924's lane and is NOT in this
+repository: there is no ``validation/crossval/26_*`` to grep, so both angles are
+quoted from the note's section 12, not read from a file here.) ``test_the_target_was_rederived_at_grazing_not_at_seventy`` below is
 the assertion, and ``test_the_domain_edge_is_where_the_note_says`` is where the
 82-degree row is required to sit OVER the bar.
 

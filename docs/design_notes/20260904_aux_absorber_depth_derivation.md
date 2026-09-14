@@ -1,7 +1,7 @@
 # The auxiliary absorber: what it reflects, and what depth that costs
 
 **Status:** MEASUREMENT + PRE-DECLARATION (no case re-run yet) · **Opened:** 2026-09-04
-**Branch:** `agent/issue-888-aux-absorber` (worktree `~/Documents/rfx-worktrees/aux-absorber`, base `origin/main` @ `b59e1d9`)
+**Branch:** `agent/issue-888-aux-absorber` (b27dc2bb), base `origin/main` @ `b59e1d9`. Superseded by `fix/888-aux-absorber-r2` (PR #1005), rebased onto `d56f68eb`.
 **Issue:** #888 · **PI decision A (2026-09-04):** deepen the auxiliary absorber, re-derive
 its profile from a reflection target, and fix `predict_settling`'s echo cancellation.
 **PI directive carried in:** gates must map where the model is valid; no lock-in on one
@@ -736,6 +736,12 @@ statements were true only for the angles measured, and the angles measured stopp
 (`graze_vac`, `graze_pec`, `graze_te`) are declared at `GRAZE_THETA0_DEG = 82` with
 `GRAZE_THETA_GATE_DEG = (80, 85)`. The derivation never looked there. An independent
 reviewer did, and this section is the re-measurement.
+
+Those three constants are **not greppable in this repository** (noted 2026-09-13, review
+of PR #1005): there is no `validation/crossval/26_*` here. cv26 is PR #924's lane and is
+not merged, so the names above are quoted from it rather than read from the tree. The
+values are what this note's measurements are taken at; nothing here reads the constants
+at run time.
 
 ### 12.1 What the 1e-14 absorber does above 70 degrees
 
