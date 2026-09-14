@@ -29,12 +29,15 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   from that measurement through the shared envelope policy to 1.06 dB, with a
   new falsifier asserting the uncorrected path still fails it.
 - **Validity domain, gated:** the 2-D absorber meets the 1e-3 leakage bar for
-  incidence up to 80° and does NOT at 82°. Both halves are asserted, so the
-  domain cannot widen silently.
+  incidence up to 80° and does NOT at 82°, measured at 29.98 cells per
+  free-space wavelength. Both halves of the angle domain are asserted and the
+  resolution is pinned, so neither can widen silently. A cells-per-wavelength
+  sweep is not run: the declared domain is one angle range at one mesh density.
 - The committed cv04 / cv22 / cv23 slab-family records were produced with the
   20-cell absorber and are declared pending recompute; their echo-arrival
   witnesses are replayed against the layout each record declares, and the
   shipped absorber's arrival is earlier at every rung, so each stays admissible.
+
 ### Fixed — cv05 external geometry handoff (#959)
 
 - Transfer complete realized sheet edges, substrate bounds and wire terminals

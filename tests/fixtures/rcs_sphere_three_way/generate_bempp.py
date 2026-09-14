@@ -3,7 +3,11 @@
 Emits the COMPLETE ``fixture.json`` mechanically (Bempp BEM column + exact-Mie
 column re-derived from scipy + rfx-fine value sourced from the sibling
 ``rcs_sphere_mie/fixture.json`` + provenance), so regeneration needs no hand
-editing. Independent surface-integral-equation (BEM) cross-check of monostatic
+editing. When the fixture IS hand-edited anyway -- bempp is not a CI dependency
+and is absent on most machines here -- the edit records itself in
+``provenance.hand_edited`` and a later regeneration clears that field.
+
+Independent surface-integral-equation (BEM) cross-check of monostatic
 PEC-sphere backscatter RCS: Bempp meshes the TRUE curved surface with triangles
 (no FDTD staircase), so it confirms exact Mie with a *different error class* than
 any FDTD code (Meep/openEMS).
@@ -185,11 +189,24 @@ def main():
             "24-cell absorber; the 0.06 dB this note used to quote was the 8-cell "
             "cancellation, see rfx_fine_witness_note). Stated as an "
             "rfx-centric distance; no solver is framed as wrong."),
+        # `hand_edited` is None here BECAUSE this is the producer: a regenerated
+        # fixture is by definition not hand-edited, and emitting the key clears a
+        # previous edit's disclosure instead of leaving it to rot. An edit made
+        # without re-running (bempp is not a CI dependency and is often absent)
+        # must fill it in and say which keys it touched -- `rfx_commit` dates the
+        # BEMPP run only, so it cannot date such an edit (PR #1005 review,
+        # finding 10).
         "provenance": {
-            "rfx_commit": sha, "bempp_version": bem.__version__,
+            "rfx_commit": sha,
+            "rfx_commit_scope": (
+                "The commit of the BEMPP run. Every number under `bempp` was produced "
+                "by generate_bempp.py at this sha and is untouched since. It does NOT "
+                "date the `three_way_ka1` rfx column -- see `hand_edited`."),
+            "bempp_version": bem.__version__,
             "producer": "tests/fixtures/rcs_sphere_three_way/generate_bempp.py",
             "env": "OPENBLAS_NUM_THREADS<=64 required (192-core box core-dumps otherwise); "
                    "import name is bempp_cl (not bempp) in 0.4.x",
+            "hand_edited": None,
         },
     }
     (_HERE / "fixture.json").write_text(json.dumps(fixture, indent=2) + "\n")

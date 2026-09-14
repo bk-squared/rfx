@@ -1,18 +1,30 @@
 # The auxiliary absorber: what it reflects, and what depth that costs
 
 **Status:** MEASUREMENT + PRE-DECLARATION (no case re-run yet) · **Opened:** 2026-09-04
-**Branch:** `agent/issue-888-aux-absorber` (worktree `~/Documents/rfx-worktrees/aux-absorber`, base `origin/main` @ `b59e1d9`)
+**Branch:** `agent/issue-888-aux-absorber` (b27dc2bb), base `origin/main` @ `b59e1d9`. Superseded by `fix/888-aux-absorber-r2` (PR #1005), rebased onto `d56f68eb`.
 **Issue:** #888 · **PI decision A (2026-09-04):** deepen the auxiliary absorber, re-derive
 its profile from a reflection target, and fix `predict_settling`'s echo cancellation.
 **PI directive carried in:** gates must map where the model is valid; no lock-in on one
 frequency or geometry, and "a port that does not work everywhere" is an acceptable,
 statable limit.
 
-Inputs read: `docs/design_notes/20260903_cv26_oblique_defect_diagnosis.md` (#888),
-`docs/design_notes/20260903_cv04_envelope_decomposition.md`,
-`rfx/sources/tfsf.py`, `rfx/sources/tfsf_2d.py`, `rfx/boundaries/cpml.py`,
-`validation/crossval/04_multilayer_fresnel.py`,
+Inputs read. In this repository: `rfx/sources/tfsf.py`, `rfx/sources/tfsf_2d.py`,
+`rfx/boundaries/cpml.py`, `validation/crossval/04_multilayer_fresnel.py`,
 `tests/crossval/test_aux_echo_record_invariant.py` (#892).
+
+NOT in this repository, and cited as history rather than as something a reader can open
+here (flagged in the 2026-09-13 review of PR #1005). Each lives on an unmerged branch,
+and each has a citable summary in the #888 thread that carries the measurement and names
+its branch and sha:
+
+| note | branch (sha) | citable copy |
+|---|---|---|
+| `20260903_cv26_oblique_defect_diagnosis.md` | `agent/issue-888-oblique-diagnosis` (831ea3c) | [#888 comment 5525810073](https://github.com/bk-squared/rfx/issues/888#issuecomment-5525810073) |
+| `20260903_cv04_envelope_decomposition.md` | `agent/cv04-aux-echo-measurement` (fa2727c) | [#888 comment 5529673679](https://github.com/bk-squared/rfx/issues/888#issuecomment-5529673679) |
+
+The comments are summaries, not the full notes -- they carry the decisive measurements
+and the dead ends, not every command. Read them for anything cited here; check out the
+branch for the rest.
 
 ---
 
@@ -112,10 +124,21 @@ tighter the target at fixed depth, the worse). Three readings:
    - `echo <= LEAK_BAR = 1e-3`: **n = 100** (1.019e-03, at the bar).
    - `echo <= LEAK_BAR / 10`: **n = 140** (9.355e-05).
 
-**Declared for the 1-D path:** `AUX_N_CPML_1D = 140`, `AUX_CPML_R_ASYMPTOTIC_1D = 1e-6`,
-order 3, kappa 1 (the 1-D update carries no kappa, and an override is now refused rather
-than silently ignored). Cost: the 1-D auxiliary array grows from 680 to 920 cells on
-cv04's grid -- a 1-D array beside a 2-D/3-D solve, so the cost is not measurable.
+**Declared for the 1-D path (CORRECTED 2026-09-13, review of PR #1005):**
+`AUX_N_CPML_1D = 200`, `AUX_CPML_R_ASYMPTOTIC_1D = 1e-6`, order 3, kappa 1 (the 1-D
+update carries no kappa, and an override is now refused rather than silently ignored).
+Cost: the 1-D auxiliary array grows from 680 to 1040 cells on cv04's grid -- a 1-D array
+beside a 2-D/3-D solve, so the cost is not measurable.
+
+This paragraph read `AUX_N_CPML_1D = 140` and "680 to 920 cells" until the review, which
+is the depth the `LEAK_BAR / 10` row above picks and NOT what shipped. 200 is what
+`rfx/sources/tfsf.py` carries and what
+`tests/unit/sources/test_tfsf_aux_absorber_reflection.py::test_the_declared_constants_are_the_derived_ones`
+pins, on the reading in section 12: the 2-D path needed 200 at grazing, and running the
+two auxiliary grids at different depths buys nothing (the 1-D array is free) while
+costing a reader one more number to hold. The measurement does not change -- the table
+above already reports `9.430e-06` at n = 200, against `9.355e-05` at 140 -- only the
+declaration, which was left at the pre-section-12 value.
 
 ---
 
@@ -241,20 +264,39 @@ The layout follows the depth: `n2x = n_cpml + margin + n_tfsf + margin + n_cpml`
 `i0_x = n_cpml + margin`, so a 100-cell absorber moves `i0_x` from 55 to 125 and the
 source from 33 to 103. Three constants in `tests/crossval/test_aux_echo_record_invariant.py`
 (#892) are pinned to the old layout (`n_aux = 3092`, `src_idx = 33`, `aux_n_cpml = 30`)
-and are re-derived, not relaxed: the echo ARRIVAL is geometry, and a deeper absorber
-pushes the reflector further from the probes, which lengthens the admissible record.
+and are re-derived, not relaxed: the echo ARRIVAL is geometry.
+
+**CORRECTED 2026-09-13 (review of PR #1005).** The sentence that stood here said a
+deeper absorber "pushes the reflector further from the probes, which lengthens the
+admissible record". That is wrong, and the direction matters because it is the direction
+that decides whether a committed record is still safe. The reflector does move out by
+`n_cpml - 20` cells, but the source and BOTH probe references move in by the same amount,
+so the two-leg path `(reflector - src) + (reflector - probe)` is unchanged; the only term
+that moves is the reflector-depth bound, 6.88 cells to 0, which SHORTENS the path by
+13.76 cells. Measured on all 13 committed slab-family rungs: the arrival is **19 to 20
+steps EARLIER**, ratios 0.520-0.610 to 0.525-0.617 against a limit of 1.0, so every
+record stays admissible under a STRICTER bound rather than a looser one. Asserted, not
+argued: `tests/crossval/test_aux_echo_record_invariant.py::test_the_superseded_layout_only_ever_moves_the_arrival_earlier`.
 
 ---
 
 ## 6. Reproduction
 
-Local, `~/Documents/rfx/.venv/bin/python`, worktree `~/Documents/rfx-worktrees/aux-absorber`.
-No VESSL run. Wall time: 2-D (depth x target x angle) grid 75 measurements in ~75 min;
-1-D depth law 27 measurements in 1132 s.
+The sweeps in sections 2, 3, 4 and 12 were run locally on CPU, no VESSL run. Wall time:
+2-D (depth x target x angle) grid 75 measurements in ~75 min; 1-D depth law 27
+measurements in 1132 s. (The machine paths this paragraph used to name were PR #923's
+author's; they are not reproducible for anyone else and are gone.)
 
-Scripts (session scratchpad, to be committed as the rig check named in section 7):
-`aux_refl.py` (two-mode fit, 2-D), `aux_echo_pad.py` (padded twin, both paths),
-`cv04_echo.py` (cv04's own rig and band), `sweep_nr.py`, `sweep_depth_1d.py`, `sweep_70.py`.
+**UPDATED 2026-09-13 (review of PR #1005).** The measurement rigs are no longer session
+scratchpad scripts "to be committed": they SHIP, as
+[`tests/_aux_absorber_reflection.py`](../../tests/_aux_absorber_reflection.py) --
+`measure_aux_reflection_2d` (the two-mode fit; was `aux_refl.py` / `sweep_nr.py` /
+`sweep_70.py`) and `measure_aux_echo_1d` (the padded twin on cv04's own rig and band; was
+`aux_echo_pad.py` / `cv04_echo.py` / `sweep_depth_1d.py`), with `FAST_RIG`, `FULL_RIG` and
+`GRAZE_RIG` naming the three rigs. Every row of every table in this note is reproduced by
+calling those two functions;
+[`tests/unit/sources/test_tfsf_aux_absorber_reflection.py`](../../tests/unit/sources/test_tfsf_aux_absorber_reflection.py)
+re-runs a subset of them as gates on each CI run.
 
 ---
 
@@ -695,6 +737,12 @@ statements were true only for the angles measured, and the angles measured stopp
 `GRAZE_THETA_GATE_DEG = (80, 85)`. The derivation never looked there. An independent
 reviewer did, and this section is the re-measurement.
 
+Those three constants are **not greppable in this repository** (noted 2026-09-13, review
+of PR #1005): there is no `validation/crossval/26_*` here. cv26 is PR #924's lane and is
+not merged, so the names above are quoted from it rather than read from the tree. The
+values are what this note's measurements are taken at; nothing here reads the constants
+at run time.
+
 ### 12.1 What the 1e-14 absorber does above 70 degrees
 
 Same instrument (`measure_aux_reflection_2d`), full rig, 40000 steps so the grazing band
@@ -797,6 +845,20 @@ section. The domain is gated, not just stated:
 measures 70, 80 and 82 on this rig and asserts the inside rows under the bar, the 82 row
 OVER it (so the domain claim is checked in both directions), and each within 10 percent
 of the numbers above.
+
+**And at one resolution only (added 2026-09-13, review of PR #1005).** Every row of the
+table above -- and every `|B/A|` anywhere in this note -- is measured at `dx = 1 mm` with
+`f0 = 10 GHz`. That is `lambda_0 = 29.979 mm`, so **29.98 cells per free-space
+wavelength**, which this note rounds to 30 where it reads better. A graded CPML's
+reflection is a function of cells-per-wavelength as well as of angle, so the declaration
+reads in full: *meets `LEAK_BAR` through 80 degrees AT 29.98 CELLS PER WAVELENGTH*.
+Nothing here measures a coarser or finer mesh, and the resolution sweep that would widen
+the domain to a range is not run and not filed -- stating the limit is what ships.
+`tests/unit/sources/test_tfsf_aux_absorber_reflection.py::test_the_declared_domain_names_the_resolution_it_was_measured_at`
+pins the resolution against the exact `c0 / f0 / dx` and asserts the three rigs vary only
+in extent and record length, so a rig added at another mesh fails rather than widening
+this claim by accident. (That assertion earned its keep immediately: its first version
+pinned a round 30 and reddened at 29.979.)
 
 The 1-D path (`AUX_CPML_R_ASYMPTOTIC_1D = 1e-6`) is untouched: normal incidence only.
 

@@ -89,8 +89,10 @@
   "rfx_coarse_ladder_note": "rfx's E4 COARSE ladder (dx=lambda/10-15, only 1-5 cells/radius; tests/fixtures/rcs_mie_e4/, gate 13.914 dB under a 15 dB GO floor) carries 4.7-9.3 dB error. Bempp reproduces exact Mie to <=0.15 dB at the SAME ka with a staircase-free curved mesh, so that coarse-ladder gap is rfx-side resolution (staircasing + near-field NTFF box; the sibling fixture also records a large domain-size swing), independently confirmed by a non-FDTD method -- consistent with the two-regime finding (rcs_sphere_mie fine 0.185 dB on the converged 24-cell absorber; the 0.06 dB this note used to quote was the 8-cell cancellation, see rfx_fine_witness_note). Stated as an rfx-centric distance; no solver is framed as wrong.",
   "provenance": {
     "rfx_commit": "36a675f5a04f2c929aea45b42927fe4f5bd0a782",
+    "rfx_commit_scope": "The commit of the BEMPP run. Every number under `bempp` was produced by generate_bempp.py at this sha and is untouched since. It does NOT date the `three_way_ka1` rfx column -- see `hand_edited`.",
     "bempp_version": "0.4.2",
     "producer": "tests/fixtures/rcs_sphere_three_way/generate_bempp.py",
-    "env": "OPENBLAS_NUM_THREADS<=64 required (192-core box core-dumps otherwise); import name is bempp_cl (not bempp) in 0.4.x"
+    "env": "OPENBLAS_NUM_THREADS<=64 required (192-core box core-dumps otherwise); import name is bempp_cl (not bempp) in 0.4.x",
+    "hand_edited": "2026-09-13 (#888, PR #1005), not regenerated. bempp-cl is not installed on the machine that made this edit, so re-running the producer was not possible; nothing that needs bempp was changed. What was edited by hand: `three_way_ka1.rfx_fine_witness_status` / `rfx_fine_witness_note`, `three_way_ka1.spread_db` and `rfx_coarse_ladder_note`. All of it follows the sibling `rcs_sphere_mie/fixture.json`, which WAS regenerated: the rfx column is a resolved reference (`rfx_fine_ref`), not an independent measurement, and `spread_db` is recomputed from the sigmas at test time by test_three_way_agreement_at_ka1 rather than read from here, so a stale value here reds rather than passes. A regeneration clears this field."
   }
 }

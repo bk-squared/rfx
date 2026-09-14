@@ -92,6 +92,30 @@ _QUANTIZED_GATE_FILES = [
     # block lives in the consolidated crossval module (tier-3b reorg), which
     # also appears in _MARGIN_CEIL_FILES below: one file, two gate shapes.
     REPO / "tests" / "crossval" / "test_waveguide_broad_e5.py",
+    # #888 / #280, PR #1005 review finding 4. Two lanes with the same coverage
+    # shape as the flat-JSON ones above -- neither keeps a `gates` dict in a
+    # `tests/fixtures/**/fixture.json`, so the _REAL_CASES glob does not reach
+    # either, and their from-outside check is each file's own re-derivation
+    # through gate_from_envelope against a MEASURED envelope pinned in the file.
+    #
+    # Both DEVIATE from _QUANTUM_BY_SUFFIX, and in the tightening direction
+    # only -- which is why they are listed rather than granted an exception:
+    #
+    #   * rcs280 gates a dB quantity at quantum=100 where the suffix map says
+    #     `db` -> 10. The envelope is sub-dB (0.705 dB mean |corrected - Mie|),
+    #     so a 0.1 dB quantum rounds 1.0575 up to 1.1 and hands the bar 0.0425
+    #     dB of pure quantization slack, 4% of the bar itself. Two decimals give
+    #     1.06 -- TIGHTER than the suffix map, within one quantum of the
+    #     derivation. A dB suffix earns quantum=10 when the envelope is of order
+    #     the quantum; this one is not.
+    #   * the aux-absorber lane gates dimensionless |B/A| reflection amplitudes
+    #     of 6.4e-06 to 3.2e-04, per angle, at quantum 1e7 / 1e6 / 1e5. The
+    #     `abs` -> 100 of the suffix map would quantize every one of them to
+    #     0.01, four decades above the measurement -- a bar that gates nothing.
+    #     Each quantum is chosen so the round-up is the last significant figure
+    #     of that angle's own measurement.
+    REPO / "tests" / "unit" / "farfield" / "test_rcs280_reference_subtraction.py",
+    REPO / "tests" / "unit" / "sources" / "test_tfsf_aux_absorber_reflection.py",
 ]
 
 # The bounded-margin consumers: a PINNED module constant checked against

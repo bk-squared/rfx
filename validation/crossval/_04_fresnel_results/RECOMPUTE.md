@@ -29,3 +29,14 @@ directions, so the waiver cannot outlive the re-run.
 
 Envelope revisions are append-only and adoption is an explicit edit in the
 consumer (#928): a re-run appends a revision, it does not move any window.
+
+**What this directory's envelope feeds, and why it is not silently a gate
+change.** `per_bin_max_RT_closure` here is what `W_BIN` is derived from in
+`validation/crossval/comparators/cv22_dispersive_gates.py` and
+`cv23_lossy_gates.py` — live gate constants, not reporting. The derived
+absorber invalidates the envelope they were derived from, in the LOOSE
+direction: `W_BIN` is wider than the new rig warrants, never tighter, so no gate
+widens by leaving it alone. The magnitude is not established — note §11.2
+quotes about 10×, but that run also moved bandwidth 0.5 → 0.8 and the bandwidth
+change is not carried, so the absorber's own share is unmeasured. Re-deriving
+`W_BIN` is an adoption edit in each consumer, decided in #928's lane.
