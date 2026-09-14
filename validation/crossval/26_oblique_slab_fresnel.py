@@ -48,7 +48,9 @@ import time
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SCRIPT_DIR)
 sys.path.insert(0, os.path.join(SCRIPT_DIR, "comparators"))
+import _exit_evidence  # noqa: E402  (SCRIPT_DIR on sys.path)
 import oblique_fresnel as O  # noqa: E402
 
 RESULTS_DIR = os.path.join(SCRIPT_DIR, O.RESULTS_DIRNAME)
@@ -615,10 +617,12 @@ def main(argv=None) -> int:
         rc, summary = 0, "ALL CHECKS PASSED -- E2 (Fresnel at the realized angle), lattice-gated grazing arms and E4 (Meep) (exit 0)"
     if a.falsifier is not None and not a.smoke:
         summary += f"  [falsifier {a.falsifier}: {'exit 1 as pre-declared' if rc == 1 else 'exit ' + str(rc) + ' -- read the note'}]"
-    doc["verdict"] = {"rfx_self_ok": not any_fail, "meep_present": not any_meep_missing, "exit_code": rc, "summary": summary}
+    doc["verdict"] = {"rfx_self_ok": not any_fail, "meep_present": not any_meep_missing}
     out_path = os.path.join(out_dir, f"rfx__{a.tag}.json" if a.tag else O.rfx_json_name(a.falsifier))
-    with open(out_path, "w") as fh:
-        json.dump(doc, fh, indent=1)
+    # write_record puts exit_code and summary INTO the verdict block and arms
+    # the finalizer that amends them if this process ends with a different
+    # status than the verdict above declared (#946).
+    rc = _exit_evidence.write_record(out_path, doc, exit_code=rc, summary=summary)
     print(f"\n  artifact: {out_path}")
     print(f"\n{summary}")
     return rc

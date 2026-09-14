@@ -43,25 +43,132 @@ Exit codes (rfx crossval convention):
       crossval, NOT a pass. CI must not treat this as green.
 
 Save: validation/crossval/01_waveguide_bend.png
+
+Re-judge a retained record without solving anything:
+  python 01_waveguide_bend.py --replay <record.json> --out-dir <dir>
 """
 
 import os
 import sys
 import time
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SCRIPT_DIR)
+import _exit_evidence  # noqa: E402  (SCRIPT_DIR on sys.path)
+
+C0 = 2.998e8
+
+# ---------------------------------------------------------------------------
+# The verdict, decided in one place and read by three: the live gates below,
+# the retained record, and --replay. The limits are named ONCE here because
+# the live run and a replay of a committed record must be able to disagree
+# about the measurement and never about the threshold.
+# ---------------------------------------------------------------------------
+G1_T_BAND = (0.3, 1.0)            # smoothed mean T over the eval band
+G2_SELF_T_BAND = (0.95, 1.05)     # straight-guide self-T (flux conservation)
+G3_MAX_ABS_GAP = 0.10             # |rfx - Meep| on the smoothed band mean
+
+
+def _gates(mean_T: float, mean_self: float, meep_mean):
+    """The three gate booleans. ``G3`` is ``None`` when Meep did not run."""
+    return {
+        "G1_smoothed_T_in_0p3_1p0": bool(G1_T_BAND[0] <= mean_T <= G1_T_BAND[1]),
+        "G2_straight_self_T_in_0p95_1p05": bool(
+            G2_SELF_T_BAND[0] <= mean_self <= G2_SELF_T_BAND[1]),
+        "G3_abs_rfx_minus_meep_lt_0p10": (
+            None if meep_mean is None
+            else bool(abs(mean_T - meep_mean) < G3_MAX_ABS_GAP)),
+    }
+
+
+def _exit_code(rfx_ok: bool, meep_present: bool) -> int:
+    """The one place the verdict is decided; the tail prints it unchanged."""
+    if not meep_present:
+        return 2 if rfx_ok else 1
+    return 0 if rfx_ok else 1
+
+
+def _summary(code: int) -> str:
+    """The one spelling of the summary, keyed on the code it describes (#946)."""
+    if code == 0:
+        return "ALL CHECKS PASSED"
+    if code == 2:
+        return "[SKIP] Meep reference unavailable — crossval inconclusive (exit 2)"
+    return "SOME CHECKS FAILED"
+
+
+def _replay(argv) -> int:
+    """Re-judge a committed record from the numbers IT retained.
+
+    ``--replay <record.json> --out-dir <dir>`` reads a record this case wrote,
+    re-evaluates the three gates against the ``measured`` block inside it, and
+    re-emits the record (plus a ``replay`` provenance stanza) through the same
+    writer the live run uses. No FDTD, no Meep -- the point is the decision
+    stage and the write, not the solve.
+
+    It exists because the #946 contract has to be tested on THIS script rather
+    than on a fixture that imitates it: the record here is written ~90 lines
+    ahead of the ``sys.exit`` at the bottom, and only a real run of this file
+    proves that the finalizer armed on the way past. The out-dir is required
+    and must not be the committed results directory -- a replay is a re-judge,
+    not a reproduction (the record it writes says so in ``replay.source``).
+    """
+    import argparse
+    import json as _j
+    parser = argparse.ArgumentParser(prog="01_waveguide_bend.py --replay")
+    parser.add_argument("--replay", required=True, metavar="RECORD")
+    parser.add_argument("--out-dir", required=True)
+    a = parser.parse_args(argv)
+    with open(a.replay) as fh:
+        doc = _j.load(fh)
+    m = doc["measured"]
+    mean_T = float(m["mean_T_smoothed_over_band"])
+    mean_self = float(m["mean_self_smoothed_over_band"])
+    meep_mean = (float(m["meep"]["mean_T_smoothed_over_band"])
+                 if m.get("meep", {}).get("present") else None)
+    gates = _gates(mean_T, mean_self, meep_mean)
+    passed = all(v for v in gates.values() if v is not None)
+    rc_declared = _exit_code(passed, meep_mean is not None)
+    doc["replay"] = {
+        "source": os.path.abspath(a.replay),
+        "of_schema": doc.get("schema"),
+        "note": ("gates re-evaluated from the source record's own measured "
+                 "block; no solver ran (#946 contract replay)"),
+    }
+    doc["gates"] = gates
+    doc["verdict"] = {
+        "rfx_self_ok": bool(gates["G1_smoothed_T_in_0p3_1p0"]
+                            and gates["G2_straight_self_T_in_0p95_1p05"]),
+        "meep_present": meep_mean is not None,
+        "all_gates_ok": bool(passed),
+    }
+    out_path = os.path.join(a.out_dir, "crossval.json")
+    rc = _exit_evidence.write_record(out_path, doc, exit_code=rc_declared,
+                                     summary=_summary)
+    print(f"  replay artifact: {out_path}")
+    print(f"\n{_summary(rc)}")
+    return rc
+
+
+if "--replay" in sys.argv[1:]:
+    # One name for the process outcome on this path too, so every sys.exit in
+    # this file still takes _rc (the shape the #946 contract tests read).
+    _rc = _replay(sys.argv[1:])
+    sys.exit(_rc)
+
+# Everything below here is the live run. The imports sit AFTER the --replay
+# dispatch on purpose: a replay re-judges a record and must not need jax, a
+# GPU or an rfx install to do it.
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
-import matplotlib
+import matplotlib  # noqa: E402
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import numpy as np
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
 
-from scipy.ndimage import uniform_filter1d
-from rfx import Simulation, Box, GaussianPulse, flux_spectrum
-from rfx.boundaries.spec import BoundarySpec
-
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-C0 = 2.998e8
+from scipy.ndimage import uniform_filter1d  # noqa: E402
+from rfx import Simulation, Box, GaussianPulse, flux_spectrum  # noqa: E402
+from rfx.boundaries.spec import BoundarySpec  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Reproduce-gate record -- audit artifact (docs/agent-memory/task_recipes/
@@ -379,14 +486,17 @@ except Exception as _e:
 # Validation
 # =============================================================================
 PASS = True
+# Same three booleans a --replay of this run's record recomputes: _gates() is
+# where the limits live, so the two paths cannot drift apart on a threshold.
+_live_gates = _gates(mean_T, mean_self, meep_mean)
 
-if 0.3 <= mean_T <= 1.0:
+if _live_gates["G1_smoothed_T_in_0p3_1p0"]:
     print(f"\nPASS: smoothed T = {mean_T:.4f} in [0.3, 1.0]")
 else:
     print(f"\nFAIL: smoothed T = {mean_T:.4f} outside [0.3, 1.0]")
     PASS = False
 
-if 0.95 <= mean_self <= 1.05:
+if _live_gates["G2_straight_self_T_in_0p95_1p05"]:
     print(f"PASS: straight self-T = {mean_self:.4f} in [0.95, 1.05]")
 else:
     print(f"FAIL: straight self-T = {mean_self:.4f} outside [0.95, 1.05]")
@@ -394,7 +504,7 @@ else:
 
 if meep_mean is not None:
     gap = abs(mean_T - meep_mean)
-    if gap < 0.10:
+    if _live_gates["G3_abs_rfx_minus_meep_lt_0p10"]:
         print(f"PASS: |rfx - Meep| = {gap:.4f} < 0.10")
     else:
         print(f"FAIL: |rfx - Meep| = {gap:.4f} >= 0.10")
@@ -409,19 +519,16 @@ if meep_mean is not None:
 # carries the gate table, the quantities the gates read (per bin, not only the
 # headline means), the exit code this run is about to return, the run's
 # provenance and the rig it realized, as values.
+#
+# `_exit_code`, `_summary` and `_gates` are defined at the TOP of this file so
+# --replay can reach them without the solve; this is still the only place the
+# verdict is decided.
 # =============================================================================
-def _exit_code(rfx_ok: bool, meep_present: bool) -> int:
-    """The one place the verdict is decided; the tail prints it unchanged."""
-    if not meep_present:
-        return 2 if rfx_ok else 1
-    return 0 if rfx_ok else 1
+_rfx_self_ok = bool(_live_gates["G1_smoothed_T_in_0p3_1p0"]
+                    and _live_gates["G2_straight_self_T_in_0p95_1p05"])
+_gate_meep = _live_gates["G3_abs_rfx_minus_meep_lt_0p10"]
+_rc_declared = _exit_code(PASS, meep_mean is not None)
 
-
-_rfx_self_ok = bool(0.3 <= mean_T <= 1.0 and 0.95 <= mean_self <= 1.05)
-_gate_meep = None if meep_mean is None else bool(abs(mean_T - meep_mean) < 0.10)
-_rc = _exit_code(PASS, meep_mean is not None)
-
-_json = __import__("json")
 _dt = __import__("datetime")
 _platform = __import__("platform")
 _subprocess = __import__("subprocess")
@@ -518,15 +625,11 @@ _doc = {
             "abs_rfx_minus_meep": float(abs(mean_T - meep_mean)),
         },
     },
-    "gates": {
-        "G1_smoothed_T_in_0p3_1p0": bool(0.3 <= mean_T <= 1.0),
-        "G2_straight_self_T_in_0p95_1p05": bool(0.95 <= mean_self <= 1.05),
-        "G3_abs_rfx_minus_meep_lt_0p10": _gate_meep,
-    },
+    "gates": dict(_live_gates),
     "gate_limits": {
-        "G1_smoothed_T_in_0p3_1p0": [0.3, 1.0],
-        "G2_straight_self_T_in_0p95_1p05": [0.95, 1.05],
-        "G3_abs_rfx_minus_meep_lt_0p10": 0.10,
+        "G1_smoothed_T_in_0p3_1p0": list(G1_T_BAND),
+        "G2_straight_self_T_in_0p95_1p05": list(G2_SELF_T_BAND),
+        "G3_abs_rfx_minus_meep_lt_0p10": G3_MAX_ABS_GAP,
     },
     # What an independent re-run compares, and how. Named here so the check is
     # the same check whoever runs it.
@@ -553,17 +656,16 @@ _doc = {
         "rfx_self_ok": _rfx_self_ok,
         "meep_present": meep_mean is not None,
         "all_gates_ok": bool(PASS),
-        "exit_code": _rc,
-        "summary": ("ALL CHECKS PASSED" if _rc == 0 else
-                    ("[SKIP] Meep reference unavailable — crossval inconclusive (exit 2)"
-                     if _rc == 2 else "SOME CHECKS FAILED")),
     },
 }
 _out_dir = os.path.join(SCRIPT_DIR, "_01_waveguide_bend_results")
-os.makedirs(_out_dir, exist_ok=True)
 _artifact = os.path.join(_out_dir, "crossval.json")
-with open(_artifact, "w") as _fh:
-    _json.dump(_doc, _fh, indent=1)
+# write_record puts exit_code and summary INTO the verdict block and arms the
+# finalizer that amends them if this process ends with a different status
+# (#946) -- the ~90 lines of plotting below this write are an exit path like
+# any other.
+_rc = _exit_evidence.write_record(_artifact, _doc, exit_code=_rc_declared,
+                                  summary=_summary)
 print(f"\n  artifact: {_artifact}")
 
 # =============================================================================
@@ -649,5 +751,7 @@ elif PASS:
 else:
     print("\nSOME CHECKS FAILED")
 # Same prints, same codes; the value comes from _exit_code() above so the
-# retained artifact records the code this script actually returns (#928).
+# retained artifact records the code this script actually returns (#928), and
+# _exit_evidence amends the record if any exit path below that write ever
+# returns a different one (#946).
 sys.exit(_rc)

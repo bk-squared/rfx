@@ -140,6 +140,14 @@ def merge(shard_paths: list, run_ids: dict | None = None) -> dict:
         "merged_from_shards": True,
         "shards": sorted(shards, key=lambda s: s["file"]),
         "arms": {arm: arms[arm] for arm in O.ARM_ORDER + O.GRAZE_ARMS},
+        # DELIBERATELY not routed through validation/crossval/_exit_evidence.py
+        # (#946). That helper makes a record's exit_code equal the status of the
+        # process that wrote it. Here the two are different things on purpose:
+        # this `rc` is the CASE's verdict, assembled from shards that already
+        # ran and exited, while THIS process is a merger whose own exit says
+        # only whether the merge succeeded (main() returns 0 on a merged FAIL).
+        # Amending this key with the merger's status would replace the case's
+        # verdict with a statement about a file-combining step.
         "verdict": {"rfx_self_ok": not any_fail, "meep_present": not any_meep_missing,
                     "exit_code": rc, "summary": summary},
     })

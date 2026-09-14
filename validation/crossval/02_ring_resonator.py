@@ -30,6 +30,9 @@ Exit codes (rfx crossval convention):
 
 Run:
   JAX_ENABLE_X64=1 python validation/crossval/02_ring_resonator.py
+
+Re-judge a retained record without solving anything:
+  python 02_ring_resonator.py --replay <record.json> --out-dir <dir>
 """
 
 import os
@@ -43,7 +46,114 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SCRIPT_DIR)
+import _exit_evidence  # noqa: E402  (SCRIPT_DIR on sys.path)
+
 C0 = 2.998e8
+
+
+# =============================================================================
+# The verdict, decided in one place and read by three: the tail below, the
+# retained record, and --replay. Defined at the TOP so a replay reaches them
+# without the solve.
+# =============================================================================
+def _exit_code(rfx_ok: bool, have_meep: bool, judged_ok: bool) -> int:
+    """The one place the verdict is decided; the tail prints it unchanged."""
+    if not have_meep:
+        return 2 if rfx_ok else 1
+    return 0 if (rfx_ok and judged_ok) else 1
+
+
+def _summary(code: int) -> str:
+    """The one spelling of the summary, keyed on the code it describes (#946)."""
+    if code == 0:
+        return "ALL CHECKS PASSED"
+    if code == 2:
+        return "[SKIP] Meep reference unavailable — crossval inconclusive (exit 2)"
+    return "SOME CHECKS FAILED"
+
+
+def _load_judge():
+    """The shared judge module, loaded from its file (no rfx, no solver)."""
+    import importlib.util as _ilu
+    path = os.path.join(SCRIPT_DIR, "comparators", "ring_mode_judge.py")
+    spec = _ilu.spec_from_file_location("cv02_ring_mode_judge", path)
+    module = _ilu.module_from_spec(spec)
+    sys.modules["cv02_ring_mode_judge"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _replay(argv) -> int:
+    """Re-judge a committed record from the mode lists IT retained.
+
+    ``--replay <record.json> --out-dir <dir>`` reads a record this case wrote,
+    re-runs ``ring_mode_judge.judge`` on the stored Meep and rfx mode lists at
+    the stored record length, and re-emits the record through the same writer
+    the live run uses. No FDTD, no Meep, no harminv -- the point is the
+    decision stage and the write, not the solve.
+
+    It exists because the #946 contract has to be tested on THIS script rather
+    than on a fixture that imitates it: the record here is written ~250 lines
+    ahead of the ``sys.exit`` at the bottom, with PART 4's visualisation in
+    between, which is exactly the gap the abandoned #907 branch fell into. The
+    out-dir is required and must not be the committed results directory -- a
+    replay is a re-judge on TODAY's judge, not a reproduction of the run, and
+    the record it writes says so in ``replay.note``.
+    """
+    import argparse
+    import dataclasses
+    import json as _j
+    parser = argparse.ArgumentParser(prog="02_ring_resonator.py --replay")
+    parser.add_argument("--replay", required=True, metavar="RECORD")
+    parser.add_argument("--out-dir", required=True)
+    a = parser.parse_args(argv)
+    with open(a.replay) as fh:
+        doc = _j.load(fh)
+    judge = _load_judge()
+    m = doc["measured"]
+    rig = doc["rig"]
+    reference = [judge.ReferenceMode(freq=row["freq_c_over_a"], Q=row["Q"])
+                 for row in m["meep_modes"]]
+    solver = [judge.SolverMode(freq=row["freq_c_over_a"], Q=row["Q"],
+                               amplitude=row["amplitude"])
+              for row in m["rfx_modes"]]
+    band = rig["band_c_over_a"]
+    re_verdict = judge.judge(reference, solver,
+                             float(rig["record_length_meep_units"]),
+                             f_min=float(band[0]), f_max=float(band[1]))
+    rfx_self_ok = len(solver) >= 1
+    have_meep = bool(reference)
+    rc_declared = _exit_code(rfx_self_ok, have_meep, bool(re_verdict.passed))
+    doc["replay"] = {
+        "source": os.path.abspath(a.replay),
+        "of_schema": doc.get("schema"),
+        "note": ("the judge was re-run on the source record's own stored mode "
+                 "lists at its stored record length; no solver ran, and the "
+                 "judge is TODAY's, not the one the source run used "
+                 "(#946 contract replay)"),
+    }
+    doc["measured"]["assignment"] = [dataclasses.asdict(row)
+                                     for row in re_verdict.rows]
+    doc["gates"] = dict(re_verdict.gates)
+    doc["verdict"] = {
+        "rfx_self_ok": bool(rfx_self_ok),
+        "meep_present": have_meep,
+        "judge_passed": bool(re_verdict.passed),
+    }
+    out_path = os.path.join(a.out_dir, "crossval.json")
+    rc = _exit_evidence.write_record(out_path, doc, exit_code=rc_declared,
+                                     summary=_summary)
+    print(f"  replay artifact: {out_path}")
+    print(f"\n{_summary(rc)}")
+    return rc
+
+
+if "--replay" in sys.argv[1:]:
+    # One name for the process outcome on this path too -- the source contract
+    # (tests/crossval/test_cv02_ring_mode_judge.py) reads every sys.exit here.
+    _rc = _replay(sys.argv[1:])
+    sys.exit(_rc)
 
 # =============================================================================
 # Meep tutorial parameters (UNCHANGED)
@@ -177,14 +287,9 @@ sim_rfx.add_source(position=(src_rfx_x, src_rfx_y, 0), component="ez",
 sim_rfx.add_probe(position=(src_rfx_x, src_rfx_y, 0), component="ez")
 
 # Load the shared judge + settling-witness module ONCE. PART 2 (below) uses the
-# per-mode settling witness; PART 3 uses the judge. Both drive this same code.
-import importlib.util as _ilu
-
-_judge_path = os.path.join(SCRIPT_DIR, "comparators", "ring_mode_judge.py")
-_judge_spec = _ilu.spec_from_file_location("cv02_ring_mode_judge", _judge_path)
-ring_mode_judge = _ilu.module_from_spec(_judge_spec)
-sys.modules["cv02_ring_mode_judge"] = ring_mode_judge
-_judge_spec.loader.exec_module(ring_mode_judge)
+# per-mode settling witness; PART 3 uses the judge. Both drive this same code,
+# and so does --replay, through the same loader at the top of this file.
+ring_mode_judge = _load_judge()
 
 dt_rfx = dx / (C0 * math.sqrt(2)) * 0.99
 
@@ -528,22 +633,18 @@ matched = [(row.ref_freq, row.ref_Q, row.rfx_freq, row.rfx_Q)
 # both mode lists, the assignment and its per-mode error and Q window, the gate
 # table, the exit code this run is about to return, the run's provenance and
 # the realized rig, as values.
+#
+# `_exit_code` and `_summary` are defined at the TOP of this file so --replay
+# can reach them without the solve; this is still the only place the verdict
+# is decided.
 # =============================================================================
-def _exit_code(rfx_ok: bool, have_meep: bool, judged_ok: bool) -> int:
-    """The one place the verdict is decided; the tail prints it unchanged."""
-    if not have_meep:
-        return 2 if rfx_ok else 1
-    return 0 if (rfx_ok and judged_ok) else 1
-
-
 _dataclasses = __import__("dataclasses")
-_json = __import__("json")
 _dt = __import__("datetime")
 _platform = __import__("platform")
 _subprocess = __import__("subprocess")
 
 _rfx_self_ok = len(rfx_modes) >= 1
-_rc = _exit_code(_rfx_self_ok, HAVE_MEEP, bool(verdict.passed))
+_rc_declared = _exit_code(_rfx_self_ok, HAVE_MEEP, bool(verdict.passed))
 try:
     _commit = _subprocess.check_output(["git", "rev-parse", "HEAD"],
                                        cwd=SCRIPT_DIR, text=True,
@@ -634,17 +735,16 @@ _doc = {
         "rfx_self_ok": bool(_rfx_self_ok),
         "meep_present": bool(HAVE_MEEP),
         "judge_passed": bool(verdict.passed),
-        "exit_code": _rc,
-        "summary": ("ALL CHECKS PASSED" if _rc == 0 else
-                    ("[SKIP] Meep reference unavailable — crossval inconclusive (exit 2)"
-                     if _rc == 2 else "SOME CHECKS FAILED")),
     },
 }
 _out_dir = os.path.join(SCRIPT_DIR, "_02_ring_resonator_results")
-os.makedirs(_out_dir, exist_ok=True)
 _artifact = os.path.join(_out_dir, "crossval.json")
-with open(_artifact, "w") as _fh:
-    _json.dump(_doc, _fh, indent=1)
+# write_record puts exit_code and summary INTO the verdict block and arms the
+# finalizer that amends them if this process ends with a different status
+# (#946): the abandoned #907 branch added a `sys.exit(2)` vacuity guard after
+# this write, and the retained record went on claiming a pass.
+_rc = _exit_evidence.write_record(_artifact, _doc, exit_code=_rc_declared,
+                                  summary=_summary)
 print(f"\n  artifact: {_artifact}")
 
 # =============================================================================
@@ -868,7 +968,9 @@ if not HAVE_MEEP:
     else:
         print("\nSOME CHECKS FAILED — rfx Harminv found no ring modes (exit 1)")
     # Same prints, same codes; the value comes from _exit_code() above so the
-    # retained artifact records the code this script actually returns (#928).
+    # retained artifact records the code this script actually returns (#928),
+    # and _exit_evidence amends the record if any exit path below this write
+    # ever returns a different one (#946).
     sys.exit(_rc)
 
 # Meep present → evaluate the full cross-check.
