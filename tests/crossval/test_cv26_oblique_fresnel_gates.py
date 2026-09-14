@@ -101,8 +101,27 @@ def test_baseline_replays_and_passes_on_every_arm():
         assert e2["gates"] == ad["gates"] and e2["e2_ok"] and all(e2["gates"].values()), arm
         for k in ("mean_dR_gated", "mean_dT_gated", "max_dR_gated", "mean_window_R"):
             assert e2[k] == pytest.approx(ad[k], rel=1e-9), (arm, k)
-        # the lattice witness (reported): rfx equals its own exact discrete model
-        assert e2["lattice"]["mean_dR_lattice_gated"] <= 3e-4 and e2["lattice"]["mean_dT_lattice_gated"] <= 3e-4, arm
+        # The lattice witness (reported): rfx equals its own exact discrete model.
+        #
+        # The bar is a tenth of the arm's DECLARED band-mean window, which resolves
+        # through cv04's adoption record (``O.W_MEAN_R`` / ``O.W_MEAN_T``), not a
+        # literal.  The ``3e-4`` that stood here is cv23's rig-specific number -- 10x
+        # THAT case's round-1 residual, ``test_cv23_lossy_slab_gates.py``'s
+        # ``_R2_LATTICE_RESIDUAL_BAR`` -- and it was never re-derived for this rig.
+        # It was also never exercised: this file skips until the artifacts land, so
+        # the literal survived from the authoring commit to the first real lane.
+        # On the 80-cell primary rig three arms sit above it with nothing wrong --
+        # the two dx controls (3.34e-04 te_00, 3.41e-04 tm_00) and te_60 at dx/2
+        # (4.05e-04).  Close note section 10 already records that the inherited
+        # reading rule misreads this case.
+        #
+        # Against the window the arm is actually judged on, every arm is far inside:
+        # 0.44-4.05 % (R) and 1.53-4.94 % (T), so the E2 gates judge the solver
+        # against Fresnel and not against a solver-vs-own-model gap.  The window is
+        # declared a priori, so this is not the run certifying its own bar.
+        lat = e2["lattice"]
+        assert lat["mean_dR_lattice_gated"] <= 0.1 * O.W_MEAN_R, (arm, lat["mean_dR_lattice_gated"])
+        assert lat["mean_dT_lattice_gated"] <= 0.1 * O.W_MEAN_T, (arm, lat["mean_dT_lattice_gated"])
         if arm == O.BREWSTER_ARM:
             bw = O.evaluate_brewster(e2)
             assert bw["ok"] and ad["brewster"]["ok"] and abs(bw["theta_bin_deg"] - bw["theta_brewster_deg"]) < 0.1
@@ -168,7 +187,22 @@ def test_each_falsifier_artifact_fails_for_its_declared_reason(name):
     assert not e2["e2_ok"] and e2["gates"] == ad["gates"]
     assert not (e2["gates"]["G2_R"] and e2["gates"]["G2_T"]), "the declared defect must fail the band-mean gate"
     if name == "tm_60_swap_te":
-        assert ad["brewster"]["ok"] is False
+        # The pre-declaration named the Brewster bin as this falsifier's target and
+        # this line asserted the gate FAILS.  The measurement refuted that, and close
+        # note section 4.3 carries the refutation: ``evaluate_brewster`` compares
+        # rfx's own R at the Brewster bin against a floor built from the ORACLE, and
+        # never compares the oracle's R.  Swapping the oracle to TE only WIDENS that
+        # floor, so the swap makes the gate EASIER -- it cannot fire on an
+        # oracle-swap falsifier at all.  Asserting the mechanism instead of the
+        # refuted expectation, so a change that made the gate fire here would still
+        # be caught.  The defect is carried by the band-mean gates asserted above.
+        clean = _artifact("rfx.json")["arms"][arm]["brewster"]
+        assert ad["brewster"]["floor"] > clean["floor"]                    # widened, not tightened
+        assert ad["brewster"]["R_rfx_at_brewster"] == pytest.approx(       # rfx side untouched
+            clean["R_rfx_at_brewster"], rel=1e-12)
+        assert clean["R_an_at_brewster"] < 1e-6                            # TM oracle: a true null
+        assert ad["brewster"]["R_an_at_brewster"] > 0.1                    # TE oracle: no null left
+        assert ad["brewster"]["ok"] is True
 
 
 def test_meep_k_2pi_falsifier_fails_e4_with_a_failed_precheck():
