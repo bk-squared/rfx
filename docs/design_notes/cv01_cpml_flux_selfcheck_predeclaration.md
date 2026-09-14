@@ -145,7 +145,7 @@ output plane — today −26.04 % at 10 layers — reported alongside `mean_self
 monotone non-increasing across 10 → 16 → 20 → 40 **and** its magnitude at 40
 layers is ≤ 1/3 of its magnitude at 10 layers. Equivalently, `mean_self` at 40
 layers must have closed ≥ 2/3 of the gap from today's 0.748852 to the
-`upml_full` control 0.989162 — i.e. ≥ 0.9092.
+`upml_full` control 0.989162 — i.e. ≥ 0.90906.
 
 **Falsifier**: the fraction is flat within 3 points across all four layer
 counts and `mean_self` stays within 0.03 of 0.748852. That refutes "the CPML
