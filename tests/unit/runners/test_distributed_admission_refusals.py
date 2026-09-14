@@ -9,12 +9,26 @@ admission check plus the one position-dependent slab check.
 
 Every number below was MEASURED on ``origin/main`` (d56f68eb) before the
 refusals existed, on 2 virtual CPU devices (the root ``conftest.py`` default),
-with the harness these tests still use. None of the five raised, and none of
-them warned.
+with the harness these tests still use -- ``_build()`` for classes 1-4 and
+``_asym()`` for class 5, both of which now carry the source position and the
+probe row explicitly, because none of the digits below survive a change to
+either. None of the five raised, and none of them warned.
+
+Two conventions, stated rather than left implicit:
+
+* "energy" is ``np.sum(trace.astype(np.float64) ** 2)`` over the WHOLE probe
+  trace. Summing in float32 moves the 7th digit (9.953717e-04 instead of
+  9.953718e-04), and dropping the second probe moves the 4th
+  (9.951558e-04) -- which is why ``_build`` pins the two-probe row.
+* the RED assertions in this file are the REFUSALS. No test here re-measures
+  a RED number; they are recorded in docstrings as the provenance of the
+  refusals, measured out-of-tree on a pristine d56f68eb tree with these
+  fixtures.
 
 1. **Periodic / Bloch.** ``set_periodic_axes('y')`` (and the BoundarySpec
    ``periodic`` token, which sets the same attribute), 24x12x12 mm PEC box at
-   dx=1 mm, 40 steps, source at x=6 mm, probes at x=12/22 mm::
+   dx=1 mm, 40 steps, ``amplitude_kind='field'`` source at (6, 6, 6) mm,
+   probes at x=12/22 mm -- i.e. ``_build(periodic='y')`` exactly::
 
        max|Ez_distributed - Ez_native| = 1.963798e-04
        native peak |Ez|                = 1.090241e-03   (18.0% of peak)
@@ -63,20 +77,43 @@ them warned.
    Same class as the #579 DFT-plane refusal: no accumulator, no cross-rank
    reduce, so a registered monitor is dropped and the field comes back None.
 
-5. **x-absorber spanning ranks.** ``x_lo='cpml'``/``x_hi='pec'``, 6x8x8 mm at
-   dx=1 mm, ``cpml_layers=8``, 2 devices, 60 steps -> ``nx=15``, ``pad_x=1``,
-   ``nx_per=8``, so the x-hi window wants cells ``[0, 8)`` of a slab whose
-   owned cells are ``[1, 9)``::
+5. **x-absorber spanning ranks.** ``_asym(8, 6)``: ``x_lo='cpml'``/
+   ``x_hi='pec'`` with y/z CPML, 6x8x8 mm at dx=1 mm, ``cpml_layers=8``,
+   2 devices, 60 steps, field source at (3, 4, 4) mm, Ez probe row at
+   x = 1, 3, 5, 6 mm -> ``nx=15``, ``pad_x=1``, ``nx_per=8``, so the x-hi
+   window wants cells ``[0, 8)`` of a slab whose owned REAL cells are
+   ``[1, 8)`` (its 9th is a #623 alignment cell)::
 
-       max|Ez_distributed - Ez_native| = 2.207244      (50.0% of a 4.416633 peak)
-       x-hi-face probe alone           = 99.9994% of its own peak
+       native peak abs(Ez)             = 4.416633e+00  (probe x=3 mm)
+       max|Ez_distributed - Ez_native| = 2.207244e+00  (49.98% of peak)
+       probe at x=5 mm, one cell inside
+         the x-hi PEC face             = 1.646758e-01 wrong on its own
+                                         1.646768e-01 peak = 99.9994%
        warnings raised                 = 0
-       the SAME model at nx_per=17 (24 mm domain) = 9.7e-05 of peak (parity)
+       the SAME fixture at nx_per=17 (``_asym(8, 24)``, 24 mm domain)
+         = 1.005828e-06 on a 4.422700e+00 peak = 2.274240e-07 of peak
+           (parity; this is the negative control below)
+
+   The probe ON the x-hi face (x=6 mm) reads exactly 0.0 on both lanes, so
+   the 99.9994% probe is the one a cell inside it. The earlier draft of this
+   note quoted the control as ``9.7e-05`` of peak; that digit belongs to no
+   fixture that could be reproduced and is replaced by the measured
+   2.274240e-07 above. (For the record, the shipped ``_build`` DEFAULT
+   source at (6, 6, 6) mm -- which on a 6 mm domain sits on the x-hi PEC
+   plane and is discarded -- gives a different silent-wrong on the same
+   model: native peak 5.554087e-03 vs a distributed peak of 2.499657e-08,
+   rel 1.000003, and its 24 mm control sits at 3.05e-03 of peak, ABOVE the
+   1e-3 CPML parity tolerance. That last number sizes the S5 gap for lane B
+   and is recorded in the design note's S5.)
 
    One cell of overflow keeps every array shape valid, so nothing raises.
-   Two or more cells overflow past the slab end and XLA raises ``mul got
-   incompatible shapes for broadcasting: (20, 1, 1), (15, 53, 53)``, which
-   names no feature either.
+   Two or more cells overflow past the slab end and XLA raises a
+   broadcasting error that names no feature: with the same boundary spec but
+   ``cpml_layers=20`` and a 7x12x12 mm domain at dx=1 mm (nx=28, pad_x=0,
+   nx_per=14, ny=nz=53) main dies with ``mul got incompatible shapes for
+   broadcasting: (20, 1, 1), (15, 53, 53)``. The 8-layer/8 mm fixture the
+   earlier draft attached that quote to cannot produce it -- it gives
+   ``(8, 1, 1), (6, 25, 25)``.
 
 6. **Ghost-width formula.** ``rfx/api/_execute.py`` computed
    ``floor(K/2)+1`` while ``rfx/runners/distributed_nu.build_sharded_nu_grid``
@@ -135,7 +172,22 @@ def _devices():
 
 
 def _build(*, periodic="", boundary="pec", cpml_layers=None, port=None,
-           flux=False, ntff=False, domain=DOMAIN):
+           flux=False, ntff=False, domain=DOMAIN, source=(6e-3, 6e-3, 6e-3),
+           probes=None):
+    """THE measuring fixture for classes 1-4, spelled out.
+
+    ``source`` and ``probes`` are parameters and not constants because the
+    RED digits in the module docstring do not survive a change to either:
+    the class 2/3 energies are sums over the WHOLE trace, so the probe row
+    is part of the measurement (one probe at x=12 mm alone gives
+    9.951558e-04 and 1.982875e-03 instead of 9.953718e-04 and
+    1.983971e-03).  The defaults here are exactly what was measured.
+    """
+    if probes is None:
+        # The two-probe row of the measurement: x=12 mm and x=22 mm.  On a
+        # domain too short for 22 mm, fall back to the centre probe only.
+        probes = ((12e-3, 22e-3) if domain[0] >= 24e-3
+                  else (min(12e-3, domain[0] / 2),))
     kwargs = dict(freq_max=15e9, domain=domain, dx=DX, boundary=boundary)
     if cpml_layers is not None:
         kwargs["cpml_layers"] = cpml_layers
@@ -145,12 +197,13 @@ def _build(*, periodic="", boundary="pec", cpml_layers=None, port=None,
         if periodic:
             sim.set_periodic_axes(periodic)
         if port is None:
-            sim.add_source(position=(6e-3, 6e-3, 6e-3), component="ez",
+            sim.add_source(position=source, component="ez",
                            amplitude_kind="field")
         else:
-            sim.add_port(position=(6e-3, 6e-3, 6e-3), component="ez", **port)
-        sim.add_probe(position=(min(12e-3, domain[0] / 2), domain[1] / 2,
-                                domain[2] / 2), component="ez")
+            sim.add_port(position=source, component="ez", **port)
+        for _x in probes:
+            sim.add_probe(position=(_x, domain[1] / 2, domain[2] / 2),
+                          component="ez")
         if flux:
             sim.add_flux_monitor(axis="x", coordinate=domain[0] / 2, n_freqs=3)
         if ntff:
@@ -229,8 +282,13 @@ def test_the_runner_still_never_reads_periodic_axes():
     gate = inspect.getsource(dv2.refuse_unsupported_distributed_features)
     # Every mention of the attribute must live inside the gate itself (it
     # reads the attribute there, and quotes this claim in its docstring and
-    # in the refusal message).
-    assert src.count("_periodic_axes") == gate.count("_periodic_axes") == 3, (
+    # in the refusal message). The gate's source is a substring of the
+    # file, so equal counts IS "nothing outside the gate" -- asserted that
+    # way rather than against a magic total, which only pinned how many
+    # times the docstring happens to say the word.
+    assert gate.count("_periodic_axes") >= 1, (
+        "the admission gate no longer reads sim._periodic_axes at all")
+    assert src.count("_periodic_axes") == gate.count("_periodic_axes"), (
         "rfx/runners/distributed_v2.py now mentions _periodic_axes outside "
         "the admission gate; the periodic refusal rests on the runner NOT "
         "reading it, so re-derive the refusal rather than keeping it out of "
@@ -354,13 +412,35 @@ def test_the_dual_average_refusal_is_untouched():
 # ---------------------------------------------------------------------------
 
 def _asym(cpml_layers, domain_x_mm):
+    """THE class-5 measuring fixture, source and probe row included.
+
+    Both are stated explicitly because neither the RED number nor the
+    control reproduces without them:
+
+    * the source sits at x=3 mm, NOT at the ``_build`` default of 6 mm --
+      on the 6 mm domain 6 mm IS the x-hi PEC plane, where the preflight
+      reports the source as silently discarded and the trace collapses to
+      5.55e-03 (a different, smaller silent-wrong);
+    * the probe ROW is x = 1, 3, 5, 6 mm.  The probe at 6 mm reads exactly
+      0.0 on both lanes (it is on the PEC face), so the "99.9994% of its
+      own peak" probe in the docstring is the one at x=5 mm, a cell
+      inside it.
+
+    Measured on pristine main (d56f68eb): with this fixture ``_asym(8, 6)``
+    gives native peak 4.416633e+00 and max|dEz| 2.207244e+00 (49.98%), and
+    ``_asym(8, 24)`` gives 1.005828e-06 on 4.422700e+00 = 2.274240e-07.
+    """
     return _build(boundary=ASYM_SPEC, cpml_layers=cpml_layers,
-                  domain=(domain_x_mm * 1e-3, 8e-3, 8e-3))
+                  domain=(domain_x_mm * 1e-3, 8e-3, 8e-3),
+                  source=(3e-3, 4e-3, 4e-3),
+                  probes=(1e-3, 3e-3, 5e-3, 6e-3))
 
 
 def test_x_absorber_spanning_ranks_is_refused():
-    """RED: 2.207244 on a 4.416633 peak (50.0%), x-hi-face probe wrong by
-    99.9994% of its own peak, 0 warnings (see docstring)."""
+    """RED: 2.207244 on a 4.416633 peak (49.98%), and the probe one cell
+    inside the x-hi face wrong by 99.9994% of its own peak, 0 warnings --
+    with the ``_asym`` fixture below, whose source and probe row are part of
+    the measurement (see module docstring)."""
     with pytest.raises(ValueError, match="x CPML absorber"):
         _run_distributed(_asym(8, 6), n_steps=8)
 
@@ -372,7 +452,12 @@ def test_x_absorber_refusal_reports_the_slab_arithmetic():
     for token in ("cpml_layers=8", "nx=15", "n_devices=2", "nx_per=8",
                   "pad_x=1"):
         assert token in msg, f"{token!r} missing from: {msg}"
-    assert "fewer" in msg and "devices" in msg, "suggest fewer devices"
+    # At n_devices=2 there IS no smaller multi-device count, so the message
+    # must not recommend "n_devices=1" (that is "omit devices=" said twice);
+    # it names the depth that would fit and the single-device way out.
+    assert "n_devices=1" not in msg, msg
+    assert "omit devices=" in msg, msg
+    assert "reduce cpml_layers" in msg, msg
 
 
 def test_x_absorber_refusal_also_fires_through_the_public_dispatch():
@@ -405,9 +490,10 @@ def test_the_x_absorber_condition_is_the_window_arithmetic():
 
 
 def test_a_fitting_x_absorber_is_not_refused():
-    """Negative control for class 5: the same asymmetric model with a wider
-    domain (nx=33, nx_per=17) ran on main at 9.7e-05 of peak and must keep
-    running."""
+    """Negative control for class 5: the SAME fixture with a wider domain
+    (nx=33, nx_per=17, so the 8-layer absorber fits) ran on main at
+    1.005828e-06 on a 4.422700e+00 peak = 2.274240e-07 of peak, and must
+    keep running."""
     res = _run_distributed(_asym(8, 24), n_steps=8)
     assert res.time_series is not None
 
@@ -568,3 +654,174 @@ def test_the_tfsf_and_waveguide_fallbacks_are_deliberately_unchanged():
     assert np.max(np.abs(np.asarray(res.time_series))) > 0
     assert any("Falling back to single-device" in str(w.message)
                for w in caught), [str(w.message) for w in caught]
+
+
+# ---------------------------------------------------------------------------
+# The fallbacks carry the monitors too, and the two entry points must agree.
+#
+# REGRESSION GUARD. The gate is called from TWO places: the public dispatch
+# in ``rfx/api/_execute.py`` and ``run_distributed()`` itself. The runner's
+# copy sits AFTER the TFSF / waveguide single-device fallbacks on purpose --
+# those run the whole model on one device, and that lane honours every one of
+# the four features. The API copy therefore has to be skipped for exactly the
+# models the runner will hand back to ``sim.run()``, or a working call gets
+# refused at the door.
+#
+# MEASURED on pristine main (d56f68eb), 2 virtual CPU devices, 0.13x0.04x0.04
+# m CPML box, ``add_tfsf_source(f0=2.5e9, bandwidth=0.5)``, one Ez probe at
+# the centre, 30 steps: ``run(devices=...)`` fell back (1 warning) and
+# returned ``flux_monitors == ['flux_x_0']`` / an ``ntff_data``, probe peak
+# 1.401931e-12 -- identical to the native run and to ``run_distributed()``
+# called directly. An API-level gate placed before the fallbacks turned that
+# into ``NotImplementedError`` while ``run_distributed()`` on the SAME model
+# still ran, i.e. the two public entry points disagreed. The three fallback
+# tests in ``tests/unit/runners/test_distributed.py`` carry point probes only
+# and so could not see it; these do.
+# ---------------------------------------------------------------------------
+
+def _tfsf_sim(*, flux=False, ntff=False):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sim = Simulation(freq_max=5e9, domain=(0.13, 0.04, 0.04),
+                         boundary="cpml")
+        sim.add_tfsf_source(f0=2.5e9, bandwidth=0.5)
+        sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
+        if flux:
+            sim.add_flux_monitor(axis="x", coordinate=0.09, n_freqs=3)
+        if ntff:
+            sim.add_ntff_box((0.03, 0.01, 0.01), (0.10, 0.03, 0.03),
+                             n_freqs=3)
+    return sim
+
+
+def _waveguide_sim(*, flux=False):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sim = Simulation(freq_max=10e9, domain=(0.13, 0.04, 0.04),
+                         boundary="cpml")
+        sim.add_waveguide_port(
+            x_position=0.01, y_range=(0.005, 0.035),
+            z_range=(0.005, 0.035), mode=(1, 0), mode_type="TE",
+            direction="+x", f0=5e9, bandwidth=0.5,
+        )
+        sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
+        if flux:
+            sim.add_flux_monitor(axis="x", coordinate=0.09, n_freqs=3)
+    return sim
+
+
+@pytest.mark.parametrize("kind,kwargs", [
+    ("tfsf", dict(flux=True)),
+    ("tfsf", dict(ntff=True)),
+    ("waveguide", dict(flux=True)),
+])
+def test_a_fallback_model_with_a_monitor_still_falls_back_through_run(
+        kind, kwargs):
+    """The standard RCS / transmission setup: TFSF (or a waveguide port)
+    PLUS a flux monitor or an NTFF box. ``run_distributed()`` hands it to
+    the single-device lane, which populates the monitor, so the public
+    ``run(devices=...)`` must do the same and not refuse it."""
+    sim = (_tfsf_sim(**kwargs) if kind == "tfsf"
+           else _waveguide_sim(**kwargs))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        res = sim.run(n_steps=30, devices=_devices(), skip_preflight=True)
+    assert any("Falling back to single-device" in str(w.message)
+               for w in caught), [str(w.message) for w in caught]
+    if kwargs.get("flux"):
+        assert res.flux_monitors is not None, (
+            "the fallback dropped the flux monitor")
+        assert list(res.flux_monitors) == ["flux_x_0"], res.flux_monitors
+    if kwargs.get("ntff"):
+        assert res.ntff_data is not None, "the fallback dropped the NTFF box"
+
+
+@pytest.mark.parametrize("kind,kwargs", [
+    ("tfsf", dict(flux=True)),
+    ("tfsf", dict(ntff=True)),
+    ("waveguide", dict(flux=True)),
+])
+def test_both_entry_points_agree_on_a_fallback_model_with_a_monitor(
+        kind, kwargs):
+    """``sim.run(devices=...)`` and ``run_distributed()`` must reach the same
+    verdict on the same model. Before the API gate was guarded on "the runner
+    will actually shard", the first refused and the second ran."""
+    from rfx.runners.distributed_v2 import run_distributed
+
+    def build():
+        return (_tfsf_sim(**kwargs) if kind == "tfsf"
+                else _waveguide_sim(**kwargs))
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        via_api = build().run(n_steps=30, devices=_devices(),
+                              skip_preflight=True)
+        via_runner = run_distributed(build(), n_steps=30,
+                                     devices=_devices())
+    np.testing.assert_array_equal(np.asarray(via_api.time_series),
+                                  np.asarray(via_runner.time_series))
+    assert ((via_api.flux_monitors is None)
+            == (via_runner.flux_monitors is None))
+    assert ((via_api.ntff_data is None) == (via_runner.ntff_data is None))
+
+
+def test_a_sharding_model_with_a_monitor_is_still_refused_at_the_door():
+    """The guard is on the FALLBACK, not on the monitors: a model the runner
+    really will shard keeps its refusal at the public dispatch."""
+    with pytest.raises(NotImplementedError, match="add_flux_monitor"):
+        _run_api(_build(flux=True))
+
+
+# ---------------------------------------------------------------------------
+# The class-5 message must not blame an absorber the caller never declared.
+# ---------------------------------------------------------------------------
+
+PEC_X_SPEC = BoundarySpec(
+    x=Boundary(lo="pec", hi="pec"),
+    y=Boundary(lo="cpml", hi="cpml"),
+    z=Boundary(lo="cpml", hi="cpml"),
+)
+
+
+def test_pec_x_faces_are_still_refused_but_the_message_says_why():
+    """``x='pec'`` with y/z CPML declares NO x absorber, yet the runner
+    applies both x-face CPML windows anyway -- it never reads
+    ``grid.face_pads`` (the S5 gap the direction note records). So the
+    refusal is right (on pristine main this died in XLA: 6x8x8 mm gave "mul
+    got incompatible shapes for broadcasting: (8, 1, 1), (5, 25, 25)" and
+    8x8x8 mm gave "(8, 1, 1), (6, 25, 25)"), but it must not tell the caller
+    to shrink an absorber they never asked for without saying that the lane
+    adds it."""
+    sim = _build(boundary=PEC_X_SPEC, cpml_layers=8,
+                 domain=(8e-3, 8e-3, 8e-3), source=(4e-3, 4e-3, 4e-3),
+                 probes=(4e-3,))
+    with pytest.raises(ValueError) as excinfo:
+        _run_distributed(sim, n_steps=8)
+    msg = str(excinfo.value)
+    assert "x CPML absorber" in msg, msg
+    assert "declares no CPML on x-lo or x-hi" in msg, msg
+    assert "grid.pad_x_lo=0" in msg and "grid.pad_x_hi=0" in msg, msg
+    assert "does not read grid.face_pads" in msg, msg
+
+
+def test_the_absorber_remedy_never_recommends_a_one_device_run():
+    """``fits`` used to search ``range(1, n_devices)``, which contains 1 for
+    every real grid -- so the remedy could read "n_devices=1 is the largest
+    count that fits", i.e. "omit devices=" said twice. It now searches from
+    2 up and falls through to naming the depth that would fit."""
+    from rfx.runners.distributed_v2 import check_x_absorber_fits_ranks
+
+    # n_devices=2: no smaller MULTI-device count exists.
+    with pytest.raises(ValueError) as excinfo:
+        check_x_absorber_fits_ranks(nx=15, n_devices=2, nx_per=8, pad_x=1,
+                                    ghost=1, cpml_layers=8)
+    msg = str(excinfo.value)
+    assert "n_devices=1" not in msg, msg
+    assert "reduce cpml_layers (<= 7 fits at n_devices=2)" in msg, msg
+
+    # n_devices=4 with a depth that fits at 2: the recommendation is real.
+    with pytest.raises(ValueError) as excinfo:
+        check_x_absorber_fits_ranks(nx=40, n_devices=4, nx_per=10, pad_x=0,
+                                    ghost=1, cpml_layers=15)
+    msg = str(excinfo.value)
+    assert "n_devices=2 is the largest count above 1 that fits" in msg, msg
