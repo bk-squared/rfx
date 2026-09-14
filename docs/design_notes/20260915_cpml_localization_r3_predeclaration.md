@@ -103,3 +103,30 @@ no window is edited after its declaring commit; `m` is written into
 ## Results
 
 (appended after each stage; nothing above this line changes)
+
+### Stage 1 — controls (run once on 97c6f4e4; no candidate present, `candidate_env` empty, rfx cpml == frozen baseline byte for byte)
+
+Contraction-suppressed baseline vs unflagged baseline, RMS-to-float64 ratio
+per field (a reroll of the SAME arithmetic), and the fraction of differing
+elements where the reroll landed farther from the truth:
+
+| fixture | ex | ey | ez | hx | hy | hz | farther fraction range |
+|---|---|---|---|---|---|---|---|
+| uniform8 | 1.732 | 1.628 | 1.534 | 0.501 | 0.478 | 0.377 | 0.52-0.58 |
+| graded8 | 0.977 | 0.759 | 0.825 | 0.795 | 0.751 | 0.580 | 0.43-0.49 |
+| mixed8 | 1.425 | 0.947 | 1.150 | 0.837 | 0.877 | 0.738 | 0.48-0.54 |
+| uniform4 | 0.842 | 1.168 | 0.694 | 0.645 | 0.303 | 0.506 | 0.40-0.49 |
+| uniform16 | 1.263 | 1.163 | 1.227 | 0.546 | 0.551 | 0.487 | 0.47-0.48 |
+| periodic8 | 1.432 | 1.131 | 1.468 | 1.117 | 1.188 | 1.057 | 0.44-0.53 |
+| kappa8 | 1.856 | 1.796 | 1.853 | 0.523 | 0.465 | 0.412 | 0.48-0.56 |
+
+Reading: a known-harmless recompilation of the same arithmetic moves the
+RMS distance to the float64 truth anywhere from 0.30x to 1.86x, field by
+field, and lands farther on about half the differing elements. That is the
+class the r2 G5-3 gate (1.05x, elementwise) was testing against; the r2
+candidate's own ratios (0.28-1.06) sat well inside it.
+
+**Derived window, written before stage 2: `m = 0.8555425507215482`**, i.e.
+G5-3′ requires `RMS_cand <= 1.8555 x RMS_base` per field. The divergence
+control curves `d_flag(t)` and the 1-ulp curves are stored in
+`validation/research/nu_cost/g5r3/controls.json` for G5-5′.
