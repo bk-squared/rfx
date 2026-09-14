@@ -85,25 +85,39 @@ report-text change and should be re-blessed as one, not normalised here.
 
 Coverage, measured -- and what it does NOT cover
 ------------------------------------------------
-44 fixtures, witnessing 41 of the 74 literal ``code=`` slugs in
-``rfx/api/_preflight.py`` plus the dynamic ``uncoded`` and
-``sparam_routing_msl`` paths. Stated because the split-inventory that seeded
-this lock projected "~56 of 74" for its 12-fixture set; the measured figure
-for that set was 32, and eight targeted fixtures were added to reach 41.
+46 fixtures, witnessing 45 of the 74 literal ``code=`` slugs in
+``rfx/api/_preflight.py`` and ``rfx/preflight/`` plus the dynamic ``uncoded``
+and ``sparam_routing_msl`` paths. Stated because the split-inventory that
+seeded this lock projected "~56 of 74" for its 12-fixture set; the measured
+figure for that set was 32, and eight targeted fixtures were added to reach
+41. Leg 2 added the last two of its own family (``conformal_fine_dx`` and
+``leontovich_thin_film_offband``), which carry four more: ``conformal_nan``,
+the two ``thin_conductor_leontovich_*`` slugs, and ``port_aperture_snap`` as
+a side effect of the WR-90 geometry.
 
-The 33 unwitnessed codes are the honest hole: ``conformal_nan``,
-``floating_port``, ``source_decoupled``, ``unresolved_pulse``, the four
-``precision_*``/``*_nonuniform_lane_unsupported`` guards, the three
-``thin_conductor_*`` ones, ``port_aperture_snap`` /
+The 29 unwitnessed codes are the honest hole: ``floating_port``,
+``source_decoupled``, ``unresolved_pulse``, the four
+``precision_*``/``*_nonuniform_lane_unsupported`` guards,
+``thin_conductor_graded_node`` / ``source_on_graded_node`` /
+``wire_port_on_graded_node`` (the mesh leg),
 ``port_aperture_unrasterizable`` / ``waveguide_reference_plane`` /
 ``port_index_mirror_asymmetry`` / ``record_far_boundary_band_below_cutoff`` /
 ``layout_measured_from_band_low_edge`` / ``waveguide_setup_audit_skipped``
 (the waveguide leg), ``coaxial_port_junction_short`` (the coax leg),
 ``refplane_near_field`` / ``refplane_partial_optin`` /
-``wire_port_end_gap_to_conductor`` (the lumped-port leg), and the rest. Each
-needs its own narrow fixture. A leg that moves one of those checks is NOT
-covered by this lock and should add the fixture in its own PR -- what still
-gates it there is
+``wire_port_end_gap_to_conductor`` (the lumped-port leg), and the rest.
+
+Two of the 29 are unreachable from a plain builder rather than merely
+unwritten, and leg 2 hit one of them: ``campaign_statics_unavailable`` is
+emitted only when the production grid build or the production assembly
+RAISES, and its message interpolates the exception repr, so a fixture for it
+would have to both malform the config deliberately and pin an exception
+string. ``wire_port_dead_cell_classification_unavailable`` is the same shape.
+Both are named here rather than left to look like oversights.
+
+Each of the rest needs its own narrow fixture. A leg that moves one of those
+checks is NOT covered by this lock and should add the fixture in its own PR
+-- what still gates it there is
 ``tests/unit/preflight/test_preflight_advisory_emission_contract.py``'s
 frozen site count, which is a surface freeze, not a behaviour witness.
 
@@ -150,6 +164,8 @@ LOCK_PROVENANCE = {
         "tests/unit/preflight/test_pec_face_short_of_domain_wall.py,"
         "tests/unit/ports/test_msl_realized_port_contract.py,"
         "tests/unit/farfield/test_ntff_small_gp_advisory.py,"
+        "tests/unit/geometry/test_subpixel_pec.py,"
+        "tests/unit/materials/test_thin_conductor_honesty.py,"
         "tests/data/preflight_split_snapshot"
     ),
     "generator": (
@@ -716,6 +732,46 @@ def _tfsf_lumped_rlc_sim():
     return sim
 
 
+def _conformal_fine_dx_sim():
+    """WR-90 with conformal PEC on the y/z faces at dx = 1 mm.
+
+    ``tests/unit/geometry/test_subpixel_pec.py:108`` ``_wr90_sim``, at
+    ``conformal=True``. The only witness in this corpus for ``conformal_nan``,
+    which ``_validate_cfg_conformal_fine_dx`` emits, and the only one reached
+    through a real ``Simulation``: that check's three behavioural tests
+    (``test_preflight_guards.py:758-778``) call the UNBOUND method on a
+    ``SimpleNamespace``, so none of them renders a report. It also happens to
+    be the corpus's first witness for ``port_aperture_snap``.
+    """
+    from tests.unit.geometry.test_subpixel_pec import _wr90_sim
+
+    return _wr90_sim(conformal=True)
+
+
+def _leontovich_thin_film_offband_sim():
+    """A 35 um Leontovich sheet at f0 = 10 GHz driven by a 5 GHz source.
+
+    Composite of ``_sim`` (L46) and ``_sheet`` (L54) of
+    ``tests/unit/materials/test_thin_conductor_honesty.py`` plus the body of
+    that file's ``_preflight_for`` (L165), driven at the two operating points
+    ``test_leontovich_preflight_advisories_fire_and_stay_off`` (L157) asserts
+    on, combined into ONE sim so both #669 advisories fire in one report:
+    35 um is below 3 skin depths (151 um) and 10 GHz is 100% away from the
+    5 GHz source centre. That test is the behavioural gate; this is the text
+    witness, and it is the only one in the corpus for either
+    ``thin_conductor_leontovich_*`` code.
+    """
+    import tests.unit.materials.test_thin_conductor_honesty as mod
+    from rfx import GaussianPulse
+
+    sim = mod._sim()
+    sim.add_thin_conductor(mod._sheet(), sigma_bulk=1e4, thickness=35e-6,
+                           surface_impedance_f0=10e9)
+    sim.add_source((3e-3, 3e-3, 1.5e-3), "ez",
+                   waveform=GaussianPulse(f0=5e9), amplitude_kind="field")
+    return sim
+
+
 def _ntff_small_ground_plane_sim():
     """The cv05-class 60 x 55 mm ground plane under a patch.
 
@@ -855,6 +911,16 @@ _FIXTURES = (
      lambda: _inverse_design("_microstrip_sim", 1.5e-3), {}, None),
     ("ntff_small_ground_plane",                                   # ntff leg
      _ntff_small_ground_plane_sim, {}, None),
+    # -- 37-38. leg 2 gap closers -------------------------------------------
+    # #980 Phase 3 leg 2 moves the ten pec_geometry checks. Twelve of their
+    # fourteen codes were already witnessed above; these two fixtures cover
+    # the two methods that had NO witness in this corpus, so the motion is
+    # gated rather than merely counted. Added BEFORE the move, on the tree
+    # where the bodies still sit in the facade, which is what makes them a
+    # pre-move baseline instead of a post-hoc blessing.
+    ("conformal_fine_dx", _conformal_fine_dx_sim, {}, None),      # leg 2
+    ("leontovich_thin_film_offband",                              # leg 2
+     _leontovich_thin_film_offband_sim, {}, None),
 )
 
 _IDS = [fid for fid, _, _, _ in _FIXTURES]
