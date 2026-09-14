@@ -95,6 +95,45 @@ H5  The TF/SF auxiliary-grid absorber echo (#888 / PR #1005) reaching the
     H5 is declared NOT-PRIMARY if (a) and (b) pass; it is re-opened if (b)
     fails with |B_fit| >> |E_vacuum|.
 
+H5-bis  CORRECTION to H5, written before the sweep was read and before the
+    ``auxecho`` arm was run. The analytic argument above is WRONG, and its
+    defect names the second attempt this hypothesis is allowed under R2: the
+    1-D auxiliary absorber sits at a FIXED AUXILIARY-GRID index
+    (``n_1d - n_cpml_1d``, rfx/sources/tfsf.py:264-274), and the target's
+    auxiliary index moves one-for-one with its 3-D x index. So the direct/echo
+    delay AT THE TARGET is ``tau(x0) = 2 (X_abs - x0) / c`` and the echo phase
+    relative to the direct illumination rotates as ``exp(+2 j k x0)``.
+    Collecting the far-field phase for backscatter observation:
+
+        E_back(x0) = S_back E0 exp(-2 j k x0)  +  S_fwd E0 rho exp(-2 j k X_abs)
+
+    -- the same rotating-plus-constant SHAPE as H1, because the echo arrives
+    travelling -x and its contribution toward -x_hat is FORWARD scattering.
+    The two are told apart by WHERE the constant term comes from, which is
+    exactly witness (b): under H1 the constant term is present with no target
+    (vacuum run); under H5-bis it is proportional to the target's own forward
+    scattering and vanishes in vacuum.
+    Quantitative PRE-DECLARED prediction (arm ``auxecho``; both inputs are
+    measured/derived independently of the sweep being explained):
+      rho and its phase are measured by replaying the 1-D auxiliary grid ALONE
+      on this branch and time-gating the echo at the target's auxiliary index,
+      and ``S_fwd / S_back`` comes from the committed exact-Mie oracle
+      ``tests/fixtures/rcs_sphere_mie/mie_oracle.py::mie_S1_S2`` (complex;
+      ``validate_oracle()`` is run first), as ``S1(theta=0) / S1(theta=pi)``.
+      (h) ``r_pred`` = rho * |S_fwd / S_back|. Gate:
+          ``|r_fit - r_pred| / r_pred`` <= 0.35 for H5-bis TRUE; >= 1.0 for
+          H5-bis FALSE.
+      (i) phase: ``arg(B_fit / A_fit)`` against
+          ``arg(rho_complex * S_fwd / S_back)``. Gate: agreement within
+          +-25 degrees MODULO 180 degrees for TRUE -- the modulo is declared
+          because S1 and S2 coincide at theta = 0 but differ by a sign at
+          theta = pi, so an overall sign is a convention hazard here and is
+          not evidence either way.
+      Admissibility of the time gate: the trace envelope minimum between the
+      direct and echo arrivals must sit at least 20 dB below BOTH arrival
+      peaks. If it does not, the split is not clean, the arm is recorded as
+      NON-CLOSING and no rho is quoted.
+
 Record-length / ring-down witness (mandatory before any DFT number is quoted)
 ----------------------------------------------------------------------------
 Arm ``record``: re-run the two x offsets carrying sigma_max and sigma_min at
@@ -578,11 +617,135 @@ def arm_fit(_args):
     })
 
 
+GATE_AUXECHO_R_TRUE = 0.35
+GATE_AUXECHO_R_FALSE = 1.0
+GATE_AUXECHO_PHASE_DEG = 25.0
+GATE_AUXECHO_GATE_FLOOR_DB = -20.0
+
+
+def arm_auxecho(_args):
+    """Replay the 1-D auxiliary grid alone and predict the constant term."""
+    sys.path.insert(0, os.path.join(_REPO_ROOT, "tests", "fixtures",
+                                    "rcs_sphere_mie"))
+    from mie_oracle import mie_S1_S2, validate_oracle
+    witnesses = validate_oracle()
+    print("[auxecho] Mie oracle self-check PASS:",
+          {k: (round(float(v), 6) if np.isscalar(v) else v)
+           for k, v in witnesses.items()})
+
+    from rfx.sources.tfsf import update_tfsf_1d
+
+    grid, _, n_steps, _, meta = build_case((0, 0, 0))
+    tfsf, _ = _tfsf_and_ntff(grid, cpml_layers=CPML_LAYERS)
+    cfg, st = tfsf
+    dx, dt = grid.dx, grid.dt
+    n_1d = int(np.asarray(st.e1d).shape[0])
+    trace = np.zeros((n_steps, n_1d))
+    for n in range(n_steps):
+        st = update_tfsf_1d(cfg, st, dx, dt, n * dt)
+        trace[n] = np.asarray(st.e1d)
+
+    # target's 1-D auxiliary index at offset 0 (sphere centre cell)
+    i_centre = grid.nx // 2
+    p0 = int(cfg.i0) + (i_centre - int(cfg.x_lo))
+    x_abs = n_1d - int(cfg.n_cpml)          # first absorbing cell, aux index
+    rows = []
+    k0 = 2 * np.pi * F0 / C0
+    t = np.arange(n_steps) * dt
+    kern = np.exp(-2j * np.pi * F0 * t)
+    for off in (-10, -5, 0, 5, 10):
+        p = p0 + off
+        s = trace[:, p]
+        env = np.abs(s)
+        # direct arrival = first envelope peak; echo = the later one
+        i_dir = int(np.argmax(env[: n_steps // 2]))
+        i_echo = int(np.argmax(env[i_dir + 1:])) + i_dir + 1
+        if i_echo <= i_dir + 5:
+            rows.append({"offset": off, "gate_clean": False})
+            continue
+        i_split = i_dir + int(np.argmin(env[i_dir:i_echo]))
+        floor_db = 20 * np.log10(max(env[i_split], 1e-300)
+                                 / max(env[i_dir], 1e-300))
+        clean = floor_db <= GATE_AUXECHO_GATE_FLOOR_DB
+        d_dft = complex(np.sum(s[:i_split] * kern[:i_split]) * dt)
+        e_dft = complex(np.sum(s[i_split:] * kern[i_split:]) * dt)
+        rho = abs(e_dft) / abs(d_dft)
+        rows.append({
+            "offset": off, "aux_index": p, "i_direct": i_dir,
+            "i_echo": i_echo, "i_split": i_split,
+            "gate_floor_db": float(floor_db), "gate_clean": bool(clean),
+            "rho": float(rho),
+            "echo_over_direct": [float((e_dft / d_dft).real),
+                                 float((e_dft / d_dft).imag)],
+            "delay_steps": int(i_echo - i_dir),
+            "delay_steps_predicted": int(round(2 * (x_abs - p) * dx
+                                               / (C0 * dt))),
+        })
+        print(f"  aux offset {off:+3d} (index {p}): rho = {rho:.5f}, "
+              f"gate floor {floor_db:6.1f} dB "
+              f"({'clean' if clean else 'NOT CLEAN'}), delay "
+              f"{i_echo - i_dir} steps vs predicted "
+              f"{rows[-1]['delay_steps_predicted']}")
+
+    good = [r for r in rows if r.get("gate_clean")]
+    if not good:
+        print("[auxecho] NON-CLOSING: no offset gave a clean direct/echo split")
+        return _emit("auxecho", {"meta": meta, "rows": rows,
+                                 "closing": False})
+    rho_mean = float(np.mean([r["rho"] for r in good]))
+    ka_eff = 2 * np.pi * (KA * LAM / (2 * np.pi)) / LAM
+    s_fwd = mie_S1_S2(ka_eff, 0.0, n_max=20)[0]
+    s_back = mie_S1_S2(ka_eff, np.pi, n_max=20)[0]
+    ratio = s_fwd / s_back
+    r_pred = rho_mean * abs(ratio)
+    # phase of the constant term relative to the rotating one, from the replay
+    # at the reference offset 0 (the fit's x0 = 0 point)
+    ref = [r for r in good if r["offset"] == 0]
+    phase_pred = None
+    if ref:
+        eo = complex(*ref[0]["echo_over_direct"])
+        phase_pred = float(np.degrees(np.angle(eo * ratio)))
+    out = {"meta": meta, "rows": rows, "closing": True,
+           "rho_mean": rho_mean, "x_abs_aux_index": x_abs,
+           "aux_n_1d": n_1d, "aux_i0": int(cfg.i0),
+           "aux_n_cpml": int(cfg.n_cpml), "aux_src_idx": int(cfg.src_idx),
+           "mie_S_fwd": [float(s_fwd.real), float(s_fwd.imag)],
+           "mie_S_back": [float(s_back.real), float(s_back.imag)],
+           "abs_S_fwd_over_S_back": float(abs(ratio)),
+           "r_pred": r_pred, "phase_pred_deg": phase_pred, "k0": k0,
+           "gates": {"r_true": GATE_AUXECHO_R_TRUE,
+                     "r_false": GATE_AUXECHO_R_FALSE,
+                     "phase_deg": GATE_AUXECHO_PHASE_DEG,
+                     "gate_floor_db": GATE_AUXECHO_GATE_FLOOR_DB}}
+    print(f"[auxecho] rho = {rho_mean:.5f}, |S_fwd/S_back| = {abs(ratio):.5f} "
+          f"-> r_pred = {r_pred:.5f}")
+    try:
+        ft = _load_latest("fit")
+        r_fit = ft["r"]
+        rel = abs(r_fit - r_pred) / r_pred
+        a_fit, b_fit = complex(*ft["A"]), complex(*ft["B"])
+        phase_fit = float(np.degrees(np.angle(b_fit / a_fit)))
+        dphi = abs((phase_fit - phase_pred + 90.0) % 180.0 - 90.0) \
+            if phase_pred is not None else None
+        out.update({"r_fit": r_fit, "rel_r": rel,
+                    "phase_fit_deg": phase_fit, "phase_delta_mod180_deg": dphi})
+        print(f"[auxecho] r_fit = {r_fit:.5f} -> |r_fit-r_pred|/r_pred = "
+              f"{rel:.3f} (TRUE<= {GATE_AUXECHO_R_TRUE}, "
+              f"FALSE>= {GATE_AUXECHO_R_FALSE})")
+        if dphi is not None:
+            print(f"[auxecho] arg(B/A) = {phase_fit:+.1f} deg vs predicted "
+                  f"{phase_pred:+.1f} deg; |delta| mod 180 = {dphi:.1f} deg "
+                  f"(gate {GATE_AUXECHO_PHASE_DEG})")
+    except SystemExit:
+        print("[auxecho] no fit result yet; prediction recorded alone")
+    return _emit("auxecho", out)
+
+
 ARMS = {
     "raster": arm_raster, "equiv": arm_equiv, "origin": arm_origin,
     "xsweep": arm_xsweep, "ysweep": arm_ysweep, "vacuum": arm_vacuum,
     "record": arm_record, "energy": arm_energy, "cpmlladder": arm_cpmlladder,
-    "fit": arm_fit,
+    "fit": arm_fit, "auxecho": arm_auxecho,
 }
 
 
