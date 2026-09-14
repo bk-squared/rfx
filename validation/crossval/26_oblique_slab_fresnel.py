@@ -79,7 +79,8 @@ def staged_commit() -> str:
 
 def run_rfx_arm(spec: dict, *, n_cpml: int | None = None, cpml_kwargs: dict | None = None,
                 theta0_run_deg: float | None = None, eps_scale: float = 1.0,
-                nx_interior: int | None = None, dx_div: int = 1, smoke: bool = False, verbose: bool = True) -> dict:
+                nx_interior: int | None = None, dx_div: int = 1, smoke: bool = False, verbose: bool = True,
+                settling_bar: float | None = None) -> dict:
     """One arm. ``theta0_run_deg`` / ``eps_scale`` / ``n_cpml`` / ``cpml_kwargs``
     are the RUN-side knobs (falsifiers and the depth ladder); the oracle is
     always the declared one, applied by the caller. ``dx_div = K`` refines
@@ -87,6 +88,23 @@ def run_rfx_arm(spec: dict, *, n_cpml: int | None = None, cpml_kwargs: dict | No
     offsets, tail window and extension x K; the aux grid's constants are
     tfsf_2d's and are not scaled)."""
     n_cpml = O.declared_n_cpml(spec) if n_cpml is None else int(n_cpml)
+
+    # The settling bar this run records against.  ``settling_bar`` may only
+    # TIGHTEN the declared -40 dB witness, never widen it -- the same admissible
+    # interval and the same reason as the slab family's
+    # ``comparators/slab_rig.py`` (a widened bar disables the witness it is
+    # supposed to be; a non-positive one passes a ``<= limit`` test while
+    # measuring nothing).  A tightened bar is a DIAGNOSTIC rung: ``main``
+    # requires ``--tag`` with it, so it can never overwrite ``rfx.json``.
+    tail_limit = O.SETTLING_LIMIT
+    if settling_bar is not None:
+        if not (0.0 < float(settling_bar) <= O.SETTLING_LIMIT):
+            raise ValueError(
+                f"settling_bar {settling_bar} is outside (0, {O.SETTLING_LIMIT}]: a settling bar "
+                f"may only TIGHTEN the declared -40 dB witness, and must be positive; "
+                "the witness bar is never widened")
+        tail_limit = float(settling_bar)
+
     import jax
     import jax.numpy as jnp
     import rfx.boundaries.cpml as cpml_mod
@@ -210,7 +228,7 @@ def run_rfx_arm(spec: dict, *, n_cpml: int | None = None, cpml_kwargs: dict | No
     extensions = 0
     cap_hit = False
     if not smoke:
-        while max(refl_rel, trans_rel) >= O.SETTLING_LIMIT or purity >= O.TAIL_PURITY_LIMIT:
+        while max(refl_rel, trans_rel) >= tail_limit or purity >= O.TAIL_PURITY_LIMIT:
             if n_steps + extend > t_cap:
                 cap_hit = True
                 break
@@ -226,8 +244,9 @@ def run_rfx_arm(spec: dict, *, n_cpml: int | None = None, cpml_kwargs: dict | No
     rec = dict(rec, n_steps_min=rec["n_steps"], n_steps=int(n_steps), extensions=int(extensions),
                extend_steps=extend, cap_steps=int(t_cap), cap_reached=bool(cap_hit))
     tail = {"window_steps": tw, "purity_inc_rel": purity, "scat_refl_rel": refl_rel, "total_trans_rel": trans_rel,
-            "purity_limit": O.TAIL_PURITY_LIMIT, "limit": O.SETTLING_LIMIT,
-            "ok": bool(purity < O.TAIL_PURITY_LIMIT and refl_rel < O.SETTLING_LIMIT and trans_rel < O.SETTLING_LIMIT
+            "purity_limit": O.TAIL_PURITY_LIMIT, "limit": tail_limit,
+            "declared_limit": O.SETTLING_LIMIT, "settling_bar": (None if settling_bar is None else float(settling_bar)),
+            "ok": bool(purity < O.TAIL_PURITY_LIMIT and refl_rel < tail_limit and trans_rel < tail_limit
                        and not cap_hit)}
 
     # --- spectra: the envelope carries exp(-j 2 pi f0 t); the +j kernel puts
@@ -353,11 +372,16 @@ def main(argv=None) -> int:
     ap.add_argument("--dx-div", type=int, default=None, choices=(1, 2),
                     help="refine the rig in cells by K (default: the arm's declared primary recipe, ARM_DX_DIV; "
                          "an explicit value is a diagnostic rung and requires --tag)")
+    ap.add_argument("--settling-bar", type=float, default=None,
+                    help="TIGHTEN the -40 dB settling witness for this run (admissible interval "
+                         "(0, SETTLING_LIMIT]; never widened, the slab family's rule). A diagnostic "
+                         "rung: requires --tag, so it can never overwrite rfx.json")
     ap.add_argument("--tag", default=None, help="write rfx__<tag>.json instead of rfx.json (diagnostic arms)")
     ap.add_argument("--no-plots", action="store_true")
     a = ap.parse_args(argv)
-    if (a.n_cpml is not None or a.dx_div is not None) and not a.tag and not a.smoke:
-        ap.error("--n-cpml / --dx-div are diagnostics and require --tag")
+    if (a.n_cpml is not None or a.dx_div is not None or a.settling_bar is not None) \
+            and not a.tag and not a.smoke:
+        ap.error("--n-cpml / --dx-div / --settling-bar are diagnostics and require --tag")
 
     out_dir = a.out_dir or (tempfile.mkdtemp(prefix="cv26_smoke_") if a.smoke else RESULTS_DIR)
     os.makedirs(out_dir, exist_ok=True)
@@ -385,7 +409,7 @@ def main(argv=None) -> int:
     doc = {"schema": O.SCHEMA, "case_id": O.CASE_ID, "commit": staged_commit(),
            "date_utc": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
            "falsifier": a.falsifier, "smoke": bool(a.smoke), "tag": a.tag, "n_cpml_override": a.n_cpml,
-           "dx_div_override": a.dx_div, "arm_dx_div": dict(O.ARM_DX_DIV),
+           "dx_div_override": a.dx_div, "settling_bar_override": a.settling_bar, "arm_dx_div": dict(O.ARM_DX_DIV),
            "rig": {"dx_m": O.DX_M, "d_slab_m": O.D_SLAB_M, "eps_r_slab": O.EPS_R_SLAB, "n_cpml": O.N_CPML, "n_cpml_primary": O.N_CPML_PRIMARY, "n_cpml_compact": O.N_CPML_COMPACT,
                    "nx_interior": O.NX_INTERIOR, "nx_interior_graze": O.NX_INTERIOR_GRAZE, "f0_hz": O.TFSF_F0_HZ,
                    "arm_bw": O.ARM_BW, "graze_bw": O.GRAZE_BW, "graze_theta0_deg": O.GRAZE_THETA0_DEG,
@@ -402,6 +426,8 @@ def main(argv=None) -> int:
             spec = dict(spec, theta0_deg=th, bw=O.bandwidth_for(th), ky=O.ky_from(O.TFSF_F0_HZ, th),
                         f_cutoff_hz=O.cutoff_hz(O.ky_from(O.TFSF_F0_HZ, th)), theta_gate_deg=(0.0, O.THETA_GATE_MAX_DEG))
         run_kw = {"n_cpml": O.declared_n_cpml(spec) if a.n_cpml is None else a.n_cpml}
+        if a.settling_bar is not None:
+            run_kw["settling_bar"] = a.settling_bar
         or_kw = {}
         if rfx_fals is not None and O.FALSIFIERS[rfx_fals][0] == arm:
             _, desc, run_def, or_def = O.FALSIFIERS[rfx_fals]

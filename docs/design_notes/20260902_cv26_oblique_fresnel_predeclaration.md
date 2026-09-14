@@ -871,3 +871,92 @@ and in the artifact replay in `tests/crossval/test_cv26_oblique_fresnel_gates.py
 **Refuted by.** A `graze_pec` or `graze_te` run that PASSes with its own witness failing; a
 `graze_pec` falsifier arm that stops exiting 1; a compact arm whose artifact carries a PASS
 without the `gates_not_applicable` declaration beside it.
+
+## 19. The lattice witness — the ≤3e-4 prediction is refuted, and the two dx controls get one re-run (2026-09-14, append-only)
+
+Nothing above is edited; this section is the change. It is written and committed BEFORE
+the run it declares.
+
+### 19.1 What §4.2 and §10 predicted, and what lane 20260913b measured
+
+§10's reading rule and §12's numbers put the lattice residual `|rfx − lattice|` at or
+under 3e-4 on every recipe. The first full round-3 lane refutes that on both sides, and
+by more on T than on R. Band-mean over each arm's gated bins, from
+`validation/crossval/_26_oblique_results/rfx.json`:
+
+| arm | dx | `mean_dR_lattice_gated` | vs 3e-4 | `mean_dT_lattice_gated` | vs 3e-4 |
+|---|---|---|---|---|---|
+| te_00 | dx | 3.336e-04 | **1.11×** | 8.392e-04 | **2.80×** |
+| te_30 | dx/2 | 1.413e-04 | 0.47× | 3.351e-04 | **1.12×** |
+| te_45 | dx/2 | 1.671e-04 | 0.56× | 2.597e-04 | 0.87× |
+| te_60 | dx/2 | 4.052e-04 | **1.35×** | 4.931e-04 | **1.64×** |
+| tm_00 | dx | 3.410e-04 | **1.14×** | 8.091e-04 | **2.70×** |
+| tm_45 | dx/2 | 4.351e-05 | 0.15× | 2.894e-04 | 0.96× |
+| tm_60 | dx/2 | 5.060e-05 | 0.17× | 5.186e-04 | **1.73×** |
+
+Three arms exceed it in R, **five of seven** in T. The 3e-4 was never derived for this
+rig: it is cv23's round-1 residual × 10, used there as a reading label
+(`tests/crossval/test_cv23_lossy_slab_gates.py`, `_R2_LATTICE_RESIDUAL_BAR`), and §12 of
+this note already carried 3.9e-4 / 4.8e-4 / 6.8e-4 for its own recipes, which contradicts
+"≤3e-4 at every recipe" before any lane ran.
+
+**The replacement is derived, not chosen.** `docs/design_notes/20260903_lattice_witness_standard.md`
+§3 derives `W_witness` for exactly this witness out of the arm's own committed tail
+(record truncation T1, incident truncation T2, float32 T3) and §4 gates it as GL1 per bin
+and GL2 per band mean. cv26 adopts that standard, computing the budget with the
+standard's own primitives (`comparators/lattice_witness.py`, `budget_terms` /
+`windows_from_terms`) and cv26's own 2-D-at-fixed-k_y lattice as the reference. No
+multiplier is chosen anywhere.
+
+### 19.2 The mechanism this section tests: te_00 and tm_00 are transient-limited
+
+The two dx controls are the ONLY arms that stop at the −40 dB settling bar
+(`tail.scat_refl_rel` −40.32 dB and −40.20 dB; every other arm reaches −61 dB or better),
+and they stop there with the envelope still falling steeply: the ratio of the
+last-quarter maximum to the previous-quarter maximum of `tail.envelope_scat_refl_rel` is
+0.071 (te_00) and 0.072 (tm_00), against 0.92–0.99 on the five settled arms. A ratio near
+1 is a settled floor; a ratio near 0.07 is a transient still decaying. That is record
+truncation, the T1 term of the standard's budget, and it is the same attribution
+`20260903_lattice_witness_standard.md` §5.3 makes for cv04's T envelope.
+
+te_60 is a DIFFERENT mechanism and is not part of this test: its tail is the best of the
+seven (−63.7 dB) while its residual is the largest in R, and its absorber term
+(4.03e-03) and aux-echo term (2.48e-03) are the largest of the seven. Its residual is
+about 10 % of its own absorber term. Nothing here claims te_60's residual.
+
+### 19.3 The run, declared before it is submitted
+
+Two arms, te_00 and tm_00, nothing else changed: same sha, same rig, same recipe, same
+declared oracle, `--settling-bar 1e-3` (−60 dB) and `--tag`, so they write
+`rfx__<tag>.json` and CANNOT overwrite lane 20260913b's `rfx.json`. The bar may only be
+tightened: `run_rfx_arm` refuses anything outside `(0, SETTLING_LIMIT]`, the slab family's
+rule. Lane label `20260914a`.
+
+**Predicted before the run** (from the committed lane-b artifacts and the closed-form
+ring-down rate 1.6468e10 s⁻¹, dt 2.3351e-12 s):
+
+1. **Record length.** Reaching 1e-3 from 9.633e-03 / 9.773e-03 needs ~59 more steps, i.e.
+   ONE extension of 100: `n_steps` 1511 → ~1611 (te_00) and 1512 → ~1612 (tm_00), inside
+   the caps 3022 / 3024. `cap_reached` stays false.
+2. **The residual falls into the settled band.** `mean_dT_lattice_gated` drops from
+   8.392e-04 / 8.091e-04 into the 2.597e-04 – 5.186e-04 band the five settled arms
+   occupy; `mean_dR_lattice_gated` drops from 3.336e-04 / 3.410e-04 to **≤ 3e-04**.
+3. **The derived window shrinks with it**, because δ_scat is linear in the tail:
+   `mean W_witness,R` 1.074e-02 → ~1.16e-03 and `mean W_witness,T` 2.474e-02 → ~3.06e-03
+   (te_00), 1.089e-02 → ~1.16e-03 and 2.361e-02 → ~3.04e-03 (tm_00). GL2 must still hold
+   against the SHRUNKEN window.
+
+**What refutes it.** Any of: the arms need more than the cap; `mean_dT_lattice_gated`
+does not enter the settled band; `mean_dR_lattice_gated` stays above 3e-04; or GL2 fails
+against the shrunken window. On any of those this is recorded as **non-closing**, the
+arms stay on the derived `W_witness` bound, and the residual is named **unidentified**.
+There is no second attempt: one pre-declared attempt per mechanism hypothesis (R2, at the
+RF/EM threshold).
+
+**Already spent on this observable, and recorded as falsified.** One mechanism hypothesis
+was tested against the committed artifacts before this section was written: that the GL1
+per-bin breaches on tm_45 and tm_60 come from the standard's §3 bound being first-order,
+which fails near a reflection null where `√R_lat` is comparable to δ_scat. Adding the
+exact second-order term `(δ_scat + δ_round)²` moves the breach count 58 → 54 (tm_45) and
+110 → 109 (tm_60). **Falsified**; the term is not carried, and no further window
+modification is attempted.
