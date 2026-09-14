@@ -582,3 +582,28 @@ the mismatch is reported as a finding, not tuned. Replay:
 between them, the shares re-derived from the arrays). Command: `python
 -m validation.research.multiband_nu.e6_inplane_designvar --arm
 diag_revert_cellwise`.
+
+### `diag_revert_cellwise` — measured (one attempt, `99b510b3`, `git_dirty` false, 07:22:21Z, two cell-space + two parameter-space gradients, zero ladder runs, 2.35 s CPU)
+
+| expectation | measured |
+|---|---|
+| `g_cell_true` bit-identical to `e6_l1.json` | True |
+| `param_ad_true` / `param_ad_nodt` bit-identical to `e6_revert_l1_nodt.json` | True / True |
+| `g_cell_nodt` bit-identical to the first pass | True (all 60 cells) |
+| derived scalars bit-identical to the first pass | 7 of 9: `nontied_max_abs_diff` 7.3909759521484375e-06, `nontied_max_rel_diff` 1.967644921421007e-05, `tied_diff_mean` -3.548943030834198, `tied_diff_spread` 2.5033950805664062e-06, `xc_lead_contrib_true` 1.1678033525465108, `xc_tail_contrib_true` -1.1404900207734423, `param_dt_share` [0.5883520737516621, -0.0001483932070827205] all equal; **`chain_w_share` 0.5883521473691763 vs first pass ...762 (1 ulp); `chain_xc_share` -1.4699955535986395e-4 vs -1.469995553598647e-4 (28 ulp)** |
+
+The expectation "every derived scalar bit-identical" did NOT hold for
+the two chain-rule shares; recorded, the arm not re-run. Cause,
+identified after the run by evaluating both forms on the stored arrays
+(scratch, no FDTD): the first pass divided `J[:, i] . diff` by the column
+dot `J[:, i] . g_true`; the committed arm divides by `chain_true[i]`
+taken from the matmul `J^T g_true` (the field it also stores) — the same
+quantity, reduced in a different order, so the denominators differ in
+their last float64 bits. The `w` share moves 1 ulp; the `x_c` share moves
+28 ulp because its denominator 0.0273 is the residue of the 1.1678 -
+1.1405 cancellation (relative amplification 43x on a 1-ulp denominator
+change). Both files re-derive from their own arrays inside 1e-12
+(`test_revert_cellwise_diagnostic_replay`, both files); the second-pass
+test pins the arrays' bit-identity, the seven equal scalars, and the two
+share differences as measured (1 and 28 ulp). Nothing in any verdict or
+in the note's text depends on the digits beyond -1.47e-4 / 0.5884.

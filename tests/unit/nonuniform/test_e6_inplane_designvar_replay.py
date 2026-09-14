@@ -234,9 +234,8 @@ def test_recorded_outcomes_are_pinned():
 
 
 _DIAG_SCALARS = ("nontied_max_abs_diff", "nontied_max_rel_diff", "nontied_diff_is_zero", "tied_diff_mean",
-                 "tied_diff_spread", "chain_xc_share", "chain_w_share", "xc_lead_contrib_true",
-                 "xc_tail_contrib_true", "param_dt_share", "chain_true", "chain_nodt",
-                 "param_ad_true", "param_ad_nodt")
+                 "tied_diff_spread", "xc_lead_contrib_true", "xc_tail_contrib_true", "param_dt_share",
+                 "chain_true", "chain_nodt", "param_ad_true", "param_ad_nodt")
 
 
 @pytest.mark.parametrize("arm", ["diag_revert_cellwise", "diag_revert_cellwise_firstpass_4f2d22af"])
@@ -263,17 +262,30 @@ def test_revert_cellwise_diagnostic_replay(arm):
 
 def test_revert_cellwise_diagnostic_second_pass_reproduces_first():
     """Declared expectation of the second-pass arm: produced through the
-    instrument (argv, .started claim) and bit-identical to the first pass."""
+    instrument (argv, .started claim) and bit-identical to the first pass.
+    Measured (note, "Second pass"): every array and 7 of 9 derived scalars
+    bit-identical; the two chain-rule shares differ by 1 ulp (w) and 28 ulp
+    (x_c) because the first pass divided by the column dot J[:, i] . g_true
+    and the arm by chain_true[i] from the matmul J^T g_true -- recorded as
+    measured, not re-run."""
     d, f = _load("diag_revert_cellwise"), _load("diag_revert_cellwise_firstpass_4f2d22af")
     assert d["argv"] == ["--arm", "diag_revert_cellwise"] and d["git_dirty"] is False
     assert (RESULTS / "e6_diag_revert_cellwise.started").exists()
     assert "argv" not in f and f["git_sha"].startswith("4f2d22af")
     assert d["firstpass_file"] == "e6_diag_revert_cellwise_firstpass_4f2d22af.json"
     assert d["g_cell_nodt_matches_firstpass"] is True and d["g_cell_nodt"] == f["g_cell_nodt"]
+    assert d["g_cell_true"] == f["g_cell_true"]
     assert d["param_ad_true_reproduced_bitwise"] and d["param_ad_nodt_reproduced_bitwise"]
     for k in _DIAG_SCALARS:
         assert d[k] == f[k], k
-    assert all(d["scalars_match_firstpass"].values())
+    gt, gn = np.asarray(f["g_cell_true"]), np.asarray(f["g_cell_nodt"])
+    diff = gt - gn
+    for i, k, ulps in ((0, "chain_w_share", 1), (1, "chain_xc_share", 28)):
+        assert d["scalars_match_firstpass"][k] is False
+        assert f[k] == float(e6.J_PARAM[:, i] @ diff / (e6.J_PARAM[:, i] @ gt))        # first-pass form
+        assert d[k] == float(e6.J_PARAM[:, i] @ diff / np.asarray(d["chain_true"])[i])  # arm form
+        assert abs(d[k] - f[k]) == ulps * np.spacing(abs(f[k]))
+    assert all(v for k, v in d["scalars_match_firstpass"].items() if k not in ("chain_w_share", "chain_xc_share"))
 
 
 def test_coverage_summary_replay():

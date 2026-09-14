@@ -826,3 +826,26 @@ cancellation, recorded with a cell-wise diagnostic; the frozen
 requirement (verdicts unchanged) held. G12 is answered for this fixture:
 the smooth spectral observable carries no ripple (Richardson-valid over
 7.8e-3 .. 6.25e-2). No `rfx/` change.
+
+## Addendum (Lane 2 second pass, 2026-09-14; sections 1-7 above not edited)
+
+Seven review findings on the Lane 2 record reproduced and corrected in
+the lane note (its "Second pass" section); no window edited, no verdict
+changed, no ladder arm re-run. Two corrections matter for the 5.7 claim:
+(1) the seam-ratio range is per gate and observable — the transient
+arm's gates end at h = 2^-7 (seam 1.2986, BELOW the 1.3 in-plane
+advisory; the loss is quadratic-dominated along `w` from 2^-6), the
+spectral observable's FD gate ends at 2^-4 (1.3843), and only its order
+fit reaches 2^-3 (1.4955); "seam ratio to 1.50 with both gates holding"
+is withdrawn; (2) `x_c`'s L1 order INCONCLUSIVE is the curvature guard
+binding (five points clear 32 sigma_eff), i.e. an order test along
+`x_c` is structurally unavailable on that fixture, not noise-limited.
+Record repairs: the pre-declared replay line `x_c share == 0.0` is
+restored under `xfail(strict=True)` (it had been rewritten to the
+measured value); the cell-wise diagnostic now has a committed producer
+(`--arm diag_revert_cellwise`), which reproduced the scratch first pass
+bit for bit on every array and on 7 of 9 derived scalars (the two
+chain-rule shares differ by 1 / 28 ulp from a float64 reduction-order
+difference in the denominator, recorded). The 5.4 expectation text's
+"1.6 %" was reworded to 3.3 % in the lane note before any run (7.5 mm
+free length, note 1c); noted, not edited here.
