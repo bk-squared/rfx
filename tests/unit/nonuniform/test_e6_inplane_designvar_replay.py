@@ -180,11 +180,6 @@ def test_revert_proof_replay():
     assert d["forward_values_identical"] is True
     assert d["loss0_matches_first"] is True and d["loss0"] == first["loss0"]
     share = dict(zip(e6.NAMES, d["dt_path_share"]))
-    # Pre-declared expectation (program 5.3): x_c share exactly 0. Measured
-    # -1.48e-4 (float32 recompilation under stop_gradient(dt), amplified by the
-    # 43x lead/tail cancellation; note "Diagnostic"). The record is pinned, the
-    # expectation is not rewritten into a pass.
-    assert share["x_c"] == -0.0001483932070827205
     assert share["x_c"] == (d["g_param_true"][1] - d["g_param_nodt"][1]) / d["g_param_true"][1]
     for name, r in d["directions"].items():
         pts = _points(r["fd"]["steps"])
@@ -204,6 +199,18 @@ def test_revert_proof_replay():
     assert d["requirement_met"] == (d["w_fired_on_order"] and d["xc_unchanged"])
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "pre-declared expectation (program 5.3, test committed at bd1ea262 before the first "
+    "measurement): x_c's dt-path share exactly 0. Measured -1.48e-4 (float32 recompilation "
+    "under stop_gradient(dt), amplified by the 43x lead/tail cancellation; note 'Diagnostic'). "
+    "The declared line stands as written and its failure is the record; second pass restored it "
+    "after the first pass had rewritten it to the measured value at 064d6035."))
+def test_predeclared_xc_share_expectation():
+    d = _load("revert_l1_nodt")
+    share = dict(zip(e6.NAMES, d["dt_path_share"]))
+    assert share["x_c"] == 0.0
+
+
 def test_recorded_outcomes_are_pinned():
     """Recorded results, not passes: w HELD on both gates on both observables;
     x_c INCONCLUSIVE on order (1 / 3 eligible points) and HELD on FD; the
@@ -220,22 +227,53 @@ def test_recorded_outcomes_are_pinned():
     assert l2["directions"]["x_c"]["order_1ulp"]["verdict"] == "HELD"     # reported alongside, not primary
     assert rv["requirement_met"] is True and rv["directions"]["w"]["fd"]["verdict"] == "FIRED"
     assert rv["directions"]["w"]["order"]["R1"]["slope"] < 1.3 and rv["dt_path_share"][0] > 0.5
-    assert rv["dt_path_share"][1] != 0.0 and abs(rv["dt_path_share"][1]) < 1e-3
+    # The measured x_c share, pinned as a record (the declared expectation is
+    # test_predeclared_xc_share_expectation, xfail strict).
+    assert rv["dt_path_share"][1] == -0.0001483932070827205
     assert 0.80 <= l1["coverage_verified"]["fraction"] <= 0.81 and 0.67 <= l2["coverage_verified"]["fraction"] <= 0.68
 
 
-def test_revert_cellwise_diagnostic_replay():
-    d = _load("diag_revert_cellwise")
+_DIAG_SCALARS = ("nontied_max_abs_diff", "nontied_max_rel_diff", "nontied_diff_is_zero", "tied_diff_mean",
+                 "tied_diff_spread", "chain_xc_share", "chain_w_share", "xc_lead_contrib_true",
+                 "xc_tail_contrib_true", "param_dt_share", "chain_true", "chain_nodt",
+                 "param_ad_true", "param_ad_nodt")
+
+
+@pytest.mark.parametrize("arm", ["diag_revert_cellwise", "diag_revert_cellwise_firstpass_4f2d22af"])
+def test_revert_cellwise_diagnostic_replay(arm):
+    """Both the committed-arm file (second pass) and the kept first pass
+    (scratch script at 4f2d22af) re-derive from their own arrays."""
+    d = _load(arm)
     l1, rv = _load("l1"), _load("revert_l1_nodt")
     gt, gn = np.asarray(d["g_cell_true"]), np.asarray(d["g_cell_nodt"])
     np.testing.assert_array_equal(gt, l1["g_cell"])
+    assert d["g_cell_true_reproduced_bitwise"] is True
     diff = gt - gn
     non = np.r_[0:20, 40:60]
     assert not d["nontied_diff_is_zero"] and np.max(np.abs(diff[non])) == d["nontied_max_abs_diff"]
+    assert np.max(np.abs(diff[non]) / np.abs(gt[non])) == d["nontied_max_rel_diff"]
+    assert diff[20:40].mean() == d["tied_diff_mean"] and np.ptp(diff[20:40]) == d["tied_diff_spread"]
     assert abs(float(e6.J_PARAM[:, 1] @ diff / (e6.J_PARAM[:, 1] @ gt)) - d["chain_xc_share"]) <= 1e-12
     assert abs(float(e6.J_PARAM[:, 0] @ diff / (e6.J_PARAM[:, 0] @ gt)) - d["chain_w_share"]) <= 1e-12
     assert abs(d["chain_w_share"] - rv["dt_path_share"][0]) <= 1e-6
     assert abs(d["xc_lead_contrib_true"] + d["xc_tail_contrib_true"] - rv["g_param_true"][1]) <= 1e-6
+    assert d["param_ad_true"] == rv["g_param_true"] and d["param_ad_nodt"] == rv["g_param_nodt"]
+    assert d["param_dt_share"] == rv["dt_path_share"]
+
+
+def test_revert_cellwise_diagnostic_second_pass_reproduces_first():
+    """Declared expectation of the second-pass arm: produced through the
+    instrument (argv, .started claim) and bit-identical to the first pass."""
+    d, f = _load("diag_revert_cellwise"), _load("diag_revert_cellwise_firstpass_4f2d22af")
+    assert d["argv"] == ["--arm", "diag_revert_cellwise"] and d["git_dirty"] is False
+    assert (RESULTS / "e6_diag_revert_cellwise.started").exists()
+    assert "argv" not in f and f["git_sha"].startswith("4f2d22af")
+    assert d["firstpass_file"] == "e6_diag_revert_cellwise_firstpass_4f2d22af.json"
+    assert d["g_cell_nodt_matches_firstpass"] is True and d["g_cell_nodt"] == f["g_cell_nodt"]
+    assert d["param_ad_true_reproduced_bitwise"] and d["param_ad_nodt_reproduced_bitwise"]
+    for k in _DIAG_SCALARS:
+        assert d[k] == f[k], k
+    assert all(d["scalars_match_firstpass"].values())
 
 
 def test_coverage_summary_replay():

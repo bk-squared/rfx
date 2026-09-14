@@ -29,6 +29,8 @@ one attempt per arm — the ``.started`` claim file refuses a rerun)::
     python -m validation.research.multiband_nu.e6_inplane_designvar --arm revert_l1_nodt  (E6-R)
     python -m validation.research.multiband_nu.e6_inplane_designvar --arm l2s         (E6-L2s)
     python -m validation.research.multiband_nu.e6_inplane_designvar --arm coverage    (E6-C, zero FDTD)
+    python -m validation.research.multiband_nu.e6_inplane_designvar --arm diag_revert_cellwise
+        (second-pass producer of the E6-R cell-wise diagnostic: two gradients, zero ladder runs)
 """
 from __future__ import annotations
 
@@ -520,8 +522,59 @@ def coverage_summary():
     return out
 
 
+def diag_revert_cellwise():
+    """Post-hoc diagnostic on E6-R (declared in the note's "Second pass"
+    section): the cell-wise L1 gradient WITH and WITHOUT the dt path — two
+    backward passes at the nominal, zero ladder runs, not a window. The first
+    pass of this diagnostic (``4f2d22af``) was produced by a scratch script and
+    is kept as ``e6_diag_revert_cellwise_firstpass_4f2d22af.json``; this arm is
+    the committed producer and records whether it reproduces that file bit for
+    bit."""
+    first = json.loads((RESULTS / 'e6_l1.json').read_text())
+    rv = json.loads((RESULTS / 'e6_revert_l1_nodt.json').read_text())
+    assert 'instrument_error' not in first and 'instrument_error' not in rv
+    zero = jnp.zeros(2, jnp.float32)
+    g_true = np.asarray(jax.jit(jax.grad(l1_cells))(CELLS0_F32), np.float64)
+    g_nodt = np.asarray(jax.jit(jax.grad(lambda c: l1_cells(c, stop_dt=True)))(CELLS0_F32), np.float64)
+    p_true = np.asarray(jax.jit(jax.grad(lambda d: l1_cells(cells_of(d))))(zero), np.float64)
+    p_nodt = np.asarray(jax.jit(jax.grad(lambda d: l1_cells(cells_of(d), stop_dt=True)))(zero), np.float64)
+    tied = np.flatnonzero(MAP.cells0 == MAP.cells0.min())
+    non = np.setdiff1d(np.arange(MAP.cells0.size), tied)
+    diff = g_true - g_nodt
+    chain_true, chain_nodt = J_PARAM.T @ g_true, J_PARAM.T @ g_nodt
+    out = {'purpose': ('post-hoc diagnostic on E6-R: cell-wise L1 gradient with and without the dt path '
+                       '(two backward passes, zero ladder runs); not a window'),
+           'g_cell_true_reproduced_bitwise': bool(np.array_equal(g_true, np.asarray(first['g_cell']))),
+           'param_ad_true_reproduced_bitwise': bool(np.array_equal(p_true, np.asarray(rv['g_param_true']))),
+           'param_ad_nodt_reproduced_bitwise': bool(np.array_equal(p_nodt, np.asarray(rv['g_param_nodt']))),
+           'g_cell_true': g_true.tolist(), 'g_cell_nodt': g_nodt.tolist(),
+           'nontied_max_abs_diff': float(np.max(np.abs(diff[non]))),
+           'nontied_max_rel_diff': float(np.max(np.abs(diff[non]) / np.abs(g_true[non]))),
+           'nontied_diff_is_zero': bool(np.all(diff[non] == 0.0)),
+           'tied_diff_mean': float(diff[tied].mean()), 'tied_diff_spread': float(np.ptp(diff[tied])),
+           'chain_true': chain_true.tolist(), 'chain_nodt': chain_nodt.tolist(),
+           'chain_xc_share': float(J_PARAM[:, 1] @ diff / chain_true[1]),
+           'chain_w_share': float(J_PARAM[:, 0] @ diff / chain_true[0]),
+           'param_ad_true': p_true.tolist(), 'param_ad_nodt': p_nodt.tolist(),
+           'param_dt_share': [float((t - n) / t) for t, n in zip(p_true, p_nodt)],
+           'xc_lead_contrib_true': float(J_PARAM[:I_L, 1] @ g_true[:I_L]),
+           'xc_tail_contrib_true': float(J_PARAM[I_R:, 1] @ g_true[I_R:])}
+    fp = RESULTS / 'e6_diag_revert_cellwise_firstpass_4f2d22af.json'
+    if fp.exists():
+        f = json.loads(fp.read_text())
+        out['firstpass_file'] = fp.name
+        out['firstpass_git_sha'] = f['git_sha']
+        out['g_cell_nodt_matches_firstpass'] = bool(np.array_equal(g_nodt, np.asarray(f['g_cell_nodt'])))
+        out['scalars_match_firstpass'] = {k: bool(out[k] == f[k]) for k in (
+            'nontied_max_abs_diff', 'nontied_max_rel_diff', 'tied_diff_mean', 'tied_diff_spread',
+            'chain_xc_share', 'chain_w_share', 'xc_lead_contrib_true', 'xc_tail_contrib_true',
+            'param_dt_share')}
+    return out
+
+
 ARMS = {'model': model, 'map_checks': map_checks, 'l1': lambda: measure_arm('l1'),
-        'revert_l1_nodt': measure_revert, 'l2s': lambda: measure_arm('l2s'), 'coverage': coverage_summary}
+        'revert_l1_nodt': measure_revert, 'l2s': lambda: measure_arm('l2s'), 'coverage': coverage_summary,
+        'diag_revert_cellwise': diag_revert_cellwise}
 
 
 def main(argv=None):

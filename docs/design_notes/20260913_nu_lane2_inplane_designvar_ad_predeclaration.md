@@ -237,6 +237,14 @@ gradient, so INCONCLUSIVE on order is the likeliest non-HELD outcome, as
 eps_air was); E6-R `w` FIRED, `x_c` unchanged; E6-L2s `w` HELD on order
 with the physical-time Hann window.
 
+*Reviewer note (second pass, 2026-09-14; paragraph unchanged):* this
+paragraph is labelled "program 5.4, copied" but is not verbatim: program
+5.4 says "0.125 mm / 8 mm = 1.6 % at the ladder top"; the 3.3 % above was
+written into this note at `6fec85f5`, before any run, from section 1c's
+7.5 mm free length (0.25 mm / 7.5 mm = 3.3 %). A pre-run rewording, not a
+post-measurement edit; the windows in this section match program 5.4
+verbatim. Recorded so that "copied" is not read as "identical".
+
 ## 4. Arms and run commands (declared; each arm one Bash call, one attempt)
 
 From the worktree, `PYTHONPATH` pinned to it, `python -m
@@ -311,10 +319,21 @@ E6-R at `fa2eae4d`, E6-L2s at `17ece761`, E6-C at `dd24ec3a`). The judge
 self-check passed before every arm and is bit-identical to the self-check
 stored in all five AD-Q JSONs (R1 2.0030105652046206 HELD /
 0.9094336472889952 FIRED). 442 forward solves and 8 reverse-mode gradients
-in total; wallclock E6-M 6.4 s, E6-L1 13.5 s, E6-R 5.8 s, E6-L2s 63.9 s,
-E6-C zero FDTD. Raw JSONs: `results/e6_{model,map_checks,l1,
+in total (second-pass correction: the count is not stored in any JSON; it
+is the instrument's call structure read against the stored arrays — E6-M
+2 solves (m8 traced + concrete) + 2 gradients (m5); E6-L1 `loss0` + 2 x
+(64 floor + 30 ladder) = 189 solves + 2 gradients; E6-R `loss0` + `nodt0`
++ 2 x 30 = 62 solves + 2 gradients; E6-L2s 189 + 2; total 2 + 189 + 62 +
+189 = 442 and 8; the declared 438 + 6 in section 4 omitted the four
+nominal evaluations and E6-M's two gradients. The post-hoc diagnostic's
+two further gradients are outside this tally); wallclock E6-M 6.4 s,
+E6-L1 13.5 s, E6-R 5.8 s, E6-L2s 63.9 s, E6-C zero FDTD (each
+`elapsed_seconds`). Raw JSONs: `results/e6_{model,map_checks,l1,
 revert_l1_nodt,l2s,coverage}.json` plus the post-hoc diagnostic
-`results/e6_diag_revert_cellwise.json` (declared below, zero ladder runs).
+`results/e6_diag_revert_cellwise.json` (declared below, zero ladder
+runs; see the "Second pass" section for its producer — the first pass was
+a scratch script and is kept as
+`e6_diag_revert_cellwise_firstpass_4f2d22af.json`).
 Replay: `tests/unit/nonuniform/test_e6_inplane_designvar_replay.py`.
 
 ### Regression (program 5.5) — HELD
@@ -352,9 +371,21 @@ Replay: `tests/unit/nonuniform/test_e6_inplane_designvar_replay.py`.
 window); x_c order INCONCLUSIVE with 2 eligible points. x_c: its gradient
 (0.0273 /m) is 220x smaller than w's and is the difference of a lead
 contribution +1.1678 and a tail contribution -1.1405 (diagnostic JSON);
-R1 clears 32 sigma_eff at one ladder point only (h = 2^-7), so the order
-gate is INCONCLUSIVE — the outcome section 3 named as the likeliest
-non-HELD one. The FD gate holds at two rho-valid steps.
+the order gate is INCONCLUSIVE — the outcome section 3 named as the
+likeliest non-HELD one. The FD gate holds at two rho-valid steps.
+Second-pass correction of the reason: the first-pass text said "R1
+clears 32 sigma_eff at one ladder point only (h = 2^-7)". The stored
+ladder says otherwise: `r1 / (32 sigma_eff)` = 2.86, 11.8, 49.7, 218,
+1037 at h = 2^-7 .. 2^-3 — FIVE points clear the 32-quantum line; four
+are excluded by the judge's curvature guard `|L+ + L- - 2 L0| <= 0.25
+|L+ - L-|` (ratios 0.18 at 2^-7, then 0.36, 0.68, 1.11, 1.31). So x_c on
+L1 is not noise-limited: the loss along x_c is quadratic-dominated
+(the direct consequence of the 43x cancellation — the linear term is
+small, the curvature is not), and an order test along x_c is
+structurally unavailable on this fixture at this ladder; a lower floor
+would add no eligible point. For L2s x_c the first-pass reason IS the
+binding one (the 32-quantum line: `r1 / (32 sigma_eff)` 0.96 at 2^-6,
+curvature ratio <= 0.004 everywhere). Verdicts unchanged.
 
 ### E6-R — the gate has power against the dt path
 
@@ -370,7 +401,12 @@ covers the dt path.
 
 **Diagnostic (post-hoc, labelled, zero ladder runs;
 `results/e6_diag_revert_cellwise.json`, two backward passes at
-`4f2d22af`):** the program's 5.3 text expected x_c's dt share to be
+`4f2d22af`; second-pass correction: that first pass was produced by a
+scratch script with no producer on the tree and no `.started` claim — it
+is kept as `e6_diag_revert_cellwise_firstpass_4f2d22af.json`, and the
+file named here is now written by the committed arm `--arm
+diag_revert_cellwise`, declared and measured in the "Second pass"
+section):** the program's 5.3 text expected x_c's dt share to be
 "exactly 0". Measured -1.48e-4. Cell-wise: the tied cells carry the dt
 path (mean difference -3.549 per cell, spread 2.5e-6); the NON-tied cell
 gradients differ between the two compiled programs by up to 7.4e-6
@@ -408,9 +444,13 @@ rule (1f); it is recorded as such.
 Smoothness, as measured: the Richardson ratio sits in [2, 8] at four
 consecutive steps for w and three for x_c (7.8e-3 .. 6.25e-2), and the FD
 bar shrinks to 7.2e-4 / 1.2e-4 of the gradient — the AD-Q L2 thickness
-arm, by contrast, had its FD gate FIRE at h 3.1e-2 with a 43.6-ulp floor
-and no rho-valid window. The physical-time Hann taper with a fixed `T_w`
-removes the truncation ripple, as declared in section 2.
+arm (`adq_stack_l2_floor.json`, h_thin), by contrast, had a 43.6-ulp
+floor, an INCONCLUSIVE order fit, and an FD gate that FIRED at h 3.1e-2
+(err/3B 3.96) after two rho-valid HELD steps at 1.95e-3 and 3.9e-3 (rho
+3.23 / 2.63) with no rho-valid step between (second-pass correction: the
+first-pass text said "no rho-valid window", which is true of that arm's
+order fit only, not of its FD gate). The physical-time Hann taper with
+a fixed `T_w` removes the truncation ripple, as declared in section 2.
 
 ### E6-C — coverage of the x cell-space gradient (no minimum assumed)
 
@@ -445,9 +485,19 @@ Richardson-valid step, 3B/|g| down to 2.0e-3 (transient) and 7.2e-4
 (spectral); the same judges FIRE (R1 1.022, err/3B 294) when the dt path
 is removed. Validity domain: relative width displacements 4.9e-4 ..
 7.8e-3 (L1 order), 9.8e-4 .. 7.8e-3 (L1 FD), 3.9e-3 .. 1.25e-1 (L2s
-order), 7.8e-3 .. 6.25e-2 (L2s FD) of a 2 mm band — seam ratios up to
-1.4955 on the shrink side, above the 1.3 in-plane advisory from h = 2^-6
-— on x only. Along the band POSITION `x_c`, the FD gate holds at
+order), 7.8e-3 .. 6.25e-2 (L2s FD) of a 2 mm band — on x only. Seam
+ratio reached, PER GATE AND OBSERVABLE (second-pass correction; Table L,
+shrink side): L1 order and L1 FD both end at h = 2^-7, seam **1.2986** —
+BELOW the 1.3 in-plane advisory, so the transient arm verified nothing
+above the cap (from 2^-6 the transient loss is quadratic-dominated along
+w: the curvature guard fails at 0.31 / 0.73 / 1.28 / 0.63 for 2^-6 ..
+2^-3 and 3B/|g| is 0.245 at 2^-6 — not eligible, not informative); L2s
+FD ends at h = 2^-4, seam **1.3843**; L2s
+order alone reaches h = 2^-3, seam **1.4955**, as the top point of a
+6-point slope fit. "Seam ratio to 1.50 with both gates holding" is
+therefore not a statement any single gate/observable pair supports; the
+widest BOTH-gates range above the cap is L2s over 2^-6 .. 2^-4 (seam
+1.3102 .. 1.3843). Along the band POSITION `x_c`, the FD gate holds at
 Richardson-valid steps (3B/|g| 2.4e-2 / 1.2e-4) on both observables, but
 the order gate is INCONCLUSIVE on both (1 and 3 eligible points; the
 gradient is a 43x cancellation of lead and tail contributions): `x_c` is
@@ -461,10 +511,74 @@ trace, seam ratios beyond 1.4955, and any x_c order claim.
 
 ### What the support matrix may say after this lane
 
+(Second-pass correction: the first-pass sentence read "over relative
+displacements up to 2^-3 (seam ratio to 1.50) ... crossed it from h =
+2^-6 with both gates holding on w"; that collapsed four per-gate windows
+into a union no single gate supports — see the law statement above.)
 "In-plane design-variable AD (x): band width verified by AD-Q judges on a
-transient and a smooth spectral observable, dt path included, over
-relative displacements up to 2^-3 (seam ratio to 1.50); band position
-FD-supported, order INCONCLUSIVE; PEC strip by node index; no absorber;
-no coordinate attachment." The 1.3 in-plane cap remains an advisory the
-traced path does not evaluate (G20); this lane's ladder crossed it from
-h = 2^-6 with both gates holding on w.
+transient (both gates, relative displacements 9.8e-4 .. 7.8e-3, seam
+ratio to 1.30) and a smooth spectral observable (both gates 7.8e-3 ..
+6.25e-2, seam ratio to 1.38; order alone to 1.25e-1, seam 1.50), dt path
+included; band position FD-supported, order INCONCLUSIVE; PEC strip by
+node index; no absorber; no coordinate attachment." The 1.3 in-plane cap
+remains an advisory the traced path does not evaluate (G20); only the
+spectral observable's gates hold above it (L2s both gates over 2^-6 ..
+2^-4, seam 1.31 .. 1.38); the transient arm's gates end at 2^-7 (seam
+1.2986), below the cap.
+
+## Second pass (review of the record, 2026-09-14)
+
+Seven review findings, each reproduced from the stored JSONs or from
+`git show` on this tree before anything was edited (`rfx.__file__` under
+this worktree; scratch scripts `rv_inspect.py` and the review's
+`rv_model.py` / `rv_ladder.log` in the session scratchpad, not part of
+the record). No window was edited; no verdict changed; no ladder arm was
+re-attempted (no finding showed a ladder measurement to be invalid). One
+post-hoc diagnostic is re-produced through a committed arm (declared
+below) because its first pass had no producer on the tree. `stopped`
+stays false.
+
+### What was corrected in the text above (each marked "second-pass correction" or "Reviewer note" in place)
+
+| # | finding (review lens) | what the record said | what the stored numbers say | where |
+|---|---|---|---|---|
+| 1 | validity-domain compression (physics, major) | "up to 2^-3 (seam ratio to 1.50) ... crossed the cap from h = 2^-6 with both gates holding on w" | L1 both gates end at 2^-7 (seam 1.2986, below the 1.3 advisory; from 2^-6 the curvature guard fails 0.31 .. 1.28 and 3B/\|g\| 0.245); L2s FD ends at 2^-4 (1.3843); only the L2s order fit reaches 2^-3 (1.4955), as the top of a 6-point slope | "Law statement and validity domain"; "What the support matrix may say" |
+| 2 | x_c L1 INCONCLUSIVE mis-attributed to the 32-sigma rule (physics, minor) | "R1 clears 32 sigma_eff at one ladder point only" | five points clear 32 sigma_eff (2.86 .. 1037); the curvature guard admits only 2^-7 (0.18; then 0.36 / 0.68 / 1.11 / 1.31) — quadratic-dominated direction, not noise-limited; L2s x_c IS 32-quantum-limited (0.96 at 2^-6) | E6-L1 paragraph |
+| 3 | pre-declared replay assertion `share["x_c"] == 0.0` rewritten after measurement (record, major) | the declared line was deleted at `064d6035` and replaced by the measured value; between `17ece761` and `4f2d22af` the committed test failed on the committed JSON | the declared line is restored verbatim under `xfail(strict=True)` (it fails, as measured, and the failure is the record); the measured share is pinned in a separate record test | `test_e6_inplane_designvar_replay.py` |
+| 4 | cell-wise diagnostic JSON has no producer on the tree (record, major) | "two backward passes at 4f2d22af" | produced by a scratch script; no arm, no `.started`, no `argv` | committed arm `--arm diag_revert_cellwise`, declared below; first pass kept as `e6_diag_revert_cellwise_firstpass_4f2d22af.json` |
+| 5 | "program 5.4, copied" is not verbatim (record, minor) | 3.3 % | program 5.4 says 1.6 %; the 3.3 % is a pre-run rewording from section 1c | Reviewer note under section 3's expectations |
+| 6 | AD-Q L2 thickness arm "no rho-valid window" (record, minor) | no rho-valid window | order INCONCLUSIVE, but the FD gate had two rho-valid HELD steps (1.95e-3, 3.9e-3) before the FIRE at 3.1e-2 | E6-L2s "Smoothness" paragraph |
+| 7 | "442 forward solves and 8 gradients" has no stored source (record, minor) | 442 / 8 | re-derived from the instrument's call structure: 2 + 189 + 62 + 189 = 442, 2 + 2 + 2 + 2 = 8; the declared 438 + 6 omitted the nominal evaluations and E6-M's gradients | "Measured" |
+
+Finding 1's physical content: the transient arm's verification of `w`
+never crossed the 1.3 in-plane advisory; what crossed it is the smooth
+spectral observable (both gates over 2^-6 .. 2^-4, seam 1.31 .. 1.38).
+Finding 2's: an order test along `x_c` is structurally unavailable on
+this fixture — the direction is quadratic-dominated because of the
+lead/tail cancellation, so a lower floor would not add eligible points.
+
+### Declared diagnostic arm: `diag_revert_cellwise` (declared here BEFORE it ran through the instrument)
+
+Purpose: give `results/e6_diag_revert_cellwise.json` a committed
+producer. Not a window; not a ladder arm; no verdict is computed from it.
+The arm (`e6_inplane_designvar.py::diag_revert_cellwise`) takes two
+cell-space L1 gradients at the nominal (`jax.grad(l1_cells)` with and
+without `stop_gradient(dt)`) and two parameter-space gradients (the same
+two calls as E6-R), zero forward ladder runs, and derives the same
+fields as the first pass: non-tied max |diff| and relative diff, tied
+mean and spread, chain-rule shares, lead/tail contributions. It runs
+under the instrument's `.started` claim and stamps `argv`, `git_sha`,
+`git_dirty`, `rfx.__file__`. The first pass (scratch script,
+`4f2d22af`) is renamed `e6_diag_revert_cellwise_firstpass_4f2d22af.json`
+(content untouched) and the arm records whether it reproduces it.
+Expectation (one attempt): `g_cell_true` bit-identical to `e6_l1.json`;
+`param_ad_true` / `param_ad_nodt` bit-identical to `e6_revert_l1_nodt.json`;
+`g_cell_nodt` and every derived scalar bit-identical to the first pass
+(the code that computes them is unchanged since `4f2d22af`: `git diff
+4f2d22af -- rfx/ validation/research/multiband_nu/e6_inplane_designvar.py`
+touches only the new arm and the docstring). If any of these is false
+the mismatch is reported as a finding, not tuned. Replay:
+`test_revert_cellwise_diagnostic_replay` (both files, bit-identity
+between them, the shares re-derived from the arrays). Command: `python
+-m validation.research.multiband_nu.e6_inplane_designvar --arm
+diag_revert_cellwise`.
