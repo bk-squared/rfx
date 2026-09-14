@@ -429,8 +429,10 @@ addition had to keep green; it does, because the backfilled key and the key
 
 ## 8. Reproduction
 
-All local, `~/Documents/rfx/.venv/bin/python`, worktree
-`~/Documents/rfx-worktrees/echo-invariant`. No VESSL run was needed.
+All local CPU, no VESSL run needed. Run from the repository root; every command
+below is repo-relative. (This paragraph named PR #892's author's home directory
+and venv until 2026-09-14 -- paths nobody else can follow, the same class as the
+two corrected in `20260904_aux_absorber_depth_derivation.md` section 6.)
 
 * the invariant at every committed rung —
   `python validation/crossval/comparators/emit_aux_echo_witness.py --check`

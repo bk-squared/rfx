@@ -846,14 +846,23 @@ measures 70, 80 and 82 on this rig and asserts the inside rows under the bar, th
 OVER it (so the domain claim is checked in both directions), and each within 10 percent
 of the numbers above.
 
-**And at one resolution only (added 2026-09-13, review of PR #1005).** Every row of the
-table above -- and every `|B/A|` anywhere in this note -- is measured at `dx = 1 mm` with
-`f0 = 10 GHz`. That is `lambda_0 = 29.979 mm`, so **29.98 cells per free-space
-wavelength**, which this note rounds to 30 where it reads better. A graded CPML's
-reflection is a function of cells-per-wavelength as well as of angle, so the declaration
-reads in full: *meets `LEAK_BAR` through 80 degrees AT 29.98 CELLS PER WAVELENGTH*.
-Nothing here measures a coarser or finer mesh, and the resolution sweep that would widen
-the domain to a range is not run and not filed -- stating the limit is what ships.
+**And at one resolution only (added 2026-09-13, review of PR #1005; scoped 2026-09-14
+after a verification review).** Every row of the table above, and every 2-D `|B/A|` in
+this note, is measured at `dx = 1 mm` with `f0 = 10 GHz` on a single-frequency CW
+excitation. That is `lambda_0 = 29.979 mm`, so **29.98 cells per free-space wavelength**,
+which this note rounds to 30 where it reads better. A graded CPML's reflection is a
+function of cells-per-wavelength as well as of angle, so the declaration reads in full:
+*meets `LEAK_BAR` through 80 degrees AT 29.98 CELLS PER WAVELENGTH*. No 2-D measurement
+here uses a coarser or finer mesh, and the resolution sweep that would widen the domain
+to a range is not run and not filed -- stating the limit is what ships.
+
+The 1-D numbers are NOT in that statement, and the first version of this paragraph
+wrongly swept them in by saying "every `|B/A|` anywhere in this note". `measure_aux_echo_1d`
+runs cv04's own rig and band -- 3 to 15 GHz at the same `dx = 1 mm`, so roughly **20 to
+100 cells per wavelength** across the band it integrates -- which is a resolution RANGE,
+not a point. The 1-D declaration (`AUX_N_CPML_1D = 200` at `R_asym = 1e-6`, section 2) is
+therefore taken over that span rather than at one mesh. Only the 80-degree angle domain
+is the single-resolution claim.
 `tests/unit/sources/test_tfsf_aux_absorber_reflection.py::test_the_declared_domain_names_the_resolution_it_was_measured_at`
 pins the resolution against the exact `c0 / f0 / dx` and asserts the three rigs vary only
 in extent and record length, so a rig added at another mesh fails rather than widening

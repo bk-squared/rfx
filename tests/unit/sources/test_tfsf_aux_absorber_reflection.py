@@ -26,13 +26,15 @@ cv26 is PR #924's lane and is NOT in this repository, so there is no
 ``validation/crossval/26_*`` to grep for ``THETA_GATE_MAX_DEG`` or
 ``GRAZE_THETA0_DEG``. Nothing in this file reads them at run time.
 
-The declared domain is an ANGLE and a RESOLUTION: every rig here and in
+The declared ANGLE domain comes with a RESOLUTION: every 2-D rig here and in
 ``tests/_aux_absorber_reflection.py`` runs at 29.98 cells per free-space
 wavelength (``dx = 1 mm``, ``lambda_0 = 29.979 mm`` at 10 GHz; rounded to 30
 below and in the note), so "meets the bar through 80 degrees" means "at that
 mesh". A cells-per-wavelength sweep is not run in this lane and is not filed as
 an issue; ``test_the_declared_domain_names_the_resolution_it_was_measured_at``
-is what keeps the claim from widening by accident.
+is what keeps the claim from widening by accident. The 1-D depth law is a
+different case and is not covered by it: ``measure_aux_echo_1d`` integrates
+cv04's 3-15 GHz band, roughly 20 to 100 cells per wavelength.
 
 The fast rig cannot resolve 70 degrees -- four bins and a fit residual of 0.24.
 That is asserted as a property of the instrument
@@ -337,14 +339,19 @@ def test_the_domain_edge_is_where_the_note_says(theta_deg):
 def test_the_declared_domain_names_the_resolution_it_was_measured_at():
     """The domain is an angle AND a resolution, and only the angle is swept.
 
-    Every |B/A| in this lane is measured at DX_M = 1e-3 with F0_HZ = 10 GHz --
-    lambda_0 = 29.979 mm, so 29.98 cells per free-space wavelength, which the
-    prose rounds to 30. "Meets LEAK_BAR through 80 deg" means "at that mesh"
-    and says nothing about a coarser or finer one. The three rigs differ in
-    grid EXTENT and record LENGTH only. Asserting that here is what stops a rig
-    added at another resolution from widening the domain claim silently: it
-    would have to carry its own dx or f0, and that is exactly what this
-    rejects.
+    Every 2-D |B/A| in this lane is measured at DX_M = 1e-3 with F0_HZ = 10 GHz
+    -- lambda_0 = 29.979 mm, so 29.98 cells per free-space wavelength, which
+    the prose rounds to 30. "Meets LEAK_BAR through 80 deg" means "at that
+    mesh" and says nothing about a coarser or finer one. The three rigs
+    asserted below differ in grid EXTENT and record LENGTH only. Asserting that
+    here is what stops a rig added at another resolution from widening the
+    domain claim silently: it would have to carry its own dx or f0, and that is
+    exactly what this rejects.
+
+    Scope: the three rigs are the 2-D ones. measure_aux_echo_1d runs cv04's
+    3-15 GHz band at the same dx, roughly 20 to 100 cells per wavelength, and
+    is deliberately not in the loop below -- the single-resolution claim is
+    about the angle domain, not about the 1-D depth law.
 
     The value asserted is the exact c0 / f0 / dx, not the rounded 30 -- the
     first version of this test pinned 30.0 and reddened, which is the whole
