@@ -439,6 +439,283 @@ def _init_cpml_sharded(grid, nx_local, n_devices, mesh):
 # Public runner
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Distributed admission gate (B0, 2026-09-14)
+# ---------------------------------------------------------------------------
+# Five features reached this lane with no refusal and no warning, and came
+# back wrong.  The research note
+# ``rfx-research-notes/accel-import-20260913/DIRECTION-distributed-preflight.md``
+# (S3-S4) and its survey (``decomposition-survey.md`` SC1) name them; what
+# follows is that note's FIRST layer -- the position-INDEPENDENT admission
+# check.  Every one fails closed and names both the feature and how to
+# proceed; none of them warns and drops.
+#
+# Measured on main BEFORE these refusals existed (2026-09-14, 2 virtual CPU
+# devices, 40 steps, 24x12x12 mm PEC box at dx=1 mm, probes at x=12/22 mm);
+# the harness is ``tests/unit/runners/test_distributed_admission_refusals.py``
+# and the table is in
+# ``docs/design_notes/2026-09-14_distributed_admission_refusals.md``:
+#
+#   periodic axes 'y'  distributed vs native max|dEz| = 1.963798e-04 on a
+#                      1.090241e-03 peak (18.0% of peak), 0 warnings, no error
+#   extent port        distributed probe energy 0.0 (max|E| 0.0) vs native
+#                      9.953718e-04 (max|E| 1.412484e-02), 0 warnings
+#   excite=False port  distributed energy 1.983971e-03 -- BIT-IDENTICAL to the
+#                      same port with excite=True -- vs native 0.0; with the
+#                      documented ``waveform=None`` default it instead died in
+#                      ``make_port_source`` with "TypeError: Expected a
+#                      callable value, got None", which names no feature
+#   flux / NTFF        result.flux_monitors is None (native: 1 monitor named
+#                      'flux_x_0'), result.ntff_data is None (native:
+#                      NTFFData), 0 warnings
+#
+# The x-absorber class (#5) is position-DEPENDENT and lives in
+# :func:`check_x_absorber_fits_ranks`, called from inside
+# :func:`run_distributed` once the slab arithmetic is known.
+DISTRIBUTED_UNSUPPORTED_CODE = "distributed_unsupported_feature"
+
+
+def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
+    """Refuse the features the distributed lanes would silently drop.
+
+    Four position-independent classes, in declaration order:
+
+    1. **Periodic / Bloch boundaries.** The distributed local kernels are
+       unconditionally non-periodic -- ``rfx/runners/distributed.py:351``
+       ("non-periodic (ghost cells handle inter-device coupling)"), and
+       the same sentence again at :380, :415 and :440 -- and
+       ``sim._periodic_axes`` is read ZERO times in
+       ``rfx/runners/distributed_v2.py`` (verified by grep on main,
+       2026-09-14: the string does not occur in the file).  A periodic
+       axis therefore became an open ghost-coupled axis with nothing said.
+    2. **Extended lumped ports** (``impedance > 0`` with ``extent`` set).
+       ``distributed_v2.py`` forks on ``impedance > 0.0 and extent is
+       None`` then ``elif impedance == 0.0``; a wire port satisfies
+       neither, so it got no source, no resistive termination and no
+       error.  ``rfx/runners/distributed.py:1414-1422`` (the pmap twin,
+       which is also the ``n_devices == 1`` delegate) has the same fork.
+    3. **Passive ports** (``excite=False``).  ``excite`` does not occur in
+       either distributed runner; ``rfx/runners/uniform.py:421,440``
+       honours it.  Every port was excited.
+    4. **Flux monitors / NTFF boxes.**  Neither runner has an accumulator
+       for them (the strings ``flux`` and ``ntff`` do not occur), so a
+       registered monitor was dropped and the ``Result`` came back with
+       the field set to ``None`` -- same class as the #579 DFT-plane
+       refusal, so the same treatment.
+
+    Parameters
+    ----------
+    sim : Simulation
+        The simulation about to be dispatched to a distributed runner.
+    lane : str
+        Human name of the lane, used verbatim in the messages.
+    bloch : object or None
+        An explicit Bloch phase, when a caller has one.  ``run()`` on main
+        has no ``bloch=`` parameter (the Bloch path is derived from oblique
+        TFSF inside ``rfx/simulation.py`` and TFSF already falls back to a
+        single device), so this is normally ``None`` and the periodic-axis
+        half of class 1 is the reachable one; the parameter is here so a
+        future explicit Bloch phase cannot slip in behind the refusal.
+
+    Raises
+    ------
+    NotImplementedError
+        Naming the feature, why it cannot ride this lane, and the two ways
+        forward (drop the feature, or omit ``devices=...``).
+    """
+    periodic_axes = getattr(sim, "_periodic_axes", "") or ""
+    if bloch is None:
+        bloch = getattr(sim, "_bloch", None)
+    if periodic_axes or bloch is not None:
+        _what = []
+        if periodic_axes:
+            _what.append(
+                "periodic axes "
+                + ", ".join(repr(a) for a in periodic_axes)
+            )
+        if bloch is not None:
+            _what.append("a Bloch phase")
+        raise NotImplementedError(
+            f"{' and '.join(_what)}: periodic / Bloch boundaries are not "
+            f"supported on the {lane} path. The distributed local kernels "
+            "are unconditionally non-periodic "
+            "(rfx/runners/distributed.py:351, \"non-periodic (ghost cells "
+            "handle inter-device coupling)\", and again at :380/:415/:440) "
+            "and sim._periodic_axes is read ZERO times in "
+            "rfx/runners/distributed_v2.py, so the axis would be solved as "
+            "an OPEN ghost-coupled axis with nothing said (measured on main "
+            "before this refusal: periodic_axes='y' gave a distributed "
+            "trace 1.96e-04 away from the native periodic trace on a "
+            "1.09e-03 peak -- 18% of peak -- with no error and no warning). "
+            "Drop the periodic axes (or the Bloch phase), or omit "
+            "devices=... : the single-device run() lane honours both."
+        )
+
+    extended = [
+        (i, pe) for i, pe in enumerate(getattr(sim, "_ports", ()) or ())
+        if pe.impedance > 0.0 and pe.extent is not None
+    ]
+    if extended:
+        _detail = ", ".join(
+            f"port {i} ({pe.component} at {pe.position}, "
+            f"impedance={pe.impedance} ohm, extent={pe.extent})"
+            for i, pe in extended
+        )
+        raise NotImplementedError(
+            f"add_port(..., extent=...) (extended / wire port) is not "
+            f"supported on the {lane} path: the lane forks on "
+            "`impedance > 0.0 and extent is None` and then on "
+            "`impedance == 0.0` (the source/termination fork in "
+            "rfx/runners/distributed_v2.py, and its twin at "
+            "rfx/runners/distributed.py:1414-1422), and a port with a "
+            "positive impedance AND an extent satisfies NEITHER -- it gets "
+            "no source, no resistive termination and no error. Declared "
+            f"here: {_detail}. Measured on main before this refusal: the "
+            "distributed probe energy was exactly 0.0 where the native run "
+            "read 9.95e-04 (peak |Ez| 1.41e-02). Use a single-cell lumped "
+            "port (drop extent=), or omit devices=... : the single-device "
+            "run() lane realizes wire ports "
+            "(rfx/runners/uniform.py:420, setup_wire_port)."
+        )
+
+    passive = [
+        (i, pe) for i, pe in enumerate(getattr(sim, "_ports", ()) or ())
+        if not pe.excite
+    ]
+    if passive:
+        _detail = ", ".join(
+            f"port {i} ({pe.component} at {pe.position})" for i, pe in passive
+        )
+        raise NotImplementedError(
+            f"add_port(..., excite=False) (passive matched load) is not "
+            f"supported on the {lane} path: `excite` does not occur in "
+            "rfx/runners/distributed_v2.py or rfx/runners/distributed.py at "
+            "all, while rfx/runners/uniform.py:421,440 honours it (`if "
+            "pe.excite:` on both the wire and the lumped branch), so every "
+            f"port here is EXCITED. Declared here: {_detail}. Measured on "
+            "main before this refusal: an excite=False port with an "
+            "explicit waveform produced a distributed probe energy of "
+            "1.983971e-03 -- bit-identical to the same port with "
+            "excite=True -- where the native run read exactly 0.0; with the "
+            "documented waveform=None default the lane instead died inside "
+            "make_port_source with \"Expected a callable value, got None\". "
+            "Excite the port (excite=True) and read the other ports' V/I, "
+            "or omit devices=... : multi-port S-parameter extraction with "
+            "passive loads belongs on the single-device run() lane."
+        )
+
+    _monitors = []
+    if getattr(sim, "_flux_monitors", None):
+        _monitors.append(
+            f"{len(sim._flux_monitors)} flux monitor(s) from "
+            "add_flux_monitor()"
+        )
+    if getattr(sim, "_ntff", None) is not None:
+        _monitors.append("an NTFF box from add_ntff_box()")
+    if _monitors:
+        raise NotImplementedError(
+            "add_flux_monitor() / add_ntff_box() are not supported on the "
+            f"{lane} path (same class as the #579 DFT-plane refusal): "
+            "neither rfx.runners.distributed_v2 nor rfx.runners.distributed "
+            "accumulates a flux or NTFF surface DFT -- the runners have no "
+            "accumulator and no reduce across ranks -- so a registered "
+            f"monitor is silently dropped. Declared here: "
+            f"{', and '.join(_monitors)}. Measured on main before this "
+            "refusal: result.flux_monitors was None where the native run "
+            "returned one monitor ('flux_x_0'), and result.ntff_data was "
+            "None where the native run returned an NTFFData, with no "
+            "warning either time. Drop the flux monitors / NTFF box, or "
+            "omit devices=... (use a single-device run() instead)."
+        )
+
+
+def check_x_absorber_fits_ranks(*, nx, n_devices, nx_per, pad_x, ghost,
+                                cpml_layers, lane="distributed multi-device run()"):
+    """Refuse an x CPML absorber that does not fit inside one rank's slab.
+
+    Class 5 of the admission gate, and the one that is position-dependent:
+    it depends on the slab arithmetic, so it runs inside
+    :func:`run_distributed` rather than at the API boundary.
+
+    The condition is derived from the windows
+    :func:`rfx.runners.distributed._apply_cpml_e_distributed` (and its H
+    twin) actually slice on a per-rank slab of length
+    ``nx_local = nx_per + 2*ghost``::
+
+        x-lo, rank 0     [ghost, ghost + n)
+        x-hi, rank N-1   [nx_per + ghost - pad_x - n, nx_per + ghost - pad_x)
+
+    (``xlo``/``xhi`` at rfx/runners/distributed.py:807-808; ``pad_x`` is the
+    #623 alignment pad, which sits PAST the real x-hi face on the last
+    rank.)  A rank owns the real cells ``[ghost, ghost + nx_per)`` of its
+    own slab, so the windows stay inside owned cells exactly while::
+
+        n <= nx_per           (x-lo face)
+        n <= nx_per - pad_x   (x-hi face)
+
+    Past that the window slides into the ghost halo.  ONE cell of overflow
+    keeps the window's LENGTH at ``n``, so every shape still matches,
+    nothing raises, and the absorber updates a halo cell instead of the
+    owned cell it should -- measured on main (2026-09-14, 2 devices, 60
+    steps, x_lo='cpml'/x_hi='pec', 6x8x8 mm at dx=1 mm, cpml_layers=8,
+    nx=15, pad_x=1, nx_per=8): distributed vs native max|dEz| = 2.207244
+    on a 4.416633 peak (50.0% of peak) and the x-hi-face probe off by
+    99.9994% of its own peak, with zero warnings.  TWO or more cells of
+    overflow run past the slab end, the clipped window is shorter than the
+    psi arrays, and XLA raises "mul got incompatible shapes for
+    broadcasting: (20, 1, 1), (15, 53, 53)" -- which names no feature.
+    The same asymmetric model with nx_per=17 (domain 24 mm) is at
+    9.7e-05 of peak, i.e. parity.
+
+    Raises
+    ------
+    ValueError
+        Naming nx, n_devices, nx_per, cpml_layers and the face(s) that
+        overflow, and suggesting fewer devices.
+    """
+    faces = []
+    if cpml_layers > nx_per:
+        faces.append(
+            f"x-lo needs cells [{ghost}, {ghost + cpml_layers}) of rank 0's "
+            f"slab but rank 0 owns [{ghost}, {ghost + nx_per})"
+        )
+    if cpml_layers > nx_per - pad_x:
+        _start = nx_per + ghost - pad_x - cpml_layers
+        faces.append(
+            f"x-hi needs cells [{_start}, {nx_per + ghost - pad_x}) of rank "
+            f"{n_devices - 1}'s slab but that rank owns "
+            f"[{ghost}, {ghost + nx_per})"
+        )
+    if not faces:
+        return
+    # The largest FEWER device count that does fit, searched exactly rather
+    # than estimated as nx // cpml_layers (pad_x is not monotone in N).
+    fits = [
+        n for n in range(1, n_devices)
+        if cpml_layers <= ((nx + (-nx) % n) // n) - ((-nx) % n)
+    ]
+    remedy = (
+        f"Use fewer devices (n_devices={max(fits)} is the largest count "
+        f"that fits at nx={nx} and cpml_layers={cpml_layers})"
+        if fits else
+        f"No device count above 1 fits an absorber this deep at nx={nx}: "
+        "reduce cpml_layers or increase nx"
+    )
+    raise ValueError(
+        f"the x CPML absorber does not fit inside one rank's slab on the "
+        f"{lane} path: cpml_layers={cpml_layers} with nx={nx}, "
+        f"n_devices={n_devices} gives nx_per={nx_per} owned cells per rank "
+        f"(pad_x={pad_x} alignment cell(s) on the last rank, ghost={ghost}) "
+        f"-- {'; '.join(faces)}. The distributed CPML window would reach "
+        "into the ghost halo, which either silently absorbs in the wrong "
+        "cell (measured: 50% of peak on a 2-device run, and the x-hi-face "
+        "trace wrong by 99.9994% of its own peak, with no warning) or dies "
+        f"in XLA with a broadcasting error that names no feature. {remedy}, "
+        "or omit devices=... entirely (the single-device run() lane has no "
+        "slab to overflow)."
+    )
+
+
 def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                     **kwargs):
     """Run FDTD simulation distributed across multiple devices.
@@ -504,6 +781,18 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             stacklevel=2,
         )
         return sim.run(n_steps=n_steps)
+
+    # ---- Admission gate (B0): the four position-independent classes ----
+    # After the two FALLBACKS above on purpose: TFSF and waveguide ports
+    # run the whole model on one device, which is a right answer rather
+    # than a silently wrong one, and that single-device lane honours
+    # periodic axes, wire ports, excite=False and the monitors. Before the
+    # n_devices == 1 delegation below on purpose too: the pmap runner in
+    # rfx/runners/distributed.py carries the same four gaps (:1414-1422 is
+    # the same port fork; "excite", "flux" and "ntff" do not occur there
+    # either).
+    refuse_unsupported_distributed_features(
+        sim, lane="distributed (v2) runner")
 
     from rfx.api import Result
 
@@ -642,6 +931,17 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
 
     use_cpml = sim._boundary == "cpml" and grid.cpml_layers > 0
     n_cpml = grid.cpml_layers if use_cpml else 0
+
+    # ---- Admission gate (B0) class 5: the x absorber must fit one rank ----
+    # Here and not at the API boundary because it is position-dependent:
+    # nx_per / pad_x / ghost are only known now, and this is the last point
+    # before the state is split into slabs and sharded.
+    if use_cpml:
+        check_x_absorber_fits_ranks(
+            nx=nx, n_devices=n_devices, nx_per=nx_per, pad_x=pad_x,
+            ghost=ghost, cpml_layers=n_cpml,
+            lane="distributed (v2) runner",
+        )
 
     # Phase B: NU + CPML + distributed is not implemented yet.
     # The api.py-level guardrail already blocks this combination; assert

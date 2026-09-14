@@ -3718,6 +3718,23 @@ class _ExecuteMixin:
                     "DFT plane probes or omit devices=... (use a "
                     "single-device run() instead)."
                 )
+            # ---- Distributed admission gate (B0, 2026-09-14) ----
+            # The first layer of the distributed preflight described in
+            # rfx-research-notes/accel-import-20260913/
+            # DIRECTION-distributed-preflight.md S3-S4: four features that
+            # reached this lane with no refusal and no warning and came
+            # back wrong (periodic/Bloch boundaries, extended lumped
+            # ports, excite=False ports, flux/NTFF monitors). Refused, not
+            # warned-and-dropped, in the same style as the #579 DFT-plane
+            # refusal above. The runner repeats the call so a direct
+            # rfx.runners.distributed_v2.run_distributed() is gated too,
+            # and carries the fifth, position-dependent class (the x
+            # absorber vs the per-rank slab).
+            from rfx.runners.distributed_v2 import (
+                refuse_unsupported_distributed_features,
+            )
+            refuse_unsupported_distributed_features(
+                self, lane="distributed multi-device run()")
             self._warn_unsupported_run_kwargs("distributed multi-device", {
                 "subpixel_smoothing": subpixel_smoothing,
                 "checkpoint": checkpoint,
