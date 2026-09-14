@@ -180,3 +180,15 @@ class _SparamMixin:
     # ``self._compute_waveguide_s_matrix_nu(...)``. Class-body import for the
     # same namespace-lock reason spelled out at that binding.
     from rfx.sparams.waveguide import _compute_waveguide_s_matrix_nu
+
+    # #980 Phase 1 item 2: the unified entry point over every lane bound
+    # above, plus the lumped/wire run lane. NEW surface rather than moved
+    # code, but bound the same way and for the same reason — a module-level
+    # ``from rfx.sparams import dispatch`` would add ``dispatch`` to
+    # ``rfx.api._sparams``'s module namespace, which
+    # ``tests/locks/test_sparams_split_bit_identity.py
+    # ::test_sparams_module_namespace_is_the_declared_re_export_surface``
+    # pins by SET EQUALITY. ``__qualname__`` is set to
+    # ``_SparamMixin.<name>`` at the foot of that module so
+    # ``rfx/api/__init__.py``'s composition-time rewrite picks both up.
+    from rfx.sparams.dispatch import compute_s_matrix, s_matrix_lane

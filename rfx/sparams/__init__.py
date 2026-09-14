@@ -19,6 +19,11 @@ Modules:
 * :mod:`rfx.sparams.mixed` — ``compute_mixed_s_matrix``, the lumped/wire +
   MSL two-family driver of issue #488.
 * :mod:`rfx.sparams.msl` — ``compute_msl_s_matrix``.
+* :mod:`rfx.sparams.dispatch` — ``compute_s_matrix`` and ``s_matrix_lane``,
+  the #980 Phase 1 unified entry point that reads the port registrations and
+  forwards to exactly one of the calculators above (or names the run lane for
+  lumped/wire ports). New surface, not moved code; it invents no defaults and
+  refuses to guess where a registration does not determine a lane.
 
 Every calculator is a module-level function whose first parameter is still
 ``self`` (the ``Simulation``); ``rfx.api._sparams`` binds each back onto
