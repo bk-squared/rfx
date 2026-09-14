@@ -78,6 +78,18 @@ them warned.
    incompatible shapes for broadcasting: (20, 1, 1), (15, 53, 53)``, which
    names no feature either.
 
+6. **Ghost-width formula.** ``rfx/api/_execute.py`` computed
+   ``floor(K/2)+1`` while ``rfx/runners/distributed_nu.build_sharded_nu_grid``
+   uses ``ghost = K``::
+
+       K:                1   2   3   4
+       floor(K/2)+1:     1   2   2   3
+       builder (g=K):    1   2   3   4
+
+   The preflight was SHORT by one cell from K=3 up, i.e. it would clear a
+   configuration the builder cannot shard. There is now one source of truth,
+   :func:`rfx.runners.distributed_nu.nu_ghost_width`.
+
 The GREEN assertions here are the refusals. The negative controls at the
 bottom reuse the fixtures and tolerances of the shipped parity tests in
 ``tests/unit/runners/test_distributed.py`` unchanged -- no tolerance is
@@ -398,6 +410,82 @@ def test_a_fitting_x_absorber_is_not_refused():
     running."""
     res = _run_distributed(_asym(8, 24), n_steps=8)
     assert res.time_series is not None
+
+
+# ---------------------------------------------------------------------------
+# 6. One ghost-width formula
+# ---------------------------------------------------------------------------
+
+def test_ghost_width_is_the_builders_value_for_k_1_to_4():
+    """RED: the preflight's floor(K/2)+1 gave 1, 2, 2, 3 for K=1..4 while the
+    builder shards with g=K -- short by one cell from K=3 up."""
+    import math
+
+    from rfx.runners.distributed_nu import nu_ghost_width
+    old = [math.floor(k / 2) + 1 for k in (1, 2, 3, 4)]
+    new = [nu_ghost_width(k) for k in (1, 2, 3, 4)]
+    assert new == [1, 2, 3, 4], new
+    assert old == [1, 2, 2, 3], old
+    # the disagreement this unification closes, stated as a number
+    assert [n - o for n, o in zip(new, old)] == [0, 0, 1, 1]
+
+
+def test_the_builder_and_the_preflight_agree_at_every_k():
+    """One source of truth: the builder's own ``ghost_width`` (K=1, the only
+    interval it accepts today) and the preflight's value both come from
+    :func:`nu_ghost_width`, and the preflight no longer carries a second
+    formula."""
+    from pathlib import Path
+
+    import rfx.api._execute as _execute
+    from rfx.nonuniform import make_nonuniform_grid
+    from rfx.runners.distributed_nu import (
+        build_sharded_nu_grid,
+        nu_ghost_width,
+    )
+
+    grid = make_nonuniform_grid(
+        domain_xy=(12e-3, 6e-3),
+        dz_profile=np.full(7, 1e-3, dtype=np.float64),
+        dx=1e-3,
+    )
+    sharded = build_sharded_nu_grid(grid, 2, exchange_interval=1)
+    assert sharded.ghost_width == nu_ghost_width(1)
+
+    src = Path(_execute.__file__).read_text()
+    assert "ghost_width = math.floor" not in src, (
+        "the NU-forward preflight grew a second ghost-width formula again")
+    assert "nu_ghost_width(" in src, (
+        "the NU-forward preflight must take its ghost width from the builder")
+
+
+def test_the_nu_forward_preflight_admits_with_the_builders_ghost_width():
+    """The unification, end to end on the lane that carries the check.
+
+    ``nx=4`` over 2 ranks is ``nx_per_rank=2``. MEASURED on origin/main
+    (d56f68eb) with the local ``floor(K/2)+1``:
+
+        K=3  ghost_width=2, ``2 > 2`` is False -> check 3 PASSED, and the
+             call fell through to build_sharded_nu_grid's own
+             "exchange_interval > 1 is reserved for Phase 2E"
+        K=4  ghost_width=3 -> raised, but naming 3 where the builder needs 4
+
+    With one source of truth K=3 is refused by check 3 itself, naming the
+    width the builder would actually shard with.
+    """
+    sim = Simulation(freq_max=15e9, domain=(3e-3, 4e-3, 4e-3), dx=1e-3,
+                     boundary="pec")
+    sim._dx_profile = np.full(3, 1e-3)
+    sim._dy_profile = np.full(4, 1e-3)
+    sim._dz_profile = np.full(4, 1e-3)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sim.add_source(position=(1.5e-3, 2e-3, 2e-3), component="ez",
+                       amplitude_kind="field")
+        sim.add_probe(position=(1.5e-3, 2e-3, 2e-3), component="ez")
+        with pytest.raises(ValueError, match="ghost_width=3 exceeds"):
+            sim.forward(n_steps=4, distributed=True, devices=_devices(),
+                        exchange_interval=3)
 
 
 # ---------------------------------------------------------------------------

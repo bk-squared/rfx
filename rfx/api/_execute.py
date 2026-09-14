@@ -2474,7 +2474,14 @@ class _ExecuteMixin:
                 pad_x = n_devices - (nx % n_devices)
             nx_padded = nx + pad_x
             nx_per_rank = nx_padded // n_devices
-            ghost_width = math.floor(exchange_interval / 2) + 1
+            # One ghost-width formula (B0, 2026-09-14). This line used to
+            # compute floor(K/2) + 1 locally, which agrees with the
+            # builder at K=1,2 and is SHORT by one cell from K=3 up (K=3:
+            # 2 vs 3) -- so this check cleared configurations
+            # ``build_sharded_nu_grid`` (below, same call) then cannot
+            # shard. Both now read the same helper.
+            from rfx.runners.distributed_nu import nu_ghost_width
+            ghost_width = nu_ghost_width(exchange_interval)
             for rank in range(n_devices):
                 if ghost_width > nx_per_rank:
                     raise ValueError(

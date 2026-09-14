@@ -312,6 +312,30 @@ def split_1d_with_ghost(arr: "np.ndarray", n_devices: int, nx_per: int,
     return slabs
 
 
+def nu_ghost_width(exchange_interval: int) -> int:
+    """Ghost-cell width of the sharded x-decomposition: ``g = K``.
+
+    The SINGLE source of truth for that number (2026-09-14, B0). A halo of
+    ``g`` cells keeps a rank's owned slab correct for ``K`` steps between
+    exchanges, so ``g = K``; :func:`build_sharded_nu_grid` shards with this
+    value and the ``run(devices=...)`` / NU-forward preflights admit with
+    it.
+
+    It used to be computed twice. ``rfx/api/_execute.py``'s NU-forward
+    preflight (check 3) had ``ghost_width = floor(exchange_interval / 2) +
+    1``, which agrees at ``K = 1, 2`` and is SHORT by one cell from ``K =
+    3`` up (K=3: 2 vs 3; K=4: 3 vs 4) -- so the preflight would clear a
+    configuration the builder then cannot shard. The survey note
+    (``decomposition-survey.md``, S2 "교환 간격 K>1") reaches the same
+    ``g = K`` from the stencil side.
+    """
+    k = int(exchange_interval)
+    if k < 1:
+        raise ValueError(
+            f"exchange_interval must be >= 1, got {exchange_interval!r}")
+    return k
+
+
 def build_sharded_nu_grid(
     grid,
     n_devices: int,
@@ -364,7 +388,7 @@ def build_sharded_nu_grid(
             "only exchange_interval=1 is supported in Phase 2A."
         )
 
-    ghost = exchange_interval  # ghost_width = exchange_interval cells
+    ghost = nu_ghost_width(exchange_interval)  # g = K, one source of truth
 
     nx, ny, nz = grid.nx, grid.ny, grid.nz
 
