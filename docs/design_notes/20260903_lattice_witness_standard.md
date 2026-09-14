@@ -1301,8 +1301,10 @@ with a compute cost, and it is proposed in §5.4 rather than taken here.
 ## 13. Revision 2026-09-14 — GL1's validity domain, and why the budget was not widened (#1015)
 
 **Append-only.** §3 and §4 are unchanged; each carries a pointer to this
-section. No window in this note moves, no committed gate value moves, and the
-slab family's three `lattice_witness.json` artifacts rebuild byte-identical.
+section. No window in this note moves and no committed gate value moves. cv22's
+and cv23's `lattice_witness.json` rebuild byte-identical from their committed
+records under this revision and under the commit before it; cv04 commits no
+`rfx.json`, so its artifact cannot be rebuilt at all (§5.3) and is untouched.
 
 ### 13.0 What #1015 asked
 
