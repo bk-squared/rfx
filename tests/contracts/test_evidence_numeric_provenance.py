@@ -599,6 +599,15 @@ CLASSIFICATION: dict[str, str] = {
     # `others` and never `parses`; NO_ARTIFACT_REFERENCE only checks `parses`.
     "docs/design_notes/20260910_cv05_crossval_disposition.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260911_harminv_record_support.md": GATED,
+    # 2026-09-14 (#1015 pre-declaration): `parses` is empty. Its two `::` spans
+    # are a symbol reference (`oblique_fresnel.py::evaluate_e2`) and a TEMPLATE
+    # with placeholders in the key path
+    # (`lattice_witness.json::rungs.<rung>.falsifiers.<kind>.gates`), and the
+    # file it names carries no directory, so both land in `others`. The note is
+    # a decision rule written BEFORE its measurements existed and quotes no
+    # measured value at all; the measurements live in section 13 of the
+    # lattice-witness standard, which IS gated.
+    "docs/design_notes/20260914_lattice_witness_gl1_predeclaration.md": NO_ARTIFACT_REFERENCE,
     # 2026-09-13 (#717 crossval lane decision): `parses` is empty -- the note
     # cites no artifact key at all. Its five `::` spans are pytest node ids
     # (`test_crossval_comprehensive.py::TestPECCavity::test_rfx_vs_analytical`
