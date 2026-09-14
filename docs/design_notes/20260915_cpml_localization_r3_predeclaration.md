@@ -199,3 +199,55 @@ FIRED verdict above is a property of the statistic. If instead two rerolls
 never cross (0 violating steps), the candidate's crossings are not
 reroll-class and the STOP stands on its own. D1 does not change the G5-5′
 verdict; it decides what the lead asks the PI next. No candidate is run.
+
+
+### D1 result (run once on 630f729d; no candidate)
+
+Two harmless rerolls of the baseline — `legacy_emitter` vs `no_fusion`, both
+differing from the unflagged baseline on every fixture — exceed each other
+under the G5-5′ per-step predicate on **3688 vs 3689 of 8400 field-steps**
+(7 fixtures x 6 fields x 200 steps): a coin flip, with single-step ratios up
+to **6.0x**. Per (fixture, field) the crossing counts run 16-181 of 200. The
+per-step form of G5-5′ therefore cannot distinguish a reroll from anything;
+the FIRED verdict above is a property of the statistic, exactly as the D1
+declaration allowed for. Against the same control the candidate crossed on
+**7 of 200 steps per field at most (max 2.0-4.0x)** — far fewer than a
+reroll's 16-181, i.e. the localized kernel is closer to the baseline than
+a recompilation of the baseline is to itself. (`reroll_diagnostic.json`)
+
+The G5-5′ FIRED record is not edited. The lane's next step is a lead
+decision to put to the PI, made here with its evidence:
+
+### Proposed G5-5″ (re-judgment of STORED curves; no new measurement; pending PI approval)
+
+Control-derived statistic instead of a per-step inequality: for every
+(fixture, field), the candidate's number of steps above the no-fusion control
+and its maximum single-step ratio must not exceed the legacy reroll's own
+values against the same control. Applied to the stored curves:
+
+| fixture/field | cand steps > flag | legacy steps > flag | cand max ratio | legacy max ratio | |
+|---|---|---|---|---|---|
+| uniform8/ex | 7 | 28 | 2.00 | 3.00 | pass |
+| uniform8/ey | 19 | 49 | 2.00 | 2.74 | pass |
+| uniform8/ez | 62 | 20 | 2.67 | 2.00 | FAIL |
+| uniform8/hx | 13 | 168 | 1.63 | 2.89 | pass |
+| uniform8/hy | 5 | 144 | 1.68 | 6.00 | pass |
+| uniform8/hz | 3 | 76 | 1.18 | 2.74 | pass |
+| periodic8/ex | 47 | 61 | 2.50 | 3.00 | pass |
+| periodic8/ey | 19 | 34 | 2.00 | 4.00 | pass |
+| periodic8/ez | 58 | 66 | 4.00 | 4.00 | pass |
+| periodic8/hx | 107 | 92 | 2.38 | 3.81 | FAIL |
+| periodic8/hy | 85 | 108 | 2.52 | 6.00 | pass |
+| periodic8/hz | 56 | 132 | 2.48 | 3.68 | pass |
+| kappa8/ex | 8 | 39 | 1.67 | 2.82 | pass |
+| kappa8/ey | 13 | 26 | 1.78 | 2.55 | pass |
+| kappa8/ez | 12 | 29 | 2.00 | 2.67 | pass |
+| kappa8/hx | 82 | 126 | 3.07 | 3.59 | pass |
+| kappa8/hy | 121 | 167 | 3.18 | 6.00 | pass |
+| kappa8/hz | 111 | 181 | 3.18 | 3.30 | pass |
+
+The other four fixtures: candidate 0 crossings (bit-identical), legacy 16-181.
+**Verdict under G5-5″: FIRED** (`rejudge_g55pp.json`). Recorded as a
+proposal; the lane proceeds to the GPU falsifier with the candidate re-applied
+to `rfx/` (the file every passed gate judged), and the PR carries both the
+G5-5′ FIRED record and this re-judgment for the PI to accept or refuse.
