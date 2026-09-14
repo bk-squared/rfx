@@ -265,3 +265,191 @@ what a pre-declaration is for. No gate, tolerance, committed crossval artifact o
 measured number changes: the sweep has not run, and every number in the table
 above is a recomputation from the already-committed artifact, not a new
 simulation.
+
+---
+
+## Result 2026-09-14 — Arm 1 ran, and its single binding gate passes
+
+Arm 1 of the addendum above ran on CPU at base main `883615c6`: eight solves,
+`n_steps = 25000` (cv01's own value). New artifact
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json`, log
+`layer_sweep_run.log`, both written beside the six-arm `selfcheck.json`, which
+is not touched. Driver: the same
+`scripts/diagnostics/cv01_cpml_flux_selfcheck.py`, which gained a second mode
+(`--mode layer-sweep`); the six-arm mode is unchanged, and a re-run of its
+`upml_full` control is identical to the committed artifact on all 22 arm fields
+— including all six 200-point per-bin arrays, 1200 elements, element for
+element — with only `wall_s` differing (35.1 s → 37.7 s).
+
+Nothing here closes #813. It attributes the mechanism; the issue stays open.
+
+### What varied, and what did not
+
+Only `Simulation(cpml_layers=...)`. `pml = cpml_n * dx` stayed at cv01's
+`10 * dx`, so the source (1.1 µm) and both monitor planes (4.0 µm, 14.5 µm) did
+not move with the absorber — the anti-confound clause above. rfx pads the grid
+outside the declared 16 µm domain, so the interior stayed 161 cells per axis on
+every arm while `grid.shape` went 181 → 193 → 201 → 241, exactly the witness
+written before the run. Preflight's realized output plane read 1.45e-05 m at
+all four layer counts, its normal index moving with the pad (155 → 161 → 165 →
+185) while the physical plane stood still. All four arms are readable; none was
+excluded.
+
+### The table
+
+`mean_self` is cv01's Run-1 band mean. The `aperture` column is the companion
+arm with `size=(2*w_wg, dx)`; the outside-aperture column is `full` −
+`aperture`, band-summed at the output plane over the full-plane band sum — the
+construction that gave −26.04 % on the six-arm artifact. Every number is
+resolved against the artifact key by key in "Numeric provenance" below.
+
+| `cpml_layers` | `grid.shape` | interior | `mean_self` (full) | `mean_self` (aperture) | outside-aperture (%) | negative bins | wall full/aperture (s) |
+|---|---|---|---|---|---|---|---|
+| 10 — cv01 today | 181×181×1 | 161 | 0.748852 | 0.991232 | −26.04182 | 88/88 | 45.3 / 35.2 |
+| 16 — rfx default | 193×193×1 | 161 | 0.884100 | 0.996183 | −8.56374 | 88/88 | 45.3 / 37.9 |
+| 20 | 201×201×1 | 161 | 0.919530 | 0.996269 | −4.90301 | 88/88 | 47.4 / 40.4 |
+| 40 | 241×241×1 | 161 | 0.947345 | 0.990150 | −1.93523 | 88/88 | 67.8 / 60.4 |
+
+### Control
+
+The 10-layer arm **is** cv01's rig, so it is the control, and it reproduces the
+committed six-arm `cpml_full` exactly: `mean_self` 0.7488520140093946 against
+0.7488520140093946, and the outside-aperture fraction −26.041819705557895
+against −26.041819705557895. Not "within float noise" — the same doubles.
+
+### Verdict against the gate written before the run
+
+**PASS.** The single binding gate is `mean_self` ≥ 0.90906 on the 40-layer arm;
+it reads 0.947345, closing 82.6 % of the gap from 0.748852 to the `upml_full`
+control 0.989162. The reported, non-gating observable moved with it: the
+outside-aperture fraction is monotone non-increasing in magnitude across
+10 → 16 → 20 → 40 and shrinks to 0.07431 of its 10-layer value, about a
+thirteenth. Gate and observable agree, so there is no disagreement to report,
+and the falsifier holds on neither half.
+
+The 2026-09-14 correction to this gate did not change the outcome: at 40 layers
+the retired fraction half (|−1.93523| ≤ |−26.04182| / 3 = 8.68) and the binding
+`mean_self` half both pass. The correction would have decided only an arm
+landing in `mean_self` ∈ [0.894243, 0.909059], and none did. That the two
+halves genuinely decouple is visible at 16 layers anyway, where the fraction
+(−8.56) is already past the retired threshold (−8.68) while `mean_self`
+(0.884100) is not past 0.90906.
+
+### What this says, and what it does not
+
+**Says**: the missing power is the CPML absorber's own reflection. Deepening
+the absorber and changing nothing else recovers it monotonically, and what it
+recovers is the off-guide part — the aperture arms conserve at ≈0.99 at every
+layer count, so the guided channel was never where the deficit lived. This is
+*consistent with* `docs/agent-memory/rfx-known-issues.md:4158` ("CPML
+guided-mode reflection ~12% at default 8-10 layers ... 10 layers → 11.7 %, 20 →
+4.2 %, 40 → 1.8 %"), the entry that raised rfx's own `cpml_layers` default from
+8 to 16. A different observable (|b1/a1| on WR-90) and a different structure,
+but the same monotone-in-thickness shape and the same verdict on 10 layers.
+
+**Does not say** that cv01's CPML variant now passes cv01's own G2. It does
+not. G2 is `0.95 <= mean_self <= 1.05` and the 40-layer arm reads 0.947345, so
+G2 is false at every swept count. A deeper absorber takes the deficit from 25
+points to 5; it does not remove it. What is left at 40 layers is unattributed
+and is not attributed here.
+
+**Does not say** anything about the bend arm, the Meep leg, `mean_T`, or the
+committed UPML run of 2026-09-06. None of them is touched by this measurement.
+
+### R2
+
+One attempt, pre-declared, closing: it reached the gate declared before it ran.
+No second attempt on this mechanism. Arms 2 (output-plane x-ladder) and 3
+(domain grown in x) stay written down and unrun — with the absorber identified
+they are no longer the next thing to run, and the residual 5 points at 40 layers
+would need its own pre-declaration naming its own mechanism.
+
+### Preflight, verbatim
+
+Identical on all four `full` arms; the `aperture` companions add two
+`[FLUX REGION]` lines and nothing else.
+
+    [PREFLIGHT] dielectric 'wg' on x: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+    [PREFLIGHT] dielectric 'wg' on y: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+    [PREFLIGHT] dielectric 'wg' on z: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+    [PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+
+Every arm also carries one `warnings.warn` from the build — the
+`amplitude_kind` deprecation (issue #571), recorded per arm under
+`preflight_warnings` — and the run's advisory echo of the four lines above
+under `run_warnings`. None of the four lines is boundary-count dependent: three
+are resolution, the fourth is the lossless-dielectric-in-an-open-domain
+advisory, and all four read the same on the 10-layer and the 40-layer arm. None
+can explain a difference between arms, and none is suppressed.
+
+### The rig change this licenses (separate commit, diagnostic variant only)
+
+cv01 pins `cpml_n = 10`, below rfx's own `Simulation(cpml_layers=16)` default,
+and the sweep says what that costs on the `RFX_BOUNDARY=cpml` path. The
+smallest swept count that reaches the pre-declared bar is **20** — 16 gives
+0.884100, short of 0.90906 — and 20 is also what
+`examples/crossval/11_waveguide_port_wr90.py` uses, for the same reason: a
+guided mode running into the absorber. So the CPML variant moves to 20 layers
+while `pml`, and with it every plane position, stays where it was.
+
+That is a rig change to an env-var diagnostic variant: not physics, not a gate.
+The UPML path — the committed run, its artifact and every number in it — is
+untouched, and no gate, tolerance or committed crossval artifact moves. cv01
+was not re-run for it, because running it would overwrite the committed UPML
+results; the evidence is the straight-guide arm above, whose driver copies
+cv01's Run 1 line for line under a rig-fidelity check and whose 10-layer arm
+reproduces the committed number to the last bit.
+
+### Numeric provenance
+
+Every number in the table above, by artifact key, so a regenerated artifact
+that moved one of them reds the numeric-provenance gate instead of leaving a
+stale table.
+
+`mean_self`, full plane:
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.10.mean_self_full = 0.748852`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.16.mean_self_full = 0.884100`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.20.mean_self_full = 0.919530`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.40.mean_self_full = 0.947345`.
+
+`mean_self`, aperture companion:
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.10.mean_self_aperture = 0.991232`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.16.mean_self_aperture = 0.996183`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.20.mean_self_aperture = 0.996269`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.40.mean_self_aperture = 0.990150`.
+
+Outside-aperture fraction, in percent (cited unitless — the gate's `%` unit
+would rescale the literal by 1e-2, and the artifact stores percent):
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.10.outside_aperture.fraction_percent = -26.04182`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.16.outside_aperture.fraction_percent = -8.56374`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.20.outside_aperture.fraction_percent = -4.90301`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.40.outside_aperture.fraction_percent = -1.93523`.
+
+Verdict and gate:
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::verdict.gate_threshold = 0.90906`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::verdict.mean_self_at_40 = 0.947345`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::verdict.fraction_shrink_ratio_40_over_10 = 0.07431`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::verdict.gate_pass`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::verdict.fraction_monotone_non_increasing_in_magnitude`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::verdict.falsifier_holds`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::verdict.gate_and_observable_disagree`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.40.gate_G2_0p95_1p05_full`.
+
+Control and anti-confound witness:
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::control_reproduces_committed_cpml_full.mean_self_rel_diff = 0.0`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::all_arms_readable`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.10.witness.grid_shape[0] = 181`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.16.witness.grid_shape[0] = 193`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.20.witness.grid_shape[0] = 201`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.40.witness.grid_shape[0] = 241`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.40.witness.interior_cells.x = 161`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.40.witness.realized_output_coordinate_m = 0.0000145 m`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.40.witness.readable`.
+
+Wall time and run identity:
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.10.full.wall_s = 45.3`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::layers.40.full.wall_s = 67.8`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::n_steps = 25000`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::n_steps_is_cv01_value`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::rig_fidelity_check.checked_lines = 34`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::rfx_provenance_check.under_repo_root`.

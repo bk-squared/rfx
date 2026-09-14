@@ -311,6 +311,10 @@ CV19_WITNESS_NOTE = "docs/design_notes/20260903_cv19_fdfd_unitarity_witness.md"
 # falsifier argument is "no committed rung is near 1.0" -- exactly the shape that
 # is worthless if the numbers stop resolving. Opted in with its section 3.
 AUX_ECHO_NOTE = "docs/design_notes/20260904_aux_echo_record_invariant.md"
+# 2026-09-14 (#813): the cv01 CPML flux self-check pre-declaration. Its result
+# section quotes the four-point cpml_layers sweep -- the numbers that decide a
+# pre-declared gate -- so they are resolved here rather than retyped.
+CV01_CPML_NOTE = "docs/design_notes/cv01_cpml_flux_selfcheck_predeclaration.md"
 # 2026-09-06 (#928): the public benchmarks page is the single largest carrier of
 # measured numbers in the repository (93 references) and was NOT under this gate.
 # Every public "Validated comparison" row quotes an artifact value; a page that
@@ -359,6 +363,13 @@ MARKDOWN_SITES: dict[str, str] = {
     "docs/design_notes/20260908_docs_truth_audit.md": r"^#+\s+(.*\S)\s*$",
     "docs/design_notes/chain_closure_contract.md": r"^#+\s+(.*\S)\s*$",
     "docs/design_notes/20260911_harminv_record_support.md": r"^#+\s+(.*\S)\s*$",
+    # 2026-09-14 (#813 layer sweep): the cv01 CPML pre-declaration was
+    # NO_ARTIFACT_REFERENCE while it carried no citation at all. Its
+    # "Result 2026-09-14" section is a table of measured numbers read out of
+    # scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json, which is
+    # exactly the shape this gate exists for, so the note is opted in with the
+    # section that carries them.
+    CV01_CPML_NOTE: r"^#+\s+(.*\S)\s*$",
 }
 
 DOCUMENTS = (MANIFEST, *MARKDOWN_SITES)
@@ -367,6 +378,12 @@ DOCUMENTS = (MANIFEST, *MARKDOWN_SITES)
 # floor is a deliberate act that belongs in the same commit as the reason.
 REQUIRED_SITES: dict[tuple[str, str], int] = {
     ("docs/design_notes/20260911_harminv_record_support.md", "Actual FDTD records"): 3,
+    # 2026-09-14 (#813 Arm 1): the cv01 CPML note's result section states its
+    # verdict as a table and resolves every cell in "Numeric provenance". The
+    # floor is the reproduced count (26 of its 35 references carry a value),
+    # not a round number: a rewrite that drops the citations would leave the
+    # table's numbers with nothing behind them.
+    (CV01_CPML_NOTE, "Numeric provenance"): 26,
     (MANIFEST, "11_waveguide_port_wr90"): 4,
     (MANIFEST, "15_patch_antenna_rt5880"): 3,
     (MANIFEST, "17_dielectric_sphere_mie"): 2,
@@ -441,9 +458,13 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # 2026-09-06 (#928): +benchmarks.mdx (93) and +8 design notes, all green at the
 # commit that opted them in; the population went 566 -> 1147 references (+581)
 # over 60 -> 64 distinct artifacts. Raised here in the same commit, as above.
-MIN_REFERENCES = 1140
-MIN_VALUE_CHECKED = 1095
-MIN_DISTINCT_ARTIFACTS = 60
+# 2026-09-14 (#813 Arm 1): +35 references over +1 distinct artifact
+# (scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json), 26 of them
+# value-checked -- the cv01 CPML pre-declaration's result section, opted in as
+# CV01_CPML_NOTE above. Raised by the delta in the same commit that adds them.
+MIN_REFERENCES = 1175
+MIN_VALUE_CHECKED = 1121
+MIN_DISTINCT_ARTIFACTS = 61
 
 
 # --------------------------------------------------------------------------
@@ -612,14 +633,15 @@ CLASSIFICATION: dict[str, str] = {
     # left failing NO_ARTIFACT_REFERENCE's own vacuity check.
     "docs/design_notes/chain_closure_contract.md": GATED,
     # 2026-09-13 (issue #813 attribution): the pre-declaration for cv01's CPML
-    # flux self-check. It carries no `::` span at all -- neither a resolvable
+    # flux self-check. It carried no `::` span at all -- neither a resolvable
     # `path.json::key` nor one this parser rejects -- so `parses` and `others`
-    # are both empty. Its numbers are produced and replayed by
-    # scripts/diagnostics/cv01_cpml_flux_selfcheck.py into
-    # scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck.json, whose own
-    # control arm must reproduce the committed cv01 artifact or the run is
-    # unreadable -- a stronger check than this gate performs.
-    "docs/design_notes/cv01_cpml_flux_selfcheck_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # were both empty, and the classification was NO_ARTIFACT_REFERENCE.
+    # 2026-09-14 (#813 Arm 1): its "Result 2026-09-14" section now cites the
+    # layer sweep's own artifact key by key, so it is GATED. The artifact-side
+    # control is unchanged and stronger than this gate: the sweep's 10-layer
+    # arm IS cv01's rig and must reproduce the committed cpml_full number, or
+    # no other layer count in the table is readable.
+    CV01_CPML_NOTE: GATED,
     "docs/design_notes/cv10_pmc_realization_regate.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/cv14_rect_cavity_gate_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/estimator_resolution_regate.md": GATED,

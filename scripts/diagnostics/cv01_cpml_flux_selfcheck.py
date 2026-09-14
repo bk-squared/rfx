@@ -39,6 +39,40 @@ physical interior and excludes CPML and bounding-node slots (PR #990, issue
 power is absorber cells inside the integration plane": if clipping them out
 does not move ``mean_self``, that attribution is refuted.
 
+Layer sweep (``--mode layer-sweep``)
+------------------------------------
+The addendum's Arm 1, pre-declared in the same note and corrected there under
+"Correction 2026-09-14": ``cpml_layers`` = 10 / 16 / 20 / 40 on the same
+straight guide, with the source and BOTH monitor planes held at cv01's
+physical coordinates (``src_x`` 1.1 um, input 4.0 um, output 14.5 um) and ONLY
+``Simulation(cpml_layers=...)`` varied.
+
+cv01 writes ``pml = cpml_n * dx`` and then places ``src_x = pml + dx`` and the
+output plane at ``sx - pml - 5 * dx``. Letting ``pml`` track the swept layer
+count would move the source and both monitors along with the absorber and
+confound absorber thickness with plane position -- that is the naive sweep and
+it is NOT this measurement. ``pml`` therefore stays at cv01's ``10 * dx`` here
+while ``cpml_layers`` varies; rfx pads the grid OUTSIDE the declared 16 um
+domain, so the interior stays 161 cells per axis and only the absorber grows.
+That single deviation from cv01 is recorded in the artifact as
+``deviation_from_cv01`` rather than left implicit.
+
+Each layer count runs two arms, ``full`` and ``aperture``. The binding gate
+reads the ``full`` arm alone; the ``aperture`` companion exists because the
+reported observable -- the outside-aperture band-summed backward power fraction
+at the output plane -- is the difference between the two windows, formed
+exactly as the committed six-arm artifact's -26.04 % was. It also supplies the
+realized-coordinate witness: preflight records a flux region only where a
+``size=`` was requested, so the ``full`` arms carry ``realized_flux_regions:
+null`` by construction and cannot witness their own plane.
+
+Single binding gate: ``mean_self`` >= 0.90906 on the 40-layer ``full`` arm,
+i.e. >= 2/3 of the gap from 0.748852 to the ``upml_full`` control 0.989162 is
+closed. The fraction and its monotonicity are REPORTED observables with no gate
+anywhere in the repo -- the note's "Correction 2026-09-14" measured that the
+two criteria are not equivalent (a 0.0148-wide window passes one and fails the
+other) and demoted the fraction to a diagnostic.
+
 Rig fidelity
 ------------
 The rig below is a hand-copy of cv01's Run 1. ``_assert_rig_matches_cv01``
@@ -64,6 +98,11 @@ Usage::
     PYTHONPATH=$(git rev-parse --show-toplevel) \
         python3 scripts/diagnostics/cv01_cpml_flux_selfcheck.py \
         --output scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck.json
+
+    PYTHONPATH=$(git rev-parse --show-toplevel) \
+        python3 scripts/diagnostics/cv01_cpml_flux_selfcheck.py \
+        --mode layer-sweep \
+        --output scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json
 """
 from __future__ import annotations
 
@@ -215,8 +254,15 @@ def add_line_source(sim, x, y_center, width):
                                               amplitude=1.0 / 10))
 
 
-def run_arm(boundary: str, size, steps: int = n_steps) -> dict:
-    """cv01 Run 1 under one boundary and one monitor window."""
+def run_arm(boundary: str, size, steps: int = n_steps,
+            cpml_layers: int = cpml_n) -> dict:
+    """cv01 Run 1 under one boundary, one monitor window, one absorber depth.
+
+    ``cpml_layers`` defaults to cv01's ``cpml_n`` = 10, so every six-arm call
+    is unchanged. Only ``--mode layer-sweep`` passes anything else, and it
+    passes it HERE only -- ``pml``, ``src_x`` and both monitor coordinates stay
+    at cv01's values, so the absorber grows and the planes do not move.
+    """
     from rfx import Simulation, Box, flux_spectrum
     from rfx.boundaries.spec import BoundarySpec
 
@@ -234,7 +280,7 @@ def run_arm(boundary: str, size, steps: int = n_steps) -> dict:
         warnings.simplefilter("always")
         sim = Simulation(freq_max=0.25 * C0 / a, domain=(sx, sy, dx), dx=dx,
                          boundary=BoundarySpec.uniform(boundary),
-                         cpml_layers=cpml_n, mode="2d_tmz")
+                         cpml_layers=cpml_layers, mode="2d_tmz")
         sim.add_material("wg", eps_r=eps_wg)
         sim.add(Box((0, wg_y - w_wg / 2, 0), (sx, wg_y + w_wg / 2, dx)),
                 material="wg")
@@ -330,11 +376,282 @@ ARMS_ADDED_POST_HOC = ("upml_aperture",)
 # The committed UPML run this driver's control must reproduce.
 COMMITTED_UPML_MEAN_SELF = 0.9891610388008335
 
+# --- layer sweep (pre-declaration addendum, Arm 1) ---------------------------
+LAYER_SWEEP = (10, 16, 20, 40)
+
+# The single binding gate, per "Correction 2026-09-14" in the pre-declaration:
+# mean_self on the 40-layer full arm has closed >= 2/3 of the gap from the
+# committed cpml_full 0.748852 to the upml_full control 0.989162.
+SWEEP_GATE_MEAN_SELF_AT_40 = 0.90906
+
+# The 10-layer arm of the sweep is cv01's own rig, so it doubles as the sweep's
+# control: it must reproduce both of these from the committed six-arm artifact
+# (scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck.json), or no other
+# layer count is readable.
+SWEEP_BASELINE_CPML_FULL_MEAN_SELF = 0.7488520140093946
+SWEEP_BASELINE_OUTSIDE_FRACTION_PCT = -26.041819705557895
+
+# rfx pads the grid OUTSIDE the declared 16 um x 16 um domain, so the interior
+# cell count must not move as cpml_layers does. 16 um / (a/10) + 1 = 161.
+INTERIOR_CELLS_PER_AXIS = 161
+
+# Physical positions held at cv01's values on every swept arm. The absorber
+# grows; these do not move. (src_x and the output plane are both written off
+# `pml = cpml_n * dx`, which stays at 10 * dx here.)
+HELD_PLANES_M = {
+    "src_x": src_x,
+    "input_plane": 4 * a,
+    "output_plane": sx - pml - 5 * dx,
+    "pml_placing_the_planes": pml,
+    "cpml_n_placing_the_planes": cpml_n,
+}
+
+
+def _outside_aperture(full_arm: dict, ap_arm: dict) -> dict:
+    """Band-summed backward power outside the aperture, at the output plane.
+
+    ``full`` minus ``aperture`` on the SAME output plane, band-summed over
+    cv01's own ``above`` mask and normalized by the full-plane band sum -- the
+    construction that gave -26.0418 % on the committed six-arm artifact. It is
+    a REPORTED observable: it gates nothing (pre-declaration, "Correction
+    2026-09-14").
+    """
+    above = np.asarray(full_arm["above_mask"], dtype=bool)
+    fo_full = np.asarray(full_arm["flux_out"], dtype=float)
+    fo_ap = np.asarray(ap_arm["flux_out"], dtype=float)
+    outside = fo_full - fo_ap
+    band_full = float(fo_full[above].sum())
+    band_outside = float(outside[above].sum())
+    return {
+        "band_summed_full_plane": band_full,
+        "band_summed_outside_aperture": band_outside,
+        "fraction_percent": 100.0 * band_outside / band_full,
+        "n_bins_in_band": int(above.sum()),
+        "n_bins_outside_term_negative": int((outside[above] < 0).sum()),
+        # R5: the per-bin sign trace, not only the band sum.
+        "per_bin_outside_aperture": [float(v) for v in outside],
+    }
+
+
+def _sweep_witness(layers: int, full_arm: dict, ap_arm: dict) -> dict:
+    """The pre-declared anti-confound witness, per layer count.
+
+    Pre-declaration: "the interior must stay at 161 cells per axis while
+    grid.shape goes 181 -> 193 -> 201 -> 241 and grid.pad_* follows the swept
+    value; and preflight's realized monitor coordinate must read 1.45e-05 m on
+    every arm". An arm failing either is reported unreadable, not averaged in.
+
+    The realized coordinate comes from the APERTURE companion: preflight writes
+    a flux-region record only where a ``size=`` was requested, so the ``full``
+    arm records ``realized_flux_regions: null`` and cannot witness itself.
+    """
+    g = full_arm.get("grid") or {}
+    ga = ap_arm.get("grid") or {}
+    shape = g.get("shape")
+    pad = g.get("pad", {})
+    expected_shape = [INTERIOR_CELLS_PER_AXIS + 2 * layers,
+                      INTERIOR_CELLS_PER_AXIS + 2 * layers, 1]
+    pads_follow_layers = all(int(pad.get(f"{ax}_{e}", -1)) == layers
+                             for ax in ("x", "y") for e in ("lo", "hi"))
+    interior = {}
+    if shape:
+        for i, ax in enumerate(("x", "y")):
+            interior[ax] = (int(shape[i]) - int(pad.get(f"{ax}_lo", 0))
+                            - int(pad.get(f"{ax}_hi", 0)))
+    interior_fixed = bool(interior) and all(
+        v == INTERIOR_CELLS_PER_AXIS for v in interior.values())
+
+    regions = ap_arm.get("realized_flux_regions") or []
+    realized = {r["name"]: r for r in regions}
+    out_rec = realized.get("output", {})
+    in_rec = realized.get("input", {})
+    out_m = out_rec.get("realized_coordinate_m")
+    in_m = in_rec.get("realized_coordinate_m")
+    planes_held = bool(
+        out_m is not None and abs(out_m - HELD_PLANES_M["output_plane"]) <= 1e-12
+        and in_m is not None and abs(in_m - HELD_PLANES_M["input_plane"]) <= 1e-12)
+
+    return {
+        "grid_shape": shape,
+        "grid_shape_expected": expected_shape,
+        "grid_shape_matches": shape == expected_shape,
+        "pad": pad,
+        "pads_follow_layers": pads_follow_layers,
+        "interior_cells": interior,
+        "interior_cells_expected": INTERIOR_CELLS_PER_AXIS,
+        "interior_fixed": interior_fixed,
+        "aperture_companion_grid_matches": g == ga,
+        "realized_output_coordinate_m": out_m,
+        "realized_input_coordinate_m": in_m,
+        "realized_output_normal_index": out_rec.get("normal_index"),
+        "requested_output_coordinate_m": out_rec.get("requested_coordinate_m"),
+        "planes_held_at_cv01_values": planes_held,
+        "full_arm_records_no_region": full_arm.get("realized_flux_regions") is None,
+        "readable": bool(shape == expected_shape and pads_follow_layers
+                         and interior_fixed and planes_held and g == ga),
+    }
+
+
+def run_layer_sweep(args, rig: dict, provenance_check: dict,
+                    provenance: dict) -> dict:
+    """The pre-declaration addendum's Arm 1, with its corrected gate."""
+    wanted = {int(s) for s in args.layers.split(",") if s.strip()}
+    out = {
+        "issue": 813,
+        "mode": "layer-sweep",
+        "predeclaration": (
+            "docs/design_notes/cv01_cpml_flux_selfcheck_predeclaration.md"
+            " -- 'Addendum 2026-09-14', Arm 1, with the gate as corrected in"
+            " 'Correction 2026-09-14'"),
+        "measures": ("cv01 straight-guide mean_self, Run 1 only -- the line "
+                     "`mean_self = float(np.mean(T_self_smooth[above]))` in "
+                     "validation/crossval/01_waveguide_bend.py -- at four "
+                     "CPML absorber depths"),
+        "deviation_from_cv01": (
+            "Simulation(cpml_layers=...) is swept over 10/16/20/40 while cv01 "
+            "pins `cpml_n = 10`. Nothing else differs: `pml = cpml_n * dx` "
+            "stays at 10 * dx, so `src_x = pml + dx` and the output plane at "
+            "`sx - pml - 5 * dx` do NOT move with the absorber. cv01 itself is "
+            "not modified or re-run by this mode."),
+        "n_steps": int(args.n_steps),
+        "n_steps_is_cv01_value": bool(args.n_steps == n_steps),
+        "gate": ("SINGLE BINDING GATE: mean_self >= "
+                 f"{SWEEP_GATE_MEAN_SELF_AT_40} on the 40-layer `full` arm, "
+                 "i.e. >= 2/3 of the gap from the committed cpml_full "
+                 "0.748852 to the upml_full control 0.989162 is closed"),
+        "falsifier": ("conjunction: mean_self at 40 layers within 0.03 of "
+                      "0.748852 AND the outside-aperture fraction flat within "
+                      "3 points across all four layer counts. Both must hold; "
+                      "mean_self is the binding half."),
+        "reported_not_gating": (
+            "the outside-aperture band-summed backward power fraction at the "
+            "output plane and its monotonicity. It has no gate anywhere in the "
+            "repo; if it and the mean_self verdict disagree, the disagreement "
+            "is reported, not resolved."),
+        "rig_fidelity_check": rig,
+        "rfx_provenance_check": provenance_check,
+        "held_fixed_m": HELD_PLANES_M,
+        "control": {
+            "source": "scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck.json",
+            "cpml_full_mean_self": SWEEP_BASELINE_CPML_FULL_MEAN_SELF,
+            "outside_aperture_fraction_percent": SWEEP_BASELINE_OUTSIDE_FRACTION_PCT,
+            "upml_full_mean_self": COMMITTED_UPML_MEAN_SELF,
+            "note": ("the 10-layer arm below IS cv01's rig, so it must "
+                     "reproduce the two cpml numbers or nothing else here is "
+                     "readable"),
+        },
+        "provenance": provenance,
+        "layers": {},
+    }
+
+    for layers in LAYER_SWEEP:
+        if wanted and layers not in wanted:
+            continue
+        print(f"--- cpml_layers={layers}: full ---", flush=True)
+        full = run_arm("cpml", None, steps=args.n_steps, cpml_layers=layers)
+        print(f"    mean_self = {full['mean_self']:.6f} ({full['wall_s']}s)",
+              flush=True)
+        print(f"--- cpml_layers={layers}: aperture ---", flush=True)
+        ap_arm = run_arm("cpml", (2 * w_wg, dx), steps=args.n_steps,
+                         cpml_layers=layers)
+        print(f"    mean_self = {ap_arm['mean_self']:.6f} "
+              f"({ap_arm['wall_s']}s)", flush=True)
+        outside = _outside_aperture(full, ap_arm)
+        witness = _sweep_witness(layers, full, ap_arm)
+        print(f"    outside-aperture fraction = "
+              f"{outside['fraction_percent']:+.4f} %   "
+              f"grid={witness['grid_shape']} readable={witness['readable']}",
+              flush=True)
+        out["layers"][str(layers)] = {
+            "cpml_layers": layers,
+            "mean_self_full": full["mean_self"],
+            "mean_self_aperture": ap_arm["mean_self"],
+            "gate_G2_0p95_1p05_full": full["gate_G2_0p95_1p05"],
+            "outside_aperture": outside,
+            "witness": witness,
+            "full": full,
+            "aperture": ap_arm,
+        }
+
+    got = [L for L in LAYER_SWEEP if str(L) in out["layers"]]
+    if 10 in got:
+        m10 = out["layers"]["10"]["mean_self_full"]
+        f10 = out["layers"]["10"]["outside_aperture"]["fraction_percent"]
+        out["control_reproduces_committed_cpml_full"] = {
+            "mean_self_measured": m10,
+            "mean_self_committed": SWEEP_BASELINE_CPML_FULL_MEAN_SELF,
+            "mean_self_rel_diff": (abs(m10 - SWEEP_BASELINE_CPML_FULL_MEAN_SELF)
+                                   / abs(SWEEP_BASELINE_CPML_FULL_MEAN_SELF)),
+            "fraction_percent_measured": f10,
+            "fraction_percent_committed": SWEEP_BASELINE_OUTSIDE_FRACTION_PCT,
+        }
+    out["all_arms_readable"] = all(
+        out["layers"][str(L)]["witness"]["readable"] for L in got)
+    out["unreadable_layer_counts"] = [
+        L for L in got if not out["layers"][str(L)]["witness"]["readable"]]
+
+    if got == list(LAYER_SWEEP):
+        keys = [str(L) for L in LAYER_SWEEP]
+        means = [out["layers"][k]["mean_self_full"] for k in keys]
+        fracs = [out["layers"][k]["outside_aperture"]["fraction_percent"]
+                 for k in keys]
+        mags = [abs(f) for f in fracs]
+        m40 = means[-1]
+        gate_pass = bool(m40 >= SWEEP_GATE_MEAN_SELF_AT_40)
+        monotone = bool(all(mags[i + 1] <= mags[i] + 1e-12
+                            for i in range(len(mags) - 1)))
+        flat_3_points = bool((max(fracs) - min(fracs)) <= 3.0)
+        near_baseline = bool(
+            abs(m40 - SWEEP_BASELINE_CPML_FULL_MEAN_SELF) <= 0.03)
+        falsified = bool(near_baseline and flat_3_points)
+        if gate_pass:
+            verdict = ("GATE PASS -- mean_self at 40 layers >= "
+                       f"{SWEEP_GATE_MEAN_SELF_AT_40}; the absorber's own "
+                       "reflection is the source of the deficit")
+        elif falsified:
+            verdict = ("FALSIFIED -- mean_self within 0.03 of 0.748852 AND the "
+                       "fraction flat within 3 points; candidate (a), a far-x "
+                       "CPML return, is refuted")
+        else:
+            verdict = ("NON-CLOSING -- neither the gate nor the falsifier's "
+                       "conjunction holds; R2 forbids a fifth layer count "
+                       "without a new pre-declaration")
+        out["verdict"] = {
+            "gate_pass": gate_pass,
+            "mean_self_at_40": m40,
+            "gate_threshold": SWEEP_GATE_MEAN_SELF_AT_40,
+            "mean_self_by_layer": dict(zip(keys, means)),
+            "fraction_percent_by_layer": dict(zip(keys, fracs)),
+            "fraction_monotone_non_increasing_in_magnitude": monotone,
+            "fraction_shrink_ratio_40_over_10": (mags[-1] / mags[0]
+                                                 if mags[0] else None),
+            "falsifier_mean_self_within_0p03_of_baseline": near_baseline,
+            "falsifier_fraction_flat_within_3_points": flat_3_points,
+            "falsifier_holds": falsified,
+            "gate_and_observable_disagree": bool(gate_pass != monotone),
+            "verdict": verdict,
+        }
+    else:
+        out["verdict"] = {
+            "verdict": ("INCOMPLETE -- not all four pre-declared layer counts "
+                        f"ran (got {got})"),
+        }
+    return out
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--output", required=True)
-    ap.add_argument("--arms", default="", help="comma-separated subset")
+    ap.add_argument("--mode", choices=("arms", "layer-sweep"), default="arms",
+                    help="`arms` (default) = the six-arm boundary/window "
+                         "campaign, unchanged; `layer-sweep` = the "
+                         "pre-declaration addendum's Arm 1")
+    ap.add_argument("--arms", default="",
+                    help="comma-separated subset (mode=arms)")
+    ap.add_argument("--layers", default="",
+                    help="comma-separated subset of 10,16,20,40 "
+                         "(mode=layer-sweep); a subset cannot reach the "
+                         "pre-declared verdict and is recorded INCOMPLETE")
     ap.add_argument("--n-steps", type=int, default=n_steps,
                     help="PLUMBING SMOKE ONLY; the recorded numbers are "
                          "cv01's 25000 and any other value is not a result")
@@ -347,6 +664,41 @@ def main() -> int:
     import rfx
 
     provenance_check = _assert_rfx_is_this_repo(rfx)
+    provenance = {
+        "utc": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
+        "commit": subprocess.run(
+            ["git", "-C", str(REPO), "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=True).stdout.strip(),
+        "rfx_version": getattr(rfx, "__version__", "unknown"),
+        "rfx_file": rfx.__file__,
+        "jax_version": jax.__version__,
+        "numpy_version": np.__version__,
+        "jax_enable_x64": os.environ.get("JAX_ENABLE_X64"),
+        "python": sys.version.split()[0],
+        "platform": platform.platform(),
+    }
+
+    if args.mode == "layer-sweep":
+        sweep = run_layer_sweep(args, rig, provenance_check, provenance)
+        sweep_path = pathlib.Path(args.output)
+        sweep_path.parent.mkdir(parents=True, exist_ok=True)
+        sweep_path.write_text(json.dumps(sweep, indent=2) + "\n",
+                              encoding="utf-8")
+        print(f"\nwrote {sweep_path}")
+        print(f"{'layers':>6}  {'grid':>15}  {'mean_self':>10}  "
+              f"{'outside %':>10}  readable")
+        for lay in LAYER_SWEEP:
+            entry = sweep["layers"].get(str(lay))
+            if entry is None:
+                continue
+            print(f"{lay:6d}  {str(entry['witness']['grid_shape']):>15}  "
+                  f"{entry['mean_self_full']:10.6f}  "
+                  f"{entry['outside_aperture']['fraction_percent']:+10.4f}  "
+                  f"{entry['witness']['readable']}")
+        print(f"\ngate (mean_self >= {SWEEP_GATE_MEAN_SELF_AT_40} at 40 "
+              f"layers): {sweep['verdict'].get('gate_pass')}")
+        print(f"verdict: {sweep['verdict']['verdict']}")
+        return 0
 
     out = {
         "issue": 813,
@@ -366,19 +718,7 @@ def main() -> int:
             "path": "validation/crossval/_01_waveguide_bend_results/crossval.json",
             "mean_self_smoothed_over_band": COMMITTED_UPML_MEAN_SELF,
         },
-        "provenance": {
-            "utc": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
-            "commit": subprocess.run(
-                ["git", "-C", str(REPO), "rev-parse", "HEAD"],
-                capture_output=True, text=True, check=True).stdout.strip(),
-            "rfx_version": getattr(rfx, "__version__", "unknown"),
-            "rfx_file": rfx.__file__,
-            "jax_version": jax.__version__,
-            "numpy_version": np.__version__,
-            "jax_enable_x64": os.environ.get("JAX_ENABLE_X64"),
-            "python": sys.version.split()[0],
-            "platform": platform.platform(),
-        },
+        "provenance": provenance,
         "arms": {},
     }
 
