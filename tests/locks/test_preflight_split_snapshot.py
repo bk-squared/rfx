@@ -396,7 +396,7 @@ def _pec_face_short_sim():
 def _msl_conductor_plane_mismatch_sim():
     """A declared trace plane that does not meet a realized conductor plane.
 
-    ``tests/unit/ports/test_msl_realized_port_contract.py:193``
+    ``tests/unit/ports/test_msl_realized_port_contract.py:192``
     (``test_preflight_reports_a_blocking_plane_mismatch``) builds it as
     ``_model(port_top=11.)``; that builder returns ``(sim, nonuniform)``.
     This is the ONLY witness in the corpus for ``msl_port_conductor_planes``,
@@ -411,7 +411,7 @@ def _pec_box_subcell_sim():
     """A 0.2 mm PEC Box on a 0.5 mm cell.
 
     Body of ``test_sub_cell_pec_box_advisory_documents_the_refusal``,
-    ``tests/unit/preflight/test_preflight_guards.py:123``, reproduced verbatim
+    ``tests/unit/preflight/test_preflight_guards.py:121``, reproduced verbatim
     (it is inline in the test, not a named builder).
     """
     from rfx import Box, Simulation
@@ -491,7 +491,7 @@ def _ntff_small_ground_plane_sim():
     """The cv05-class 60 x 55 mm ground plane under a patch.
 
     ``tests/unit/farfield/test_ntff_small_gp_advisory.py:49`` ``_patch_sim``,
-    driven at the dimensions its first test uses (L86).
+    driven at the dimensions its first test uses (L87).
     """
     from tests.unit.farfield.test_ntff_small_gp_advisory import _patch_sim
 
