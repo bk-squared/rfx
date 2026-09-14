@@ -32,3 +32,9 @@ arrival is 19-20 steps EARLIER at every rung and every committed record stays
 admissible under it (ratios 0.520-0.599 -> 0.525-0.604, limit 1.0). Fold this
 into the post-#931 recompute above rather than running a second job, and then
 take the case out of `_ABSORBER_RECOMPUTE_PENDING` in that test.
+
+This case's `W_BIN` is derived from cv04's envelope, which the derived absorber
+also invalidates — loose direction only, magnitude unestablished, re-derivation
+is an explicit adoption edit under #928. Read
+`validation/crossval/_04_fresnel_results/RECOMPUTE.md` before re-pinning any
+window here.

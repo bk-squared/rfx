@@ -12,9 +12,19 @@ echo's path counts from the auxiliary source) rather than a margin anyone chose,
 and documented in neither ``derive_record_length`` nor ``t_safe_steps``. cv26
 above 34 degrees is what happens when a record law grows past it.
 
-Sources: ``docs/design_notes/20260903_cv26_oblique_defect_diagnosis.md`` and
-``docs/design_notes/20260903_cv04_envelope_decomposition.md``; this lane's own
-note is ``docs/design_notes/20260904_aux_echo_record_invariant.md``.
+Sources. This lane's own note is
+``docs/design_notes/20260904_aux_echo_record_invariant.md`` -- read its
+2026-09-13 supersession header first: it describes the 20-cell auxiliary
+layout, which #888 replaced with a derived 200-cell one, and the constants it
+quotes are history. The two diagnosis notes this file used to cite
+(``20260903_cv26_oblique_defect_diagnosis.md``,
+``20260903_cv04_envelope_decomposition.md``) are NOT in this repository: they
+live on the unmerged branches ``agent/issue-888-oblique-diagnosis`` (831ea3c)
+and ``agent/cv04-aux-echo-measurement`` (fa2727c). What a reader can open is
+the #888 thread, comments 5525810073 and 5529673679 -- summaries carrying the
+decisive measurements, each naming its own branch and sha. The derivation that
+acted on them, and IS in this repository, is
+``docs/design_notes/20260904_aux_absorber_depth_derivation.md``.
 
 No FDTD runs here. The arrival is GEOMETRY -- it is never measured on the run it
 is meant to guard, which is exactly what lets it bound that run.
@@ -267,6 +277,22 @@ def test_every_committed_rung_records_the_invariant(case):
 # The rule below is two-way: a listed artifact whose layout has caught up is a
 # FAILURE (the waiver outlived its reason), and an unlisted artifact that
 # differs is a failure too. Emptying this list is what closes the recompute.
+#
+# ONE CONSEQUENCE THAT IS NOT COVERED BY THE LIST, stated here because this is
+# where a reader of the waiver looks (PR #1005 review, finding 12). cv04's
+# envelope is not only a record; it is the input the slab family's WINDOWS are
+# derived from -- `W_BIN = gate_from_envelope(per_bin_max_RT_closure)` in
+# `validation/crossval/comparators/cv22_dispersive_gates.py` and
+# `cv23_lossy_gates.py`, both live gate constants. The derived absorber moves
+# that envelope, so `W_BIN` is derived from an envelope the merge invalidates.
+# Direction: LOOSER than the new rig warrants, never tighter, so nothing is
+# silently widened and no gate here is touched. Magnitude is NOT established --
+# the note's section 11.2 quotes about 10x, but that came from a run that also
+# moved bandwidth 0.5 -> 0.8, and the bandwidth change is explicitly NOT carried
+# by this PR, so the absorber's own share of it is unmeasured. Re-deriving a
+# window from a re-run envelope is an explicit adoption edit in the consumer
+# (#928, append-only revisions): the recompute appends a revision, it does not
+# move any window, and whether to re-adopt is decided in that lane, not here.
 _ABSORBER_RECOMPUTE_PENDING = {"cv04", "cv22", "cv23"}
 _PRE_888_AUX_LAYOUT = dict(aux_n_cpml=20, aux_n_margin=10, aux_src_offset=3,
                            reflector_depth_cells=6.88)
