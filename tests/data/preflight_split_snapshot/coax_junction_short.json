@@ -1,0 +1,72 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "PEC 'pec' x-extent 400\u00b5m = 4.0 cells \u2014 volume under-resolved (a PEC volume's curved/edge features need \u22655 cells; a 1-2 cell slab is realized as drawn, with walls on both faces).",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "PEC 'pec' y-extent 400\u00b5m = 4.0 cells \u2014 volume under-resolved (a PEC volume's curved/edge features need \u22655 cells; a 1-2 cell slab is realized as drawn, with walls on both faces).",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "uncoded",
+        "loc": null,
+        "message": "PEC sheet pec realizes on node plane 33 of axis z, and the cells on BOTH sides of that plane carry the same dielectric (eps_r = 2.1) over 48 of its footprint nodes. The sheet is therefore buried half a cell inside the dielectric instead of lying on its interface, so the realized cavity carries half a cell of the wrong medium in series (#931; the #702 measurement was 17 % on a 127 um stack). Draw the dielectric bodies up to the sheet plane, or move the sheet to the interface. Nothing is re-sampled.",
+        "severity": "warning",
+        "source": null
+      },
+      {
+        "code": "lossless_q",
+        "loc": null,
+        "message": "all dielectric(s) ['ptfe', 'sub'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+        "severity": "warning",
+        "source": "_validate_cfg_lossless_resonator_in_absorber"
+      },
+      {
+        "code": "uncoded",
+        "loc": null,
+        "message": "PEC sheet pec realizes on node plane 33 of axis z, and the cells on BOTH sides of that plane carry the same dielectric (eps_r = 2.1) over 48 of its footprint nodes. The sheet is therefore buried half a cell inside the dielectric instead of lying on its interface, so the realized cavity carries half a cell of the wrong medium in series (#931; the #702 measurement was 17 % on a 127 um stack). Draw the dielectric bodies up to the sheet plane, or move the sheet to the interface. Nothing is re-sampled.",
+        "severity": "warning",
+        "source": null
+      },
+      {
+        "code": "msl_port_conductor_planes",
+        "loc": null,
+        "message": "MSL port 'msl_0': declared ground at z=0.0026 m maps to node 34 (z=0.0026 m), but no longitudinal conductor edge meets it at width node 22. Observed conductor planes on this column are [0.0025, 0.0029000000000000002] m. Make the port ground/trace declarations agree with the realized conductor surfaces. The conductor-plane gap is unavailable.",
+        "severity": "error",
+        "source": "_check_msl_port_geometry"
+      },
+      {
+        "code": "msl_port_geometry",
+        "loc": null,
+        "message": "MSL port 'msl_0' (trace W=600\u00b5m, h_sub=300\u00b5m): lateral clearance to +y absorbing boundary = 600\u00b5m (domain edge + 800\u00b5m calibrated CPML buffer) < recommended 600\u00b5m (= 2\u00b7h_sub). Fringing field will be clipped \u2192 Z0 may be biased HIGH by ~0%, mesh-conv may diverge. Increase domain y-extent OR move port further from sidewall.",
+        "severity": "warning",
+        "source": "_check_msl_port_geometry"
+      },
+      {
+        "code": "uncoded",
+        "loc": null,
+        "message": "PEC sheet pec realizes on node plane 33 of axis z, and the cells on BOTH sides of that plane carry the same dielectric (eps_r = 2.1) over 48 of its footprint nodes. The sheet is therefore buried half a cell inside the dielectric instead of lying on its interface, so the realized cavity carries half a cell of the wrong medium in series (#931; the #702 measurement was 17 % on a 127 um stack). Draw the dielectric bodies up to the sheet plane, or move the sheet to the interface. Nothing is re-sampled.",
+        "severity": "warning",
+        "source": null
+      },
+      {
+        "code": "coaxial_port_junction_short",
+        "loc": "coaxial_port[0] face=bottom",
+        "message": "Coaxial port 0 (face='bottom', pin r=200 um, outer r=600 um): at its junction plane (z=2.500 mm, node 25) 24/24 nodes of the FIRST dielectric ring outside the pin (271 < r <= 371 um; lattice-based bounds, so the pin's own realized rim, at most r = 200 um + dx/sqrt(2), is excluded) carry a REALIZED PEC wall \u2014 the first registered conductor outside the pin sits at r = 282.8 um. The pin is terminated in a short by registered geometry at this plane. The assembly is PEC-OR-only: a ground sheet declared as a full plane with a dielectric 'hole' declared AFTER it stays solid (issue #589: S00 = -0.9928 at 6 GHz measured on exactly that fixture). If a clearance aperture was intended, build the conductor WITH the hole (a patterned sheet shape via add_thin_conductor, or an annular volume); if this short is the intended calibration standard, no action is needed (report-only).",
+        "severity": "warning",
+        "source": "_check_coaxial_port_junction_aperture"
+      }
+    ],
+    "n_errors": 1,
+    "n_issues": 9,
+    "ok": false
+  }
+}

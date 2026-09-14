@@ -1,0 +1,30 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "'pec' z-extent 1000\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A PEC shape passed to sim.add() is a VOLUME (realized with both faces and a shorted interior, lattice ownership contract #931 \u00a71.2), and a volume thinner than one local cell is refused at assembly (\u00a71.5) rather than snapped to a plane. If this is foil (a ground plane, patch, trace), declare a SHEET: a zero-thickness Box via add(), or add_thin_conductor(shape) \u2014 realized on the node plane nearest its mid-plane, with the normal E edge through it live. Otherwise resolve the thickness with a finer local cell.",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "wire_port_end_gap_to_conductor",
+        "loc": null,
+        "message": "Wire port at (0.006, 0.006, 0.005) (extent 0.004, component ez): its -z-side end node (6, 6, 5) (z = 5mm) carries no realized PEC contact, but the nearest outward conductor node 3 (z = 3mm) is a realized wall plane of ['pec']. The port end is 2 cell(s) (gap = 0.002 m) short of that conductor. This is a geometric separation; it does not determine the intended electromagnetic coupling. If galvanic contact is intended, adjust the position and extent together so its end node lands on that wall plane or conductor endpoint, or correct the conductor declaration.",
+        "severity": "warning",
+        "source": "_validate_cfg_port_inside_pec"
+      },
+      {
+        "code": "pec_box_one_cell",
+        "loc": null,
+        "message": "2 PEC volume(s) are exactly ONE cell thick along some axis and are realized as a filled slab with walls on BOTH faces (every E edge between the two faces is shorted; lattice ownership contract #931 \u00a71.2): geometry[0] 'pec' (Box) is one cell thick along z [z: walls at 2mm and 3mm (drawn 2mm -> 3mm)]; geometry[1] 'pec' (Box) is one cell thick along z [z: walls at 9mm and 10mm (drawn 9mm -> 10mm)]. If this is foil (a ground plane, patch or trace), declare it as a SHEET \u2014 add_thin_conductor(shape), or a zero-thickness Box via add() \u2014 which realizes on ONE node plane with the normal E edge through it live; a slab and a sheet are different conductors on this lattice. If it is a plate, an iris or a wall drawn one cell thick on purpose, no action is needed (report-only). COVERAGE: examined 2 PEC volume(s) on the uniform lane through rfx.boundaries.pec.realized_wall_planes. STALE IF: realized_wall_planes on the named entry's own edge masks returns planes more than one index apart.",
+        "severity": "warning",
+        "source": "_validate_cfg_pec_realization"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 3,
+    "ok": true
+  }
+}

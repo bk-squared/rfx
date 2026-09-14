@@ -93,7 +93,7 @@ report-text change and should be re-blessed as one, not normalised here.
 
 Coverage, measured -- and what it does NOT cover
 ------------------------------------------------
-57 fixtures, witnessing 56 of the 74 literal ``code=`` slugs in
+65 fixtures, witnessing 63 of the 74 literal ``code=`` slugs in
 ``rfx/api/_preflight.py`` and ``rfx/preflight/`` plus the dynamic ``uncoded``
 and ``sparam_routing_msl`` paths. Stated because the split-inventory that
 seeded this lock projected "~56 of 74" for its 12-fixture set; the measured
@@ -109,16 +109,20 @@ as a side effect of the #680 builder's absolute-Hz bandwidth. Leg 5 added
 SEVEN, carrying seven codes -- the largest single jump, because the mesh /
 non-uniform family is the one whose checks all need a graded mesh AND a
 specific object standing on it, and the corpus reached the family's spine on
-every render while building that combination on none.
+every render while building that combination on none. Leg 6 added EIGHT,
+carrying eight codes, and took its three families (ports lumped/wire + coax,
+sources, NTFF) to ZERO unwitnessed codes -- the first leg to close its own
+family completely.
 
-The 18 unwitnessed codes are the honest hole: ``floating_port``,
-``source_decoupled``, the two remaining ``precision_*`` guards,
+The 11 unwitnessed codes left are the honest hole, and every one of them
+belongs to a family this lock has already discharged or to a body no builder
+reaches: the two remaining ``precision_*`` guards,
 ``port_aperture_unrasterizable`` / ``waveguide_reference_plane`` /
 ``port_index_mirror_asymmetry`` / ``record_far_boundary_band_below_cutoff`` /
-``waveguide_setup_audit_skipped`` (the waveguide leg),
-``coaxial_port_junction_short`` (the coax leg), ``refplane_near_field`` /
-``refplane_partial_optin`` / ``wire_port_end_gap_to_conductor`` (the
-lumped-port leg), and the rest.
+``waveguide_setup_audit_skipped`` / ``port_freqs_below_cutoff`` /
+``port_source_below_cutoff`` (the waveguide leg),
+``campaign_statics_unavailable`` (leg 2) and ``mesh_import_underresolved``
+(leg 5, which needs the optional ``cad`` extra -- see below).
 
 ``mesh_import_underresolved`` is the one leg 5 left, and it is left for a
 reason that will not change by writing another fixture: its branch is gated
@@ -177,15 +181,48 @@ aborts the body before the second is reached. So the census's third answer,
 after "never entered" and "entered but silent", is "entered, silent, and its
 trigger lives on a path the API only reaches indirectly".
 
-Six of the 28 the ledger held before leg 5 are unreachable from a plain
+Leg 6's census, over its fourteen ports / sources / NTFF bodies and the
+57-fixture corpus, produced the fourth answer: a body the corpus CANNOT
+enter, for a structural reason rather than a missing fixture. Thirteen of the
+fourteen were entered (53 to 55 of the 57 fixtures each, the unconditional
+spine again) and seven of those emitted nothing. Two of the seven emit
+nothing BY CONSTRUCTION and are not holes: ``_wire_port_cell_centers`` is a
+helper that returns ``(centers, midpoint_index)`` and has no emission site at
+all, and ``_validate_cfg_ntff_min_steps`` only writes the instance attribute
+``self._ntff_min_steps_hint`` (which ``rfx/interop/_design.py``'s
+``EXCLUDED_SIMULATION_ATTRS`` then names as transient run-time state). Five
+fixtures close the other five, and three more close codes belonging to bodies
+that already spoke.
+
+The fourteenth, ``_validate_tfsf_vacuum_boundary``, was entered ZERO times
+and no fixture here can change that. It is a ``@staticmethod`` runtime lane
+guard called as ``sim._validate_tfsf_vacuum_boundary(materials, tfsf[0])``
+from ``rfx/runners/uniform.py:610`` DURING a run, and it RAISES ``ValueError``
+rather than emitting a ``PreflightIssue``; this lock renders ``preflight()``
+and ``preflight_sparameters()`` only, so neither its call site nor its
+observable is in scope. Its gate is behavioural and was measured rather than
+assumed: five tests enter it, among them
+``tests/unit/sources/test_tfsf_run_oblique_integration.py`` (four) and
+``tests/unit/farfield/test_oblique_rcs_absolute_sigma.py::
+test_simulation_lane_vacuum_guard_fires_on_y_plane``, which is a positive
+control on the raise. Recorded here so the leg-3 standard (a witness per
+moved BODY) is met by naming the real witness, not by adding a ``run()`` to
+a lock whose whole cost model is that it does not run one.
+
+Several of the ledger's entries are unreachable from a plain
 builder rather than merely unwritten. ``campaign_statics_unavailable`` (leg 2) is emitted only when the
 production grid build or the production assembly RAISES, and its message
 interpolates the exception repr, so a fixture for it would have to both
 malform the config deliberately and pin an exception string;
-``wire_port_dead_cell_classification_unavailable`` and
-``waveguide_setup_audit_skipped`` are the same shape -- the last is what
+``waveguide_setup_audit_skipped`` is the same shape, and is what
 ``test_waveguide_setup_audits.py`` reaches by monkeypatching a builder to
-throw. ``waveguide_reference_plane`` is the odd one: it has three emission
+throw. ``wire_port_dead_cell_classification_unavailable`` was filed with
+them and leg 6 measured it out of that class: the advisory has TWO triggers
+and only the second needs a raise. The first is an ordinary ``dz_profile``
+mesh -- the #544 BLOCKING-1 fix SKIPS the uniform-only dead-cell
+classification on the non-uniform lane rather than building a mismatched
+substitute -- which ``wire_port_dead_cell_nu`` now witnesses from a plain
+builder. Only the ``_assemble_materials``-raises arm stays out. ``waveguide_reference_plane`` is the odd one: it has three emission
 sites and MEASURED, none of the three can fire through the public API.
 The first raises ``PreflightConfigError``, and ``add_waveguide_port`` already
 rejects an out-of-domain ``x_position``/``reference_plane`` with a
@@ -1404,6 +1441,194 @@ def _floquet_nonuniform_sim():
     return sim
 
 
+def _coax_junction_short_sim():
+    """The shorted attempt-2 coax/MSL junction copy.
+
+    ``tests/unit/geometry/test_fidelity_topology_findings.py:161``'s
+    ``_junction_sim(open_annulus=False)``, IMPORTED. That module's
+    ``test_rule_ii_fires_on_the_shorted_junction_copy`` is the behavioural
+    gate on the 24/24 ring count; this is the report-text witness for
+    ``_check_coaxial_port_junction_aperture``, the single body of the
+    ports_coax family, which the whole corpus ran and never made speak.
+    """
+    from tests.unit.geometry.test_fidelity_topology_findings import _junction_sim
+
+    return _junction_sim(open_annulus=False)
+
+
+def _refplane_near_field_sim():
+    """The #313 thru with the measurement planes three cells out.
+
+    ``tests/locks/test_refplane_port_waves.py:92``'s
+    ``_build_thru(reference_plane_cells=3)``, IMPORTED --
+    ``test_preflight_near_field_advisory_below_n10`` (L678) is the
+    behavioural gate. Both ports opt in, which is what keeps
+    ``refplane_partial_optin`` out of this report and makes the two
+    refplane fixtures independent witnesses rather than one report seen
+    twice.
+    """
+    from tests.locks.test_refplane_port_waves import _build_thru
+
+    return _build_thru(reference_plane_cells=3)
+
+
+def _refplane_partial_optin_sim():
+    """The same thru with only ONE of the two wire ports opted in.
+
+    Body of ``test_preflight_partial_optin_advisory``,
+    ``tests/locks/test_refplane_port_waves.py:686``, reproduced: the
+    geometry is inline in that test function, so there is no builder to
+    import. Its module-level constants ARE imported rather than retyped,
+    so the two cannot drift. Second of the two emission sites in
+    ``_validate_cfg_refplane_placement``; the first is the fixture above.
+    """
+    from rfx import Box, Simulation
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+    from rfx.sources.sources import GaussianPulse
+    from tests.locks.test_refplane_port_waves import (
+        _DOMAIN,
+        _DX,
+        _H,
+        _W,
+        _X1,
+        _X2,
+        _Y_MID,
+    )
+
+    sim = Simulation(
+        freq_max=10e9, domain=_DOMAIN, dx=_DX,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")),
+        cpml_layers=8,
+    )
+    sim.add_thin_conductor(
+        Box((_X1 - _DX, _Y_MID - _W / 2, _H),
+            (_X2 + _DX, _Y_MID + _W / 2, _H)),
+        sigma_bulk=5.8e7,
+    )
+    pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
+    sim.add_port(position=(_X1, _Y_MID, 0.0), component="ez", impedance=50.0,
+                 extent=_H, waveform=pulse, direction="-x",
+                 reference_plane_cells=10)
+    sim.add_port(position=(_X2, _Y_MID, 0.0), component="ez", impedance=50.0,
+                 extent=_H, waveform=pulse, direction="+x")
+    return sim
+
+
+def _floating_port_sim():
+    """A single-cell driven port floating mid-substrate (issue #71).
+
+    CONSTRUCTED. No test in the repo drives ``floating_port``: the only
+    other mention is
+    ``tests/contracts/test_example_fidelity_contract.py:22``, which counts
+    it in the EXAMPLES snapshot rather than building one. The check wants
+    four things at once -- ``impedance > 0``, ``extent is None`` (so it
+    stays a single-cell LumpedPort rather than being promoted to a
+    WirePort), ``excite=True``, and the port position inside a
+    non-vacuum dielectric bounding box -- and then it wants NO PEC within
+    one cell along the port's own component axis. So the substrate box is
+    the only geometry: adding a ground plane under it, which is what every
+    patch-antenna fixture in the suite has, is exactly what silences this
+    advisory.
+    """
+    from rfx import Box, Simulation
+
+    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.006), dx=0.5e-3,
+                     boundary="cpml", cpml_layers=8)
+    sim.add_material("substrate", eps_r=4.4)
+    sim.add(Box((0.004, 0.004, 0.001), (0.016, 0.016, 0.004)),
+            material="substrate")
+    sim.add_port(position=(0.010, 0.010, 0.0025), component="ez",
+                 impedance=50.0)
+    return sim
+
+
+def _source_decoupled_sim():
+    """A tangential-E source sitting ON a PEC face plane.
+
+    CONSTRUCTED. Nothing in the repo drives ``source_decoupled`` -- the
+    code's only other occurrence is this lock's own ledger. ``ex`` on the
+    ``z_lo`` PEC plane is the canonical arm of the four-way rule in
+    ``_validate_cfg_source_on_reflector_plane``: tangential E is zeroed at
+    a PEC face every update, so the source is silently discarded. The PEC
+    face comes from a ``BoundarySpec`` rather than the deprecated
+    ``pec_faces=`` kwarg, which would add a ``DeprecationWarning`` to the
+    render.
+    """
+    from rfx import Simulation
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+
+    sim = Simulation(
+        freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")),
+        cpml_layers=8,
+    )
+    sim.add_source((0.010, 0.010, 0.0), component="ex")
+    return sim
+
+
+def _ntff_absorber_overlap_sim():
+    """An NTFF box whose lo corner is 5 mm outside the domain.
+
+    ``tests/unit/preflight/test_preflight_absorber.py:296``'s
+    ``_ntff_sim(-0.005)``, IMPORTED --
+    ``test_ntff_absorber_overlap_fires_when_corner_crosses_domain_edge``
+    (L310) is the behavioural gate and its silent sibling at L304 pins the
+    interior case. Reached through the existing ``_absorber`` accessor
+    would have worked; it is spelled out here because the strict=False
+    kwarg and the negative corner belong together in one place.
+    """
+    import tests.unit.preflight.test_preflight_absorber as mod
+
+    return mod._ntff_sim(-0.005)
+
+
+def _wire_port_end_gap_sim():
+    """A wire port whose lower end stops two cells short of a PEC face.
+
+    ``tests/unit/preflight/test_wire_port_gap_distance.py:9``'s
+    ``_model(2, -1, 2)``, IMPORTED -- the ``z``/``lower``/``gap=2`` cell of
+    that file's 24-way parametrisation, whose assertions are the
+    behavioural gate on the text this snapshot pins. The fifth and last
+    code of ``_validate_cfg_port_inside_pec``; the body itself was already
+    witnessed three times over, so this closes a CODE rather than a body.
+    """
+    from tests.unit.preflight.test_wire_port_gap_distance import _model
+
+    return _model(2, -1, 2)
+
+
+def _wire_port_dead_cell_nu_sim():
+    """A wire port on a ``dz_profile`` mesh: classification unavailable.
+
+    Body of
+    ``tests/unit/sparams/test_mixed_port_sparam.py:1022``'s
+    ``test_wire_port_dead_cell_classification_unavailable_on_nu_mesh``,
+    reproduced from its two imported builders (``_base_sim`` L173,
+    ``_add_feed`` L227) because the test assembles them inline.
+
+    This lock's ledger filed
+    ``wire_port_dead_cell_classification_unavailable`` with
+    ``campaign_statics_unavailable`` as an emit-only-when-a-builder-RAISES
+    code, reachable solely by monkeypatching. Measured, that is half
+    right: the advisory has TWO triggers and only the second one needs a
+    raise. The first is a plain non-uniform mesh -- the #544 BLOCKING-1
+    fix SKIPS the uniform-only dead-cell classification on a ``dz_profile``
+    lane rather than building a mismatched substitute -- and that is
+    reachable from an ordinary builder, which is what this fixture uses.
+    The raising arm (``_assemble_materials`` monkeypatched to throw,
+    L1059) stays out of the corpus for the reason the ledger gives.
+    """
+    import numpy as _np
+
+    from tests.unit.sparams.test_mixed_port_sparam import _add_feed, _base_sim
+
+    sim, y_c = _base_sim(dz_profile=_np.full(10, 75.4e-6))
+    _add_feed(sim, y_c, x=2e-3)
+    return sim
+
+
 # ---------------------------------------------------------------------------
 # (fixture id, builder, preflight kwargs, preflight_sparameters calculator).
 #
@@ -1580,6 +1805,43 @@ _FIXTURES = (
     ("subgrid_unsupported_feature",
      _subgrid_unsupported_feature_sim, {}, None),
     ("floquet_nonuniform_automesh", _floquet_nonuniform_sim, {}, None),
+    # -- 50-57. leg 6 gap closers -------------------------------------------
+    # #980 Phase 3 leg 6 moves the fourteen ports (lumped/wire + coax),
+    # sources and NTFF bodies. A call census over the 57 fixtures above found
+    # thirteen of the fourteen entered -- the families sit on
+    # _validate_simulation_config's unconditional spine, the way legs 4 and 5
+    # did -- and SEVEN of those thirteen emitting nothing at all. Two of the
+    # seven emit nothing by construction and need no fixture:
+    # _wire_port_cell_centers is a helper that returns cell centres, and
+    # _validate_cfg_ntff_min_steps only writes self._ntff_min_steps_hint. The
+    # remaining five are closed here, together with the three codes of
+    # already-speaking bodies that this corpus had never reached
+    # (refplane_partial_optin, wire_port_end_gap_to_conductor,
+    # wire_port_dead_cell_classification_unavailable), which takes the
+    # ports/sources/NTFF families to ZERO unwitnessed codes.
+    #
+    # The fourteenth body, _validate_tfsf_vacuum_boundary, was entered ZERO
+    # times and cannot be reached from here at all: it is a @staticmethod
+    # runtime lane guard called from rfx/runners/uniform.py:610 DURING a run,
+    # it RAISES ValueError rather than emitting a PreflightIssue, and this
+    # lock renders preflight() / preflight_sparameters() only. Its gate is
+    # behavioural and measured: five tests enter it, including
+    # tests/unit/farfield/test_oblique_rcs_absolute_sigma.py::
+    # test_simulation_lane_vacuum_guard_fires_on_y_plane, which is a positive
+    # control on the raise. Noted rather than papered over with a run().
+    #
+    # Added BEFORE the move, on the tree where all fourteen bodies still sit
+    # in the facade, so the committed JSON is a pre-move baseline the motion
+    # has to reproduce byte for byte.
+    ("coax_junction_short", _coax_junction_short_sim, {}, None),
+    ("refplane_near_field", _refplane_near_field_sim, {}, None),
+    ("refplane_partial_optin", _refplane_partial_optin_sim, {}, None),
+    ("floating_port", _floating_port_sim, {}, None),
+    ("source_decoupled", _source_decoupled_sim, {}, None),
+    ("ntff_absorber_overlap", _ntff_absorber_overlap_sim,
+     {"strict": False}, None),
+    ("wire_port_end_gap", _wire_port_end_gap_sim, {"check_ntff": False}, None),
+    ("wire_port_dead_cell_nu", _wire_port_dead_cell_nu_sim, {}, None),
 )
 
 _IDS = [fid for fid, _, _, _ in _FIXTURES]
