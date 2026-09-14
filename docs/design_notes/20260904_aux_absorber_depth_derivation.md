@@ -831,6 +831,14 @@ carry bins; every fit residual under `FIT_RESID_LIMIT`:
 
 **Declared:** the 2-D auxiliary absorber meets `LEAK_BAR` on the gated band for
 incidence angles **up to 80 degrees**, with 10 percent in hand at 80, and does not at 82.
+cv26's grazing arms (theta0 = 82, gate 80-85) are **outside** the absorber's validity
+domain and must keep answering for the residual echo through their model terms
+(`e_absorber`, G6, G7) -- now a 1.2e-03 term, not the 2.8e-02 they carried before this
+section. The domain is gated, not just stated:
+`tests/unit/sources/test_tfsf_aux_absorber_reflection.py::test_the_domain_edge_is_where_the_note_says`
+measures 70, 80 and 82 on this rig and asserts the inside rows under the bar, the 82 row
+OVER it (so the domain claim is checked in both directions), and each within 10 percent
+of the numbers above.
 
 **And at one resolution only (added 2026-09-13, review of PR #1005).** Every row of the
 table above -- and every `|B/A|` anywhere in this note -- is measured at `dx = 1 mm` with
@@ -845,14 +853,6 @@ pins the resolution against the exact `c0 / f0 / dx` and asserts the three rigs 
 in extent and record length, so a rig added at another mesh fails rather than widening
 this claim by accident. (That assertion earned its keep immediately: its first version
 pinned a round 30 and reddened at 29.979.)
-cv26's grazing arms (theta0 = 82, gate 80-85) are **outside** the absorber's validity
-domain and must keep answering for the residual echo through their model terms
-(`e_absorber`, G6, G7) -- now a 1.2e-03 term, not the 2.8e-02 they carried before this
-section. The domain is gated, not just stated:
-`tests/unit/sources/test_tfsf_aux_absorber_reflection.py::test_the_domain_edge_is_where_the_note_says`
-measures 70, 80 and 82 on this rig and asserts the inside rows under the bar, the 82 row
-OVER it (so the domain claim is checked in both directions), and each within 10 percent
-of the numbers above.
 
 The 1-D path (`AUX_CPML_R_ASYMPTOTIC_1D = 1e-6`) is untouched: normal incidence only.
 
