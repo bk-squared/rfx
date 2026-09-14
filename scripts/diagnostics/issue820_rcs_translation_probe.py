@@ -229,6 +229,156 @@ Arm ``record``: re-run the two x offsets carrying sigma_max and sigma_min at
 Arm ``energy``: interior field energy ``sum(E^2 + H^2)`` over a ladder of
 n_steps at offset 0, reported as end/peak in dB.
 
+CORRECTIONS after independent review (2026-09-14), mirrored here because this
+is where the claims live. Every number below was re-derived from this lane's own
+committed artifacts before being written down.
+
+C1 (was P1). ``sum_f B_f == B_total`` is a LEAST-SQUARES IDENTITY, not a check.
+   Every face is fitted against the SAME design matrix and least squares is
+   linear, so the per-face constants sum to the total by construction. Measured
+   on the faces arm's own 11 offsets: ``|sum_f B_f - B_total| / |B_total| =
+   1.312e-16`` (and ``6.280e-16`` for A). The "agrees to 0.4 %" claim in the
+   first issue comment was only the 11-offset vs 21-offset sampling difference
+   (0.36 %), which is a sampling statement and not corroboration of anything.
+   It is withdrawn as evidence.
+
+C2 (was P1). The C gate is weak and points the wrong way. ``C = sum_f |B_f| /
+   |sum_f B_f|`` diverges as the extraction becomes PERFECT (|sum B_f| -> 0),
+   so ``C >= 5`` tests "the constant is spread over more than one face", not
+   "the constant is a cancellation residue". Partial cancellation across faces
+   is generic: the same statistic on the PHYSICAL rotating term is
+   ``C_A = 2.2686``, and the model-free ``sum_f |E_f| / |E_total|`` runs
+   2.339 .. 3.054 across the 11 offsets. What the measurement supports is the
+   CONTRAST ``C_B / C_A = 2.662`` -- the constant term cancels across faces
+   about 2.7x more completely than the physical term does. C is not to be used
+   as a gate again (see the collocation pre-declaration).
+
+C3 (was P2). ``C = 6.04`` is not a measurement against 5.0. Per-face fits are
+   much worse than the global one (residuals 0.103 / 0.108 on the x faces,
+   0.258 .. 0.283 on y/z, against 0.0138 globally), and C moves:
+   leave-one-offset-out gives ``5.730 .. 6.548`` (n = 11) and a +-0.1 % change
+   in k gives ``6.007 .. 6.072``. Report the band, not the point.
+
+C4 (was headline). The rotating-plus-constant model accounts for the x arm's
+   SHAPE (residual 0.0138) and about 90 % of its amplitude (2.081 predicted
+   against 2.314 measured). It has NO term at all for the transverse residue,
+   which is 0.702 dB = 30.3 % of the x arm. That residue is mostly ODD about
+   y = 0 (odd span 0.6883 dB against even span 0.1139 dB, ratio 6.044;
+   ``|E(-10)|/|E(+10)| = 1.0646 = 0.5435 dB``; extrema at y = -6 and y = +8).
+   The geometry is also worse than first written: the occupied-cell centroid is
+   at index 44.5901 on every axis against an NTFF box centre of 45.5, i.e.
+   0.9099 cells, NOT half a cell, and the rasterized mask is mirror-symmetric
+   about no axis. The honest verdict is therefore "extraction artefact of the
+   imperfect-cancellation class, MECHANISM NOT YET ATTRIBUTED", not "the
+   mechanism is the six-face cancellation residue".
+
+C5 (was P2). The auxprofile A/B moved TWO variables, not one. Changing the
+   absorber profile also changes the auxiliary grid LENGTH
+   (``aux_n_1d`` 130 -> 490, 3.8x), and this lane's own auxpad arm had already
+   shown that auxiliary length is not inert (0.2976 dB against a 0.20 dB
+   control bar). The direction of the result survives -- 1.83 dB of 2.28 dB
+   remains under a 4700x cleaner injection -- but it is a two-variable
+   comparison and is labelled as one here and in the arm's output.
+
+C6 (was P3). The period reference is the NUMERICAL half wavelength, not the
+   analytic one: ``k_num(axial) = 62.9169 /m`` against ``k0 = 62.8754 /m``
+   (dt = 4.6470e-12 s, Courant S = 0.5716), so ``lambda_num/2 = 20.4865``
+   cells against ``lambda/2 = 20.5000``. The fitted 20.4143 is 0.42 % below the
+   analytic value, of which dispersion explains 0.066 points. And the split is
+   not "an extraction effect" flat: by this lane's own auxprofile arm it is
+   about 6/7 extraction and about 1/7 auxiliary injection.
+
+C7 (was the vacuum argument). The exclusion of the #280 leakage is stronger
+   than a magnitude comparison. The medium is linear, so
+   ``run(target) = run(vacuum) + run(scattered)`` exactly, and the far-field
+   transform is linear in the face data; therefore the incident-field
+   contribution to the NTFF integral IS the vacuum number, whatever the target
+   does. It is identity-grade, not "93x too small".
+
+C8 (new candidate, free to test later). The transform evaluates
+   ``exp(j k rhat . r')`` with the ANALYTIC k while the fields on the surface
+   carry the NUMERICAL k_num. Across the 71-cell box that is 0.4118 degrees --
+   same class as the collocation term below, about 10.7x smaller.
+
+C9 (collocation suspicion, STRONGER than first written; code read only,
+   reproduced = false). Three things:
+   (a) The repo already knows this correction. ``rfx/simulation.py:1802-1811``
+       averages H at ``idx-1`` and ``idx`` to co-locate it with E before taking
+       a Poynting cross-product, with a comment saying why, and
+       ``rfx/nonuniform.py:2292-2295`` mirrors it. The NTFF surface integral is
+       the one flux-like surface integral in the repo WITHOUT that correction.
+   (b) The TRANSVERSE half-cells are uncollocated too, and asymmetrically. On a
+       y face the stored H components sit at ``j+1/2`` on BOTH ``y_lo`` and
+       ``y_hi`` -- half a cell inside the box on one face and half a cell
+       outside on the other. That is not mirror-symmetric under y -> -y, which
+       makes it a direct candidate for the ODD transverse residue in C4. One
+       defect, two symptoms.
+   (c) ``_face_positions_jax`` (rfx/farfield.py:621) shares the single-position
+       -per-face-cell scheme, so differentiable NTFF objectives inherit it.
+   Nothing here modifies ``compute_far_field``.
+
+ARM ``transverse`` -- the transverse null as the PRIMARY observable.
+Pre-declared and committed before it ran. One attempt (R2).
+Why this observable: the continuum value of the monostatic RCS variation under
+a y or z translation is EXACTLY 0.000 dB. There is no physical term to
+subtract and no reference to trust, so 100 % of whatever is measured is
+extraction error. It is the cleanest error meter this case has.
+Rungs (each a separate invocation, all CPU):
+  r1_ka1     ka = 1.0, cpr 6.4, clearance 30, 91**3, 700 steps, dx = lam/41.
+             Axes y AND z, offsets -10..+10 step 1.
+  r1_box45   the same rung and the y axis, with the NTFF box re-centred on
+             index 45.0 (i 10..80, j 9..81, k 9..81) instead of the production
+             45.5. NOTE: ``rfx.rcs.compute_rcs`` does NOT expose this --
+             rfx/rcs.py:427-445 derives the six indices from ``tfsf_cfg`` and
+             ``grid.face_layers`` with a hard-coded ``+1`` on ``i_hi``, and
+             ``ntff_offset`` moves lo and hi together, so the box centre is
+             pinned at 45.5 for every caller. The variant is PROBE-LEVEL (this
+             file builds its own NTFFBox) and changes no rfx code. The exact
+             centroid 44.59 is not reachable on the integer lattice without
+             putting the y_lo face on the CPML inner edge, so 45.0 is the
+             nearest admissible re-centring and the residual offset is stated
+             rather than hidden.
+  r2_ka2     ka = 2.0, cpr 12.8, clearance 30, 104**3, 700 steps. y axis.
+             NOTE, declared so it is not over-read: this rung has res = 41 too,
+             so it shares dx/lambda with r1 and does NOT vary k*dx/2. What it
+             varies is the target's ELECTRICAL SIZE.
+  r3_fine    ka = 1.0, cpr 12.8, clearance 60, 163**3, steps_mult 2.0 (1400
+             steps) so the PHYSICAL record length and its ring-down witness
+             match r1. y axis, offsets in the physically matched set
+             {-20,-10,-5,0,5,10,20}. This is the only rung that halves dx at
+             FIXED physical geometry, so it is the one that tests whether the
+             residue is a discretisation error at all.
+Reported per rung and axis: p-p in dB; the odd/even decomposition of
+sigma(offset) about 0 with both spans and their ratio; the complex E_theta per
+offset so the decomposition can be redone; the ring-down witness (interior
+energy end/peak in dB); and the warnings captured with
+``warnings.catch_warnings(record=True)`` + ``simplefilter("always")`` -- no
+preflight runs on this path, so the expected record is "none emitted" and it
+is verified rather than assumed.
+Pre-declared outcomes:
+  (t1) ODD DOMINANCE. If the carrier is the H half-cell offset along the face
+       normal -- which is +1/2 on BOTH the lo and hi face of an axis and so
+       breaks that axis's mirror symmetry -- the residue must be odd-dominated
+       on BOTH transverse axes: ``odd_span / even_span >= 3`` on y AND on z at
+       r1. The y axis already measured 6.044; z is the independent test.
+       Carrier-inconsistent if either axis gives < 3.
+       Reported but NOT gated: the y-vs-z p-p difference. The polarization is
+       ez, so y and z are not physically equivalent and a difference between
+       them is not by itself evidence either way.
+  (t2) dx DEPENDENCE. r3 halves dx at fixed physical geometry. A collocation
+       phase is first order in ``k dx / 2``, so
+       ``p-p(r3) / p-p(r1)`` in 0.30 .. 0.70 is CARRIER-CONSISTENT (first
+       order); ``>= 0.85`` is NOT-DX-DRIVEN and refutes the whole
+       discretisation class; otherwise INCONCLUSIVE. Declared explicitly: the
+       geometric box-vs-centroid offset also shrinks with dx in wavelengths, so
+       this gate separates "discretisation error" from "fixed geometric
+       effect", NOT collocation from centroid offset. (t3) does that.
+  (t3) RE-CENTRING. Moving the box centre 45.5 -> 45.0 halves the box-vs-
+       centroid offset from 0.9099 to 0.4099 cells. If that offset is the
+       carrier, the odd span must fall by >= 40 %. If the H staggering is the
+       carrier -- re-centring does not touch it -- the odd span must change by
+       < 20 %. In between is INCONCLUSIVE.
+
 Usage
 -----
   PYTHONPATH=<worktree> python3 scripts/diagnostics/issue820_rcs_translation_probe.py --arm raster
@@ -247,6 +397,7 @@ import os
 import subprocess
 import sys
 import time
+import warnings
 from datetime import datetime, timezone
 
 os.environ.setdefault("JAX_PLATFORMS", "cpu")
@@ -337,12 +488,17 @@ def _load_latest(arm: str) -> dict:
 
 # ---------------------------------------------------------------------------
 def build_case(offset_cells=(0, 0, 0), *, cpml_layers=CPML_LAYERS,
-               vacuum=False, steps_mult=1.0):
-    """cv16's ka=1.0 coarse point with the sphere translated by integer cells."""
-    radius = KA * LAM / (2 * np.pi)
-    res = max(15, int(np.ceil(2 * np.pi * COARSE_CPR / KA)))
+               vacuum=False, steps_mult=1.0, ka=KA, cpr=COARSE_CPR,
+               clear_cells=CLEAR_CELLS):
+    """cv16's ka=1.0 coarse point with the sphere translated by integer cells.
+
+    ``ka`` / ``cpr`` / ``clear_cells`` default to the cv16 coarse operating
+    point, so every call made before the transverse arm is unchanged.
+    """
+    radius = ka * LAM / (2 * np.pi)
+    res = max(15, int(np.ceil(2 * np.pi * cpr / ka)))
     dx = LAM / res
-    domain = 2 * radius + 2 * CLEAR_CELLS * dx
+    domain = 2 * radius + 2 * clear_cells * dx
     grid = Grid(freq_max=F0 * 1.5, domain=(domain,) * 3, dx=dx,
                 cpml_layers=cpml_layers)
     # n_steps is derived from the domain only, so it is IDENTICAL at every
@@ -374,7 +530,7 @@ def build_case(offset_cells=(0, 0, 0), *, cpml_layers=CPML_LAYERS,
 
 
 def _tfsf_and_ntff(grid, *, cpml_layers, tfsf_margin=3, ntff_offset=1,
-                   freqs=(F0,), aux_kwargs=None):
+                   freqs=(F0,), aux_kwargs=None, ntff_hi_shift=0):
     """Exactly rfx.rcs.compute_rcs steps 1-2, normal-incidence branch.
 
     ``aux_kwargs`` is only accepted by builds that expose the PR #1005
@@ -397,6 +553,15 @@ def _tfsf_and_ntff(grid, *, cpml_layers, tfsf_margin=3, ntff_offset=1,
     j_hi = min(grid.ny - fl["y_hi"] - ntff_offset, grid.ny - 2)
     k_lo = max(fl["z_lo"] + ntff_offset, 1)
     k_hi = min(grid.nz - fl["z_hi"] - ntff_offset, grid.nz - 2)
+    # Probe-level NTFF re-centring (transverse arm, variant r1_box45).
+    # compute_rcs pins the box centre at (grid-1)/2 + 0.5 because i_hi carries
+    # a hard-coded +1 and ntff_offset moves lo and hi together; subtracting a
+    # constant from every hi index is the only way to move the CENTRE without
+    # touching rfx. ntff_hi_shift=0 leaves every earlier arm byte-identical.
+    if ntff_hi_shift:
+        i_hi -= ntff_hi_shift
+        j_hi -= ntff_hi_shift
+        k_hi -= ntff_hi_shift
     box = NTFFBox.from_grid(grid, i_lo=i_lo, i_hi=i_hi, j_lo=j_lo, j_hi=j_hi,
                             k_lo=k_lo, k_hi=k_hi,
                             freqs=jnp.array(np.asarray(freqs, dtype=np.float64),
@@ -405,12 +570,13 @@ def _tfsf_and_ntff(grid, *, cpml_layers, tfsf_margin=3, ntff_offset=1,
 
 
 def _rcs_complex(grid, mats, n_steps, *, cpml_layers=CPML_LAYERS,
-                 tfsf_margin=3, ntff_offset=1):
+                 tfsf_margin=3, ntff_offset=1, ntff_hi_shift=0):
     """Replay of compute_rcs's normal-incidence path, returning complex E_back."""
     freqs_arr = np.array([F0], dtype=np.float64)
     tfsf, box = _tfsf_and_ntff(grid, cpml_layers=cpml_layers,
                                tfsf_margin=tfsf_margin,
-                               ntff_offset=ntff_offset, freqs=freqs_arr)
+                               ntff_offset=ntff_offset, freqs=freqs_arr,
+                               ntff_hi_shift=ntff_hi_shift)
     res = run(grid, mats, n_steps, boundary="cpml", tfsf=tfsf, ntff=box)
     # backscatter direction for +x incidence: (theta, phi) = (pi/2, pi)
     ff = compute_far_field(res.ntff_data, box, grid,
@@ -1018,6 +1184,30 @@ def arm_auxprofile(_args):
               f"resid {resid:.4f}, |A| {abs(a_fit):.4e}, "
               f"|B| {abs(b_fit):.4e}, r {abs(b_fit) / abs(a_fit):.4f}, "
               f"p-p {max(vals) - min(vals):.4f} dB")
+    deep, shallow = out["deep_default"], out["shallow_20cell"]
+    if deep["r"] <= GATE_AUXPROFILE_R_CLEAN and \
+            deep["pp_db"] <= GATE_AUXPROFILE_PP_CLEAN_DB:
+        verdict = "H5-bis TRUE (the spread collapses with a clean injection)"
+    elif deep["r"] >= GATE_AUXPROFILE_R_UNCHANGED and \
+            deep["pp_db"] >= GATE_AUXPROFILE_PP_UNCHANGED_DB:
+        verdict = ("H5-bis FALSE (the spread survives a 4700x cleaner "
+                   "injection)")
+    else:
+        verdict = "H5-bis INCONCLUSIVE"
+    control_ok = (shallow["pp_db"] >= GATE_AUXPROFILE_PP_RESTORED_DB
+                  and shallow["r"] >= GATE_AUXPROFILE_R_RESTORED)
+    out["verdict"] = verdict
+    out["control_restored"] = bool(control_ok)
+    out["two_variables_moved"] = {
+        "note": ("correction C5: the absorber profile and the auxiliary GRID "
+                 "LENGTH moved together; auxpad had already shown length is "
+                 "not inert (0.2976 dB against a 0.20 dB control bar)"),
+        "aux_n_1d": {k: out[k]["aux_n_1d"] for k in AUXPROFILE_SETTINGS},
+    }
+    print(f"[auxprofile] {verdict}; within-build control restored: "
+          f"{control_ok}; aux_n_1d moved "
+          + " -> ".join(str(out[k]["aux_n_1d"]) for k in AUXPROFILE_SETTINGS)
+          + " (TWO variables, see correction C5)")
     return _emit("auxprofile", out)
 
 
@@ -1104,18 +1294,150 @@ def arm_faces(_args):
     return _emit("faces", out)
 
 
+
+# --- transverse-null arm (pre-declared; see the module docstring) -----------
+GATE_T_ODD_RATIO = 3.0
+GATE_T_DX_LO = 0.30
+GATE_T_DX_HI = 0.70
+GATE_T_DX_FLAT = 0.85
+GATE_T_RECENTRE_TRUE = 0.40      # odd span must FALL by this fraction
+GATE_T_RECENTRE_FALSE = 0.20     # ... or change by less than this
+
+T_RUNGS = {
+    "r1_ka1": dict(ka=1.0, cpr=COARSE_CPR, clear_cells=30, steps_mult=1.0,
+                   offsets=list(range(-10, 11)), axes=("y", "z"),
+                   ntff_hi_shift=0),
+    "r1_box45": dict(ka=1.0, cpr=COARSE_CPR, clear_cells=30, steps_mult=1.0,
+                     offsets=list(range(-10, 11)), axes=("y",),
+                     ntff_hi_shift=1),
+    "r2_ka2": dict(ka=2.0, cpr=12.8, clear_cells=30, steps_mult=1.0,
+                   offsets=list(range(-10, 11)), axes=("y",),
+                   ntff_hi_shift=0),
+    "r3_fine": dict(ka=1.0, cpr=12.8, clear_cells=60, steps_mult=2.0,
+                    offsets=[-20, -10, -5, 0, 5, 10, 20], axes=("y",),
+                    ntff_hi_shift=0),
+}
+
+
+def _odd_even(offsets, values):
+    """Odd/even decomposition of values(offset) about offset = 0."""
+    o = np.asarray(offsets, dtype=float)
+    v = np.asarray(values, dtype=float)
+    order = np.argsort(o)
+    o, v = o[order], v[order]
+    if not np.allclose(o, -o[::-1]):
+        return None
+    rev = v[::-1]
+    even = 0.5 * (v + rev)
+    odd = 0.5 * (v - rev)
+    return {
+        "offsets": o.tolist(), "sigma": v.tolist(),
+        "even": even.tolist(), "odd": odd.tolist(),
+        "even_span": float(even.max() - even.min()),
+        "odd_span": float(odd.max() - odd.min()),
+        "odd_over_even": float((odd.max() - odd.min())
+                               / max(even.max() - even.min(), 1e-12)),
+        "pp_db": float(v.max() - v.min()),
+        "argmax_offset": float(o[int(np.argmax(v))]),
+        "argmin_offset": float(o[int(np.argmin(v))]),
+    }
+
+
+def _ringdown(rung):
+    """Interior-energy end/peak witness at offset 0 for one rung."""
+    grid, mats, n_steps, _, _ = build_case(
+        (0, 0, 0), steps_mult=rung["steps_mult"], ka=rung["ka"],
+        cpr=rung["cpr"], clear_cells=rung["clear_cells"])
+    i0, i1 = grid.pad_x_lo, grid.nx - grid.pad_x_hi
+    sl = (slice(i0, i1),) * 3
+    rows = []
+    for frac in (0.25, 0.5, 0.75, 1.0):
+        n = max(int(round(n_steps * frac)), 1)
+        tfsf, box = _tfsf_and_ntff(grid, cpml_layers=CPML_LAYERS,
+                                   ntff_hi_shift=rung["ntff_hi_shift"])
+        res = run(grid, mats, n, boundary="cpml", tfsf=tfsf, ntff=box)
+        st = res.state
+        u = float(jnp.sum(st.ex[sl] ** 2 + st.ey[sl] ** 2 + st.ez[sl] ** 2
+                          + st.hx[sl] ** 2 + st.hy[sl] ** 2 + st.hz[sl] ** 2))
+        rows.append({"n_steps": n, "interior_energy": u})
+    peak = max(r["interior_energy"] for r in rows)
+    end = rows[-1]["interior_energy"]
+    db = float(10.0 * np.log10(max(end, 1e-300) / peak))
+    return {"ladder": rows, "end_over_peak_db": db, "n_steps": n_steps}
+
+
+def arm_transverse(args):
+    name = args.rung
+    rung = T_RUNGS[name]
+    caught = []
+    with warnings.catch_warnings(record=True) as wlist:
+        warnings.simplefilter("always")
+        out = {"rung": name, "config": {k: v for k, v in rung.items()},
+               "gates": {"odd_ratio": GATE_T_ODD_RATIO,
+                         "dx_lo": GATE_T_DX_LO, "dx_hi": GATE_T_DX_HI,
+                         "dx_flat": GATE_T_DX_FLAT,
+                         "recentre_true": GATE_T_RECENTRE_TRUE,
+                         "recentre_false": GATE_T_RECENTRE_FALSE}}
+        out["ringdown"] = _ringdown(rung)
+        print(f"[transverse:{name}] ring-down end/peak = "
+              f"{out['ringdown']['end_over_peak_db']:.2f} dB "
+              f"(n_steps {out['ringdown']['n_steps']})")
+        for axis in rung["axes"]:
+            ax = "xyz".index(axis)
+            rows = []
+            for n in rung["offsets"]:
+                off = [0, 0, 0]
+                off[ax] = n
+                grid, mats, n_steps, _, meta = build_case(
+                    tuple(off), steps_mult=rung["steps_mult"], ka=rung["ka"],
+                    cpr=rung["cpr"], clear_cells=rung["clear_cells"])
+                t0 = time.time()
+                r, _, _, _ = _rcs_complex(
+                    grid, mats, n_steps,
+                    ntff_hi_shift=rung["ntff_hi_shift"])
+                r.update(meta)
+                r["wall_s"] = round(time.time() - t0, 1)
+                rows.append(r)
+                print(f"  {name} {axis}{n:+3d} grid={meta['grid_shape'][0]} "
+                      f"steps={n_steps} sigma = {r['monostatic_dbsm']:9.4f} "
+                      f"dBsm  ({r['wall_s']}s)")
+            dec = _odd_even([r["offset_cells"][ax] for r in rows],
+                            [r["monostatic_dbsm"] for r in rows])
+            out[axis] = {"rows": rows, "decomposition": dec,
+                         "ntff_box": rows[0]["ntff_box"]}
+            if dec:
+                print(f"[transverse:{name}:{axis}] p-p = {dec['pp_db']:.4f} dB, "
+                      f"odd span {dec['odd_span']:.4f}, even span "
+                      f"{dec['even_span']:.4f}, odd/even = "
+                      f"{dec['odd_over_even']:.3f} "
+                      f"(carrier-consistent >= {GATE_T_ODD_RATIO}); "
+                      f"argmax {dec['argmax_offset']:+.0f}, argmin "
+                      f"{dec['argmin_offset']:+.0f}")
+        caught = [f"{w.category.__name__}: {w.message}" for w in wlist]
+    out["warnings"] = caught
+    out["preflight"] = ("none emitted -- compute_rcs runs no preflight and this "
+                        "probe replays that path; verified with "
+                        "warnings.simplefilter('always')")
+    print(f"[transverse:{name}] warnings captured: "
+          f"{len(caught)}{' -> ' + '; '.join(caught) if caught else ' (none emitted)'}")
+    return _emit(f"transverse_{name}", out)
+
+
 ARMS = {
     "raster": arm_raster, "equiv": arm_equiv, "origin": arm_origin,
     "xsweep": arm_xsweep, "ysweep": arm_ysweep, "vacuum": arm_vacuum,
     "record": arm_record, "energy": arm_energy, "cpmlladder": arm_cpmlladder,
     "fit": arm_fit, "auxecho": arm_auxecho, "auxpad": arm_auxpad,
     "auxprofile": arm_auxprofile, "faces": arm_faces,
+    "transverse": arm_transverse,
 }
 
 
 def main(argv=None):
     p = argparse.ArgumentParser(description="issue #820 translation probe")
     p.add_argument("--arm", required=True, choices=sorted(ARMS))
+    p.add_argument("--rung", choices=sorted(T_RUNGS), default="r1_ka1",
+                   help="transverse arm only: which rung to run")
     args = p.parse_args(argv)
     ARMS[args.arm](args)
     return 0
