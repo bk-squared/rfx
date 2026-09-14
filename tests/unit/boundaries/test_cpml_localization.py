@@ -126,32 +126,72 @@ def _subprocess(stage, label, flags, candidate, *extra):
     assert p.returncode == 0, p.stdout[-3000:] + p.stderr[-3000:]
 
 
-@pytest.mark.parametrize('name', FIXTURES + ['thin232'])
-def test_cpml_localization_identity(name, tmp_path):
-    """Bit-identity against the frozen baseline with contraction AND algebraic
-    reassociation suppressed (G5-2b). One subprocess pair per test file run."""
-    scratch = tmp_path / 'id2'
+ROUTINE_IDENTITY = ['uniform8', 'kappa8', 'thin232']   # ~2 min under suppressed fusion; the full ten run under -m slow
+
+
+def _identity_scratch(tmp_path_factory, fixtures):
+    scratch = tmp_path_factory.mktemp('id2')
     os.environ['G5R3_SCRATCH'] = str(scratch)
+    os.environ['G5R3_ID2_FIXTURES'] = ','.join(fixtures)
     _subprocess('identity2_worker', 'id2flag', IDENTITY_FLAGS, True)
+    return scratch
+
+
+@pytest.fixture(scope='module')
+def id2_scratch(tmp_path_factory):
+    """One flagged subprocess per module run: frozen baseline and candidate on
+    the routine fixtures with fusion + algsimp suppressed (G5-2b)."""
+    return _identity_scratch(tmp_path_factory, ROUTINE_IDENTITY)
+
+
+@pytest.fixture(scope='module')
+def id2_scratch_full(tmp_path_factory):
+    return _identity_scratch(tmp_path_factory, FIXTURES + ['thin232', 'overlap', 'kappa5_pmc'])
+
+
+@pytest.fixture(scope='module')
+def reroll_scratch(tmp_path_factory):
+    """One flagged subprocess per module run: the contraction-suppressed
+    baseline trajectories (the reroll control) for the default-flags test."""
+    scratch = tmp_path_factory.mktemp('rb')
+    os.environ['G5R3_SCRATCH'] = str(scratch)
+    _subprocess('worker', 'flag', IDENTITY_FLAGS, False, 'old', 'uniform8,kappa8')
+    return scratch
+
+
+def _assert_identical(scratch, name):
     b = np.load(scratch / f'id2_id2flag_base_{name}.npz')
     c = np.load(scratch / f'id2_id2flag_cand_{name}.npz')
     bad = [k for k in b.files if not np.array_equal(b[k], c[k])]
     assert not bad, f'{name}: not bit-identical under suppressed contraction on {bad}'
 
 
+@pytest.mark.parametrize('name', ROUTINE_IDENTITY)
+def test_cpml_localization_identity(name, id2_scratch):
+    """Bit-identity against the frozen baseline with contraction AND algebraic
+    reassociation suppressed (G5-2b), routine subset."""
+    _assert_identical(id2_scratch, name)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize('name', FIXTURES + ['thin232', 'overlap', 'kappa5_pmc'])
+def test_cpml_localization_identity_full(name, id2_scratch_full):
+    """G5-2b on all ten fixtures (slow lane)."""
+    _assert_identical(id2_scratch_full, name)
+
+
+@pytest.mark.slow
 @pytest.mark.parametrize('name', ['uniform8', 'kappa8'])
-def test_cpml_localization_reroll_bounded(name, tmp_path):
+def test_cpml_localization_reroll_bounded(name, reroll_scratch):
     """Default flags: RMS over 200 steps of the candidate-vs-baseline divergence
     must not exceed that of a contraction-suppressed recompilation of the
-    baseline (the reroll control the test produces itself)."""
+    baseline (the reroll control the module produces itself)."""
     import runpy
-    scratch = tmp_path / 'rb'
-    os.environ['G5R3_SCRATCH'] = str(scratch)
-    _subprocess('worker', 'flag', IDENTITY_FLAGS, False, 'old', name)
     G = runpy.run_path(str(_HELPER))
-    base = G['trajectory'](G['load_M'](), name, old, 1.0, True)
-    cand = G['trajectory'](G['load_M'](), name, cpml, 1.0, True)
-    z = np.load(scratch / f'flag_{name}.npz')
+    M = G['load_M']()
+    base = G['trajectory'](M, name, old, 1.0, True)
+    cand = G['trajectory'](M, name, cpml, 1.0, True)
+    z = np.load(reroll_scratch / f'flag_{name}.npz')
     for k in ('ex', 'ey', 'ez', 'hx', 'hy', 'hz'):
         d_c = np.max(np.abs(cand[k].astype(np.float64) - base[k]), axis=(1, 2, 3))
         d_f = np.max(np.abs(z[f'hist_{k}'].astype(np.float64) - base[k]), axis=(1, 2, 3))

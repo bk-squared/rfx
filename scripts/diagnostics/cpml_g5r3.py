@@ -105,7 +105,9 @@ def identity2_worker(label):
     impls = {'base': M['old']}
     if os.environ.get('RFX_G4_REJECTED_CANDIDATE') == '1':
         impls['cand'] = M['cpml']
-    for name in FIXTURES + EXTRA_FIXTURES:
+    wanted = os.environ.get('G5R3_ID2_FIXTURES')
+    names = wanted.split(',') if wanted else FIXTURES + EXTRA_FIXTURES
+    for name in names:
         for tag, impl in impls.items():
             if name in EXTRA_FIXTURES:
                 arrs = run_extra(M, name, impl)
