@@ -558,6 +558,29 @@ _REBOUND_ON_MIXIN = {
         "_validate_cfg_waveguide_reference_plane", "_waveguide_far_geometry",
         "_waveguide_setup_planes",
     ),
+    # Leg 4. None of these eleven was a @staticmethod either. The one to
+    # watch is _preflight_face_layers: it is the only member of any leg so
+    # far that is called by ``self.`` from bodies in THREE other families --
+    # _validate_cfg_multiband_grading and _validate_cfg_nonuniform_limitations
+    # in the facade, and _validate_cfg_pec_face_short_of_domain_wall over in
+    # rfx/preflight/pec_geometry.py. Those are attribute lookups on the
+    # composed Simulation, so the rebind below is the whole of what keeps
+    # them resolving; drop it and three families outside the absorber one
+    # raise AttributeError at their first call, which no module-level lock
+    # in this file would see.
+    "rfx.preflight.absorber": (
+        "_preflight_face_layers",
+        "_validate_cfg_absorber_budget_vs_grid",
+        "_validate_cfg_absorber_placement",
+        "_validate_cfg_compute_cpml_thickness",
+        "_validate_cfg_dispersive_pole_at_absorber_face",
+        "_validate_cfg_geometry_in_cpml",
+        "_validate_cfg_lossless_resonator_in_absorber",
+        "_validate_cfg_pec_boundary_open_structure",
+        "_validate_cfg_pec_faces_with_finite_pec",
+        "_validate_cfg_upml_nonuniform_lane",
+        "_validate_cfg_upml_refinement",
+    ),
 }
 
 #: The moved bodies that were ``@staticmethod`` in the class and have to be

@@ -38,6 +38,18 @@ Modules:
   twelve ``_PreflightMixin`` bodies that make up the realized-aperture and
   cutoff checks (#150 / #737 / #738), the P2.8 reference-plane check, and
   the three post-v1.8 S-parameter setup audits with their shared builder.
+* :mod:`rfx.preflight.absorber` — the absorber/boundary-configuration
+  family: eleven ``_PreflightMixin`` bodies covering what the absorber is
+  made of (the #636 dispersive-pole advisory, the lossless-Q
+  anti-pattern), how thick it is (per-face CPML thickness, the #647/#742
+  allocation-budget advisory and the shared
+  :func:`~rfx.preflight.absorber._preflight_face_layers`), which boundary
+  combinations are refused (``pec_faces`` vs finite PEC, UPML vs
+  refinement, UPML vs a mesh profile) and what stands inside the pad
+  (probe/source placement, geometry extending into it, and the P0.4
+  PEC-boundary-on-an-open-structure advisory). It is the only leg so far
+  that moves NO module-level name: its leaves went to ``_common`` in leg 0
+  because their readers were never confined to this family.
 
 ``_PreflightMixin`` itself STAYS in ``rfx/api/_preflight.py``: its
 ``_validate_simulation_config`` body is an ordered sequence of 38 calls and

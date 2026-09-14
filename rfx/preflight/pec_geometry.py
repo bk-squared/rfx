@@ -38,7 +38,10 @@ Two cross-family edges leave with the family and both are ``self.`` calls, so
 both resolve through the composed ``Simulation`` MRO and survive untouched:
 ``_validate_cfg_campaign_statics`` -> ``self._campaign_ctx()`` (realization,
 still in the facade) and ``_validate_cfg_pec_face_short_of_domain_wall`` ->
-``self._preflight_face_layers()`` (absorber, still in the facade).
+``self._preflight_face_layers()`` (absorber, which leg 4 moved on to
+``rfx/preflight/absorber.py`` -- a ``self.`` edge does not care which module
+the other end lives in, which is the property that let both legs land without
+either package module importing the other).
 ``__qualname__`` is restored at the foot of this module.
 
 The five gate constants below are the reason this module has to exist as a
