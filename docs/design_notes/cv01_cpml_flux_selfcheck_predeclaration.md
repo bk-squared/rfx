@@ -331,9 +331,10 @@ The 2026-09-14 correction to this gate did not change the outcome: at 40 layers
 the retired fraction half (|−1.93523| ≤ |−26.04182| / 3 = 8.68) and the binding
 `mean_self` half both pass. The correction would have decided only an arm
 landing in `mean_self` ∈ [0.894243, 0.909059], and none did. That the two
-halves genuinely decouple is visible at 16 layers anyway, where the fraction
-(−8.56) is already past the retired threshold (−8.68) while `mean_self`
-(0.884100) is not past 0.90906.
+halves genuinely decouple is visible at 16 layers anyway: there the
+fraction's magnitude, 8.56, is already **below** the retired threshold of 8.68
+— that half would read PASS — while `mean_self`, 0.884100, is still **below**
+0.90906, so the binding half reads FAIL. Same arm, opposite verdicts.
 
 ### What this says, and what it does not
 
@@ -352,6 +353,14 @@ not. G2 is `0.95 <= mean_self <= 1.05` and the 40-layer arm reads 0.947345, so
 G2 is false at every swept count. A deeper absorber takes the deficit from 25
 points to 5; it does not remove it. What is left at 40 layers is unattributed
 and is not attributed here.
+
+**Does not say** that the residual at 40 layers is all off-guide. The
+aperture column is not monotone — 0.991232, 0.996183, 0.996269, 0.990150 — so
+the 40-layer arm's guided channel gives back about 0.6 points against the
+20-layer arm's. The aperture windows conserve to within a point of each other
+at every depth, which is what carries the off-guide reading at 10 layers; it
+does not license attributing all 4.2 remaining points at 40 layers to the
+off-guide region, and that split is not measured here.
 
 **Does not say** anything about the bend arm, the Meep leg, `mean_T`, or the
 committed UPML run of 2026-09-06. None of them is touched by this measurement.
@@ -387,10 +396,30 @@ can explain a difference between arms, and none is suppressed.
 cv01 pins `cpml_n = 10`, below rfx's own `Simulation(cpml_layers=16)` default,
 and the sweep says what that costs on the `RFX_BOUNDARY=cpml` path. The
 smallest swept count that reaches the pre-declared bar is **20** — 16 gives
-0.884100, short of 0.90906 — and 20 is also what
-`examples/crossval/11_waveguide_port_wr90.py` uses, for the same reason: a
-guided mode running into the absorber. So the CPML variant moves to 20 layers
-while `pml`, and with it every plane position, stays where it was.
+0.884100, short of 0.90906. So the CPML variant moves to 20 layers while
+`pml`, and with it every plane position, stays where it was.
+
+20 has precedent here for the same reason — a guided mode running into the
+absorber needs more depth than a radiating one. The WR-90 slab measurement
+that fixed rfx's phase-alignment constants ran at it
+(`scripts/verify_phase_alignment.py:40`, "Measured on 2026-04-22 WR-90 slab,
+cpml_layers=20 on both sides"), and it is the middle rung of the layer ladder
+in `docs/agent-memory/rfx-known-issues.md:4158` ("20 → 4.2 %").
+
+**Correction, round-1 review.** The first version of this paragraph, of the
+comment in cv01 and of PR #1027's body said 20 was "what
+`examples/crossval/11_waveguide_port_wr90.py` uses". That was wrong twice
+over. The path does not exist — `examples/crossval/` holds only a README, and
+the case is `validation/crossval/11_waveguide_port_wr90.py` — and that file
+does not use 20: it derives its depth from the guide wavelength,
+`CPML_LAYERS = int(np.ceil(0.75 * _LAMBDA_G_LOW_M / DX_M))` = **43** (its own
+comment weighs 46 against the 43 shipped; 20 appears nowhere in it). The claim
+came from `rfx-known-issues.md:4158`, whose 2026-04-22 sentence "`examples/
+crossval/11_waveguide_port_wr90.py` uses 20 layers" was true when written and
+has since rotted on both halves — the file moved and its depth was re-derived.
+Quoting a memory entry is not the same as checking it, and this one was not
+checked. The choice of 20 does not depend on the mistake: it is the smallest
+swept depth that cleared the gate, which is measured above.
 
 That is a rig change to an env-var diagnostic variant: not physics, not a gate.
 The UPML path — the committed run, its artifact and every number in it — is
@@ -453,3 +482,79 @@ Wall time and run identity:
 `scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::n_steps_is_cv01_value`,
 `scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::rig_fidelity_check.checked_lines = 34`,
 `scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json::rfx_provenance_check.under_repo_root`.
+
+`checked_lines` is **34** in the artifact and **35** at HEAD: the rig change
+added cv01's new `cpml_layers` line to the driver's `RIG_LINES` after this
+artifact was written. So a regeneration at HEAD is expected to differ in
+exactly that field and in `wall_s`, and in nothing else. The citation above
+resolves against the record as written, which is what a record is for.
+
+---
+
+## Next measurement, pre-declared 2026-09-14 — splitting the 40-layer residual
+
+Written and committed **before it runs**, as R2 requires. Appended; nothing
+above is edited.
+
+### What the sweep left open
+
+At 40 layers `mean_self` is 0.947345 against the UPML control's 0.989162 — 4.2
+points still missing, and the sweep does not say where they are. Two things
+above make that gap worth one more arm rather than a shrug:
+
+1. The aperture column is not monotone (0.991232 / 0.996183 / 0.996269 /
+   0.990150), so the 40-layer guided channel gives back ~0.6 points against the
+   20-layer one, and "all of the residual is off-guide" is not established.
+2. **The `full` window is not held fixed across the sweep.** Every plane
+   *position* is (1.1 / 4.0 / 14.5 µm, witnessed per arm), but `size=None`
+   integrates the whole padded plane, whose tangential cell count grows with
+   the absorber: 181 cells at 10 layers, 241 at 40. The physical interior
+   (161) and the aperture (21) do not grow. So a deeper absorber changes both
+   the absorber and how many absorber-cell slots the full-plane integral
+   contains, and the sweep cannot separate the two on its own.
+
+### The arm
+
+One run, ~60 s CPU: the `interior` window, `size=(sy, dx)`, at **40 layers** —
+the one window the sweep does not run. With the sweep's committed `full` and
+`aperture` arms at the same depth it splits the residual exactly as the
+six-arm campaign split the 10-layer case:
+
+| part | 10 layers (six-arm artifact) | 40 layers |
+|---|---|---|
+| absorber-cell slots, `full` − `interior` | −1.25 points | to be measured |
+| interior off-guide, `interior` − `aperture` | −24.79 points | to be measured |
+| total outside-aperture, `full` − `aperture` | −26.04 points | −1.94 points |
+
+Both parts band-summed at the output plane over cv01's own `above` mask, as
+percentage of the full-plane band sum — the construction the six-arm artifact
+used, run through one code path for both depths so the two are comparable.
+
+The `full` and `aperture` arms are read out of the committed sweep artifact
+rather than re-run. That is only legitimate if they are the same rig, so the
+driver asserts it before subtracting: grid, `above` mask, frequency axis,
+`n_steps` and boundary must all match the new arm, and a mismatch fails the
+run instead of producing a subtraction across two rigs.
+
+### Prediction, on record before the run
+
+**Interior off-guide still dominates**: |`interior` − `aperture`| stays larger
+than |`full` − `interior`|, as it is at 10 layers (24.79 against 1.25). That
+would say the residual is still off-guide power inside the physical interior,
+and the padded-plane window's growth is not what is being measured.
+
+**The interesting alternative**: `full` − `interior` has **grown** in
+magnitude past its 10-layer −1.25 points. Four times as many absorber-cell
+slots sit inside the full plane at 40 layers as at 10, so if those slots now
+carry the bulk of the residual, the integration window — not the absorber — is
+the next suspect, and the next measurement is a window question rather than a
+boundary one.
+
+### No gate, one attempt
+
+This arm gates nothing and closes nothing. It is a split of a residual the
+sweep left unattributed, and its outcome names the next suspect. One attempt;
+a second needs its own pre-declaration naming a new mechanism. Artifact:
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json`, appended
+beside the other two, neither of which is touched. No gate, tolerance, window
+or committed crossval artifact is modified by it.

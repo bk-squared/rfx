@@ -81,6 +81,25 @@ anywhere in the repo -- the note's "Correction 2026-09-14" measured that the
 two criteria are not equivalent (a 0.0148-wide window passes one and fails the
 other) and demoted the fraction to a diagnostic.
 
+Residual split (``--mode residual-split``)
+-----------------------------------------
+One arm, pre-declared in the same note under "Next measurement, pre-declared
+2026-09-14": the ``interior`` window (``size=(sy, dx)``) at 40 layers, which
+the layer sweep does not run. With the sweep's committed ``full`` and
+``aperture`` arms at the same depth it splits the 40-layer residual the way
+the six-arm campaign split the 10-layer case -- ``full`` - ``interior`` is the
+absorber-cell slots of the padded plane, ``interior`` - ``aperture`` is the
+off-guide part of the physical interior.
+
+It reads the other two arms out of the committed sweep artifact rather than
+re-running them, so it asserts first that the new arm's grid, band mask and
+frequency axis match what that artifact recorded; a mismatch fails the run
+instead of producing a subtraction across two different rigs.
+
+No gate. It is a diagnostic split of a residual that the sweep left
+unattributed, and its outcome names the next suspect rather than closing
+anything.
+
 Rig fidelity
 ------------
 The rig below is a hand-copy of cv01's Run 1. ``_assert_rig_matches_cv01``
@@ -420,6 +439,167 @@ HELD_PLANES_M = {
 }
 
 
+# --- residual split (the sweep's 40-layer residual, one interior arm) -------
+RESIDUAL_SPLIT_LAYERS = 40
+LAYER_SWEEP_ARTIFACT = ("scripts/diagnostics/_artifacts/cv01_cpml_813/"
+                        "layer_sweep.json")
+SIX_ARM_ARTIFACT = ("scripts/diagnostics/_artifacts/cv01_cpml_813/"
+                    "selfcheck.json")
+
+
+def _band_split(full_arm: dict, mid_arm: dict, ap_arm: dict) -> dict:
+    """Split the outside-aperture term into its two parts, at the output plane.
+
+    ``full`` - ``interior``  = the padded plane's absorber-cell slots.
+    ``interior`` - ``aperture`` = the off-guide part of the physical interior.
+    Both band-summed over cv01's own ``above`` mask and normalized by the
+    full-plane band sum, which is how the six-arm campaign reported them.
+    """
+    above = np.asarray(full_arm["above_mask"], dtype=bool)
+    fo_full = np.asarray(full_arm["flux_out"], dtype=float)
+    fo_mid = np.asarray(mid_arm["flux_out"], dtype=float)
+    fo_ap = np.asarray(ap_arm["flux_out"], dtype=float)
+    band_full = float(fo_full[above].sum())
+    slots = fo_full - fo_mid
+    inner = fo_mid - fo_ap
+    return {
+        "band_summed_full_plane": band_full,
+        "absorber_cell_slots_band_summed": float(slots[above].sum()),
+        "absorber_cell_slots_points": 100.0 * float(slots[above].sum()) / band_full,
+        "interior_off_guide_band_summed": float(inner[above].sum()),
+        "interior_off_guide_points": 100.0 * float(inner[above].sum()) / band_full,
+        "total_outside_aperture_points": (
+            100.0 * float((fo_full - fo_ap)[above].sum()) / band_full),
+        "n_bins_in_band": int(above.sum()),
+        "n_bins_slots_negative": int((slots[above] < 0).sum()),
+        "n_bins_interior_off_guide_negative": int((inner[above] < 0).sum()),
+        "per_bin_absorber_cell_slots": [float(v) for v in slots],
+        "per_bin_interior_off_guide": [float(v) for v in inner],
+    }
+
+
+def _assert_comparable(new_arm: dict, stored_arm: dict, what: str) -> dict:
+    """The stored arms come from another run; prove they are the same rig.
+
+    Subtracting a fresh arm from arms read out of a committed artifact is only
+    meaningful if the grid, the band mask and the frequency axis agree. They
+    are checked, not assumed, and a mismatch raises.
+    """
+    checks = {
+        "grid_matches": new_arm.get("grid") == stored_arm.get("grid"),
+        "above_mask_matches": new_arm["above_mask"] == stored_arm["above_mask"],
+        "freq_axis_matches": new_arm["f_over_c_per_a"] == stored_arm["f_over_c_per_a"],
+        "n_steps_matches": new_arm["n_steps"] == stored_arm["n_steps"],
+        "boundary_matches": new_arm["boundary"] == stored_arm["boundary"],
+    }
+    if not all(checks.values()):
+        raise SystemExit(
+            f"comparability check FAILED against the stored {what} arm: "
+            f"{ {k: v for k, v in checks.items() if not v} }. The subtraction "
+            "would cross two different rigs; not written."
+        )
+    return checks
+
+
+def run_residual_split(args, rig: dict, provenance_check: dict,
+                       provenance: dict) -> dict:
+    """The pre-declared interior arm, and the split it makes possible."""
+    layers = int(args.split_layers)
+    sweep = json.loads((REPO / LAYER_SWEEP_ARTIFACT).read_text(encoding="utf-8"))
+    six = json.loads((REPO / SIX_ARM_ARTIFACT).read_text(encoding="utf-8"))
+    entry = sweep["layers"][str(layers)]
+    stored_full, stored_ap = entry["full"], entry["aperture"]
+
+    print(f"--- cpml_layers={layers}: interior (the new arm) ---", flush=True)
+    interior = run_arm("cpml", (sy, dx), steps=args.n_steps, cpml_layers=layers)
+    print(f"    mean_self = {interior['mean_self']:.6f} "
+          f"({interior['wall_s']}s)", flush=True)
+
+    comparable = {
+        "vs_stored_full": _assert_comparable(interior, stored_full, "full"),
+        "vs_stored_aperture": _assert_comparable(interior, stored_ap, "aperture"),
+    }
+    split = _band_split(stored_full, interior, stored_ap)
+
+    # The same split at 10 layers, recomputed from the six-arm artifact rather
+    # than retyped, so the two depths are compared through one code path.
+    ref = _band_split(six["arms"]["cpml_full"], six["arms"]["cpml_interior"],
+                      six["arms"]["cpml_aperture"])
+
+    grid = interior.get("grid") or {}
+    shape = grid.get("shape") or []
+    pad = grid.get("pad", {})
+    return {
+        "issue": 813,
+        "mode": "residual-split",
+        "predeclaration": (
+            "docs/design_notes/cv01_cpml_flux_selfcheck_predeclaration.md"
+            " -- 'Next measurement, pre-declared 2026-09-14', written and"
+            " committed before this ran"),
+        "measures": ("the 40-layer residual split into absorber-cell slots"
+                     " (full - interior) and interior off-guide"
+                     " (interior - aperture), band-summed at the output plane"
+                     " over cv01's own `above` mask"),
+        "gate": "NONE. This is a diagnostic split, not a gated measurement.",
+        "prediction_on_record": (
+            "interior - aperture still dominates full - interior, as it does at"
+            " 10 layers (-24.79 vs -1.25 points); a full - interior that has"
+            " GROWN instead points at the padded-plane window, whose cell"
+            " count grows with the absorber while the planes do not move."),
+        "window_caveat": (
+            "the `full` window is the whole padded plane, so its tangential"
+            " cell count grows with cpml_layers (181 at 10 layers, 241 at 40)"
+            " even though every plane POSITION is held fixed. The physical"
+            " interior and the aperture windows do not grow. That is what this"
+            " arm is here to size."),
+        "n_steps": int(args.n_steps),
+        "n_steps_is_cv01_value": bool(args.n_steps == n_steps),
+        "cpml_layers": layers,
+        "rig_fidelity_check": rig,
+        "rfx_provenance_check": provenance_check,
+        "held_fixed_m": HELD_PLANES_M,
+        "stored_arms_source": {
+            "path": LAYER_SWEEP_ARTIFACT,
+            "layer_key": str(layers),
+            "full_mean_self": stored_full["mean_self"],
+            "aperture_mean_self": stored_ap["mean_self"],
+            "commit": sweep["provenance"]["commit"],
+            "utc": sweep["provenance"]["utc"],
+        },
+        "reference_split_source": {
+            "path": SIX_ARM_ARTIFACT,
+            "cpml_layers": cpml_n,
+            "commit": six["provenance"]["commit"],
+        },
+        "comparability_checks": comparable,
+        "provenance": provenance,
+        "interior_arm": interior,
+        "interior_grid_shape": shape,
+        "full_plane_tangential_cells": (int(shape[1]) if len(shape) > 1 else None),
+        "interior_window_cells": (
+            int(shape[1]) - int(pad.get("y_lo", 0)) - int(pad.get("y_hi", 0))
+            if len(shape) > 1 else None),
+        "split_at_swept_layers": split,
+        "split_at_cv01_layers_reference": ref,
+        "comparison": {
+            "absorber_cell_slots_points": {
+                str(cpml_n): ref["absorber_cell_slots_points"],
+                str(layers): split["absorber_cell_slots_points"],
+            },
+            "interior_off_guide_points": {
+                str(cpml_n): ref["interior_off_guide_points"],
+                str(layers): split["interior_off_guide_points"],
+            },
+            "interior_off_guide_still_dominates": bool(
+                abs(split["interior_off_guide_points"])
+                > abs(split["absorber_cell_slots_points"])),
+            "absorber_cell_slots_grew": bool(
+                abs(split["absorber_cell_slots_points"])
+                > abs(ref["absorber_cell_slots_points"])),
+        },
+    }
+
+
 def _outside_aperture(full_arm: dict, ap_arm: dict) -> dict:
     """Band-summed backward power outside the aperture, at the output plane.
 
@@ -658,10 +838,16 @@ def run_layer_sweep(args, rig: dict, provenance_check: dict,
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--output", required=True)
-    ap.add_argument("--mode", choices=("arms", "layer-sweep"), default="arms",
+    ap.add_argument("--mode",
+                    choices=("arms", "layer-sweep", "residual-split"),
+                    default="arms",
                     help="`arms` (default) = the six-arm boundary/window "
                          "campaign, unchanged; `layer-sweep` = the "
-                         "pre-declaration addendum's Arm 1")
+                         "pre-declaration addendum's Arm 1; `residual-split` "
+                         "= the one interior arm that splits its residual")
+    ap.add_argument("--split-layers", type=int, default=RESIDUAL_SPLIT_LAYERS,
+                    help="layer count for --mode residual-split; must be one "
+                         "the committed layer sweep already ran")
     ap.add_argument("--arms", default="",
                     help="comma-separated subset (mode=arms)")
     ap.add_argument("--layers", default="",
@@ -693,6 +879,22 @@ def main() -> int:
         "python": sys.version.split()[0],
         "platform": platform.platform(),
     }
+
+    if args.mode == "residual-split":
+        out = run_residual_split(args, rig, provenance_check, provenance)
+        out_path = pathlib.Path(args.output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
+        print(f"\nwrote {out_path}")
+        c = out["comparison"]
+        for part in ("absorber_cell_slots_points", "interior_off_guide_points"):
+            at10, at40 = c[part][str(cpml_n)], c[part][str(args.split_layers)]
+            print(f"  {part:32s} {cpml_n:>3} layers {at10:+9.4f} -> "
+                  f"{args.split_layers:>3} layers {at40:+9.4f}")
+        print(f"  interior off-guide still dominates: "
+              f"{c['interior_off_guide_still_dominates']}")
+        print(f"  absorber-cell slots grew: {c['absorber_cell_slots_grew']}")
+        return 0
 
     if args.mode == "layer-sweep":
         sweep = run_layer_sweep(args, rig, provenance_check, provenance)

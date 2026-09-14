@@ -214,9 +214,18 @@ if boundary not in {"cpml", "upml"}:
 # run's 0.989162 -- so a 10-cell absorber returns ~25 points of the guided
 # power back through the off-guide part of the measurement plane. 20 is the
 # smallest swept depth that clears the pre-declared bar (>= 0.90906, two
-# thirds of the gap closed), and it is what
-# examples/crossval/11_waveguide_port_wr90.py uses for the same reason: a
-# guided mode running into the absorber needs more depth than a radiating one.
+# thirds of the gap closed).
+#
+# 20 has precedent here for the same reason -- a guided mode running into the
+# absorber needs more depth than a radiating one. The WR-90 slab measurement
+# that fixed rfx's phase-alignment constants ran at it:
+# scripts/verify_phase_alignment.py:40, "Measured on 2026-04-22 WR-90 slab,
+# cpml_layers=20 on both sides". (An earlier draft of this comment cited
+# examples/crossval/11_waveguide_port_wr90.py as a 20-layer user. That was
+# wrong twice over and is corrected here: the path does not exist -- the case
+# is validation/crossval/11_waveguide_port_wr90.py -- and that file derives
+# its own depth from the guide wavelength, CPML_LAYERS = ceil(0.75 *
+# _LAMBDA_G_LOW_M / DX_M) = 43, never 20.)
 #
 # This does NOT make the CPML variant pass G2 (0.95 <= mean_self <= 1.05):
 # 0.919530 is still short of it, and what remains is unattributed. #813 is
@@ -451,6 +460,13 @@ _doc = {
         "resolution_cells_per_a": int(round(a / dx)),
         "dx_m": float(dx),
         "boundary": boundary,
+        # These two are NOT the same quantity and, under cpml, no longer agree:
+        # `pml_m` is the plane-placement padding, held at cpml_n = 10 cells so
+        # the source and monitors stay put, while `boundary_layers` is the
+        # absorber depth (10 under upml, 20 under cpml since #813). The
+        # invariant pml_m == boundary_layers * dx_m held before #813 and does
+        # not hold on the cpml path now; reading either one as the other is the
+        # mistake this comment exists to prevent.
         "boundary_layers": int(cpml_layers),
         "pml_m": float(pml),
         "domain_over_a": [float(sx / a), float(sy / a)],
