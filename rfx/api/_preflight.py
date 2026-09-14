@@ -1267,7 +1267,24 @@ class _PreflightMixin:
         ``absorber_label``) and then calls each helper IN THE SAME ORDER
         as the original checks. No logic, ordering, or warning text
         changed — pure readability decomposition.
+
+        #980 Phase 3 leg 8: the 37 hand-written helper calls that used to
+        follow moved into ``rfx/preflight/_registry.py`` as
+        :data:`~rfx.preflight._registry.CORE_CONFIG_CHECKS`, one entry per
+        call, in the same order and with the same arguments — so a new check
+        is registered in its family module instead of edited into this body,
+        and the suite can be listed without reading it. What stays here is
+        exactly the context-building step: this method still computes the
+        shared state once and now hands it over as a
+        :class:`~rfx.preflight._registry.ConfigCheckContext`.
         """
+        # Function-local, not module-level: rfx.api._preflight's module
+        # namespace is pinned at exactly 55 names by set equality in
+        # tests/locks/test_preflight_split_snapshot.py, and importing these
+        # two at module scope would widen it. Same reason the moved check
+        # bodies are re-bound by CLASS-scoped imports below.
+        from rfx.preflight._registry import ConfigCheckContext, run_config_checks
+
         import warnings as _w
 
         dx = self._dx or C0 / self._freq_max / 20.0
@@ -1279,54 +1296,18 @@ class _PreflightMixin:
         absorber_label = "UPML" if self._boundary == "upml" else "CPML"
 
         # --- checks in original order ---------------------------------
-        self._validate_cfg_precision_x64(_w)
-        self._validate_cfg_pec_faces_with_finite_pec(_w)
-        self._validate_cfg_upml_refinement()
-        self._validate_cfg_upml_nonuniform_lane(_w)
-        self._validate_cfg_floquet_nonuniform()
-        self._validate_cfg_absorber_placement(
-            _w, dx, cpml_thickness, cpml_thick_lo, cpml_thick_hi, absorber_label
-        )
-        self._validate_cfg_source_on_reflector_plane(_w, dx, _pmc_faces_set)
-        self._validate_cfg_ntff_absorber_overlap(
-            _w, cpml_thickness, cpml_thick_lo, cpml_thick_hi, absorber_label
-        )
-        self._validate_cfg_ntff_min_steps(dx)
-        self._validate_cfg_settling_witness_present(_w)
-        self._validate_cfg_geometry_in_cpml(
-            _w, cpml_thickness, cpml_thick_lo, cpml_thick_hi, absorber_label
-        )
-        self._validate_cfg_port_inside_pec(_w, dx)
-        self._validate_cfg_floating_single_cell_port(_w)
-        self._validate_cfg_pec_boundary_open_structure(_w)
-        self._validate_cfg_no_sources(_w)
-        self._validate_cfg_tfsf_with_lumped_rlc(_w)
-        self._validate_cfg_unresolved_pulse(_w, dx)
-        self._validate_cfg_thin_conductor_surface_impedance(_w)
-        self._validate_cfg_thin_conductor_graded_node(_w)
-        self._validate_cfg_source_on_graded_node(_w)
-        self._validate_cfg_wire_port_on_graded_node(_w)
-        self._validate_cfg_nonuniform_limitations(_w, cpml_thickness)
-        self._validate_cfg_multiband_grading(_w)
-        self._validate_cfg_graded_box_rasterization(_w)
-        self._validate_cfg_subgrid_limitations(_w)
-        self._validate_cfg_conformal_fine_dx(dx)
-        self._validate_cfg_adi_3d_accuracy(_w)
-        self._validate_cfg_adi_interior_pec(_w)
-        self._validate_cfg_lossless_resonator_in_absorber(_w)
-        self._validate_cfg_dispersive_pole_at_absorber_face(
-            _w, dx, cpml_thick_lo, cpml_thick_hi
-        )
-        self._validate_cfg_waveguide_reference_plane(
-            _w, cpml_thick_lo, cpml_thick_hi
-        )
-        self._validate_cfg_refplane_placement(_w)
-        self._validate_cfg_absorber_budget_vs_grid(_w, dx)
-        self._validate_cfg_campaign_statics(_w)
-
-        self._check_waveguide_port_evanescent()
-        self._check_msl_port_geometry(dx, cpml_thick_lo, cpml_thick_hi)
-        self._check_coaxial_port_junction_aperture()
+        # The order lives in CORE_CONFIG_CHECKS now. It is still the
+        # observable the committed snapshots pin, and the registry's own lock
+        # pins the 37 names against the sequence this body used to spell out.
+        run_config_checks(self, ConfigCheckContext(
+            warn=_w,
+            dx=dx,
+            cpml_thickness=cpml_thickness,
+            cpml_thick_lo=cpml_thick_lo,
+            cpml_thick_hi=cpml_thick_hi,
+            pmc_faces=_pmc_faces_set,
+            absorber_label=absorber_label,
+        ))
 
     def _validate_cfg_precision_x64(self, _w) -> None:
         """Warn when ``precision`` cannot actually take effect.
