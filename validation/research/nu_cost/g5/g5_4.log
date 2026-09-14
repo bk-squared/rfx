@@ -1,0 +1,3 @@
+G5-4a {'candidate_db': -68.26476397028848, 'baseline_median_db': -68.26476397028848, 'window_db': 0.0, 'difference_db': 0.0, 'pass': True}
+G5-4b {'differing_elements': {'ex': 0, 'ey': 0, 'ez': 0, 'hx': 0, 'hy': 0, 'hz': 0}, 'energy_equal': True, 'baseline_energy_step200': 1.674324749477396e-10, 'candidate_energy_step200': 1.674324749477396e-10, 'pass': True}
+G5-4c {"baseline": {"psi_ex_yhi": 0, "psi_ey_xlo": 0, "psi_ez_xlo": 0, "psi_ez_yhi": 0, "psi_hx_yhi": 0, "psi_hy_xlo": 0, "psi_hz_xlo": 0, "psi_hz_yhi": 0}, "candidate": {"psi_ex_yhi": 0, "psi_ey_xlo": 0, "psi_ez_xlo": 0, "psi_ez_yhi": 0, "psi_hx_yhi": 0, "psi_hy_xlo": 0, "psi_hz_xlo": 0, "psi_hz_yhi": 0}}

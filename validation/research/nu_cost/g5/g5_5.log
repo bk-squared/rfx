@@ -1,0 +1,7 @@
+G5-5 uniform8 ex FAIL first_step 39 candidate 2.384185791015625e-07 sensitivity 1.341104507446289e-07
+G5-5 uniform8 ey FAIL first_step 41 candidate 1.4901161193847656e-07 sensitivity 1.341104507446289e-07
+G5-5 uniform8 ez FAIL first_step 39 candidate 4.76837158203125e-07 sensitivity 2.384185791015625e-07
+G5-5 uniform8 hx FAIL first_step 38 candidate 5.558149496209808e-10 sensitivity 4.976072887075134e-10
+G5-5 uniform8 hy FAIL first_step 35 candidate 3.701643436215818e-10 sensitivity 3.3651303965598345e-10
+G5-5 uniform8 hz FAIL first_step 44 candidate 9.433909486933345e-10 sensitivity 5.880822911974448e-10
+STOP G5-5; remaining witness fixtures not run

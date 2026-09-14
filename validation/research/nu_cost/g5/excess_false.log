@@ -1,0 +1,12 @@
+excess_false uniform8 completed
+excess_false graded8 completed
+excess_false mixed8 completed
+excess_false uniform4 completed
+excess_false uniform16 completed
+excess_false periodic8 completed
+excess_false kappa8 completed
+VERSION 0.10.2
+mul (x: 'ArrayLike', y: 'ArrayLike', *, out_dtype: 'DTypeLike | None' = None) -> 'Array'
+add (x: 'ArrayLike', y: 'ArrayLike') -> 'Array'
+multiply (*args: 'ArrayLike', out: 'None' = None, where: 'None' = None) -> 'Any'
+dot_general (lhs: 'ArrayLike', rhs: 'ArrayLike', dimension_numbers: 'DotDimensionNumbers', precision: 'PrecisionLike' = None, preferred_element_type: 'DTypeLike | None' = None, *, out_sharding=None) -> 'Array'

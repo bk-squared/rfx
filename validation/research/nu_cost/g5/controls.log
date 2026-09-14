@@ -1,0 +1,6 @@
+unflagged {'flags': '', 'exit': 0, 'total_differing': 0, 'changed_arrays': 0}
+excess_false {'flags': '--xla_allow_excess_precision=false', 'exit': 0, 'total_differing': 0, 'changed_arrays': 0}
+precision_highest {'flags': '', 'exit': 0, 'total_differing': 0, 'changed_arrays': 0}
+fast_math_false {'flags': '--xla_cpu_enable_fast_math=false', 'exit': 0, 'total_differing': 0, 'changed_arrays': 0}
+legacy_emitter {'flags': '--xla_cpu_use_fusion_emitters=false --xla_cpu_enable_fast_math=false', 'exit': 0, 'total_differing': 2129538, 'changed_arrays': 194}
+no_fusion {'flags': '--xla_disable_hlo_passes=fusion --xla_cpu_enable_fast_math=false', 'exit': 0, 'total_differing': 2129643, 'changed_arrays': 194}
