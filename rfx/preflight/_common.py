@@ -528,3 +528,67 @@ class PreflightReport(list):
         options = {"indent": 2, "sort_keys": True}
         options.update(kwargs)
         return json.dumps(self.to_dict(), **options)
+
+
+# ---------------------------------------------------------------------------
+# #980 Phase 3 leg 6: the ``port_in_pec`` dead-component rule and its curl-loop
+# table, moved verbatim out of ``rfx/api/_preflight.py`` (they sat between
+# ``_realized_edges_np`` and ``class _RealizedPEC`` there, which is why they
+# land at the foot here -- the realization block follows the report types in
+# the pre-split file).
+#
+# They are in ``_common`` rather than in ``rfx/preflight/ports.py`` for leg 2's
+# reason, measured again: ``_component_is_dead`` has exactly two readers and
+# they straddle this split. ``_validate_cfg_port_inside_pec`` leaves with leg 6
+# for ``ports.py``; ``_RealizedPEC.component_is_dead`` stays in the facade until
+# the realization leg. A leg module may not import from the facade, and a
+# realization leg importing from a port-family peer for a thirty-line helper is
+# the coupling this package exists to avoid.
+#
+# ``_H_LOOP`` comes with it because it has no other reader: an AST scope walk
+# over ``rfx/api/_preflight.py`` finds one load of the name, inside
+# ``_component_is_dead``. Both are re-exported by ``rfx/api/_preflight.py`` so
+# its module namespace stays exactly as wide (55 names, set equality).
+# ---------------------------------------------------------------------------
+_H_LOOP = {
+    # H component -> the four E edges of its curl loop, as (component,
+    # di, dj, dk) offsets from the H index. Hx[i,j,k] sits at
+    # (x_i, y_{j+1/2}, z_{k+1/2}); its loop is Ey[i,j,k], Ey[i,j,k+1],
+    # Ez[i,j,k], Ez[i,j+1,k]; cyclically for Hy, Hz.
+    "hx": ((1, 0, 0, 0), (1, 0, 0, 1), (2, 0, 0, 0), (2, 0, 1, 0)),
+    "hy": ((2, 0, 0, 0), (2, 1, 0, 0), (0, 0, 0, 0), (0, 0, 0, 1)),
+    "hz": ((0, 0, 0, 0), (0, 0, 1, 0), (1, 0, 0, 0), (1, 1, 0, 0)),
+}
+
+
+def _component_is_dead(edges, component: str, idx) -> bool:
+    """Whether a field component at grid index ``idx`` is frozen by the
+    realized PEC edges — the one rule for ``port_in_pec`` (#929).
+
+    An E component is dead iff its OWN edge is PEC (the contract's one
+    sentence). An H component is dead iff ALL FOUR E edges of its curl
+    loop are PEC: then ``curl E = 0`` around it every step and it never
+    moves. Half a cell above a sheet only one loop edge is PEC, so H there
+    is live — the sheet exemption falls out of the rule instead of a
+    thickness heuristic; inside a one-cell volume all four are PEC and H
+    is frozen, which is what a volume declaration means.
+    """
+    comp = component.lower()
+    i, j, k = (int(v) for v in idx)
+    shape = edges[0].shape
+    if comp in ("ex", "ey", "ez"):
+        c = "xyz".index(comp[1])
+        if not (0 <= i < shape[0] and 0 <= j < shape[1] and 0 <= k < shape[2]):
+            return False
+        return bool(edges[c][i, j, k])
+    loop = _H_LOOP.get(comp)
+    if loop is None:
+        return False
+    for c, di, dj, dk in loop:
+        ii, jj, kk = i + di, j + dj, k + dk
+        if not (0 <= ii < shape[0] and 0 <= jj < shape[1]
+                and 0 <= kk < shape[2]):
+            return False
+        if not edges[c][ii, jj, kk]:
+            return False
+    return True

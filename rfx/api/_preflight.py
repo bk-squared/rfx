@@ -83,6 +83,21 @@ from rfx.preflight._common import (
     PreflightConfigError,
     PreflightIssue,
     PreflightReport,
+    # Leg 6 added the last two, in the relative order they held here. The
+    # ``port_in_pec`` dead-component rule (#929) and the H-curl-loop table it
+    # reads are the leg-6 equivalent of leg 2's ``_sorted_box_corners``: a
+    # pure leaf whose two readers straddle this split. One is
+    # ``_validate_cfg_port_inside_pec``, which leaves with leg 6 for
+    # ``rfx/preflight/ports.py``; the other is
+    # ``_RealizedPEC.component_is_dead`` below, which stays here until the
+    # realization leg. A leg module may not import from this facade, so the
+    # leaf has to live where both sides can reach it, and putting it in
+    # ``ports.py`` instead would have made the realization leg import from a
+    # port-family peer for a thirty-line helper. ``_H_LOOP`` travels with it:
+    # an AST scope walk over the whole file finds exactly one load of that
+    # name, inside ``_component_is_dead`` itself.
+    _H_LOOP,
+    _component_is_dead,
 )
 
 
@@ -295,50 +310,6 @@ def _realized_edges_np(pec_mask, sheets, wires, periodic, shape):
     cells = None if pec_mask is None else jnp.asarray(pec_mask)
     edges = realized_pec_edge_masks(cells, sheets, wires, periodic)
     return tuple(np.asarray(m, dtype=bool) for m in edges)
-
-
-_H_LOOP = {
-    # H component -> the four E edges of its curl loop, as (component,
-    # di, dj, dk) offsets from the H index. Hx[i,j,k] sits at
-    # (x_i, y_{j+1/2}, z_{k+1/2}); its loop is Ey[i,j,k], Ey[i,j,k+1],
-    # Ez[i,j,k], Ez[i,j+1,k]; cyclically for Hy, Hz.
-    "hx": ((1, 0, 0, 0), (1, 0, 0, 1), (2, 0, 0, 0), (2, 0, 1, 0)),
-    "hy": ((2, 0, 0, 0), (2, 1, 0, 0), (0, 0, 0, 0), (0, 0, 0, 1)),
-    "hz": ((0, 0, 0, 0), (0, 0, 1, 0), (1, 0, 0, 0), (1, 1, 0, 0)),
-}
-
-
-def _component_is_dead(edges, component: str, idx) -> bool:
-    """Whether a field component at grid index ``idx`` is frozen by the
-    realized PEC edges — the one rule for ``port_in_pec`` (#929).
-
-    An E component is dead iff its OWN edge is PEC (the contract's one
-    sentence). An H component is dead iff ALL FOUR E edges of its curl
-    loop are PEC: then ``curl E = 0`` around it every step and it never
-    moves. Half a cell above a sheet only one loop edge is PEC, so H there
-    is live — the sheet exemption falls out of the rule instead of a
-    thickness heuristic; inside a one-cell volume all four are PEC and H
-    is frozen, which is what a volume declaration means.
-    """
-    comp = component.lower()
-    i, j, k = (int(v) for v in idx)
-    shape = edges[0].shape
-    if comp in ("ex", "ey", "ez"):
-        c = "xyz".index(comp[1])
-        if not (0 <= i < shape[0] and 0 <= j < shape[1] and 0 <= k < shape[2]):
-            return False
-        return bool(edges[c][i, j, k])
-    loop = _H_LOOP.get(comp)
-    if loop is None:
-        return False
-    for c, di, dj, dk in loop:
-        ii, jj, kk = i + di, j + dj, k + dk
-        if not (0 <= ii < shape[0] and 0 <= jj < shape[1]
-                and 0 <= kk < shape[2]):
-            return False
-        if not edges[c][ii, jj, kk]:
-            return False
-    return True
 
 
 class _RealizedPEC:

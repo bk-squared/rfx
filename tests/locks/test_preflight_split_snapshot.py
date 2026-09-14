@@ -454,6 +454,16 @@ _REEXPORTED_FROM_COMMON = (
     # in the facade until the realization leg. It lives in _common so neither
     # side has to import from the other.
     "_sorted_box_corners",
+    # Leg 6, the same shape. _component_is_dead is the port_in_pec
+    # dead-component rule (#929) and has exactly two readers:
+    # _validate_cfg_port_inside_pec, which leaves for rfx/preflight/ports.py,
+    # and _RealizedPEC.component_is_dead, which stays in the facade until the
+    # realization leg. _H_LOOP is its curl-loop table and has no other reader
+    # at all (AST scope walk over the whole facade: one load, inside that
+    # function). Neither is monkeypatched anywhere and nothing outside the
+    # facade imports either, so this re-export exists for the namespace
+    # surface and for _RealizedPEC's bare-name read.
+    "_H_LOOP", "_component_is_dead",
 )
 
 #: Names #980 Phase 3 leg 2 moved to ``rfx.preflight.pec_geometry``. Three of
