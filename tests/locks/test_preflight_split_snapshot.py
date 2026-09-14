@@ -461,12 +461,40 @@ _REBOUND_ON_MIXIN = {
         "_msl_conductor_gap", "_msl_declared_face_geometry",
         "_msl_realized_substrate",
     ),
+    "rfx.preflight.pec_geometry": (
+        "_congruence_origin_shift", "_validate_cfg_campaign_statics",
+        "_validate_cfg_conformal_fine_dx",
+        "_validate_cfg_congruent_rasterization_parity",
+        "_validate_cfg_off_lattice_design_edges",
+        "_validate_cfg_pec_face_short_of_domain_wall",
+        "_validate_cfg_pec_realization", "_validate_cfg_sheet_cavity_thickness",
+        "_validate_cfg_sheet_slot_vacuum",
+        "_validate_cfg_thin_conductor_surface_impedance",
+    ),
 }
+
+#: The moved bodies that were ``@staticmethod`` in the class and have to be
+#: re-wrapped by the facade. The decorator cannot travel with the body -- at
+#: module level ``@staticmethod`` makes a staticmethod OBJECT, not a callable
+#: -- so the leg module holds a plain function and the class body does
+#: ``<name> = staticmethod(<name>)``. Two consequences this file pins:
+#:
+#:   * ``vars(_PreflightMixin)[name]`` is the WRAPPER, so identity has to be
+#:     read through ``__func__``. Drop the wrapper and the one caller,
+#:     ``self._congruence_origin_shift(ctx, members, counts)``, silently
+#:     passes ``self`` as ``ctx`` and every argument shifts by one.
+#:   * its ``__qualname__`` stays ``_PreflightMixin.<name>`` rather than
+#:     becoming ``Simulation.<name>``. That is the PRE-MOVE value, not a
+#:     regression: rfx/api/__init__.py's rewrite loop tests
+#:     ``inspect.isfunction`` and has always skipped staticmethods. Pinned so
+#:     a later "fix" to Simulation.<name> is recognised as the behaviour
+#:     change it would be.
+_REBOUND_AS_STATICMETHOD = frozenset({"_congruence_origin_shift"})
 
 
 def test_moved_mixin_methods_are_rebound_objects_with_their_qualname():
     """Each moved check body is still the SAME object on ``_PreflightMixin``,
-    and still reports ``Simulation.<name>``."""
+    and still reports the qualname it reported before the move."""
     import importlib
 
     from rfx import Simulation
@@ -480,15 +508,27 @@ def test_moved_mixin_methods_are_rebound_objects_with_their_qualname():
                 f"_PreflightMixin no longer binds {name}; the class-scoped "
                 f"import of {modname} is incomplete, and nothing fails until "
                 "a run reaches that check")
-            assert vars(_PreflightMixin)[name] is getattr(leg, name), (
+            bound = vars(_PreflightMixin)[name]
+            if name in _REBOUND_AS_STATICMETHOD:
+                assert isinstance(bound, staticmethod), (
+                    f"_PreflightMixin.{name} was a @staticmethod before the "
+                    "move and is no longer wrapped as one. Its caller uses "
+                    f"self.{name}(...), which now passes self as the first "
+                    "positional argument and shifts every other by one")
+                bound = bound.__func__
+                want_qualname = f"_PreflightMixin.{name}"
+            else:
+                want_qualname = f"Simulation.{name}"
+            assert bound is getattr(leg, name), (
                 f"_PreflightMixin.{name} is a copy of {modname}.{name}, not "
                 "the object itself")
-            assert getattr(Simulation, name).__qualname__ == f"Simulation.{name}", (
+            assert getattr(Simulation, name).__qualname__ == want_qualname, (
                 f"Simulation.{name}.__qualname__ is "
-                f"{getattr(Simulation, name).__qualname__!r}. A moved body "
-                f"must restore __qualname__ = '_PreflightMixin.{name}' at the "
-                "foot of its leg module, or rfx/api/__init__.py's rewrite "
-                "loop skips it and the mixin name leaks into TypeError text")
+                f"{getattr(Simulation, name).__qualname__!r}, not "
+                f"{want_qualname!r}. A moved body must restore "
+                f"__qualname__ = '_PreflightMixin.{name}' at the foot of its "
+                "leg module, or rfx/api/__init__.py's rewrite loop skips it "
+                "and the mixin name leaks into TypeError text")
 
 
 def test_the_class_scoped_imports_are_the_declared_rebind_surface():
