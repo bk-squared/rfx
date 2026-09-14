@@ -12,6 +12,12 @@ Reads, and turns into an instrument, two diagnoses:
   normal incidence, the echo-free control, and the structural finding this lane
   closes.
 
+**Neither is in this repository** — both branches are unmerged, so the paths above
+do not resolve in a checkout. What does resolve: #888 comments
+[5525810073](https://github.com/bk-squared/rfx/issues/888#issuecomment-5525810073) and
+[5529673679](https://github.com/bk-squared/rfx/issues/888#issuecomment-5529673679),
+which carry each diagnosis's decisive measurements and name its branch and sha.
+
 **No window, gate threshold, record length or committed physics number is
 changed here.** This lane adds a witness and a precondition gate. The one thing
 it does change is artifact bytes, deliberately and only additively — see §6.
