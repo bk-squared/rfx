@@ -1,10 +1,10 @@
 {
   "issue": 813,
   "predeclaration": "docs/design_notes/cv01_cpml_flux_selfcheck_predeclaration.md",
-  "measures": "cv01 straight-guide mean_self (01:293), Run 1 only",
+  "measures": "cv01 straight-guide mean_self, Run 1 only -- the line `mean_self = float(np.mean(T_self_smooth[above]))` in validation/crossval/01_waveguide_bend.py",
   "n_steps": 25000,
   "n_steps_is_cv01_value": true,
-  "gate": "pass = mean_self in [0.95, 1.05] (cv01 G2, 01:356)",
+  "gate": "pass = mean_self in [0.95, 1.05] -- cv01's G2, the line `if 0.95 <= mean_self <= 1.05:` in validation/crossval/01_waveguide_bend.py",
   "rig_fidelity_check": {
     "checked_lines": 34,
     "all_present_verbatim": true
@@ -22,8 +22,8 @@
     "mean_self_smoothed_over_band": 0.9891610388008335
   },
   "provenance": {
-    "utc": "2026-09-14T06:49:31+00:00",
-    "commit": "da82d4668231d75d81070146babdd83c8b4d9247",
+    "utc": "2026-09-14T08:41:25+00:00",
+    "commit": "2539d77cfeeaf2e2e6b33ea6c15ea532610e8a89",
     "rfx_version": "1.8.0",
     "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a6e7c79b0ee83cd0d/rfx/__init__.py",
     "jax_version": "0.6.2",
@@ -1318,7 +1318,7 @@
         },
         "dx_m": 1e-07
       },
-      "wall_s": 34.3
+      "wall_s": 35.1
     },
     "cpml_full": {
       "boundary": "cpml",
@@ -2605,7 +2605,7 @@
         },
         "dx_m": 1e-07
       },
-      "wall_s": 39.3
+      "wall_s": 39.8
     },
     "upml_interior": {
       "boundary": "upml",
@@ -4130,7 +4130,7 @@
         },
         "dx_m": 1e-07
       },
-      "wall_s": 29.0
+      "wall_s": 28.9
     },
     "cpml_interior": {
       "boundary": "cpml",
@@ -5655,7 +5655,7 @@
         },
         "dx_m": 1e-07
       },
-      "wall_s": 39.0
+      "wall_s": 39.9
     },
     "cpml_aperture": {
       "boundary": "cpml",
@@ -7180,7 +7180,7 @@
         },
         "dx_m": 1e-07
       },
-      "wall_s": 35.8
+      "wall_s": 37.3
     },
     "upml_aperture": {
       "boundary": "upml",
@@ -8705,7 +8705,7 @@
         },
         "dx_m": 1e-07
       },
-      "wall_s": 19.7
+      "wall_s": 21.9
     }
   },
   "control_reproduces_committed_run": {
