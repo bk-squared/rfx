@@ -56,10 +56,10 @@ _GL2_EXPECTED = {
 
 # #1015 / standard section 13: GL1's validity domain on R, as MEASURED --
 # (bins in the domain, breaches inside it, breaches outside it).  A record of the
-# outcome, not a claim that the domain closes GL1: te_30's 18 breaches lie
-# ENTIRELY inside its own domain, which is why the domain is stated as a
-# necessary condition and GL1 stayed ungated here.  Of this case's 1291 R+T
-# breaches, 1156 (89.5 %) fall outside the domain and 135 inside.
+# outcome, not a claim that the domain closes GL1: te_30's R domain is the whole
+# band, so all 18 of its R breaches lie INSIDE it, which is why the domain is
+# stated as a necessary condition and GL1 stayed ungated here.  Of this case's
+# 1291 R+T breaches, 1156 (89.5 %) fall outside the domain and 135 inside.
 _DOMAIN_EXPECTED = {
     "te_00": (290, 0, 0), "te_30": (441, 18, 0), "te_45": (341, 16, 59),
     "te_60": (214, 8, 90), "tm_00": (290, 0, 0), "tm_45": (211, 13, 177),

@@ -1457,8 +1457,9 @@ inside it.
 than rounding it off.** It states where the window is not a valid bound; it does
 not promise GL1 holds where it is. The pre-declaration's condition C2 asked the
 domain to put every breaching arm outside itself, and the data does not give
-that: `te_30`'s 18 R and 25 T breaches lie entirely inside its domain
-(`U/W ≤ 0.875` at every bin), as do 16 of `te_45`'s and 13 of `tm_45`'s. That
+that: `te_30`'s R domain is the WHOLE band (`U/W ≤ 0.875` at every bin), so all
+18 of its R breaches sit inside it, and 25 of its 38 T breaches do too; 16 of
+`te_45`'s R breaches and 13 of `tm_45`'s are likewise in-domain. That
 is the pre-declaration disagreeing with the measurement, reported as such. The
 threshold was NOT moved to 0.87 to swallow `te_30`; moving it would be fitting
 the predicate to the breach counts, which is what §3's claim 1 forbids.
