@@ -38,6 +38,16 @@ Modules:
   twelve ``_PreflightMixin`` bodies that make up the realized-aperture and
   cutoff checks (#150 / #737 / #738), the P2.8 reference-plane check, and
   the three post-v1.8 S-parameter setup audits with their shared builder.
+* :mod:`rfx.preflight.mesh` — the mesh-quality and non-uniform-lane
+  family: the #743 coarsest-cell leaf
+  (:func:`~rfx.preflight.mesh._local_cell`) and the twelve
+  ``_PreflightMixin`` bodies covering resolution and numerical dispersion,
+  the realized metal plane on a graded axis, the SPEC-01 WP6 multi-band
+  grading envelope, the three #669/#672/#688 graded-node advisories with
+  their shared ``_graded_node_report``, graded Box rasterization, and the
+  features the non-uniform and SBP-SAT subgridded lanes refuse. Its three
+  class-BODY constants (``_MULTIBAND_RATIO_CAP``, ``_INPLANE_RATIO_CAP``,
+  ``_AXIS_OF_COMPONENT``) deliberately stay on ``_PreflightMixin``.
 * :mod:`rfx.preflight.absorber` — the absorber/boundary-configuration
   family: eleven ``_PreflightMixin`` bodies covering what the absorber is
   made of (the #636 dispersive-pole advisory, the lossless-Q

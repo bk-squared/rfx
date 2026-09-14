@@ -200,6 +200,31 @@ from rfx.preflight.waveguide import (
     resolve_waveguide_port_freqs,
 )
 
+# ---------------------------------------------------------------------------
+# #980 Phase 3 re-export surface (leg 5).
+#
+# ONE module-level name moves with the mesh / non-uniform leg: the #743
+# coarsest-cell helper ``_local_cell``, whose only reader is
+# ``_validate_mesh_quality``. The split inventory filed it as SHARED with
+# ``_CampaignStaticsContext`` and therefore as a ``_common`` leaf. It is not
+# shared -- it is not even the same function. ``_CampaignStaticsContext.
+# entry_realizations`` imports a DIFFERENT ``_local_cell`` from
+# ``rfx.geometry.rasterize_grid`` function-locally, with the signature
+# ``(nodes, d, pos)`` against this one's ``(profile, lo, hi, fallback)``, and
+# that local binding shadows the module global everywhere inside it. An AST
+# scope walk over this file finds four loads of the name: one in
+# ``entry_realizations``'s nested ``_tie``, bound to its local import, and
+# three in ``_validate_mesh_quality``, bound to the module global. So the
+# helper is mesh-family-local and went to ``rfx/preflight/mesh.py``.
+#
+# Nothing outside this module imports it from here, and the sweep finds no
+# patch site on it either, so this re-export exists for ONE reason: the
+# module-namespace surface ``tests/locks/test_preflight_split_snapshot.py``
+# pins by set equality in both directions. 1 name moves out and 1 comes back,
+# so that namespace is still exactly 55 names wide.
+# ---------------------------------------------------------------------------
+from rfx.preflight.mesh import _local_cell
+
 
 def _shape_bounds(shape):
     """``(lo, hi, exact)`` for any Shape that reports a bounding box.
@@ -225,26 +250,6 @@ def _shape_bounds(shape):
     if blo.shape != (3,) or bhi.shape != (3,):
         return None
     return np.minimum(blo, bhi), np.maximum(blo, bhi), False
-
-
-def _local_cell(profile, lo, hi, fallback):
-    """Coarsest cell a body spans on one axis (#743).
-
-    ``profile`` is a per-cell size array whose cumulative sum gives node
-    positions from the padded array's origin; ``lo``/``hi`` are the body's
-    physical bounds. Returns ``fallback`` when there is no profile or the
-    span selects no cell, so callers keep their previous behaviour on a
-    uniform axis.
-    """
-    if profile is None:
-        return fallback
-    import numpy as _np
-    d = _np.asarray(profile, dtype=float)
-    edges = _np.concatenate([[0.0], _np.cumsum(d)])
-    inside = (edges[1:] > min(lo, hi)) & (edges[:-1] < max(lo, hi))
-    if not inside.any():
-        return fallback
-    return float(d[inside].max())
 
 
 def _shift_back_np(arr, ax: int, periodic: bool):

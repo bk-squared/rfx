@@ -461,11 +461,24 @@ _REEXPORTED_FROM_WAVEGUIDE = (
     "resolve_waveguide_port_freqs",
 )
 
+#: The one name #980 Phase 3 leg 5 moved to ``rfx.preflight.mesh``: the #743
+#: coarsest-cell helper, whose only reader is ``_validate_mesh_quality``. The
+#: split inventory filed it as shared with ``_CampaignStaticsContext`` and so
+#: as a ``_common`` leaf; measured, that reader imports a DIFFERENT
+#: ``_local_cell`` from ``rfx.geometry.rasterize_grid`` function-locally, with
+#: a different signature, and the local binding shadows the module global
+#: throughout. Nothing outside the facade imports this name and nothing
+#: patches it, so the re-export exists purely for the namespace surface above.
+_REEXPORTED_FROM_MESH = (
+    "_local_cell",
+)
+
 #: Every leg's re-export block, keyed by the module it pulls from. The
 #: identity and whole-block tests below walk this, so a new leg adds one row
 #: here instead of a second copy of either test.
 _REEXPORT_BLOCKS = {
     "rfx.preflight._common": _REEXPORTED_FROM_COMMON,
+    "rfx.preflight.mesh": _REEXPORTED_FROM_MESH,
     "rfx.preflight.msl": _REEXPORTED_FROM_MSL,
     "rfx.preflight.pec_geometry": _REEXPORTED_FROM_PEC_GEOMETRY,
     "rfx.preflight.waveguide": _REEXPORTED_FROM_WAVEGUIDE,
