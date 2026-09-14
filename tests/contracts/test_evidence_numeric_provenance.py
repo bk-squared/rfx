@@ -586,6 +586,11 @@ CLASSIFICATION: dict[str, str] = {
     # passes, with the same mechanical check as every other NU note.
     "docs/design_notes/20260913_nu_full_functionality_program.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260913_nu_lane1_multilevel_xyz_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-14 (nu full-functionality lane 2): no `path.json::key` span
+    # (parses empty); the lane-2 note is replayed from results/e6_*.json by
+    # tests/unit/nonuniform/test_e6_inplane_designvar_replay.py, verdict for
+    # verdict, with the AD-Q judges verbatim.
+    "docs/design_notes/20260913_nu_lane2_inplane_designvar_ad_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260908_adi_interior_pec_guard.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260908_automesh_regressions.md": NO_ARTIFACT_REFERENCE,
     # 2026-09-10 (#931 lattice-ownership merge): a single `::referee` span
