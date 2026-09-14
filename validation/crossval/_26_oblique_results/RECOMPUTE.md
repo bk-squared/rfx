@@ -113,10 +113,61 @@ point: they were run after the `--settling-bar` knob existed. They are not merge
 `rfx.json` and never can be — `merge_cv26_arm_shards.py` reads only `rfx__shard_*.json`
 and refuses shards whose `commit` disagrees.
 
-## Why `meep_te_00.json`'s run id sits outside lane 20260913b's block
+## Why `meep_te_00.json`'s run id sat outside lane 20260913b's block (superseded by lane 20260914b below)
 
 `meep_te_00.json` was written by run **369367260792** at 2026-09-13T19:12:43Z, while the
 other six Meep legs are 369367260885-890 from 2026-09-14T06:10Z. All seven ran at the
 SAME sha `a4a0fea1`: te00 was submitted first, on its own, as the check that the Meep
 import fix worked before the remaining six were committed to. Its output was kept rather
 than re-run at no benefit. The sha is what the lane pins, and it agrees.
+
+
+## Lane 20260914b — the Meep legs re-run so `commit` is native (append-only)
+
+The seven Meep records committed here are now from lane **`20260914b`** at sha
+**`99ca7553aed272f5699ee39539b06fa03e806033`**, staged checkout
+`/root/workspace/claude-workspace/rfx/checkouts/cv26-meepcommit-20260914b`, shared
+results `/root/workspace/claude-workspace/rfx/runs/cv26r3res-20260914b`. This also
+retires the out-of-block run id explained in the section above: all seven now come from
+one lane and one sha.
+
+**Why they were re-run rather than annotated.** The Meep leg did not record the sha it
+ran at, so these were the only artifacts of this case carrying no code state, and
+`merge_cv26_arm_shards.py`'s `_MUST_AGREE` guard had nothing to check them against. The
+leg records `commit` now. The committed records were NOT hand-edited to insert the field:
+an artifact that says it was produced by a run it was not is worse than the gap it
+closes, so the legs were re-run and the real records replaced the old ones.
+
+| shard | run id | status | artifact |
+|---|---|---|---|
+| `meep-te00` | 369367260956 | completed | `meep_te_00.json` |
+| `meep-te30` | 369367260957 | completed | `meep_te_30.json` |
+| `meep-te45` | 369367260958 | completed | `meep_te_45.json` |
+| `meep-te60` | 369367260959 | completed | `meep_te_60.json` |
+| `meep-tm45` | 369367260960 | completed | `meep_tm_45.json` |
+| `meep-tm60` | 369367260961 | completed | `meep_tm_60.json` |
+| `meep-k2pi` | 369367260962 | completed | `meep_te_45__falsifier_k_2pi.json` |
+
+**Why the rfx side did not need re-running.** The only code change on the leg is the
+`commit` field; the Meep physics is untouched and Meep is deterministic. Every measured
+field of all seven records is **bit-identical** to what lane 20260913b wrote — `R_meep`,
+`T_meep`, `freqs_hz`, `acceptance`, `accepted`, `k_point`, `ky_declared_rad_m`,
+`fcen_meep`, `fwidth_meep`, `dt_meep_s`, `resolution`, `courant`, `nfreq`, `a_m`,
+`geometry` — with only `commit` added and the two wall-clock timings `run.t_ref_s` /
+`run.t_slab_s` moved. That was checked field by field BEFORE the swap, because the E4
+block stored in `rfx.json` is an evaluation of these files: had any measured field moved,
+the stored E4 would no longer describe the file beside it and the swap would have been
+wrong. `rfx.json` and every `rfx__shard_*.json` are byte-identical to what they were.
+
+**The guard that now exists.** `26_oblique_slab_fresnel.py` records `meep.leg_commit` and
+`meep.leg_commit_matches_run` per arm and prints a warning when they disagree. Records
+written before the leg recorded a commit read as `None` and are reported as such, never
+as agreement. Demonstrated on real records at this sha: matching gives
+`leg_commit_matches_run = true` with no warning, and the same run against a copy whose
+`commit` was changed prints
+
+    E4 WARNING: the Meep leg records commit 000000000000 but this run is 99ca7553aed2
+    -- the reference is from a different code state
+
+It is a report, not a gate: the numbers are what they are, and a reader who sees the
+warning knows to check the provenance rather than having the comparison silently refused.

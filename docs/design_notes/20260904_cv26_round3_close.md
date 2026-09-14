@@ -947,3 +947,35 @@ against `mean_window_R = 1.5386e-02`. Better than round 2's 2.76× against a red
 because the separation is now against a green one, but still **0.39× short of the
 declared bar**. Recorded, not re-declared: F1's margin is the weakest of the four and the
 5° angle offset is the smallest defect in the set.
+
+### 10.4 Where the GL1 finding belongs: the standard, not this case (PI decision 2026-09-14)
+
+§10.2 records that GL1 breaches on `tm_45` and `tm_60`. The PI decision of 2026-09-14 is
+that GL1 stays **reported and not gated**, and that the finding is recorded as a
+limitation of `docs/design_notes/20260903_lattice_witness_standard.md`, not of cv26.
+
+The reasoning, in the PI's words: a first-order window that closes like `√R_lat` has no
+validity at a reflection null, so a red there would measure the standard's own envelope
+rather than the solver. cv26 gates on GL2, which passes on all seven primary arms.
+
+What the standard's §3 window does not cover, with this lane's numbers:
+
+- **Which arms.** `tm_45`, 58 of 517 gated bins beyond the window; `tm_60`, 110 of 473 in
+  R and 19 of 473 in T. The five TE arms and both dx controls have zero breaches.
+- **Which bins.** Each TM arm's lowest gated frequencies, which are its HIGHEST realized
+  angles — worst bin 58.22° on `tm_45` and 69.06° on `tm_60`, both the high-angle end of
+  their band.
+- **Why there.** `R_lattice` falls to **1.27e-06** at `tm_45`'s worst bin. The window
+  `W_witness,R = 2√R_lat(δ_scat + δ_round) + 2 R_lat δ_inc` is first order in the
+  scattered-amplitude error and closes like `√R_lat`; the residual does not follow it
+  down. TM through Brewster is the only geometry in the slab family that drives `R_lat`
+  that small — cv04, cv22 and cv23 are normal incidence and have no null.
+- **The one attempt, and its result.** Carrying the exact second-order term
+  `(δ_scat + δ_round)²` — the term §3 drops by writing "to first order" — moves the
+  breach count **58 → 54** on `tm_45` and **110 → 109** on `tm_60`. **Falsified.** The
+  term is not carried and no further modification of the window is attempted.
+
+Every cv26 artifact records `GL1_gated: false` with this reason beside it, so a reader of
+the evidence cannot mistake "not gated" for "passed". Tracked against the standard as
+issue #1015 ("lattice_witness_standard GL1 per-bin window is undefined near reflection
+nulls"), which carries the same numbers; cv26 needs nothing further.

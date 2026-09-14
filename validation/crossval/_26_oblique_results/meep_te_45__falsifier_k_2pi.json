@@ -1,6 +1,7 @@
 {
  "schema": "cv26-meep-leg/v2",
  "case_id": "26_oblique_slab_fresnel",
+ "commit": "99ca7553aed272f5699ee39539b06fa03e806033",
  "arm": "te_45",
  "pol": "te",
  "accepted": false,
@@ -31,7 +32,7 @@
  "falsifier": "k_2pi",
  "tag": null,
  "meep_version": "1.34.0",
- "date_utc": "2026-09-14T06:32:10+00:00",
+ "date_utc": "2026-09-14T11:59:40+00:00",
  "a_m": 0.01,
  "resolution": 40,
  "courant": 0.5,
@@ -70,8 +71,8 @@
   "passed": false
  },
  "run": {
-  "t_ref_s": 385.45528650283813,
-  "t_slab_s": 346.2901155948639,
+  "t_ref_s": 342.3903820514679,
+  "t_slab_s": 359.5525426864624,
   "t_min_after_sources": 161.1353220548111
  },
  "freqs_hz": [
