@@ -573,6 +573,8 @@ CLASSIFICATION: dict[str, str] = {
     # by tests/unit/nonuniform/test_band_accuracy_ad_replay.py, cell for cell
     # and rule for rule, which is the stronger check.
     "docs/design_notes/20260907_nu_band_accuracy_ad_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260911_cpml_localization_r2_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260915_cpml_localization_r3_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260908_adi_interior_pec_guard.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260908_automesh_regressions.md": NO_ARTIFACT_REFERENCE,
     # 2026-09-10 (#931 lattice-ownership merge): a single `::referee` span
