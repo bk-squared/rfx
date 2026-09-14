@@ -93,7 +93,7 @@ report-text change and should be re-blessed as one, not normalised here.
 
 Coverage, measured -- and what it does NOT cover
 ------------------------------------------------
-48 fixtures, witnessing 46 of the 74 literal ``code=`` slugs in
+50 fixtures, witnessing 49 of the 74 literal ``code=`` slugs in
 ``rfx/api/_preflight.py`` and ``rfx/preflight/`` plus the dynamic ``uncoded``
 and ``sparam_routing_msl`` paths. Stated because the split-inventory that
 seeded this lock projected "~56 of 74" for its 12-fixture set; the measured
@@ -103,11 +103,12 @@ figure for that set was 32, and eight targeted fixtures were added to reach
 the two ``thin_conductor_leontovich_*`` slugs, and ``port_aperture_snap`` as
 a side effect of the WR-90 geometry. Leg 3 added two more and they carry one
 new code between them (``layout_measured_from_band_low_edge``) -- the count
-understates them, for the reason the next paragraph but one gives.
+understates them, for the reason the next paragraph but one gives. Leg 4
+added two more, carrying three codes: its own two plus ``unresolved_pulse``
+as a side effect of the #680 builder's absolute-Hz bandwidth.
 
-The 28 unwitnessed codes are the honest hole: ``floating_port``,
-``source_decoupled``, ``unresolved_pulse``, the four
-``precision_*``/``*_nonuniform_lane_unsupported`` guards,
+The 25 unwitnessed codes are the honest hole: ``floating_port``,
+``source_decoupled``, the two remaining ``precision_*`` guards,
 ``thin_conductor_graded_node`` / ``source_on_graded_node`` /
 ``wire_port_on_graded_node`` (the mesh leg),
 ``port_aperture_unrasterizable`` / ``waveguide_reference_plane`` /
@@ -128,6 +129,20 @@ emits too, through the same shared emitter.
 that tells the two lanes apart. The same census found
 ``_validate_cfg_layout_from_band_low_edge`` running on every waveguide render
 and emitting on none, which ``waveguide_layout_near_cutoff`` closes.
+
+Leg 4 ran the same census over its eleven absorber bodies and found the
+other half of that distinction: every one of the eleven WAS entered -- the
+family sits on ``_validate_simulation_config``'s unconditional spine, so 47
+or 48 of the 48 fixtures called each -- while two of them emitted nothing at
+all. ``_validate_cfg_absorber_budget_vs_grid`` is reachable only through a
+per-face ``BoundarySpec`` (a scalar ``boundary='cpml'`` pads every axis by
+``2*cpml_layers``, so the budget cannot exceed an axis extent) and no fixture
+had one; ``_validate_cfg_upml_nonuniform_lane`` needs ``upml`` AND a mesh
+profile AND ``cpml_layers > 0``, and every non-uniform fixture in the corpus
+was CPML. ``absorber_budget_over_axis`` and ``upml_nonuniform_lane`` close
+both. So the census is worth running per leg in both directions: leg 3's hole
+was a body no fixture entered, leg 4's was a body every fixture entered and
+none made speak.
 
 Six of the 28 are unreachable from a plain builder rather than merely
 unwritten. ``campaign_statics_unavailable`` (leg 2) is emitted only when the
@@ -1020,6 +1035,62 @@ def _waveguide_layout_near_cutoff_sim():
     return sim
 
 
+def _absorber_budget_over_axis_sim():
+    """The #647 cube whose ``cpml_layers`` budget outruns its own z axis.
+
+    ``tests/unit/boundaries/test_boundary_spec_cpml_budget.py:58``'s
+    ``_cube_sim``, at the smallest budget in that file's OWN sweep
+    (``test_budget_advisory_fires_exactly_above_the_axis_extent``, L522) that
+    is a true positive: ``hi_thickness=2`` gives the z-hi face a genuine
+    budget-independent allocation, the grid comes out (8, 8, 10), and
+    ``cpml_layers=16`` therefore exceeds the z-axis cell count while x and y
+    stay PEC-closed and correctly silent.
+
+    ``_validate_cfg_absorber_budget_vs_grid`` ran on 47 of the 48 fixtures
+    that preceded this one and emitted on NONE of them, because the advisory
+    is only reachable through a per-face ``BoundarySpec`` -- with a scalar
+    ``boundary='cpml'`` every axis is padded by ``2*cpml_layers`` and the
+    budget can never exceed an axis extent -- and no fixture in the corpus
+    used one. So the leg-4 motion had an executed body with an unwitnessed
+    output, the same shape leg 3 found in
+    ``_validate_cfg_layout_from_band_low_edge``.
+
+    Built through the owning test's own module-level builder, not retyped, so
+    an edit to that geometry reds this lock.
+    """
+    import tests.unit.boundaries.test_boundary_spec_cpml_budget as mod
+
+    return mod._cube_sim(16, hi_thickness=2)
+
+
+def _upml_nonuniform_lane_sim():
+    """#680's graded-mesh ez dipole asking for ``boundary='upml'``.
+
+    ``tests/unit/nonuniform/test_nonuniform_upml_guard.py:31``'s ``_sim``
+    driven exactly as ``test_preflight_warns_before_the_lane_guard_raises``
+    (L121) drives it -- ``_sim("upml", dz_profile=DZ)`` with
+    ``strict=False`` -- so the snapshot pins the report that test asserts a
+    single code out of. ``DZ`` is read off that module rather than retyped.
+
+    ``_validate_cfg_upml_nonuniform_lane`` was the second leg-4 body the call
+    census found executed on 47 fixtures and emitting on none: its predicate
+    is ``boundary == 'upml'`` AND a mesh profile AND ``cpml_layers > 0``, and
+    the corpus's two non-uniform fixtures are both CPML while every UPML path
+    in it is uniform.
+
+    It carries one bonus witness. The same sim's absolute-Hz
+    ``bandwidth=5e9`` on a 10 GHz ``GaussianPulse`` fires ``unresolved_pulse``
+    (issue #386), which this module's docstring listed among the 28 codes no
+    fixture reached. That is a side effect of the owning test's geometry, not
+    a reason this fixture is here, and it is left alone rather than tuned
+    away: the point of importing the behavioural builder is that the snapshot
+    shows what that test actually configures.
+    """
+    import tests.unit.nonuniform.test_nonuniform_upml_guard as mod
+
+    return mod._sim("upml", dz_profile=mod.DZ)
+
+
 # ---------------------------------------------------------------------------
 # (fixture id, builder, preflight kwargs, preflight_sparameters calculator).
 #
@@ -1151,6 +1222,23 @@ _FIXTURES = (
      _waveguide_nu_declared_geometry_sim, {}, None),
     ("waveguide_layout_near_cutoff",                              # leg 3
      _waveguide_layout_near_cutoff_sim, {}, "waveguide"),
+    # -- 41-42. leg 4 gap closers -------------------------------------------
+    # #980 Phase 3 leg 4 moves the eleven absorber bodies. A call census over
+    # the 48 fixtures above found ALL eleven executed -- no repeat of leg 3's
+    # never-entered body -- but two of them emitting on nothing: the budget
+    # advisory needs a per-face BoundarySpec (no fixture had one) and the
+    # UPML/non-uniform advisory needs upml + a mesh profile + cpml_layers > 0
+    # (every non-uniform fixture in the corpus is CPML). These two close
+    # exactly those holes, and the second carries unresolved_pulse with it.
+    # Added BEFORE the move, on the tree where all eleven bodies still sit in
+    # the facade, so the committed JSON is a pre-move baseline the motion has
+    # to reproduce byte for byte. Both measured byte-identical across
+    # PYTHONHASHSEED 1/987654, JAX_ENABLE_X64 0/1 and 1 vs 2 host devices, so
+    # neither needed the input pinning waveguide_layout_near_cutoff needed.
+    ("absorber_budget_over_axis",                                 # leg 4
+     _absorber_budget_over_axis_sim, {}, None),
+    ("upml_nonuniform_lane",                                      # leg 4
+     _upml_nonuniform_lane_sim, {"strict": False}, None),
 )
 
 _IDS = [fid for fid, _, _, _ in _FIXTURES]
