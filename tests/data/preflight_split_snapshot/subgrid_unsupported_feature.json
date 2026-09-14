@@ -1,0 +1,16 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "subgrid_unsupported_feature",
+        "loc": null,
+        "message": "DFT plane probes are not supported with SBP-SAT subgridding.",
+        "severity": "warning",
+        "source": "_validate_cfg_subgrid_limitations"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 1,
+    "ok": true
+  }
+}

@@ -93,7 +93,7 @@ report-text change and should be re-blessed as one, not normalised here.
 
 Coverage, measured -- and what it does NOT cover
 ------------------------------------------------
-50 fixtures, witnessing 49 of the 74 literal ``code=`` slugs in
+57 fixtures, witnessing 56 of the 74 literal ``code=`` slugs in
 ``rfx/api/_preflight.py`` and ``rfx/preflight/`` plus the dynamic ``uncoded``
 and ``sparam_routing_msl`` paths. Stated because the split-inventory that
 seeded this lock projected "~56 of 74" for its 12-fixture set; the measured
@@ -105,18 +105,30 @@ a side effect of the WR-90 geometry. Leg 3 added two more and they carry one
 new code between them (``layout_measured_from_band_low_edge``) -- the count
 understates them, for the reason the next paragraph but one gives. Leg 4
 added two more, carrying three codes: its own two plus ``unresolved_pulse``
-as a side effect of the #680 builder's absolute-Hz bandwidth.
+as a side effect of the #680 builder's absolute-Hz bandwidth. Leg 5 added
+SEVEN, carrying seven codes -- the largest single jump, because the mesh /
+non-uniform family is the one whose checks all need a graded mesh AND a
+specific object standing on it, and the corpus reached the family's spine on
+every render while building that combination on none.
 
-The 25 unwitnessed codes are the honest hole: ``floating_port``,
+The 18 unwitnessed codes are the honest hole: ``floating_port``,
 ``source_decoupled``, the two remaining ``precision_*`` guards,
-``thin_conductor_graded_node`` / ``source_on_graded_node`` /
-``wire_port_on_graded_node`` (the mesh leg),
 ``port_aperture_unrasterizable`` / ``waveguide_reference_plane`` /
 ``port_index_mirror_asymmetry`` / ``record_far_boundary_band_below_cutoff`` /
 ``waveguide_setup_audit_skipped`` (the waveguide leg),
 ``coaxial_port_junction_short`` (the coax leg), ``refplane_near_field`` /
 ``refplane_partial_optin`` / ``wire_port_end_gap_to_conductor`` (the
 lumped-port leg), and the rest.
+
+``mesh_import_underresolved`` is the one leg 5 left, and it is left for a
+reason that will not change by writing another fixture: its branch is gated
+on ``hasattr(shape, "min_feature_size")``, i.e. on a ``MeshShape`` built from
+an imported CAD body, and that needs the OPTIONAL ``cad`` extra (``trimesh``),
+which this lock cannot depend on -- every fixture here renders
+unconditionally, and ``tests/unit/geometry/test_mesh_import.py`` reaches the
+same advisory behind a module-level ``pytest.importorskip``. Its owning body,
+``_validate_mesh_quality``, is witnessed 33 times over by ``mesh_resolution``,
+so the leg-2 standard (a witness per moved BODY) is met without it.
 
 A witnessed CODE and an executed BODY are not the same coverage, and leg 3 is
 where that came apart. A call census -- each of the twelve ports_waveguide
@@ -144,8 +156,29 @@ both. So the census is worth running per leg in both directions: leg 3's hole
 was a body no fixture entered, leg 4's was a body every fixture entered and
 none made speak.
 
-Six of the 28 are unreachable from a plain builder rather than merely
-unwritten. ``campaign_statics_unavailable`` (leg 2) is emitted only when the
+Leg 5's census, over its twelve mesh / non-uniform bodies and the 50-fixture
+corpus, came back leg 4's shape and SIX times over. All twelve were entered
+-- the family is on the same unconditional spine, so 46 to 50 of the 50
+fixtures called each -- and six emitted nothing: the three graded-node
+advisories (a lossy sheet, a current source and a lumped port each needing to
+stand ON a grading step, and every sheet in the corpus being PEC or on a
+locally uniform node), both findings of
+``_validate_cfg_nonuniform_limitations``, and
+``_validate_cfg_subgrid_limitations`` -- whose predicate is only a refinement
+region plus one refused feature, a pair no test in the repo had ever built
+together. ``_validate_cfg_floquet_nonuniform`` is the seventh fixture and the
+sharpest case: ``add_floquet_port`` REFUSES a declared ``dz_profile`` at
+registration, so its preflight check is reachable only when AUTO-MESH resolves
+a graded z column after the port is already on the model, which is what
+``floquet_nonuniform_automesh`` builds and what the API's own source comment
+says the check is there for. Two fixtures go to
+``_validate_cfg_nonuniform_limitations`` because its first finding raises and
+aborts the body before the second is reached. So the census's third answer,
+after "never entered" and "entered but silent", is "entered, silent, and its
+trigger lives on a path the API only reaches indirectly".
+
+Six of the 28 the ledger held before leg 5 are unreachable from a plain
+builder rather than merely unwritten. ``campaign_statics_unavailable`` (leg 2) is emitted only when the
 production grid build or the production assembly RAISES, and its message
 interpolates the exception repr, so a fixture for it would have to both
 malform the config deliberately and pin an exception string;
@@ -188,7 +221,7 @@ cost is that editing one of those fixtures reds this lock -- which is correct,
 because an edited fixture invalidates the committed baseline and the snapshot
 must be regenerated with that edit as its justification.
 
-Nine builders have no importable callable to reach and are reproduced
+Twelve builders have no importable callable to reach and are reproduced
 verbatim below, each naming the source line it came from:
 
 * ``_nu_grading_sim`` -- body of ``_grading_advisories``,
@@ -200,6 +233,14 @@ verbatim below, each naming the source line it came from:
   ``_pec_realization_refused_sim``, ``_pec_boundary_open_sim`` and
   ``_tfsf_lumped_rlc_sim`` -- their geometry is inline in the body of a test
   function, not a named builder.
+* ``_thin_conductor_graded_node_sim``, ``_source_on_graded_node_sim`` and
+  ``_nonuniform_tfsf_oblique_sim`` (leg 5) -- inline for the same reason;
+  the second one's owning helper returns joined report TEXT rather than a
+  ``Simulation``, so there is nothing to import even though it is named.
+  ``_nonuniform_cpml_thin_sim`` and ``_floquet_nonuniform_sim`` are neither
+  imported nor reproduced: no test in the repo drives either advisory
+  positively, and each names in its own docstring what it had to construct
+  and why.
 
 No ``jax.config.update('jax_enable_x64', True)`` here: it is process-global
 and would red every same-process pytest-split shard.
@@ -1114,6 +1155,214 @@ def _upml_nonuniform_lane_sim():
     return mod._sim("upml", dz_profile=mod.DZ)
 
 
+def _thin_conductor_graded_node_sim():
+    """A LOSSY sheet landing exactly on the 0.5 / 1.5 mm grading step.
+
+    The geometry of
+    ``tests/unit/materials/test_thin_conductor_nu_dual_spacing.py:270``'s
+    ``_msgs(graded, 4.0e-3, sigma_bulk=1.0e3, thickness=35e-6)``, the FIRING
+    arm of ``test_preflight_advises_on_a_sheet_landing_on_a_grading_step``.
+    It is inline in that test's body rather than a module-level builder, so
+    it is reproduced here the way the other eight reproduced builders in this
+    file are, naming its source line.
+
+    ``_validate_cfg_thin_conductor_graded_node`` ran on 49 of the 50 fixtures
+    that preceded this one and emitted on NONE of them: it needs a LOSSY
+    thin conductor (a PEC sheet folds no sigma and is skipped) whose normal
+    axis is graded and whose realized node has adjacent cells differing by
+    more than 10%. Every thin conductor in the corpus is either PEC or on a
+    locally uniform node.
+
+    It carries ``no_sources`` with it, because the owning test declares no
+    source -- its subject is the sheet fold, not a run. Left as that test
+    configures it rather than tuned away.
+    """
+    from rfx import Box, Simulation
+
+    dx = 0.5e-3
+    L = 24 * dx
+    graded = [0.5e-3] * 8 + [1.5e-3] * 8
+    sim = Simulation(freq_max=10e9, domain=(L, L, 0.0), dx=dx,
+                     dz_profile=graded, boundary="cpml", cpml_layers=6)
+    sim.add_thin_conductor(
+        Box((6 * dx, 6 * dx, 4.0e-3), (18 * dx, 18 * dx, 4.0e-3)),
+        sigma_bulk=1.0e3, thickness=35e-6)
+    return sim
+
+
+def _source_on_graded_node_sim():
+    """An ``ex`` current source on the step, i.e. on a TRANSVERSE graded axis.
+
+    The geometry of
+    ``tests/unit/nonuniform/test_nonuniform_source_port_dual_spacing.py:346``'s
+    ``_preflight(GRADED, _src, z=4.0e-3, comp="ex")``, the firing arm of
+    ``test_preflight_advises_on_a_source_on_a_graded_node``. Also inline in
+    that test rather than a module-level builder (the helper returns joined
+    report TEXT, not a ``Simulation``), so it is reproduced here.
+
+    ``ex`` is the point: z is one of that component's two transverse axes, so
+    the control volume takes the DUAL spacing there. The same source declared
+    ``ez`` is exact on its own axis and the check stays silent, which is what
+    makes this an axis-aware advisory rather than a grading detector.
+
+    ``_validate_cfg_source_on_graded_node`` ran on 49 of the 50 preceding
+    fixtures and emitted on none: it filters ``self._ports`` down to the
+    zero-impedance entries ``add_source(amplitude_kind="current")`` creates,
+    and no such source in the corpus sat on a grading step.
+    """
+    from rfx import Simulation
+    from rfx.sources.sources import GaussianPulse
+
+    dxa = 0.5e-3
+    lxy = 24 * dxa
+    graded = [0.5e-3] * 8 + [1.5e-3] * 8
+    sim = Simulation(freq_max=10e9, domain=(lxy, lxy, 0.0), dx=dxa,
+                     dz_profile=graded, boundary="cpml", cpml_layers=6)
+    sim.add_source(position=(12 * dxa, 12 * dxa, 4.0e-3), component="ex",
+                   waveform=GaussianPulse(f0=5e9, bandwidth=0.8),
+                   amplitude_kind="current")
+    return sim
+
+
+def _wire_port_on_graded_node_sim():
+    """#688's single-cell lumped ``ez`` port on the anisotropic NU fixture.
+
+    ``tests/unit/nonuniform/test_nu_port_sigma_dual_spacing.py:196``'s
+    ``_sim("ez", extent=None)``, exactly as
+    ``test_preflight_flags_a_lumped_port_on_a_graded_node`` (L397) drives it.
+    Imported, not retyped, so an edit to that fixture reds this lock.
+
+    That module grades x 2:1, y 3:1 and z 4:1 with a different fine run per
+    axis on purpose, so the port lands on a different node index on each and
+    no permutation of the transverse axes reproduces another's product. The
+    snapshot therefore pins one advisory per AMPERE-LOOP axis (x and y for an
+    ``ez`` port) and NOT one for z, the parallel axis -- which is the
+    axis-awareness the owning test asserts on and the part a set-based
+    assertion cannot see.
+
+    ``_validate_cfg_wire_port_on_graded_node`` ran on 49 of the 50 preceding
+    fixtures and emitted on none.
+    """
+    import tests.unit.nonuniform.test_nu_port_sigma_dual_spacing as mod
+
+    return mod._sim("ez", extent=None)
+
+
+def _nonuniform_cpml_thin_sim():
+    """A dz profile whose CPML runway is a fifth of the in-plane thickness.
+
+    ``_validate_cfg_nonuniform_limitations``'s second finding: the z faces'
+    OWN allocation (``_preflight_face_layers``, issue #647) times the first
+    cells of the profile comes to 0.6 mm against an xy thickness of 3.0 mm,
+    below the 0.3 ratio the check reports at. Six ``cpml_layers`` over a
+    0.1 mm fine run gives 0.6 mm; the in-plane faces are padded at
+    ``6 x dx = 3.0 mm``.
+
+    No behavioural test in the repo drives this advisory positively -- the
+    only mention of ``nonuniform_cpml_thin`` in ``tests/`` is
+    ``test_msl_sparam_ad.py:816``, which lists it among the codes a
+    transmission coupon must NOT emit. So the geometry is the
+    ``dx = 0.5 mm``, ``cpml_layers = 6``, 24-cell-square lane the two
+    graded-node fixtures above already use, with the fine run made fine
+    enough to trip the ratio, and the source parked at z = 2.4 mm -- in the
+    locally uniform coarse region, away from both the step at 0.8 mm and the
+    absorber -- so the only leg-5 finding in the report is the one this
+    fixture exists for.
+    """
+    from rfx import Simulation
+    from rfx.sources.sources import GaussianPulse
+
+    dx = 0.5e-3
+    L = 24 * dx
+    dz = [0.1e-3] * 8 + [0.5e-3] * 8
+    sim = Simulation(freq_max=10e9, domain=(L, L, 0.0), dx=dx,
+                     dz_profile=dz, boundary="cpml", cpml_layers=6)
+    sim.add_source(position=(12 * dx, 12 * dx, 2.4e-3), component="ex",
+                   waveform=GaussianPulse(f0=5e9, bandwidth=0.8),
+                   amplitude_kind="current")
+    return sim
+
+
+def _nonuniform_tfsf_oblique_sim():
+    """Oblique TFSF on a non-uniform z mesh -- the deferred-lane refusal.
+
+    The geometry of
+    ``tests/unit/nonuniform/test_nonuniform_api.py:284``'s
+    ``test_nonuniform_tfsf_oblique_rejected``, which drives it through
+    ``sim.run()`` and catches the ``ValueError``; here the same config is
+    rendered through ``preflight()``, where ``PreflightConfigError`` is
+    caught and recorded as an error-severity issue carrying the slug.
+
+    This is the OTHER emission path of ``_validate_cfg_nonuniform_limitations``
+    and it needs its own fixture, because it RAISES: the raise aborts
+    ``_validate_simulation_config`` before the CPML-thickness advisory below
+    it in the same body is reached, so one fixture cannot witness both codes.
+    The truncated report that follows is designed behaviour (a config error is
+    blocking), the same shape ``guards_upml_refinement`` has.
+    """
+    from rfx import Simulation
+
+    dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
+    sim = Simulation(freq_max=8e9, domain=(0.08, 0.006, 0.006),
+                     boundary="cpml", cpml_layers=8, dx=0.001, dz_profile=dz)
+    sim.add_tfsf_source(f0=4e9, bandwidth=0.5, amplitude=1.0, margin=3,
+                        angle_deg=30.0)
+    return sim
+
+
+def _subgrid_unsupported_feature_sim():
+    """An SBP-SAT refinement region with a DFT plane probe on it.
+
+    ``tests/unit/subgrid/test_subgrid_validation.py:14``'s
+    ``_vacuum_subgrid_sim()`` -- imported, not retyped -- with one
+    ``add_dft_plane_probe`` added, which is the first of the five features
+    ``_validate_cfg_subgrid_limitations`` refuses.
+
+    Nothing in the repo combined the two before: every ``add_refinement``
+    call site in ``tests/`` builds a plain source/probe sim, and the one
+    fixture in this corpus that carries a refinement region
+    (``guards_upml_refinement``) raises in the absorber family long before
+    the subgrid check is reached -- which is exactly why the census counted
+    ``_validate_cfg_subgrid_limitations`` at 49 calls and zero emissions.
+    """
+    import tests.unit.subgrid.test_subgrid_validation as mod
+
+    sim = mod._vacuum_subgrid_sim()
+    sim.add_dft_plane_probe(axis="z", coordinate=0.020, component="ey",
+                            freqs=[8e9])
+    return sim
+
+
+def _floquet_nonuniform_sim():
+    """A Floquet port that AUTO-MESH later puts on a non-uniform z grid.
+
+    ``_validate_cfg_floquet_nonuniform`` is reachable only this way, and the
+    source comment at ``rfx/api/__init__.py:2643`` says so: ``add_floquet_port``
+    already refuses an explicitly DECLARED ``dz_profile`` with a ``ValueError``
+    at registration, and ``_declared_mesh`` is deliberately the snapshot it
+    tests, because "auto mesh depends on the completed model and is checked by
+    preflight". So the port goes on first, while nothing is declared, and the
+    dielectric layer added afterwards is what makes ``_auto_configure_mesh``
+    resolve a graded z column. No behavioural test in the repo builds that
+    combination, which is why ``floquet_nonuniform`` was among the 25
+    unwitnessed codes.
+
+    The fixture therefore also pins that auto-mesh still GRADES this stack.
+    If it ever stops, the committed snapshot goes red rather than silently
+    stopping to witness the check -- which is the failure mode this lock is
+    for. The advisory's own text carries no numbers, so the pin is on the
+    code, the severity and the position in the report.
+    """
+    from rfx import Box, Simulation
+
+    sim = Simulation(freq_max=10e9, domain=(0.01, 0.01, 0.004),
+                     boundary="cpml", cpml_layers=6)
+    sim.add_floquet_port(0.003, axis="z", scan_theta=0.0)
+    sim.add_material("sub", eps_r=10.2)
+    sim.add(Box((0.0, 0.0, 0.0), (0.01, 0.01, 0.0005)), material="sub")
+    return sim
+
+
 # ---------------------------------------------------------------------------
 # (fixture id, builder, preflight kwargs, preflight_sparameters calculator).
 #
@@ -1262,6 +1511,34 @@ _FIXTURES = (
      _absorber_budget_over_axis_sim, {}, None),
     ("upml_nonuniform_lane",                                      # leg 4
      _upml_nonuniform_lane_sim, {"strict": False}, None),
+    # -- 43-49. leg 5 gap closers -------------------------------------------
+    # #980 Phase 3 leg 5 moves the twelve mesh / non-uniform bodies. A call
+    # census over the 50 fixtures above found ALL twelve executed -- the
+    # family sits on _validate_simulation_config's unconditional spine, the
+    # way leg 4's did -- and SIX of them emitting nothing at all. Those six
+    # need a config the corpus had never built: a lossy sheet, a current
+    # source and a lumped port each sitting on a grading step; a dz profile
+    # whose CPML runway is thin against the in-plane one; an oblique TFSF on
+    # a graded mesh; an SBP-SAT refinement region carrying a refused
+    # feature; and a Floquet port that auto-mesh later puts on a graded z
+    # column. _validate_cfg_nonuniform_limitations needs TWO because its
+    # first finding RAISES, which aborts the body before the second is
+    # reached. Added BEFORE the move, on the tree where all twelve bodies
+    # still sit in the facade, so the committed JSON is a pre-move baseline
+    # the motion has to reproduce byte for byte. All seven measured
+    # byte-identical across PYTHONHASHSEED 3/424242, JAX_ENABLE_X64 0/1 and
+    # 1 vs 2 host devices, so none needed the input pinning
+    # waveguide_layout_near_cutoff needed.
+    ("nu_thin_conductor_graded_node",                             # leg 5
+     _thin_conductor_graded_node_sim, {}, None),
+    ("nu_source_on_graded_node", _source_on_graded_node_sim, {}, None),
+    ("nu_wire_port_on_graded_node",
+     _wire_port_on_graded_node_sim, {}, None),
+    ("nu_cpml_thin", _nonuniform_cpml_thin_sim, {}, None),
+    ("nu_tfsf_oblique", _nonuniform_tfsf_oblique_sim, {}, None),
+    ("subgrid_unsupported_feature",
+     _subgrid_unsupported_feature_sim, {}, None),
+    ("floquet_nonuniform_automesh", _floquet_nonuniform_sim, {}, None),
 )
 
 _IDS = [fid for fid, _, _, _ in _FIXTURES]
