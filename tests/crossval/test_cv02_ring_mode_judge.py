@@ -1737,6 +1737,23 @@ def test_cv02_persists_and_exits_through_one_decision_value() -> None:
     reports inconclusive (the failure found on the abandoned #907 branch).
     This source contract keeps that invariant cheap and always-on: adding an
     exit path with a literal or another expression fails review immediately.
+
+    It is no longer the only contract, and it was never sufficient on its own:
+    reading the source cannot see an exit the process takes by another route
+    (an uncaught exception in the tail, a ``sys.exit`` inside something the
+    tail calls), which is why #946 was reopened after PR #999.  The executing
+    contract lives in
+    ``tests/crossval/test_crossval_exit_code_is_the_process_exit_code.py``,
+    which runs cv02 in a subprocess with a forced late exit and compares the
+    persisted code with the subprocess's own return code.  This test keeps its
+    cheap half of the job: ``_rc`` is one value, so there is one value for
+    that file to measure.
+
+    What changed in the record shape (#946): ``exit_code`` and ``summary`` are
+    no longer written into ``_doc`` by hand.  ``_exit_evidence.write_record``
+    puts them into the verdict block and returns the code, so the script
+    cannot hold a second copy that drifts from the value it exits with -- and
+    ``_rc`` is now the name that write binds.
     """
     tree = ast.parse(SCRIPT_PATH.read_text(encoding="utf-8"),
                      filename=str(SCRIPT_PATH))
@@ -1756,11 +1773,28 @@ def test_cv02_persists_and_exits_through_one_decision_value() -> None:
         for node in exit_calls
     ), "every cv02 exit path must use the persisted _rc decision"
 
-    persisted = [
-        node_value for node in ast.walk(tree)
+    # No hand-written "exit_code" key survives: the one road into the record
+    # is write_record, and it is what binds _rc.
+    hand_written = [
+        key.lineno for node in ast.walk(tree)
         if isinstance(node, ast.Dict)
-        for key, node_value in zip(node.keys, node.values)
+        for key in node.keys
         if isinstance(key, ast.Constant) and key.value == "exit_code"
     ]
-    assert len(persisted) == 1
-    assert isinstance(persisted[0], ast.Name) and persisted[0].id == "_rc"
+    assert hand_written == [], (
+        "cv02 puts an exit code into a document by hand at line(s) "
+        f"{hand_written}; route it through _exit_evidence.write_record (#946)")
+
+    writes = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Attribute)
+        and node.value.func.attr == "write_record"
+    ]
+    assert len(writes) == 2, (
+        "cv02 must write its record in exactly two places -- the live run and "
+        f"--replay -- found {len(writes)}")
+    assert all(len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+               for node in writes)
+    assert {node.targets[0].id for node in writes} == {"_rc", "rc"}
