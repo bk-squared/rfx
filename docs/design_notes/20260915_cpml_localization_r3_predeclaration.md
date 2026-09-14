@@ -130,3 +130,72 @@ candidate's own ratios (0.28-1.06) sat well inside it.
 G5-3′ requires `RMS_cand <= 1.8555 x RMS_base` per field. The divergence
 control curves `d_flag(t)` and the 1-ulp curves are stored in
 `validation/research/nu_cost/g5r3/controls.json` for G5-5′.
+
+
+### Stage 2 — candidate (run once on dd1502a3, `RFX_G4_REJECTED_CANDIDATE=1`, rfx cpml still == frozen baseline)
+
+**G5-3′ reroll-bounded reference distance: HELD, all 42 (fixture, field) pairs.**
+graded8, mixed8, uniform4, uniform16 are bit-identical to the baseline
+(ratio 1.000, no differing elements — the localization changes nothing
+there). On the three fixtures where it differs:
+
+| fixture/field | RMS_cand / RMS_base (window 1.856) | farther fraction | r2-style max-norm ratio | G5-5′ first violating step | max d_cand / d_flag |
+|---|---|---|---|---|---|
+| uniform8/ex | 1.040 | 0.53 | 1.079 | 38 | 2.00 |
+| uniform8/ey | 0.904 | 0.48 | 1.594 | 38 | 2.00 |
+| uniform8/ez | 0.891 | 0.49 | 1.000 | 37 | 2.67 |
+| uniform8/hx | 0.926 | 0.47 | 0.790 | 38 | 1.63 |
+| uniform8/hy | 1.008 | 0.51 | 1.231 | 46 | 1.68 |
+| uniform8/hz | 0.887 | 0.52 | 0.967 | 40 | 1.18 |
+| periodic8/ex | 1.078 | 0.51 | 0.689 | 58 | 2.50 |
+| periodic8/ey | 0.861 | 0.49 | 0.585 | 59 | 2.00 |
+| periodic8/ez | 1.005 | 0.44 | 1.475 | 53 | 4.00 |
+| periodic8/hx | 0.983 | 0.46 | 0.932 | 44 | 2.38 |
+| periodic8/hy | 1.068 | 0.48 | 1.086 | 39 | 2.52 |
+| periodic8/hz | 1.033 | 0.51 | 1.114 | 40 | 2.48 |
+| kappa8/ex | 1.009 | 0.49 | 1.178 | 49 | 1.67 |
+| kappa8/ey | 1.167 | 0.50 | 1.211 | 35 | 1.78 |
+| kappa8/ez | 0.909 | 0.51 | 0.465 | 36 | 2.00 |
+| kappa8/hx | 0.985 | 0.51 | 0.793 | 42 | 3.07 |
+| kappa8/hy | 1.082 | 0.50 | 1.190 | 36 | 3.18 |
+| kappa8/hz | 0.998 | 0.53 | 0.772 | 41 | 3.18 |
+
+RMS ratios 0.86-1.17 and farther fractions 0.44-0.53: the reroll signature,
+and well inside the derived window. The r2-style max-norm column (0.47-1.59)
+shows once more that a single extreme element is not a statistic.
+
+**G5-5′ reroll-bounded divergence: FIRED, as declared — on every field of
+uniform8, periodic8 and kappa8; HELD trivially on the other four.** Recorded
+as fired; under the declared rule the lane stops here. What the curves show
+(`candidate.json`, `controls.json`, uniform8/ex quoted): the candidate's
+divergence from the baseline starts later (first non-zero step 11 vs 2 for
+the contraction-suppressed control — a localized change perturbs fewer
+operations), stays BELOW the control on 193 of 200 steps (median ratio
+0.71 over steps 31-200), and exceeds it on 7 isolated steps by at most 2.0x
+(4.0x on periodic8/ez at one step). The gate as I wrote it demands
+`d_cand(t) <= d_flag(t)` at EVERY step; two rounding perturbations of the
+same magnitude scale (1e-7, single ulps of the field) cross each other at
+individual steps as a matter of course. Whether that is so is not argued
+here — it is tested by diagnostic D1 below, declared before it runs.
+
+**G5-AD reroll-bounded gradient parity: HELD.** graded8, loss = sum(ez_final^2):
+`||g_cand − g_base||_2 = 0.040601 <= ||g_flag − g_base||_2 = 0.045008` (dz,
+12 components); `|g_cand − g_base| = 1.907e-6 <= |g_flag − g_base| = 3.815e-6`
+(eps). All finite. (`ad.json`)
+
+### Diagnostic D1 — declared before it runs: does a reroll pass G5-5′ against another reroll?
+
+Instrument: the same worker with the r2 `legacy_emitter` flags
+(`--xla_cpu_use_fusion_emitters=false --xla_cpu_enable_fast_math=false`, a
+second known-harmless recompilation of the baseline; r2 `controls.json`
+recorded it as differing from the unflagged baseline). Compute
+`d_legacy(t) = max|legacy(t) − baseline(t)|` per fixture/field and apply the
+G5-5′ predicate `d_legacy(t) <= d_flag(t)` at every step, and the reverse.
+Expectation, stated now: if a harmless reroll violates the per-step
+predicate against the other harmless reroll on a comparable number of steps
+(order 1-10 of 200) with comparable excess (≲ 2-4x at single steps), the
+per-step form of G5-5′ cannot distinguish a reroll from anything and the
+FIRED verdict above is a property of the statistic. If instead two rerolls
+never cross (0 violating steps), the candidate's crossings are not
+reroll-class and the STOP stands on its own. D1 does not change the G5-5′
+verdict; it decides what the lead asks the PI next. No candidate is run.

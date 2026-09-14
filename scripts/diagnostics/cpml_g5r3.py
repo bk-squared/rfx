@@ -27,6 +27,7 @@ OUT = ROOT / 'validation/research/nu_cost/g5r3'
 SCRATCH = Path(os.environ.get('G5R3_SCRATCH', '/tmp/g5r3_scratch'))
 FIELDS = ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')
 FLAGS = '--xla_disable_hlo_passes=fusion --xla_cpu_enable_fast_math=false'
+LEGACY_FLAGS = '--xla_cpu_use_fusion_emitters=false --xla_cpu_enable_fast_math=false'
 ULP = float(np.nextafter(np.float32(1), np.float32(np.inf)))
 STEPS = 200
 FIXTURES = ['uniform8', 'graded8', 'mixed8', 'uniform4', 'uniform16', 'periodic8', 'kappa8']
@@ -100,7 +101,8 @@ def worker(label, impl_name, fixtures):
     """Subprocess body: runs under whatever XLA_FLAGS the parent set."""
     M = load_M()
     impl = M['old'] if impl_name == 'old' else M['cpml']
-    assert os.environ.get('XLA_FLAGS', '') == (FLAGS if label.startswith('flag') else ''), os.environ.get('XLA_FLAGS')
+    expected = os.environ.get('G5R3_EXPECT_FLAGS', FLAGS if label.startswith('flag') else '')
+    assert os.environ.get('XLA_FLAGS', '') == expected, os.environ.get('XLA_FLAGS')
     SCRATCH.mkdir(parents=True, exist_ok=True)
     for name in fixtures:
         hist = trajectory(M, name, impl, 1.0, True)
@@ -111,7 +113,7 @@ def worker(label, impl_name, fixtures):
 
 
 def run_worker(label, impl_name, fixtures, flags):
-    env = dict(os.environ, XLA_FLAGS=flags, PYTHONDONTWRITEBYTECODE='1')
+    env = dict(os.environ, XLA_FLAGS=flags, PYTHONDONTWRITEBYTECODE='1', G5R3_EXPECT_FLAGS=flags)
     if impl_name == 'cand':
         env['RFX_G4_REJECTED_CANDIDATE'] = '1'
     log = OUT / f'{label}.log'
@@ -207,6 +209,32 @@ def candidate():
     print('G5-3prime', out['g53_verdict'], out['g53_fired'], '| G5-5prime', out['g55_verdict'], out['g55_fired'], flush=True)
 
 
+def reroll():
+    """Diagnostic D1 (declared in the note before running): a second harmless
+    reroll of the baseline (legacy emitter) judged by the G5-5' per-step
+    predicate against the first (no-fusion). No candidate involved."""
+    assert os.environ.get('RFX_G4_REJECTED_CANDIDATE', '') != '1'
+    M = load_M()
+    ctrl = json.loads((OUT / 'controls.json').read_text())
+    run_worker('legacy', 'old', FIXTURES, LEGACY_FLAGS)
+    out = {'stage': 'reroll_diagnostic', 'provenance': provenance(M), 'legacy_flags': LEGACY_FLAGS, 'fixtures': {}}
+    for name in FIXTURES:
+        b = np.load(SCRATCH / f'base_{name}.npz'); z = np.load(SCRATCH / f'legacy_{name}.npz')
+        row = {}
+        for k in FIELDS:
+            d_l = np.max(np.abs(z[f'hist_{k}'].astype(np.float64) - b[f'hist_{k}']), axis=(1, 2, 3))
+            d_f = np.asarray(ctrl['fixtures'][name][k]['d_flag_curve'])
+            v1 = np.flatnonzero(d_l > d_f); v2 = np.flatnonzero(d_f > d_l)
+            row[k] = {'legacy_differs_from_base': bool(np.any(d_l > 0)),
+                      'steps_legacy_over_flag': int(len(v1)), 'steps_flag_over_legacy': int(len(v2)),
+                      'max_ratio_legacy_over_flag': float(np.max(np.where(d_f > 0, d_l / np.where(d_f > 0, d_f, 1), 0))),
+                      'max_ratio_flag_over_legacy': float(np.max(np.where(d_l > 0, d_f / np.where(d_l > 0, d_l, 1), 0))),
+                      'd_legacy_curve': d_l.tolist()}
+        out['fixtures'][name] = row
+        print('D1', name, {k: (row[k]['steps_legacy_over_flag'], row[k]['steps_flag_over_legacy'], round(row[k]['max_ratio_legacy_over_flag'], 2)) for k in FIELDS}, flush=True)
+    (OUT / 'reroll_diagnostic.json').write_text(json.dumps(out, indent=1, allow_nan=False) + '\n')
+
+
 def grads(M, impl):
     import jax
     import jax.numpy as jnp
@@ -253,7 +281,7 @@ def ad():
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser()
-    p.add_argument('stage', choices=('controls', 'candidate', 'ad', 'worker', 'ad_worker'))
+    p.add_argument('stage', choices=('controls', 'candidate', 'ad', 'reroll', 'worker', 'ad_worker'))
     p.add_argument('rest', nargs='*')
     a = p.parse_args()
     if a.stage == 'worker':
