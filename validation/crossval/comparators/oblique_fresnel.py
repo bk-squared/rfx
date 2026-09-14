@@ -1315,9 +1315,15 @@ def lattice_witness_windows(freqs_hz, inc_amp_rel, R_lat, T_lat, *, dt: float, n
     (``comparators/lattice_witness.py``: ``budget_terms`` for the four
     relative-amplitude terms, ``windows_from_terms`` for the window, and
     ``ringdown_rate`` for the decay the truncation bound needs). Only the
-    reference changes: the slab family's lattice is 1-D at normal incidence,
-    cv26's is the 2-D Yee lattice at this arm's fixed k_y with rfx's own CPML
-    recursion (``yee_lattice_full``), which is what ``R_lat`` / ``T_lat`` carry.
+    TWO things change, not one.  The reference: the slab family's lattice is 1-D
+    at normal incidence, cv26's is the 2-D Yee lattice at this arm's fixed k_y
+    with rfx's own CPML recursion (``yee_lattice_full``), which is what
+    ``R_lat`` / ``T_lat`` carry.  And THE SOURCE: the family drives one fixed
+    bandwidth 0.5, cv26 drives one per arm, so the arm's own ``src_tau_s`` is
+    passed rather than the family's ``TAU_SRC_S``.  An earlier revision of this
+    function said "only the reference changes" and fed the family's tau; that
+    scaled every window by 2.0x to 135x and is what
+    ``test_the_witness_window_uses_the_arms_own_source_tau`` now pins.
 
     What the budget is made of, and why none of it is tuned: record truncation
     (T1) out of the arm's OWN committed tail levels, incident-reference
@@ -1340,12 +1346,23 @@ def lattice_witness_windows(freqs_hz, inc_amp_rel, R_lat, T_lat, *, dt: float, n
     import lattice_witness as LW
 
     rate, rate_src = LW.ringdown_rate(record, tail)
+    # THE ARM'S OWN SOURCE, not the family's. LW.TAU_SRC_S is 1/(pi f0 bw) at the
+    # slab family's FIXED bandwidth 0.5; cv26 drives a bandwidth per arm
+    # (``bandwidth_for(theta0)``, ARM_BW 0.25 down to 0.0509), so its tau is 2.0x
+    # to 135x the family's. LAMBDA = sqrt(pi) tau / dt divides every budget term
+    # and the incident tail rate is 2a/tau, and ``inc_amp_rel`` is max-normalised,
+    # so nothing cancels it: feeding the family constant scales the whole window.
+    # The record carries the tau the run actually used.
+    tau_s = float(record["src_tau_s"])
     terms = LW.budget_terms(freqs_hz, inc_amp_rel, dt=float(dt), n_steps=int(n_steps),
                             scat_tail_rel=float(tail["scat_refl_rel"]),
                             trans_tail_rel=float(tail["total_trans_rel"]),
-                            purity_rel=float(tail["purity_inc_rel"]), rate_1_s=rate)
+                            purity_rel=float(tail["purity_inc_rel"]), rate_1_s=rate,
+                            tau_s=tau_s)
     wR, wT, _ = LW.windows_from_terms(R_lat, T_lat, terms)
     return {"W_witness_R": wR, "W_witness_T": wT, "rate_1_s": rate, "rate_source": rate_src,
+            "tau_src_s": tau_s, "lambda_source": terms["lambda_source"],
+            "rate_incident_1_s": terms["rate_incident_1_s"],
             "terms": {k: (v if np.isscalar(v) else None) for k, v in terms.items()}}
 
 
@@ -1454,6 +1471,9 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, spec: dict, dt: float, *, tail: dict, or
                 "mean_W_witness_R_gated": float(wR[g].mean()),
                 "mean_W_witness_T_gated": float(wT[g].mean()),
                 "witness_rate_1_s": lw["rate_1_s"], "witness_rate_source": lw["rate_source"],
+                # the arm's OWN source, recorded so the window can be recomputed by hand
+                "tau_src_s": lw["tau_src_s"], "lambda_source": lw["lambda_source"],
+                "rate_incident_1_s": lw["rate_incident_1_s"],
                 "GL2_R": bool(dRl[g].mean() <= wR[g].mean()),
                 "GL2_T": bool(dTl[g].mean() <= wT[g].mean()),
                 "GL1_R_bins_beyond": int((dRl[g] > wR[g]).sum()),

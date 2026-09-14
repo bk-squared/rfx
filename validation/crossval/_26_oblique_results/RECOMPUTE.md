@@ -171,3 +171,44 @@ as agreement. Demonstrated on real records at this sha: matching gives
 
 It is a report, not a gate: the numbers are what they are, and a reader who sees the
 warning knows to check the provenance rather than having the comparison silently refused.
+
+## Three things a reader of this directory should know (append-only, 2026-09-14)
+
+**The E4 commit guard fires on this directory today, and that is expected.** `rfx.json`'s
+E4 blocks were evaluated at sha `a4a0fea1` against the lane-20260913b Meep legs; the legs
+on disk now carry `99ca7553`, because they were re-run so their sha would be native. Any
+run that re-evaluates E4 here will therefore print
+
+    E4 WARNING: the Meep leg records commit 99ca7553aed2 but this run is <...>
+    -- the reference is from a different code state
+
+That warning is correct and the situation is benign, for a reason that was CHECKED rather
+than assumed: every measured field of all seven re-run records is bit-identical to what
+lane 20260913b wrote, so the stored E4 is still an exact evaluation of the files beside
+it. The guard cannot know that, which is why it warns rather than staying silent. It is a
+report, not a gate.
+
+**`staged_commit` now carries the evidence that it was checked.** `rfx.json` records
+`staged_commit_checked_across`, the list of shard files whose `commit` was compared
+against it by `merge_cv26_arm_shards.py`'s `_MUST_AGREE`. Without that list the key is
+indistinguishable from a copy of the first shard's commit.
+
+**The two `settle60` rungs have `commit` but no `staged_commit`, and that is correct.**
+`commit` is the sha the run itself was staged at, written by the case. `staged_commit` is
+a MERGE-level property — the one sha every shard of a merged document agreed on — so it
+exists only in `rfx.json`. A single-arm tagged rung has no shards to agree, and inventing
+the key there would assert a check that never happened.
+
+## Derived lattice-witness numbers live in `lattice_witness_replay.json`
+
+The case script writes `lattice.W_witness_*`, `GL1_*` and `GL2_*` per arm, but that
+plumbing landed AFTER the lanes that produced these records, so none of them carries those
+keys. `lattice_witness_replay.json` recomputes the derived witness from the committed
+per-arm records — no FDTD, the same arithmetic `evaluate_e2` does — and names every input
+(which record, that record's own commit, the arm's own `src_tau_s`, the standard and
+section). It is labelled `"kind": "replay"` so a recomputation cannot be read as a
+measurement. Regenerate with
+
+    python validation/crossval/comparators/emit_cv26_lattice_witness_replay.py
+
+It reports `tm_60` FAILING GL2_R. See close note §10.5.

@@ -146,15 +146,23 @@ def lattice_rta(freqs_hz, model: str, params: dict, dx: float, dt: float,
 # The budget
 # ---------------------------------------------------------------------------
 
-def source_spectral_gain(dt: float) -> float:
+def source_spectral_gain(dt: float, tau_s: float | None = None) -> float:
     """LAMBDA = sqrt(pi) tau / dt: the ratio of the discrete incident amplitude
     spectrum at its peak to the incident time-domain peak, for the rig's
     differentiated Gaussian. Analytic; the sampling correction at tau/dt ~ 27
-    is below 1e-3 and the constant enters the window as a divisor."""
-    return math.sqrt(math.pi) * TAU_SRC_S / float(dt)
+    is below 1e-3 and the constant enters the window as a divisor.
+
+    ``tau_s`` is the SOURCE's own pulse width.  It defaults to the slab
+    family's ``TAU_SRC_S``, which is 1/(pi f0 bandwidth) at that family's
+    FIXED bandwidth 0.5 -- correct for cv04, cv22 and cv23, and wrong for any
+    case that drives a different bandwidth.  cv26 drives a different one per
+    arm (2.0x to 135x this tau), so it passes its own.  LAMBDA divides every
+    budget term, so getting this wrong scales the whole window.
+    """
+    return math.sqrt(math.pi) * float(TAU_SRC_S if tau_s is None else tau_s) / float(dt)
 
 
-def incident_tail_rate(purity_rel: float) -> float:
+def incident_tail_rate(purity_rel: float, tau_s: float | None = None) -> float:
     """Envelope decay rate (1/s) of the differentiated-Gaussian incident at the
     level ``purity_rel`` of its peak: solve ``2 a exp(-a^2) = purity_rel`` for
     the late branch ``a > 1/sqrt(2)``; the envelope's logarithmic derivative
@@ -170,7 +178,7 @@ def incident_tail_rate(purity_rel: float) -> float:
         else:
             hi = mid
     a = 0.5 * (lo + hi)
-    return 2.0 * a / TAU_SRC_S
+    return 2.0 * a / float(TAU_SRC_S if tau_s is None else tau_s)
 
 
 def ringdown_rate(record: dict, tail: dict | None) -> tuple[float, str]:
@@ -197,7 +205,7 @@ def _geom_sum(rate: float, dt: float) -> float:
 
 def budget_terms(freqs_hz, inc_amp_rel, *, dt: float, n_steps: int,
                  scat_tail_rel: float, trans_tail_rel: float, purity_rel: float,
-                 rate_1_s: float) -> dict:
+                 rate_1_s: float, tau_s: float | None = None) -> dict:
     """The four relative-amplitude error terms of the budget, per bin.
 
     Returns ``delta_scat``, ``delta_trans`` (record truncation on the two
@@ -209,15 +217,16 @@ def budget_terms(freqs_hz, inc_amp_rel, *, dt: float, n_steps: int,
     a = np.asarray(inc_amp_rel, dtype=float)
     if np.any(a <= 0.0):
         raise ValueError("inc_amp_rel has a non-positive bin; the window would be undefined there")
-    lam = source_spectral_gain(dt)
+    lam = source_spectral_gain(dt, tau_s)
     kap = _geom_sum(rate_1_s, dt)
-    rate_i = incident_tail_rate(purity_rel)
+    rate_i = incident_tail_rate(purity_rel, tau_s)
     kap_i = _geom_sum(rate_i, dt)
     n = int(n_steps)
     return {
         "lambda_source": lam,
         "kappa_ringdown": kap,
         "kappa_incident": kap_i,
+        "tau_src_s": float(TAU_SRC_S if tau_s is None else tau_s),
         "rate_ringdown_1_s": float(rate_1_s),
         "rate_incident_1_s": float(rate_i),
         "delta_scat": float(scat_tail_rel) * kap / (lam * a),
@@ -238,13 +247,13 @@ def windows_from_terms(R_lat, T_lat, terms: dict):
 
 
 def ceiling_windows(freqs_hz, inc_amp_rel, R_lat, T_lat, *, dt: float, n_steps: int,
-                    rate_1_s: float):
+                    rate_1_s: float, tau_s: float | None = None):
     """The same window computed with the DECLARED BARS (settling 1e-2 on both
     traces, purity 1e-3) and the DERIVED ring rate only -- an a-priori number,
     available before any run, that bounds every passing run's window."""
     terms = budget_terms(freqs_hz, inc_amp_rel, dt=dt, n_steps=n_steps,
                          scat_tail_rel=SETTLING_BAR, trans_tail_rel=SETTLING_BAR,
-                         purity_rel=PURITY_BAR, rate_1_s=rate_1_s)
+                         purity_rel=PURITY_BAR, rate_1_s=rate_1_s, tau_s=tau_s)
     return windows_from_terms(R_lat, T_lat, terms)
 
 

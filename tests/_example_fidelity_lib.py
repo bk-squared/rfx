@@ -461,6 +461,11 @@ CLASSIFICATION: dict[str, Entry] = {
         "backfills the auxiliary-echo record invariant (#888) into the "
         "committed slab-family lattice_witness.json documents -- pure geometry "
         "and JSON editing, no solver, no rfx import at all"),
+    "validation/crossval/comparators/emit_cv26_lattice_witness_replay.py": Entry(
+        "no_simulation",
+        "recomputes cv26's derived lattice-witness window from the committed "
+        "per-arm records with the standard's own budget primitives -- arithmetic "
+        "on artifacts already on disk, no solver, no FDTD, no rfx import"),
     "validation/crossval/comparators/emit_cv04_fringe_gate_evidence.py": Entry(
         "no_simulation",
         "emits cv04's fringe-gate evidence JSON from the committed R(f) "

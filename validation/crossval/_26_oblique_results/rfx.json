@@ -48,6 +48,15 @@
   "tm_60": 2
  },
  "staged_commit": "a4a0fea1380d2a4600fb499f58185f06a8dacd44",
+ "staged_commit_checked_across": [
+  "rfx__shard_graze.json",
+  "rfx__shard_te00tm00.json",
+  "rfx__shard_te30.json",
+  "rfx__shard_te45.json",
+  "rfx__shard_te60.json",
+  "rfx__shard_tm45.json",
+  "rfx__shard_tm60.json"
+ ],
  "date_utc": "2026-09-14T06:34:34+00:00",
  "falsifier": null,
  "smoke": false,

@@ -40,6 +40,14 @@ F0 = O.TFSF_F0_HZ
 FREQS = np.linspace(6e9, 14e9, 41)
 
 
+def _artifact_or_skip(name: str) -> dict:
+    """A committed cv26 artifact, or skip while the VESSL round has not landed."""
+    p = _REPO / "validation/crossval" / O.RESULTS_DIRNAME / name
+    if not p.is_file():
+        pytest.skip(f"{p.relative_to(_REPO)} not committed yet (VESSL round pending)")
+    return json.loads(p.read_text())
+
+
 # ---------------------------------------------------------------------------
 # Oracle, duality, realized angle
 # ---------------------------------------------------------------------------
@@ -909,3 +917,80 @@ def test_a_constant_that_stops_being_a_literal_raises_rather_than_falling_back(t
     nested.write_text("def f():\n    AUX_N_CPML = 200\n", encoding="utf-8")
     with pytest.raises(ValueError, match="no module-level definition"):
         O.tfsf_2d_constants(("AUX_N_CPML",), str(nested))
+
+
+def test_the_witness_window_uses_the_arms_own_source_tau():
+    """The lattice-witness budget is built from the SOURCE the arm actually drove.
+
+    This is the test that was missing when the window shipped wrong.  The first
+    revision fed ``lattice_witness.TAU_SRC_S``, which is ``1/(pi f0 bw)`` at the
+    slab family's FIXED bandwidth 0.5.  cv26 drives a bandwidth per arm, so its
+    tau is 2.0x (te_00, tm_00) to 9.8x (te_60, tm_60) the family value, and
+    ``LAMBDA = sqrt(pi) tau / dt`` divides every term of the budget while the
+    incident tail rate is ``2a/tau``.  ``inc_amp_rel`` is max-normalised, so
+    nothing cancels it: the whole window was scaled.  Nothing else in the suite
+    compared the window against an independently computed one, so it passed.
+
+    Here the window for one arm is recomputed from the arm's committed record
+    with the budget written out by hand -- no call into the comparator's own
+    window path -- and required to match.
+    """
+    import math
+
+    import numpy as np
+
+    doc = _artifact_or_skip("rfx.json")
+    arm = "te_60"                      # the largest tau / family-tau ratio of the seven
+    ad = doc["arms"][arm]
+    run = ad["run"]
+    rec = run["record"]
+    tail = ad["tail"]
+    cells = O.rig_cells(run["nx_interior"], run["n_cpml"], dx_div=run["dx_div"])
+    e2 = O.evaluate_e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], O.arm_spec(arm), run["dt_s"],
+                       tail=tail, cells=cells, n_cpml=run["n_cpml"],
+                       inc_amp_rel=ad["inc_amp_rel"], record=rec)
+    lat = e2["lattice"]
+
+    dt = float(run["dt_s"])
+    tau = float(rec["src_tau_s"])
+    # the arm really does drive its own source, and it is not the family's
+    assert tau == pytest.approx(1.0 / (math.pi * O.TFSF_F0_HZ * ad["bw"]), rel=1e-12)
+    assert tau / (1.0 / (math.pi * 10.0e9 * 0.5)) == pytest.approx(9.823, rel=1e-3)
+
+    # --- the budget of the standard's section 3, written out ---
+    lam = math.sqrt(math.pi) * tau / dt
+    rate = float(rec["rate_ring_1_s"])
+    kappa = 1.0 / (1.0 - math.exp(-rate * dt))
+    # incident envelope rate: solve 2 a exp(-a^2) = purity on the late branch
+    purity = float(tail["purity_inc_rel"])
+    lo, hi = 1.0 / math.sqrt(2.0), 40.0
+    for _ in range(300):
+        mid = 0.5 * (lo + hi)
+        if 2.0 * mid * math.exp(-mid * mid) > purity:
+            lo = mid
+        else:
+            hi = mid
+    kappa_i = 1.0 / (1.0 - math.exp(-(2.0 * (0.5 * (lo + hi)) / tau) * dt))
+    a = np.asarray(ad["inc_amp_rel"], dtype=float)
+    n = int(run["n_steps"])
+    eps32 = 2.0 ** -24
+    d_scat = float(tail["scat_refl_rel"]) * kappa / (lam * a)
+    d_trans = float(tail["total_trans_rel"]) * kappa / (lam * a)
+    d_inc = purity * kappa_i / (lam * a)
+    d_round = n * eps32 / math.sqrt(2.0) / (lam * a)
+    Rl = np.asarray(lat["R_lattice"], dtype=float)
+    Tl = np.asarray(lat["T_lattice"], dtype=float)
+    wR = 2.0 * np.sqrt(Rl) * (d_scat + d_round) + 2.0 * Rl * d_inc
+    wT = 2.0 * np.sqrt(Tl) * (d_trans + d_round) + 2.0 * Tl * d_inc
+    g = np.asarray(e2["gated"], dtype=bool)
+
+    assert lat["lambda_source"] == pytest.approx(lam, rel=1e-12)
+    assert lat["tau_src_s"] == pytest.approx(tau, rel=1e-12)
+    assert lat["mean_W_witness_R_gated"] == pytest.approx(float(wR[g].mean()), rel=1e-10)
+    assert lat["mean_W_witness_T_gated"] == pytest.approx(float(wT[g].mean()), rel=1e-10)
+
+    # and the family constant would have given a materially different answer, which is
+    # the defect this pins: same arithmetic, family tau, window ~6x wider
+    lam_fam = math.sqrt(math.pi) * (1.0 / (math.pi * 10.0e9 * 0.5)) / dt
+    wR_fam = 2.0 * np.sqrt(Rl) * ((d_scat + d_round) * lam / lam_fam) + 2.0 * Rl * d_inc * lam / lam_fam
+    assert float(wR_fam[g].mean()) > 4.0 * float(wR[g].mean())

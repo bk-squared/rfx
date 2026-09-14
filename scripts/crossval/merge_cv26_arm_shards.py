@@ -129,6 +129,10 @@ def merge(shard_paths: list, run_ids: dict | None = None) -> dict:
     # document has no way to tell that it was CHECKED across the shards rather than
     # copied from the first one -- _MUST_AGREE is what makes it a lane property.
     merged["staged_commit"] = ref.get("commit")
+    # ...and the evidence that it WAS checked rather than copied: the shard files whose
+    # commit was compared against it. Without this the key is indistinguishable from a
+    # copy of the first shard's commit.
+    merged["staged_commit_checked_across"] = sorted(name for name, _ in docs)
     merged.update({
         "date_utc": max(d.get("date_utc", "") for _, d in docs),
         "falsifier": None, "smoke": False, "tag": None,

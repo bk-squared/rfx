@@ -917,8 +917,10 @@ through Brewster while the residual does not follow.
 **One attempt was made to close it and failed.** Carrying the exact second-order term
 `(δ_scat + δ_round)²` — the term §3 drops by writing "to first order" — moves the breach
 count 58 → 54 on tm_45 and 110 → 109 on tm_60. Falsified. The term is not carried, no
-further modification of the window is attempted, and GL1 is recorded in every artifact as
-`GL1_gated: false` with the reason beside it. The per-bin bound is **not established for a
+further modification of the window is attempted. The case script records `GL1_gated: false`
+with the reason beside it on every FUTURE run; the committed records predate that plumbing,
+so today's derived numbers live in `validation/crossval/_26_oblique_results/lattice_witness_replay.json` — see §10.5, which also corrects the windows in
+this section. The per-bin bound is **not established for a
 rig with a reflection null**; cv26 claims GL2 and says so.
 
 ### 10.3 The falsifiers now separate against a green baseline, and F1 under-runs its declared margin
@@ -975,7 +977,70 @@ What the standard's §3 window does not cover, with this lane's numbers:
   breach count **58 → 54** on `tm_45` and **110 → 109** on `tm_60`. **Falsified.** The
   term is not carried and no further modification of the window is attempted.
 
-Every cv26 artifact records `GL1_gated: false` with this reason beside it, so a reader of
-the evidence cannot mistake "not gated" for "passed". Tracked against the standard as
+The case script records `GL1_gated: false` with this reason on every future run, and for
+the records already committed the same keys are in `validation/crossval/_26_oblique_results/lattice_witness_replay.json`, so a reader of the evidence
+cannot mistake "not gated" for "passed". **The windows quoted in this section are
+superseded by §10.5**, which corrects the source they were built from. Tracked against the standard as
 issue #1015 ("lattice_witness_standard GL1 per-bin window is undefined near reflection
 nulls"), which carries the same numbers; cv26 needs nothing further.
+
+### 10.5 Correction — the witness window was built from the wrong source, and tm_60 fails it (2026-09-14)
+
+**Supersedes every `W_witness` number in §10.1, §10.2 and §10.4, and in pre-declaration
+§19.1.** Those were computed with the slab family's source, not cv26's.
+
+**The defect.** `lattice_witness.TAU_SRC_S` is `1/(π f0 bw)` at the FAMILY's fixed
+bandwidth 0.5 — right for cv04, cv22 and cv23, which all drive it. cv26 drives a
+bandwidth per arm (`bandwidth_for(θ0)`, `ARM_BW` 0.25 down to 0.0509), so its own
+`src_tau_s` is **2.0× to 9.8×** the family value on the seven primary arms and 135× on
+`graze_te`. `Λ = √π τ / dt` divides every term of the budget and the incident tail rate
+is `2a/τ`; `inc_amp_rel` is max-normalised, so nothing cancels. Feeding the family
+constant scaled every window. The first revision's docstring said "only the reference
+changes" — the source changes too.
+
+`lattice_witness`'s primitives now take an explicit `tau_s` (family default unchanged, so
+cv04 / cv22 / cv23 are untouched) and cv26 passes the arm's own, which its record carries.
+`test_the_witness_window_uses_the_arms_own_source_tau` recomputes one arm's window from a
+hand-written budget and pins it; reintroducing the defect reds both it and the gate replay.
+
+**Corrected, from `validation/crossval/_26_oblique_results/lattice_witness_replay.json`:**
+
+| arm | `W_R` as shipped | `W_R` corrected | `mean\|ΔR−lat\|` | GL2_R | GL1_R beyond | absorber term ÷ `W_R` |
+|---|---|---|---|---|---|---|
+| te_00 | 1.0744e-02 | 5.3944e-03 | 3.336e-04 | pass | 0 | 0.07× |
+| te_30 | 1.502e-03 | 6.4805e-04 | 1.413e-04 | pass | 18 | 0.95× |
+| te_45 | 1.830e-03 | 5.0540e-04 | 1.671e-04 | pass | 75 | 0.83× |
+| te_60 | 3.387e-03 | 5.6726e-04 | 4.052e-04 | pass | 98 | 7.11× |
+| tm_00 | 1.089e-02 | 5.4672e-03 | 3.410e-04 | pass | 0 | 0.04× |
+| tm_45 | 2.978e-04 | 1.0097e-04 | 4.351e-05 | pass | 190 | 1.52× |
+| tm_60 | 1.054e-04 | **2.0705e-05** | 5.060e-05 | **FAIL** | 357 | 24.38× |
+
+**`tm_60` fails GL2_R**, at **244 %** of its corrected window. It is recorded as a
+failure — pinned in the replay test's `_GL2_EXPECTED` table so it cannot be absorbed —
+and **no mechanism attempt was made**. What it does and does not mean: the arm's Fresnel
+verdict is a separate gate and passes as measured (G1, G2, G3 all true, `arm_ok` true).
+What fails is rfx against its own discrete model on this arm, not rfx against Fresnel.
+`claim_scope` in `validation/crossval/manifest.json` now says so.
+
+**§10.2's "reflection null" diagnosis does not survive the correction, and is withdrawn.**
+It fitted `tm_45`, whose breaches do reach `R_lattice` 1.13e-06. It does not fit the
+corrected picture: `te_60`'s 98 breaches sit at `R_lattice` **0.318 – 0.448**, three
+orders above any null, and `tm_60`'s 357 sit at 9.27e-04 – 4.46e-02. Six of seven primary
+arms breach, including three TE arms that have no null anywhere in their band.
+
+**What the corrected data does show**, across the seven primary arms, with no exception:
+the two arms with **zero** GL1 breaches are exactly the two where the absorber term is far
+INSIDE the window (0.07× and 0.04×), and every arm where that term is comparable to or
+larger than the window breaches, the worst ratio (24.4×) being the arm whose GL2 fails.
+The standard's §3 budget models record truncation, incident truncation and float32; it
+does **not** model the absorber / auxiliary-echo term that cv26's oblique rig carries
+inside its record and measures separately. `tm_60`'s residual is 10.0 % of its own
+absorber term.
+
+This is a correlation on seven arms, not a law, and it is stated as such. `graze_te` is
+the counter-example that keeps it from being one: its absorber term is 172× its window by
+design — it is the compact box whose record is built to contain the echo — and it has
+zero GL1 breaches. That arm is judged on G7, not on this witness.
+
+No FDTD was run for anything in this section: it is arithmetic on records already
+committed. Carried to #1015, whose body is corrected to match.

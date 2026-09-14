@@ -960,3 +960,27 @@ which fails near a reflection null where `√R_lat` is comparable to δ_scat. Ad
 exact second-order term `(δ_scat + δ_round)²` moves the breach count 58 → 54 (tm_45) and
 110 → 109 (tm_60). **Falsified**; the term is not carried, and no further window
 modification is attempted.
+
+## 20. Correction to §19 — the window was built from the family's source (2026-09-14, append-only)
+
+Nothing above is edited. **Every `W_witness` number in §19.1 and §19.3 is superseded**;
+the refutation of the ≤3e-4 prediction in §19.1 stands, because those residual numbers are
+measurements and are unchanged.
+
+The window in §19 was computed with `lattice_witness.TAU_SRC_S`, the slab family's source
+at its fixed bandwidth 0.5. cv26 drives a bandwidth per arm, so its own `src_tau_s` is
+2.0× to 9.8× that on the primary arms; `Λ = √π τ / dt` divides every budget term and the
+incident tail rate is `2a/τ`, and `inc_amp_rel` is max-normalised, so the whole window was
+scaled. Corrected windows, the `tm_60` GL2 failure they expose, and the withdrawal of the
+"reflection null" reading are in close note §10.5, with the numbers in
+`validation/crossval/_26_oblique_results/lattice_witness_replay.json`.
+
+**What this does to §19.3's re-run verdict: nothing.** That prediction was about the
+RESIDUAL, not the window — `mean_dR_lattice_gated` and `mean_dT_lattice_gated` are
+measured from the committed `R_rfx` against the lattice and do not depend on the budget.
+Prediction 1 (one 100-step extension, inside the cap) still holds; prediction 2's `≤3e-04`
+on R still holds; prediction 2 on T is still refuted by falling through the settled band,
+and the run is still logged non-closing with no second attempt. Only prediction 3's window
+numbers move, and GL2 still holds on both re-run arms against the corrected, tighter
+windows (`te_00__settle60` 4.547e-05 against 1.0491e-04; `tm_00__settle60` 4.168e-05
+against 1.0604e-04).
