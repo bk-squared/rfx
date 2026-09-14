@@ -384,6 +384,11 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # not a round number: a rewrite that drops the citations would leave the
     # table's numbers with nothing behind them.
     (CV01_CPML_NOTE, "Numeric provenance"): 26,
+    # 2026-09-14 (#813 round-1 review): the interior arm that splits the
+    # 40-layer residual. Its whole claim is the two halves of that split and
+    # the 10-layer pair they are compared against, so the floor is the
+    # reproduced count of value-carrying citations (19).
+    (CV01_CPML_NOTE, "Numeric provenance, residual split"): 19,
     (MANIFEST, "11_waveguide_port_wr90"): 4,
     (MANIFEST, "15_patch_antenna_rt5880"): 3,
     (MANIFEST, "17_dielectric_sphere_mie"): 2,
@@ -462,9 +467,13 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # (scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json), 26 of them
 # value-checked -- the cv01 CPML pre-declaration's result section, opted in as
 # CV01_CPML_NOTE above. Raised by the delta in the same commit that adds them.
-MIN_REFERENCES = 1175
-MIN_VALUE_CHECKED = 1121
-MIN_DISTINCT_ARTIFACTS = 61
+# 2026-09-14 (#813 round-1 review, residual split): +23 references over +2
+# distinct artifacts (residual_split.json, and selfcheck.json cited for the
+# first time), 19 of them value-checked. Same note, its second provenance
+# section. Raised by the delta in the same commit that adds them.
+MIN_REFERENCES = 1270
+MIN_VALUE_CHECKED = 1207
+MIN_DISTINCT_ARTIFACTS = 77
 
 
 # --------------------------------------------------------------------------

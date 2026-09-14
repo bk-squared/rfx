@@ -360,7 +360,9 @@ the 40-layer arm's guided channel gives back about 0.6 points against the
 20-layer arm's. The aperture windows conserve to within a point of each other
 at every depth, which is what carries the off-guide reading at 10 layers; it
 does not license attributing all 4.2 remaining points at 40 layers to the
-off-guide region, and that split is not measured here.
+off-guide region, and that split is not measured in this campaign. (It is
+measured in the next one: see "Result 2026-09-14 — the arm ran, and the
+prediction holds" below, which splits the 40-layer residual.)
 
 **Does not say** anything about the bend arm, the Meep leg, `mean_T`, or the
 committed UPML run of 2026-09-06. None of them is touched by this measurement.
@@ -558,3 +560,89 @@ a second needs its own pre-declaration naming a new mechanism. Artifact:
 `scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json`, appended
 beside the other two, neither of which is touched. No gate, tolerance, window
 or committed crossval artifact is modified by it.
+
+### Result 2026-09-14 — the arm ran, and the prediction holds
+
+One run at commit `8ed6278e`, the commit that carries the pre-declaration
+above: the `interior` window at 40 layers, 78.4 s CPU, `n_steps = 25000`.
+Artifact `scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json`,
+appended beside the other two; neither is touched.
+
+`mean_self` on that window reads 0.948519, against the same depth's full plane
+0.947345 and aperture 0.990150.
+
+| part | 10 layers | 40 layers | negative bins at 40 |
+|---|---|---|---|
+| absorber-cell slots, `full` − `interior` | −1.24765 | **−0.10218** | 58/88 |
+| interior off-guide, `interior` − `aperture` | −24.79417 | **−1.83304** | 88/88 |
+| total outside-aperture, `full` − `aperture` | −26.04182 | −1.93523 | 88/88 |
+
+Points of the full-plane band sum, both depths computed through the same code
+path — the 10-layer column is recomputed from the six-arm artifact, not
+retyped, and reproduces the −1.25 / −24.79 / −26.04 that campaign reported.
+
+**The pre-declared prediction holds.** Interior off-guide still dominates:
+−1.83304 against −0.10218, a ratio of 18 to 1 (it was 20 to 1 at 10 layers).
+The alternative — `full` − `interior` having grown — did not happen: that term
+**shrank by 12.2×** while `interior` − `aperture` shrank by 13.5×, and the two
+sum to the −1.93523 the sweep already recorded.
+
+**So the window caveat is retired, measured rather than argued.** The full
+plane holds four times as many absorber-cell slots at 40 layers as at 10 (241
+tangential cells against 181, with the interior window fixed at 161 and the
+aperture at 21), and those slots nevertheless contribute twelve times *less*.
+The sweep's improvement is therefore not an artefact of the integration window
+growing with the absorber; it is the absorber. At 40 layers the slots term is
+no longer even consistently signed — 58 of 88 bins negative, against 88 of 88
+at 10 layers — which is what a term decaying into noise looks like.
+
+**What it still does not say.** Where the last points live. Against the
+UPML controls the 40-layer arm is 4.18 points short on the full plane
+(0.947345 vs 0.989162) and 0.26 points short on the aperture (0.990150 vs the
+six-arm `upml_aperture` 0.992737), and −1.94 points of band-summed backward
+power is outside the aperture. Those are three different normalizations of the
+same run — a band mean of smoothed per-bin ratios in the first two, a ratio of
+band sums in the third — and this note has already measured that they do not
+convert into one another. Attributing the remaining points across them needs
+its own pre-declaration and did not happen here.
+
+**Comparability**, since two of the three arms were read out of a committed
+artifact rather than re-run: grid, `above` mask, frequency axis, `n_steps` and
+boundary all match between the new arm and both stored arms, asserted by the
+driver before it subtracted. Witnesses on the new arm: `grid.shape`
+241×241×1, interior 161 cells, realized planes 4e-06 m and 1.45e-05 m with
+normal indices 80 and 185, interior window cell slice [40, 200]. Preflight is
+identical to the 40-layer full arm's, verbatim, plus the same `amplitude_kind`
+deprecation.
+
+**R2**: one attempt, pre-declared, and it reached the prediction it declared.
+No gate was involved and none moved. A further split of the last points needs
+a new pre-declaration naming its own mechanism.
+
+### Numeric provenance, residual split
+
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::interior_arm.mean_self = 0.948519`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::split_at_swept_layers.absorber_cell_slots_points = -0.10218`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::split_at_swept_layers.interior_off_guide_points = -1.83304`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::split_at_swept_layers.total_outside_aperture_points = -1.93523`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::split_at_cv01_layers_reference.absorber_cell_slots_points = -1.24765`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::split_at_cv01_layers_reference.interior_off_guide_points = -24.79417`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::split_at_cv01_layers_reference.total_outside_aperture_points = -26.04182`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::split_at_swept_layers.n_bins_slots_negative = 58`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::split_at_swept_layers.n_bins_interior_off_guide_negative = 88`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::split_at_swept_layers.n_bins_in_band = 88`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::full_plane_tangential_cells = 241`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::interior_window_cells = 161`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::interior_arm.wall_s = 78.4`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::cpml_layers = 40`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::stored_arms_source.full_mean_self = 0.947345`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::stored_arms_source.aperture_mean_self = 0.990150`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::comparison.interior_off_guide_still_dominates`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::comparison.absorber_cell_slots_grew`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::comparability_checks.vs_stored_full.grid_matches`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::comparability_checks.vs_stored_aperture.above_mask_matches`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::rig_fidelity_check.checked_lines = 35`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json::n_steps = 25000`.
+
+The `upml_aperture` control quoted above is
+`scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck.json::arms.upml_aperture.mean_self = 0.992737`.
