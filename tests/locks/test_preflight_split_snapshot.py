@@ -61,6 +61,16 @@ Also scanned for and found ABSENT in the whole snapshot corpus: repository
 absolute paths, ``<... object at 0x...>`` reprs, and timestamps. No field is
 dropped and no text is rewritten.
 
+ONE host-dependent input was found, and it is pinned at the fixture rather
+than normalised out of the report. ``preflight(check_ad_memory=True)`` with
+``available_memory_gb=None`` sizes its budget from
+``jax.local_devices()[..].memory_stats()["bytes_limit"]``, which decides
+whether the ``ad_memory`` advisory fires at all -- silent on this CPU pod,
+potentially firing on a GPU host. The ``ad_memory_sane`` fixture therefore
+passes an explicit 0.5 GB, which fires the advisory everywhere. Pinning the
+INPUT keeps the whole report observable; dropping the field would have hidden
+the check instead.
+
 One honest caveat, not a normalisation: seven messages embed a numpy scalar
 repr (``np.float64(0.005)``) because a declared bbox tuple is interpolated
 straight into the text. That is stable for a given numpy, and a numpy major
@@ -439,9 +449,17 @@ _FIXTURES = (
      lambda: _inverse_design("_pec_overlap_sim"), {"strict": False}, None),
     ("wire_port_microstrip",
      lambda: _inverse_design("_microstrip_sim", 2.0e-3), {}, None),
+    # available_memory_gb is PINNED, not left to default. With it None,
+    # estimate_ad_memory reads jax.local_devices()[..].memory_stats()
+    # ["bytes_limit"] -- a host/device-dependent budget that decides whether
+    # the ad_memory advisory fires at all. On this CPU pod it is unavailable
+    # and the fixture emitted nothing; on a GPU host the same fixture would
+    # emit, and the committed snapshot would be wrong. 0.5 GB is below the
+    # 0.72 GB non-checkpointed estimate, so the advisory fires on every host.
     ("ad_memory_sane",
      lambda: _inverse_design("_sane_sim"),
-     {"check_ad_memory": True, "n_steps_for_memory": 1000}, None),
+     {"check_ad_memory": True, "n_steps_for_memory": 1000,
+      "available_memory_gb": 0.5}, None),
     # -- 25-28. ADI / non-uniform grading / flux windows / PEC-to-wall ------
     ("adi_conductor_sheet", _adi_conductor_sim, {}, None),
     ("nu_grading_beyond_cap",

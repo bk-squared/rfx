@@ -1,8 +1,16 @@
 {
   "preflight": {
-    "issues": [],
+    "issues": [
+      {
+        "code": "ad_memory",
+        "loc": null,
+        "message": "AD memory estimate 0.72 GB (non-checkpointed) exceeds 85% of 0.50 GB available VRAM. Use plan_ad_memory() to choose a segmented checkpoint setting, reduce grid size, or reduce n_steps.",
+        "severity": "warning",
+        "source": null
+      }
+    ],
     "n_errors": 0,
-    "n_issues": 0,
+    "n_issues": 1,
     "ok": true
   }
 }
