@@ -134,6 +134,30 @@ H5-bis  CORRECTION to H5, written before the sweep was read and before the
       peaks. If it does not, the split is not clean, the arm is recorded as
       NON-CLOSING and no rho is quoted.
 
+    DECISIVE ARM for H5-bis (``auxpad``), pre-declared before it runs.
+    The 1-D auxiliary update functions are length-agnostic
+    (rfx/sources/tfsf.py:381-445 index the absorber as ``[:n]`` / ``[-n:]``),
+    so appending N zero cells to ``e1d``/``h1d`` moves the auxiliary absorber
+    N cells further from the target and changes NOTHING else: same 3-D grid,
+    same target, same TFSF/NTFF boxes, same source index, same direct
+    illumination. Under H5-bis the constant term acquires the round-trip
+    phase ``exp(-2 j k_num N dx)`` and NOTHING else moves; under H5-bis FALSE
+    the constant term does not know the auxiliary grid got longer.
+      (j) CONTROL, N = 41 (one free-space wavelength, round-trip phase
+          2 * 2 pi = 0): predicted NO change.
+          Gates: ``|arg(B_41/B_0)| <= 25 deg``, ``| |B_41|/|B_0| - 1 | <=
+          0.35``, ``max_x0 |sigma_41 - sigma_0| <= 0.20 dB``.
+          If the control fails, the padding is not inert, the arm is VOID and
+          is recorded as non-closing rather than read either way.
+      (k) TEST, N = 10 (round-trip phase ``2 k_num N dx``, computed from the
+          1-D Yee numerical wavenumber and printed with the result;
+          approximately 175.7 degrees at this operating point):
+          H5-bis TRUE  -> ``|arg(B_10/B_0) - phase_pred| <= 25 deg`` and
+                          ``| |B_10|/|B_0| - 1 | <= 0.35`` and
+                          ``| |A_10|/|A_0| - 1 | <= 0.05``.
+          H5-bis FALSE -> ``|arg(B_10/B_0)| <= 25 deg`` (the constant term
+                          does not rotate).
+
 Record-length / ring-down witness (mandatory before any DFT number is quoted)
 ----------------------------------------------------------------------------
 Arm ``record``: re-run the two x offsets carrying sigma_max and sigma_min at
@@ -741,11 +765,127 @@ def arm_auxecho(_args):
     return _emit("auxecho", out)
 
 
+AUXPAD_OFFSETS = list(range(-10, 11, 2))
+AUXPAD_N = (0, 41, 10)
+GATE_AUXPAD_PHASE_DEG = 25.0
+GATE_AUXPAD_MAG_REL = 0.35
+GATE_AUXPAD_A_REL = 0.05
+GATE_AUXPAD_CONTROL_DB = 0.20
+
+
+def _fit_rotating_plus_constant(offsets, e_vals, dx):
+    """Least squares fit of E(x0) = A exp(-2 j k x0) + B with k scanned."""
+    x0 = np.asarray(offsets, dtype=float) * dx
+    e_vals = np.asarray(e_vals)
+    k0 = 2 * np.pi * F0 / C0
+    best = None
+    for k in np.linspace(0.7 * k0, 1.4 * k0, 7001):
+        m = np.stack([np.exp(-2j * k * x0),
+                      np.ones_like(x0, dtype=complex)], axis=1)
+        coef, *_ = np.linalg.lstsq(m, e_vals, rcond=None)
+        resid = np.linalg.norm(e_vals - m @ coef) / np.linalg.norm(e_vals)
+        if best is None or resid < best[0]:
+            best = (float(resid), float(k), complex(coef[0]), complex(coef[1]))
+    return best
+
+
+def _aux_numerical_k(grid):
+    """1-D Yee numerical wavenumber at F0 on the auxiliary grid."""
+    dx, dt = grid.dx, grid.dt
+    s = np.sin(np.pi * F0 * dt) * dx / (C0 * dt)
+    return 2.0 * np.arcsin(np.clip(s, -1.0, 1.0)) / dx
+
+
+def arm_auxpad(_args):
+    """Move the 1-D auxiliary absorber N cells further out; nothing else."""
+    from rfx.sources.tfsf import init_tfsf as _init  # noqa: F401
+    results = {}
+    for pad in AUXPAD_N:
+        rows = []
+        for n in AUXPAD_OFFSETS:
+            grid, mats, n_steps, _, meta = build_case((n, 0, 0))
+            freqs_arr = np.array([F0], dtype=np.float64)
+            (cfg, st), box = _tfsf_and_ntff(grid, cpml_layers=CPML_LAYERS,
+                                            freqs=freqs_arr)
+            if pad:
+                z = jnp.zeros(pad, dtype=st.e1d.dtype)
+                st = st._replace(e1d=jnp.concatenate([st.e1d, z]),
+                                 h1d=jnp.concatenate([st.h1d, z]))
+            res = run(grid, mats, n_steps, boundary="cpml",
+                      tfsf=(cfg, st), ntff=box)
+            ff = compute_far_field(res.ntff_data, box, grid,
+                                   np.array([np.pi / 2]), np.array([np.pi]))
+            e_th = np.asarray(ff.E_theta, dtype=np.complex128)[0, 0, 0]
+            e_ph = np.asarray(ff.E_phi, dtype=np.complex128)[0, 0, 0]
+            e_inc = _incident_spectrum_amplitude(F0, BANDWIDTH, freqs_arr,
+                                                 grid.dt, n_steps)
+            mono = float(10.0 * np.log10(
+                4.0 * np.pi * (abs(e_th) ** 2 + abs(e_ph) ** 2)
+                / abs(e_inc[0]) ** 2))
+            rows.append({"offset": n, "monostatic_dbsm": mono,
+                         "E_theta": [e_th.real, e_th.imag],
+                         "aux_n_1d": int(np.asarray(st.e1d).shape[0]),
+                         "dx": meta["dx"], "n_steps": n_steps})
+            print(f"  pad={pad:3d} x{n:+3d} sigma = {mono:9.4f} dBsm")
+        dx = rows[0]["dx"]
+        resid, k_fit, a_fit, b_fit = _fit_rotating_plus_constant(
+            [r["offset"] for r in rows],
+            [complex(*r["E_theta"]) for r in rows], dx)
+        vals = [r["monostatic_dbsm"] for r in rows]
+        results[str(pad)] = {
+            "rows": rows, "resid": resid, "k_fit": k_fit,
+            "A": [a_fit.real, a_fit.imag], "B": [b_fit.real, b_fit.imag],
+            "abs_A": abs(a_fit), "abs_B": abs(b_fit),
+            "r": abs(b_fit) / abs(a_fit),
+            "pp_db": float(max(vals) - min(vals)),
+        }
+        print(f"  pad={pad}: resid {resid:.4f}, |A| {abs(a_fit):.4e}, "
+              f"|B| {abs(b_fit):.4e}, r {abs(b_fit) / abs(a_fit):.4f}, "
+              f"p-p {max(vals) - min(vals):.4f} dB")
+
+    dx = results["0"]["rows"][0]["dx"]
+    k_num = _aux_numerical_k(build_case((0, 0, 0))[0])
+    out = {"by_pad": results, "offsets": AUXPAD_OFFSETS,
+           "k_numerical_1d": float(k_num),
+           "gates": {"phase_deg": GATE_AUXPAD_PHASE_DEG,
+                     "mag_rel": GATE_AUXPAD_MAG_REL,
+                     "a_rel": GATE_AUXPAD_A_REL,
+                     "control_db": GATE_AUXPAD_CONTROL_DB}}
+    b0 = complex(*results["0"]["B"])
+    a0 = complex(*results["0"]["A"])
+    s0 = {r["offset"]: r["monostatic_dbsm"] for r in results["0"]["rows"]}
+    for pad in AUXPAD_N[1:]:
+        rp = results[str(pad)]
+        bp, ap = complex(*rp["B"]), complex(*rp["A"])
+        phase_pred = float(np.degrees(
+            (-2.0 * k_num * pad * dx) % (2 * np.pi)))
+        phase_pred = (phase_pred + 180.0) % 360.0 - 180.0
+        d_phase = float(np.degrees(np.angle(bp / b0)))
+        d_mag = abs(bp) / abs(b0) - 1.0
+        d_a = abs(ap) / abs(a0) - 1.0
+        d_sigma = max(abs(r["monostatic_dbsm"] - s0[r["offset"]])
+                      for r in rp["rows"])
+        out[f"pad_{pad}"] = {
+            "phase_pred_deg": phase_pred, "phase_meas_deg": d_phase,
+            "phase_residual_deg": float(
+                abs((d_phase - phase_pred + 180.0) % 360.0 - 180.0)),
+            "abs_B_rel": float(d_mag), "abs_A_rel": float(d_a),
+            "max_abs_dsigma_db": float(d_sigma),
+        }
+        print(f"[auxpad] N={pad}: arg(B_N/B_0) = {d_phase:+.1f} deg vs "
+              f"predicted {phase_pred:+.1f} deg (residual "
+              f"{out[f'pad_{pad}']['phase_residual_deg']:.1f} deg, gate "
+              f"{GATE_AUXPAD_PHASE_DEG}); |B| rel {d_mag:+.3f} "
+              f"(gate {GATE_AUXPAD_MAG_REL}); |A| rel {d_a:+.4f} "
+              f"(gate {GATE_AUXPAD_A_REL}); max|dsigma| {d_sigma:.4f} dB")
+    return _emit("auxpad", out)
+
+
 ARMS = {
     "raster": arm_raster, "equiv": arm_equiv, "origin": arm_origin,
     "xsweep": arm_xsweep, "ysweep": arm_ysweep, "vacuum": arm_vacuum,
     "record": arm_record, "energy": arm_energy, "cpmlladder": arm_cpmlladder,
-    "fit": arm_fit, "auxecho": arm_auxecho,
+    "fit": arm_fit, "auxecho": arm_auxecho, "auxpad": arm_auxpad,
 }
 
 
