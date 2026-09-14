@@ -253,6 +253,176 @@ def test_block_sources_and_input_checks():
             y.build(y.Yee3DSpec(nx=4, ny=4, nz=6, pml=(0, 0, 0, 0, 3, 3)))
 
 
+# ---------------------------------------------------------------------------
+# Regression: the rectangular curls must keep their tail rows.
+# ---------------------------------------------------------------------------
+
+def test_rectangular_curl_operators_keep_every_row_against_scipy():
+    """``Ch`` maps faces -> edges and is RECTANGULAR (n_edges > n_faces), so
+    a square scatter of its entries silently drops every row with edge id >=
+    n_faces (the last Ez edges) -- the defect found in the spiral track,
+    where a lumped port sitting on those edges read a wrong current. Gate:
+    ``h_from_e`` and ``curl_h`` against an explicit scipy.sparse assembly of
+    the same Ce / Ch entries (the reference applies the ``terms.ch_scale``
+    multiplier itself), single vector and (n, 2) block, with the z-PML on so
+    the curl entries are complex.
+
+    On this 4 x 5 x 6 grid: 523 edges, 434 faces, 1736 Ch entries of which
+    290 (89 distinct rows) are in the dropped range and carry 43 % (single)
+    / 45 % (block) of the reference's norm -- a truncated result misses the
+    largest reference entry outright, so the tolerance below does not have
+    to be tight to catch it. Measured worst relative disagreement 2.5e-16
+    (summation order only); gate 1e-12."""
+    with enable_x64():
+        spec = y.Yee3DSpec(nx=4, ny=5, nz=6, pml=(0, 0, 0, 0, 2, 2), pml_kappa_max=2.0)
+        m = y.build(spec)
+        assert m.n_edges > m.n_faces
+        tail = m.ch_rows >= m.n_faces
+        assert int(np.sum(tail)) > 0 and len(np.unique(m.ch_rows[tail])) > 0
+        rng = np.random.default_rng(11)
+        dx, dy, dz = (1e-4 * (1 + 0.4 * rng.random(n)) for n in (4, 5, 6))
+        f0 = 3e9
+        scale = 0.5 + rng.random(len(m.ch_rows))        # a non-trivial ch_scale
+        terms = y.BoundaryTerms(ch_scale=jnp.asarray(scale))
+        ce, ch, omega = y._curl_values(m, f0, dx, dy, dz)
+        assert np.max(np.abs(np.imag(np.asarray(ch)))) > 0      # PML stretch is live
+        ce_ref = sp.coo_matrix((np.asarray(ce), (m.ce_rows, m.ce_cols)),
+                               shape=(m.n_faces, m.n_edges)).tocsr()
+        ch_ref = sp.coo_matrix((np.asarray(ch) * scale, (m.ch_rows, m.ch_cols)),
+                               shape=(m.n_edges, m.n_faces)).tocsr()
+        for ncol in (None, 2):
+            shape = (m.n_edges,) if ncol is None else (m.n_edges, ncol)
+            e_flat = rng.standard_normal(shape) + 1j * rng.standard_normal(shape)
+            e = y.split_edges(m, jnp.asarray(e_flat))
+            # H = -curl E / (j omega mu0) on the FACES
+            h = y.h_from_e(m, f0, e, dx, dy, dz)
+            h_flat = np.concatenate([np.asarray(a).reshape(-1, *shape[1:]) for a in h])
+            h_want = (ce_ref @ e_flat) / (-1j * complex(omega) * y.MU0)
+            assert h_flat.shape == (m.n_faces,) + shape[1:]
+            assert np.max(np.abs(h_flat - h_want)) <= 1e-12 * np.max(np.abs(h_want))
+            # Ch H on the EDGES, with the ch_scale hook
+            got = np.asarray(y.curl_h(m, f0, h, dx, dy, dz, terms))
+            want = ch_ref @ h_want
+            assert got.shape == shape
+            assert np.max(np.abs(got - want)) <= 1e-12 * np.max(np.abs(want))
+            # the tail rows are populated, in both the reference and the result
+            assert np.linalg.norm(want[m.n_faces:]) > 0.3 * np.linalg.norm(want)
+            assert np.linalg.norm(got[m.n_faces:]) > 0.3 * np.linalg.norm(got)
+            # and the truncated (buggy) answer is nowhere near: > 50 % off
+            trunc = np.zeros_like(want)
+            trunc[:m.n_faces] = want[:m.n_faces]
+            assert np.max(np.abs(trunc - want)) > 0.5 * np.max(np.abs(want))
+            # without terms the scale drops out exactly
+            got0 = np.asarray(y.curl_h(m, f0, h, dx, dy, dz))
+            want0 = sp.coo_matrix((np.asarray(ch), (m.ch_rows, m.ch_cols)),
+                                  shape=(m.n_edges, m.n_faces)).tocsr() @ h_want
+            assert np.max(np.abs(got0 - want0)) <= 1e-12 * np.max(np.abs(want0))
+
+
+def _eps_on_edges_independent(nx, ny, nz, eps):
+    """Independent re-derivation of the edge permittivity: the arithmetic mean
+    of the (up to four) cells sharing an edge, boundary indices clamped.
+
+    Explicit per-edge index clamping, against the solver's pad-and-slice sum
+    in ``yee3d._eps_on_edges`` -- a different code path for the same rule."""
+    out = []
+    for c, shape in enumerate(y.edge_shapes(nx, ny, nz)):
+        a, b = (c + 1) % 3, (c + 2) % 3
+        lim = (nx, ny, nz)
+        arr = np.zeros(shape, np.complex128)
+        for ijk in np.ndindex(*shape):
+            acc = 0.0 + 0j
+            for da in (-1, 0):
+                for db in (-1, 0):
+                    cell = list(ijk)
+                    cell[a] = min(max(ijk[a] + da, 0), lim[a] - 1)
+                    cell[b] = min(max(ijk[b] + db, 0), lim[b] - 1)
+                    acc += eps[tuple(cell)]
+            arr[ijk] = 0.25 * acc
+        out.append(arr.ravel())
+    return np.concatenate(out)
+
+
+def test_assembled_operator_equals_ch_ce_minus_k0sq_eps():
+    """The assembled ``A`` must BE the composition of the two curls the field
+    post-processing uses: on every free edge
+
+        A = (Ch * ch_scale) @ Ce - k0^2 diag(eps_edge) + diag(diag_add),
+
+    with ``Ce``/``Ch`` re-assembled with scipy (they are checked entry by
+    entry against the same reference in the test above), ``eps_edge``
+    re-derived independently by per-edge index clamping, and PEC rows
+    (outer wall plus an interior iris) reduced to a unit diagonal. This is
+    what makes the rectangular-curl regression below a statement about the
+    system that is actually solved, not only about a helper: the SAME
+    ``ch_scale``-weighted ``Ch`` entries that ``curl_h`` is checked against
+    are shown to be the ones ``A`` is built from.
+
+    Increment over ``test_operator_is_the_product_of_the_two_curls`` above,
+    which checks the vacuum-hook case: the ``BoundaryTerms`` hooks
+    (``ch_scale``, ``diag_add``) are live here, interior PEC edges are in the
+    mask as well as the wall, and the edge permittivity is re-derived for
+    every edge instead of spot-checked at one.
+
+    Grid 5 x 3 x 7 with x- and y-PML (so the stretch is complex in two
+    directions), graded random steps, non-uniform complex eps_r, a complex
+    ``ch_scale`` and a non-zero ``diag_add``: 472 edges, 386 faces, 284 wall
+    plus 28 iris edges PEC, 168 free. Measured max|A - A_ref| / max|A_ref|
+    over the free block = 1.3e-16 (7.5e-9 absolute on a 5.6e7 peak); gate
+    1e-12. The curl-curl part carries the operator there (peak 5.6e7 against
+    k0^2 = 6.3e4), the independent eps map agrees with the solver's to 0.0
+    (same arithmetic, different indexing), and every PEC row is exactly
+    (1 on the diagonal, 0 elsewhere)."""
+    with enable_x64():
+        nx, ny, nz = 5, 3, 7
+        spec = y.Yee3DSpec(nx=nx, ny=ny, nz=nz, pml=(2, 2, 1, 1, 0, 0), pml_kappa_max=3.0)
+        m = y.build(spec)
+        rng = np.random.default_rng(5)
+        dx, dy, dz = (2e-4 * (1 + 0.5 * rng.random(n)) for n in (nx, ny, nz))
+        f0 = 12e9
+        eps_r = (1.0 + 3.0 * rng.random((nx, ny, nz))
+                 - 1j * rng.random((nx, ny, nz)))
+        scale = 0.3 + rng.random(len(m.ch_rows)) + 0.2j * rng.random(len(m.ch_rows))
+        diag_add = 1e3 * (rng.standard_normal(m.n_edges) + 1j * rng.standard_normal(m.n_edges))
+        cells = np.zeros((nx, ny, nz), bool)
+        cells[1, :, 3] = True                      # an interior iris -> extra PEC edges
+        pec = y.pec_edges_from_cells(spec, cells)
+        terms = y.BoundaryTerms(ch_scale=jnp.asarray(scale), diag_add=jnp.asarray(diag_add))
+
+        ce, ch, omega = y._curl_values(m, f0, dx, dy, dz)
+        ce_ref = sp.coo_matrix((np.asarray(ce), (m.ce_rows, m.ce_cols)),
+                               shape=(m.n_faces, m.n_edges)).tocsr()
+        ch_ref = sp.coo_matrix((np.asarray(ch) * scale, (m.ch_rows, m.ch_cols)),
+                               shape=(m.n_edges, m.n_faces)).tocsr()
+        eps_e = _eps_on_edges_independent(nx, ny, nz, eps_r)
+        assert np.max(np.abs(eps_e - np.asarray(y._eps_on_edges(m, jnp.asarray(eps_r))))) < 1e-14
+        k0 = float(omega) / y.C0
+        a_ref = (ch_ref @ ce_ref - k0 ** 2 * sp.diags(eps_e)
+                 + sp.diags(diag_add)).tocsr()
+
+        srcs = y.split_edges(m, jnp.zeros(m.n_edges, jnp.complex128))
+        data, _ = y.assemble(m, f0, jnp.asarray(eps_r), dx, dy, dz, srcs, pec, terms)
+        a = sp.coo_matrix((np.asarray(data), (m.rows, m.cols)),
+                          shape=(m.n_edges, m.n_edges)).tocsr()
+
+        # free = not on the outer wall and not on the iris (built here, not
+        # read back from the solver's own mask)
+        pec_flat = np.concatenate([np.asarray(p).ravel() for p in pec])
+        free = ~(m.wall | pec_flat)
+        assert 0 < int(free.sum()) < m.n_edges and int(pec_flat.sum()) > 0
+        proj = sp.diags(free.astype(float))
+        ref_block = proj @ a_ref @ proj
+        err = abs(proj @ (a - a_ref) @ proj).max()
+        assert err <= 1e-12 * abs(ref_block).max(), (err, abs(ref_block).max())
+        # the curl-curl part is what carries the operator: it is not a tiny
+        # correction on top of the k0^2 term
+        assert abs(proj @ (ch_ref @ ce_ref) @ proj).max() > 10 * k0 ** 2
+        # PEC rows: unit diagonal, nothing else
+        dense_pec = np.asarray(a[pec_flat].todense())
+        assert np.allclose(dense_pec.sum(axis=1), 1.0, atol=1e-12)
+        assert np.allclose(np.abs(dense_pec).sum(axis=1), 1.0, atol=1e-12)
+
+
 if __name__ == "__main__":
     t = time.time()
     pytest.main([__file__, "-q", "-p", "no:cacheprovider"])

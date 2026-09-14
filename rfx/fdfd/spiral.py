@@ -136,7 +136,7 @@ from rfx.fdfd import yee3d as y
 
 __all__ = [
     "SmallStack", "SpiralSpec", "SpiralModel", "SpiralResult", "LineMap",
-    "rect_spiral_edge_coordinates", "build_spiral", "spiral_lines", "breakpoint_gaps",
+    "rect_spiral_edge_coordinates", "build_spiral", "pad_lines", "spiral_lines", "breakpoint_gaps",
     "check_feasible", "solve_spiral", "nominal_record", "skin_depth", "leontovich_validity",
     "KEY_M2", "KEY_M1", "KEY_VIA",
 ]
@@ -223,7 +223,22 @@ class SpiralSpec:
     it OVER-corrects -- with one 10 um cell the de-embedded L_diff moves
     by +2.3 % while the raw L moves by only +0.76 % (+6.2 % de-embedded
     for two cells; measured at 100 MHz on the defaults). It is kept only
-    to reproduce that measurement."""
+    to reproduce that measurement.
+
+    ``pml_cells`` / ``pml_order`` / ``pml_kappa_max`` / ``pml_r0`` put a PML
+    on the four side walls and the lid (never on the ground, see
+    :attr:`pml`); ``pad_cells`` / ``pad_cells_z`` / ``pad_ratio`` instead
+    append geometrically growing cells outside the meshed box on those same
+    five faces (:func:`pad_lines`), which moves the PEC walls far away for a
+    few cells each (``pad_cells_z = 0`` means "same as ``pad_cells``").
+    Both default to OFF (the closed PEC box of the original model). They
+    were added for the wall-independence protocol of
+    ``validation/fdfd/spiral_convergence.py``; that study measured the PML to
+    be useless at 100 MHz (the quasi-static stretch is dominated by
+    ``sigma_w / (j omega eps0)``, ``pml_kappa_max`` has no effect at all and
+    ``L_dut`` moves 5-15 % non-monotonically with the PML depth) and the
+    padding to converge monotonically (+0.06 % from 4 to 6 cells at
+    ``base_dx = W``)."""
     n_turns: int = 2
     r_out: float = 60e-6
     spacing: float = 10e-6
@@ -235,6 +250,25 @@ class SpiralSpec:
     port_gap_cells: int = 1
     lead_stub_cells: int = 0
     z0: float = 50.0
+    pml_cells: int = 0
+    pml_order: int = 3
+    pml_kappa_max: float = 1.0
+    pml_r0: float = 1e-8
+    pad_cells: int = 0
+    pad_cells_z: int = 0
+    pad_ratio: float = 1.5
+
+    @property
+    def pml(self) -> tuple[int, int, int, int, int, int]:
+        """PML cell counts for :class:`rfx.fdfd.yee3d.Yee3DSpec`:
+        ``pml_cells`` on the four side walls and the lid, ZERO on ``z_lo``
+        -- the ground plane is the physical PEC of the fixture and must stay
+        a bare wall. ``pml_cells = 0`` (the default) is the closed PEC box
+        of the original model."""
+        p = int(self.pml_cells)
+        if p < 0:
+            raise ValueError("pml_cells must be >= 0")
+        return (p, p, p, p, 0, p)
 
     @property
     def theta(self) -> tuple[float, float, float]:
@@ -400,6 +434,35 @@ def _z_cell_range(z: np.ndarray, z0: float, z1: float) -> tuple[int, int]:
     return int(idx[0]), int(idx[-1]) + 1
 
 
+def pad_lines(lines: np.ndarray, n: int, ratio: float, lo: bool = True, hi: bool = True) -> np.ndarray:
+    """Append ``n`` geometrically growing cells (factor ``ratio``) outside
+    ``lines`` on the ``lo`` / ``hi`` end, starting from the end cell of
+    ``lines``: the cheap way to move a PEC wall far away (``n`` cells add
+    ``d_end (ratio^(n+1) - ratio) / (ratio - 1)``, e.g. 31 x the end cell
+    for ``n = 6``, ``ratio = 1.5``). ``n = 0`` returns the input unchanged."""
+    lines = np.asarray(lines, dtype=np.float64)
+    if n <= 0:
+        return lines
+    if ratio <= 1.0:
+        raise ValueError("pad_ratio must be > 1")
+    out = lines
+    if lo:
+        d, v, pre = lines[1] - lines[0], lines[0], []
+        for _ in range(int(n)):
+            d *= ratio
+            v -= d
+            pre.append(v)
+        out = np.concatenate([np.asarray(pre[::-1]), out])
+    if hi:
+        d, v, post = lines[-1] - lines[-2], out[-1], []
+        for _ in range(int(n)):
+            d *= ratio
+            v += d
+            post.append(v)
+        out = np.concatenate([out, np.asarray(post)])
+    return out
+
+
 def build_spiral(spec: SpiralSpec) -> SpiralModel:
     """Static model at the nominal ``theta`` (see the module doc)."""
     t0 = time.time()
@@ -416,6 +479,12 @@ def build_spiral(spec: SpiralSpec) -> SpiralModel:
     xhi, yhi = allp.max(axis=0) + spec.margin
     x_nom, y_nom = gds.mesh_lines(sp.polygons, (xlo, ylo, xhi, yhi), spec.dx, snap=True)
     z = gds.z_lines(stack, st.base_dz, metal_cells=st.metal_cells, z_min=0.0, z_max=st.z_top)
+    if spec.pad_cells:
+        # graded padding outside the meshed box: the four side walls and the
+        # lid move away, the GROUND (z = 0) stays where it is
+        x_nom = pad_lines(x_nom, spec.pad_cells, spec.pad_ratio)
+        y_nom = pad_lines(y_nom, spec.pad_cells, spec.pad_ratio)
+        z = pad_lines(z, spec.pad_cells_z or spec.pad_cells, spec.pad_ratio, lo=False, hi=True)
     nx, ny, nz = len(x_nom) - 1, len(y_nom) - 1, len(z) - 1
     if spec.port_gap_cells < 1:
         raise ValueError("port_gap_cells must be >= 1")
@@ -497,7 +566,8 @@ def build_spiral(spec: SpiralSpec) -> SpiralModel:
     }
     if np.any(cells["open"] & spiral_cells):
         raise AssertionError("lead columns / stubs overlap the spiral metal")
-    yee = y.build(y.Yee3DSpec(nx, ny, nz))
+    yee = y.build(y.Yee3DSpec(nx, ny, nz, pml=spec.pml, pml_order=spec.pml_order,
+                             pml_kappa_max=spec.pml_kappa_max, pml_r0=spec.pml_r0))
     pec = {k: y.pec_edges_from_cells(yee.spec, v) for k, v in cells.items()}
     # the port edges must be free in every fixture
     for k, masks in pec.items():
@@ -602,7 +672,15 @@ class SpiralResult(NamedTuple):
     z_lines: jax.Array
 
 
-def _fixture_s(model: SpiralModel, name: str, freq, eps_r, dx, dy, dz, z0, sigma_metal):
+def _fixture_s(model: SpiralModel, name: str, freq, eps_r, dx, dy, dz, z0, sigma_metal,
+               sigma_volumetric=None):
+    if sigma_volumetric is not None:
+        if sigma_metal is not None:
+            raise ValueError("sigma_volumetric and sigma_metal are alternative metal models")
+        omega = 2.0 * jnp.pi * jnp.asarray(freq, dtype=jnp.float64)
+        eps_c = 1.0 - 1j * jnp.asarray(sigma_volumetric, dtype=jnp.float64) / (omega * y.EPS0)
+        eps_v = jnp.where(jnp.asarray(model.cells[name]), eps_c, eps_r)
+        return p3.s_matrix(model.yee, freq, eps_v, dx, dy, dz, list(model.ports), z0, pec=None)
     if sigma_metal is None:
         return p3.s_matrix(model.yee, freq, eps_r, dx, dy, dz, list(model.ports), z0,
                            pec=model.pec[name])
@@ -613,7 +691,8 @@ def _fixture_s(model: SpiralModel, name: str, freq, eps_r, dx, dy, dz, z0, sigma
 
 
 def solve_spiral(model: SpiralModel, freq, theta=None, sigma_metal=None, sigma_si=0.0,
-                 z0=None, fixtures: Sequence[str] = ("dut", "open", "short")) -> SpiralResult:
+                 z0=None, fixtures: Sequence[str] = ("dut", "open", "short"),
+                 sigma_volumetric=None) -> SpiralResult:
     """Solve the three fixtures at ``freq`` (Hz) and ``theta`` (nominal if
     ``None``), de-embed and evaluate the metrics. ``sigma_metal`` (S/m,
     traced) switches the metal from PEC to Leontovich; ``sigma_si`` (S/m,
@@ -624,7 +703,17 @@ def solve_spiral(model: SpiralModel, freq, theta=None, sigma_metal=None, sigma_s
     when the skin depth is well below the metal thickness
     (:func:`leontovich_validity` << 1; copper on the default 2 um metal
     needs f >> 1.1 GHz) -- this is not checked here because both inputs
-    may be traced."""
+    may be traced.
+
+    ``sigma_volumetric`` (S/m, traced) is the THIRD metal model, added for
+    the validation study of ``validation/fdfd/spiral_convergence.py``: every
+    conductor cell of the fixture becomes a lossy dielectric ``eps_r = 1 -
+    j sigma / (omega eps0)`` and NO interior PEC edge mask is applied, so
+    the current density is resolved inside the metal. When the skin depth is
+    much larger than every cross-section dimension the current is uniform
+    and the extracted inductance includes the DC internal inductance --
+    exactly the model of the Greenhouse referee. It excludes
+    ``sigma_metal`` (the Leontovich sheet); the outer box walls stay PEC."""
     freq = jnp.asarray(freq, dtype=jnp.float64)
     z0 = model.spec.z0 if z0 is None else z0
     if theta is None:
@@ -635,7 +724,7 @@ def solve_spiral(model: SpiralModel, freq, theta=None, sigma_metal=None, sigma_s
     eps_r = jnp.asarray(model.eps_static) + jnp.asarray(model.si_cells, dtype=jnp.float64) * (
         -1j * jnp.asarray(sigma_si, dtype=jnp.float64) / (omega * y.EPS0))
     nan2 = jnp.full((2, 2), jnp.nan + 0j, dtype=jnp.complex128)
-    s = {name: _fixture_s(model, name, freq, eps_r, dx, dy, dz, z0, sigma_metal)
+    s = {name: _fixture_s(model, name, freq, eps_r, dx, dy, dz, z0, sigma_metal, sigma_volumetric)
          if name in fixtures else nan2 for name in ("dut", "open", "short")}
     f1 = freq[None]
     z_raw = de.s_to_z(s["dut"][:, :, None], z0)

@@ -152,8 +152,8 @@
       ]
     ]
   ],
-  "solve_seconds_three_fixtures": 6.2306389808654785,
-  "build_seconds": 0.10908079147338867,
+  "solve_seconds_three_fixtures": 6.149009943008423,
+  "build_seconds": 0.10442304611206055,
   "flatness_50_200_MHz": {
     "L_diff@5e+07": 9.60887462496852e-07,
     "L_se@5e+07": 2.3529917523353093e-06,
