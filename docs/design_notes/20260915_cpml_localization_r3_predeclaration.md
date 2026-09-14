@@ -475,3 +475,40 @@ values are dispatch/identity evidence, not validated physics.
   propose the localized kernel as the production default for both lanes.**
   The PI decision it asks for is lane-conditional dispatch (localized on
   the NU lane only) or a fusion-preserving slab update — a new declaration.
+
+### Full CPU battery on the final tree — three cross-trace bit-identity contracts fail, and why
+
+`pytest tests/unit tests/contracts -m "not gpu and not slow and not slow_physics"`
+(localization test file run separately): **3 failed, 6465 passed, 37 skipped,
+14 xfailed**. The three:
+
+- `tests/unit/autodiff/test_jacobian_fwd.py::test_g4_value_bit_identical_to_plain_call`
+  — batched value 5.852906781e-08 != plain 5.852903584e-08 (1 float32 ulp);
+- `::test_g4_value_bit_identical_many_output` — 960 / 961 elements mismatch
+  at the same scale;
+- `::test_g7_falsifier_severed_tape_reads_exactly_zero` — `val_severed ==
+  val_unsevered` fails by 1 ulp (5.8529036e-08 vs 5.8529068e-08); the
+  substantive assertions of that test (severed tangents exactly 0,
+  unsevered non-zero) are not reached.
+
+All three assert that the SAME forward physics, traced in two contexts
+(`jacobian_fwd` vs a plain call; with vs without `stop_gradient`), gives
+the same bits. With the frozen baseline kernel swapped back in, all three
+pass on this tree; with the localized kernel they pass under
+`--xla_disable_hlo_passes=fusion,algsimp --xla_cpu_enable_fast_math=false`
+(3 passed). So this is the reroll class once more — but a new face of it:
+**the localized kernel's compiled arithmetic depends on the trace context
+under default flags, where the baseline's did not.** Whole-array CPML
+corrections fuse the same way whether or not a jvp/batch dimension or a
+stop_gradient is present; slab-scoped updates evidently do not. Three
+committed contracts rely on that cross-trace bit-identity, and the property
+itself is one a user reasonably expects (a `jacobian_fwd` value equal to the
+plain forward value).
+
+This is the third reason this branch does not propose the localized kernel
+as the production default: (1) the uniform lane is 20-30 % slower; (2) the
+NU lane is 2.1-2.6x faster; (3) cross-trace bit-identity under default XLA
+flags is lost. A lane-conditional dispatch inherits (3) on the NU lane
+unless the slab update is made compilation-context-invariant (e.g. an
+`optimization_barrier`-scoped apply, to be declared and measured — it may
+also change the performance result). Not attempted here.
