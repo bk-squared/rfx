@@ -350,6 +350,9 @@ def nu_ghost_width(exchange_interval: int) -> int:
     value and the ``run(devices=...)`` / NU-forward preflights admit with
     it.
 
+    ``exchange_interval`` must be an integral number of steps: a
+    fractional K is refused rather than truncated (see the body).
+
     It used to be computed twice. ``rfx/api/_execute.py``'s NU-forward
     preflight (check 3) had ``ghost_width = floor(exchange_interval / 2) +
     1``, which agrees at ``K = 1, 2`` and is SHORT by one cell from ``K =
@@ -358,7 +361,19 @@ def nu_ghost_width(exchange_interval: int) -> int:
     (``decomposition-survey.md``, S2 "교환 간격 K>1") reaches the same
     ``g = K`` from the stencil side.
     """
+    # Refuse a non-integral K rather than truncating it. The old body did
+    # ``int(exchange_interval)`` FIRST, so nu_ghost_width(2.5) silently
+    # returned 2 -- a ghost halo half a cell short of the exchange it is
+    # sized for. It was consistent across both call sites, so it produced
+    # no disagreement, which is exactly why it needed finding by reading
+    # rather than by a failing test.
     k = int(exchange_interval)
+    if k != exchange_interval:
+        raise ValueError(
+            f"exchange_interval must be an integer number of steps, got "
+            f"{exchange_interval!r}: the ghost width IS the interval "
+            f"(g = K), so a fractional K has no halo that realizes it. "
+            f"Use {k} or {k + 1}.")
     if k < 1:
         raise ValueError(
             f"exchange_interval must be >= 1, got {exchange_interval!r}")
