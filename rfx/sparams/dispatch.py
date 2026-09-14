@@ -160,11 +160,16 @@ def _resolve_lane(self) -> str:
     in exactly one place.
     """
     c = _port_census(self)
-    others = dict(c)
 
     def _only(*keys) -> bool:
-        """True when every family OUTSIDE ``keys`` is unregistered."""
-        return not any(v for k, v in others.items() if k not in keys)
+        """True when every family OUTSIDE ``keys`` is unregistered.
+
+        Every row below is written as "this family is present AND nothing
+        else is", rather than as a list of the families it excludes, so a
+        NEW port family added to the census cannot silently fall into an
+        existing row -- it lands in the catch-all and raises.
+        """
+        return not any(v for k, v in c.items() if k not in keys)
 
     if not any(c.values()):
         raise ValueError(_no_ports_message())
