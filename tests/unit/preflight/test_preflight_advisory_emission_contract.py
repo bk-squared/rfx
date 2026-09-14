@@ -74,10 +74,23 @@ from rfx.topology import topology_optimize as _topology_optimize_fn
 from rfx import Simulation
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_PREFLIGHT_SRC = _REPO_ROOT / "rfx" / "api" / "_preflight.py"
+# The preflight check sites. #980 Phase 3 takes rfx/api/_preflight.py apart a
+# family at a time into rfx/preflight/, so the scan has to follow the code:
+# a moved check takes its emission sites out of the facade, and a scan that
+# still reads only the facade would record that as a SHRINKING surface and
+# invite someone to re-freeze the counts downward -- the surface would then be
+# unpinned wherever the code actually lives. Both paths are read and the sites
+# summed, so pure code motion leaves the frozen numbers below unchanged and
+# only a real new advisory moves them. Globbed, not listed, for the reason
+# tests/unit/nonuniform/test_dz_only_dispatch_contract.py gives at its own
+# rfx/preflight/ row: a later leg must not have to remember this file.
+_PREFLIGHT_SRCS = (
+    _REPO_ROOT / "rfx" / "api" / "_preflight.py",
+    *sorted((_REPO_ROOT / "rfx" / "preflight").glob("*.py")),
+)
 
 # ---------------------------------------------------------------------------
-# S1: frozen check-site surface (rfx/api/_preflight.py).
+# S1: frozen check-site surface (rfx/api/_preflight.py + rfx/preflight/).
 # ---------------------------------------------------------------------------
 
 _ISSUE_CLASSES = {
@@ -87,12 +100,16 @@ _ISSUE_CLASSES = {
 
 
 def _enumerate_emission_sites():
-    """AST walk over ``rfx/api/_preflight.py``: every construction of an
+    """AST walk over the preflight sources: every construction of an
     issue-carrying class, with its line, enclosing function, and whether
     its ``code=`` is a source literal or computed at runtime (``getattr``
     off a caught exception -- ``preflight()``'s own uncoded fallback).
+
+    Walks ``rfx/api/_preflight.py`` and every module of ``rfx/preflight/``
+    and returns one flat list, so a site that changes FILE under #980 Phase
+    3 does not change the totals frozen below. Line numbers are per file and
+    were never part of the freeze anyway.
     """
-    tree = ast.parse(_PREFLIGHT_SRC.read_text())
     sites = []
 
     class _V(ast.NodeVisitor):
@@ -119,7 +136,8 @@ def _enumerate_emission_sites():
                 sites.append((node.lineno, name, code, dynamic, enclosing))
             self.generic_visit(node)
 
-    _V().visit(tree)
+    for src in _PREFLIGHT_SRCS:
+        _V().visit(ast.parse(src.read_text()))
     return sites
 
 
@@ -321,6 +339,16 @@ def _enumerate_emission_sites():
 # #910 adds one shared finite-flux finding constructor. Its three explicit
 # slugs are passed to that dynamic-code emitter; they are frozen separately
 # below instead of being mistaken for constructor-local literal codes.
+# 113 -> 113 sites / 74 -> 74 literal codes, UNCHANGED, issue #980 Phase 3.
+# Recorded here because the scan's INPUT changed and the numbers did not.
+# The split moves whole check bodies out of rfx/api/_preflight.py into
+# rfx/preflight/, so the walk above now reads both paths and sums them. A
+# scan left on the facade alone would have watched this surface shrink by 17
+# sites on the MSL leg and by comparable counts on each leg after it, and the
+# only way to keep it green would have been to re-freeze the counts downward
+# -- which is how a surface stops being pinned where the code actually is.
+# Measured before and after the widening on the pre-move tree: 113 / 74 /
+# {preflight: 2, preflight_sparameters: 2, finding: 1} either way.
 _FROZEN_TOTAL_SITES = 113
 _FROZEN_LITERAL_CODE_COUNT = 74
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
@@ -346,8 +374,9 @@ _FROZEN_DYNAMIC_SITES_BY_FUNCTION = {
 def test_preflight_emission_site_surface_is_frozen():
     sites = _enumerate_emission_sites()
     assert len(sites) == _FROZEN_TOTAL_SITES, (
-        f"rfx/api/_preflight.py now has {len(sites)} PreflightWarning/"
-        "PreflightErrorWarning/PreflightIssue/PreflightConfigError "
+        f"rfx/api/_preflight.py + rfx/preflight/ now have {len(sites)} "
+        "PreflightWarning/PreflightErrorWarning/PreflightIssue/"
+        "PreflightConfigError "
         f"construction sites, not the frozen {_FROZEN_TOTAL_SITES} (issue "
         "#737/#742). Update _FROZEN_TOTAL_SITES in this file -- widening "
         "this surface without a conscious edit here is the failure mode "
