@@ -1329,8 +1329,17 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     #   flux monitor     result.flux_monitors is None
     #   periodic 'y'     max|dEz| 1.963800e-04 on a 1.090239e-03 peak (18%)
     #   x absorber       x_lo='cpml'/x_hi='pec', cpml_layers=8, 5x8x8 mm
-    #     spanning ranks (nx=14, nx_per=7): max|dEz| 2.207114e+00 on a
-    #                    4.416774e+00 peak (50%)
+    #                    (nx=14, nx_per=7, pad_x=0 -- an 8-layer window over
+    #                    the x-hi face by exactly ONE cell): max|dEz|
+    #                    2.207114e+00 on a 4.416774e+00 peak (50%).  Round 3
+    #                    re-attributed this one: the one-cell overflow is a
+    #                    measured no-op, so class 5 admits it and class 6
+    #                    (the phantom window at the x-hi PEC face) is what
+    #                    refuses it.  The class-5 band on this runner is
+    #                    x=('pec','pec') with y/z CPML at 7x8x8 mm (nx=8,
+    #                    nx_per=4), which on main died inside XLA with
+    #                    "mul got incompatible shapes for broadcasting:
+    #                    (8, 1, 1), (5, 25, 25)"
     #
     # Placed after the two FALLBACKS above for the same reason as in
     # distributed_v2: TFSF and waveguide models run whole on one device,

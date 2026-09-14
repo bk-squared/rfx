@@ -2495,7 +2495,9 @@ class _ExecuteMixin:
             # SCOPE NOTE (B0 round 2, 2026-09-14): this is a DIFFERENT
             # condition from the uniform lane's
             # ``rfx.runners.distributed_v2.check_x_absorber_fits_ranks``
-            # (``cpml_layers <= nx_per`` / ``<= nx_per - pad_x``, derived
+            # (``cpml_layers <= nx_per + 1`` / ``<= nx_per - pad_x + 1``,
+            # narrowed by one cell per face in round 3 because a one-cell
+            # window overflow is a measured no-op -- derived
             # from the literal window slices) and from
             # ``check_x_absorber_faces_are_absorbing``. ``cpml_layers*2 >=
             # nx_local_real`` is stricter for a rank that owns both outer
