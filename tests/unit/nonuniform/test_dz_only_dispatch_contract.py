@@ -300,6 +300,11 @@ def test_run_and_forward_dz_only_pick_nonuniform_lanes():
 # ---------------------------------------------------------------------------
 _DISPATCH_FILES = (
     "rfx/api/_sparams.py",
+    # #980 Phase 2 moves the compute_* bodies -- including the #811 dx/dy/dz
+    # profile predicates this scan exists for -- verbatim into per-family
+    # modules under rfx/sparams/; the scan follows the code by globbing the
+    # package so the class stays covered there instead of passing vacuously.
+    *sorted(str(p.relative_to(_REPO)) for p in (_REPO / "rfx/sparams").glob("*.py")),
     "rfx/api/_preflight.py",
     "rfx/api/_execute.py",
     "rfx/api/_compile.py",

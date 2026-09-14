@@ -2278,3 +2278,28 @@ def compute_coax_msl_transition(
         extractor="compute_coax_msl_transition",
         strict=strict_passivity,
     )
+
+
+# ---------------------------------------------------------------------------
+# Pre-move ``__qualname__``, restored explicitly.
+#
+# The four functions above were ``def``s in the ``_SparamMixin`` class body,
+# so their ``__qualname__`` read ``_SparamMixin.<name>``; a module-level
+# ``def`` gets the bare ``<name>`` instead. ``rfx/api/__init__.py`` rewrites
+# exactly ``_SparamMixin.<name>`` -> ``Simulation.<name>`` at
+# class-composition time so that a bad keyword argument reports
+# ``Simulation.compute_coaxial_two_port() got an unexpected keyword
+# argument``, and it SKIPS any function whose qualname does not match that
+# pattern. Leaving the bare name here would therefore change those TypeError
+# messages -- a user-visible behaviour change in a pure code-motion step.
+# ``tests/unit/autodiff/test_design_mask_removed.py
+# ::test_no_public_simulation_method_leaks_a_mixin_class_name`` pins it.
+# ---------------------------------------------------------------------------
+compute_coaxial_s_matrix.__qualname__ = "_SparamMixin.compute_coaxial_s_matrix"
+compute_coaxial_line_reflection.__qualname__ = (
+    "_SparamMixin.compute_coaxial_line_reflection"
+)
+compute_coaxial_two_port.__qualname__ = "_SparamMixin.compute_coaxial_two_port"
+compute_coax_msl_transition.__qualname__ = (
+    "_SparamMixin.compute_coax_msl_transition"
+)
