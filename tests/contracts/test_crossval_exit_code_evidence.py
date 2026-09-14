@@ -323,11 +323,17 @@ def test_a_swallowed_sys_exit_is_the_documented_last_call_boundary(
     """The wrapper records the last ``sys.exit`` CALL, not the exit status.
 
     A ``sys.exit`` that something catches and does not re-raise still counts,
-    so this process returns 0 while its record is amended to 2. The five
+    so this process returns 0 while its record is amended to 2. The six
     migrated cases cannot reach this -- each one's last act is
     ``sys.exit(rc)``, and last-call-wins is then the right reading -- but the
     helper is offered as the road for future cases, so the boundary is pinned
     here the same way ``os._exit`` is, instead of living only in prose.
+
+    The same reading applies to a ``sys.exit`` on a WORKER THREAD, which ends
+    that thread and not the process: the wrapper counts the call, so such a
+    case returns 0 with its record amended to the thread's code. Also
+    unreachable in the six -- all decide and exit on the main thread -- and
+    stated in the helper's docstring beside this one.
     """
     record = tmp_path / "crossval.json"
     script = tmp_path / "cv_swallowed.py"
@@ -705,6 +711,15 @@ def test_no_crossval_script_writes_exit_code_into_a_document_by_hand() -> None:
 
     A hand-written ``"exit_code": rc`` is a second copy of the process outcome
     that no finalizer owns -- exactly the shape #946 reports.
+
+    Limit, stated so nobody reads it as airtight: the scan matches the LITERAL
+    key, as a dict key or a subscript target. ``doc[verdict][key] = rc`` with
+    ``key = "exit_code"``, a ``dict(**{...})`` splat or a ``json.dumps`` of a
+    built-up mapping all slip through. It is a tripwire on the shape a person
+    actually writes, not a proof of absence; the evidence-side enumeration in
+    ``tests/crossval/test_crossval_exit_code_is_the_process_exit_code.py``
+    (``test_no_committed_record_carries_an_exit_code_from_an_undeclared_case``)
+    is the check that does not depend on the spelling.
     """
     offenders = {
         rel: _hand_written_exit_code_keys(tree)
@@ -749,9 +764,11 @@ def test_writers_leave_through_sys_exit_only() -> None:
 
     ``raise SystemExit(n)`` is handled by CPython before ``sys.excepthook``
     runs, and ``os._exit`` skips ``atexit`` entirely, so either one would make
-    the persisted code unverifiable for the case that used it. The rest of the
-    crossval suite may keep using ``raise SystemExit`` -- those scripts write
-    no exit code into a record.
+    the persisted code unverifiable for the case that used it. The builtins
+    ``exit()`` / ``quit()`` are the same door wearing ``sys.exit``'s face:
+    ``site.Quitter.__call__`` raises SystemExit, so they are caught here too.
+    The rest of the crossval suite may keep using ``raise SystemExit`` --
+    those scripts write no exit code into a record.
     """
     problems: "dict[str, list[str]]" = {}
     for rel, tree in _crossval_sources():
@@ -759,7 +776,16 @@ def test_writers_leave_through_sys_exit_only() -> None:
             continue
         found = []
         for node in ast.walk(tree):
-            if isinstance(node, ast.Raise):
+            if (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id in ("exit", "quit")):
+                # site.py's builtins raise SystemExit directly, so they leave
+                # by the one door the wrapper cannot see -- and they read like
+                # sys.exit, which is what makes them worth naming (review
+                # round 1, P3-2).
+                found.append("builtin %s() at line %d"
+                             % (node.func.id, node.lineno))
+            elif isinstance(node, ast.Raise):
                 exc = node.exc
                 name = None
                 if isinstance(exc, ast.Call) and isinstance(exc.func, ast.Name):
@@ -832,6 +858,29 @@ def test_the_case_that_commits_that_order_is_the_one_that_reserves() -> None:
     assert reserved, (
         "24_nu_rect_cavity_pozar.py no longer reserves its verdict slots, so "
         "a re-run reorders the block against its committed records")
+
+
+def test_no_case_script_passes_arm_explicitly() -> None:
+    """``arm=`` is a test-only override; a case that passes it is off the road.
+
+    ``write_record(..., arm=False)`` persists the record and arms nothing, and
+    ``arm=True`` forces arming from a host whose exit status is not the case's
+    verdict. Either one in a case script turns the mechanism off (or points it
+    at the wrong process) with no notice at all -- the ``EXIT-CODE EVIDENCE
+    UNARMED`` warning only fires when arming was REFUSED, not when it was
+    waived. So the keyword is a test-only knob, and this says so where it can
+    fail (review round 1, P3-4).
+    """
+    offenders: "dict[str, list[int]]" = {}
+    for rel, tree in _crossval_sources():
+        lines = [node.lineno for node in ast.walk(tree)
+                 if isinstance(node, ast.Call)
+                 for kw in node.keywords if kw.arg == "arm"]
+        if lines:
+            offenders[rel] = sorted(lines)
+    assert offenders == {}, (
+        "arm= is a test-only override of the #946 arming predicate; a case "
+        "script must let write_record decide: %s" % offenders)
 
 
 def test_the_helper_is_not_itself_a_crossval_case() -> None:

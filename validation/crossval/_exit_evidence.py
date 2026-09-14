@@ -28,6 +28,9 @@ What the finalizer can see:
 ===========================  ==================================================
 ``sys.exit(code)``           a wrapper on ``sys.exit`` records the CALL
 uncaught exception           a ``sys.excepthook`` wrapper records status 1
+``KeyboardInterrupt``        status 130, not 1: CPython restores the default
+                             SIGINT handler and re-raises the signal at itself,
+                             so 128+SIGINT is what the parent sees
 normal completion            status 0
 ===========================  ==================================================
 
@@ -49,6 +52,21 @@ SystemExit before ``sys.excepthook`` is consulted. The second is closed by
 contract, not by this module: ``tests/contracts/test_crossval_exit_code_evidence.py``
 requires every script that writes an exit-code record to leave through
 ``sys.exit`` and to route the write through ``write_record``.
+
+A third, of the same family as the swallowed exit above: ``sys.exit`` called
+on a WORKER THREAD raises SystemExit in that thread only and does not end the
+process, yet the wrapper -- which records the call, not the status -- counts
+it. A case that exits from a thread and then finishes normally returns 0 with
+its record amended to the thread's code. Unreachable in the six migrated
+cases, all of which decide and exit on the main thread; stated so the
+guarantee is not read wider than it is, and pinned by
+``test_a_swallowed_sys_exit_is_the_documented_last_call_boundary``'s sibling
+in the contract file.
+
+And one the module can only REPORT, not prevent: something that replaces
+``sys.exit`` or ``sys.excepthook`` after this module wrapped them and does not
+chain. ``_finalize`` says so on stderr when it finds a wrapper displaced and
+records still armed.
 
 WHEN THE FINALIZER ARMS. Two conditions, both necessary. The caller's module
 ``__name__`` must be ``"__main__"``, AND the caller's globals must be the
@@ -158,6 +176,10 @@ _armed: "dict[str, _Armed]" = {}
 _observed_code: "int | None" = None
 _observed_via: str = "normal completion"
 _installed = False
+#: The wrappers this module installed, so the finalizer can say whether they
+#: are still the ones in place (see ``_finalize``).
+_our_exit = None
+_our_hook = None
 
 
 def normalize_exit_code(code: Any) -> int:
@@ -249,7 +271,7 @@ def _install() -> None:
     another name) observes the same exits instead of silently holding records
     it can never amend.
     """
-    global _installed
+    global _installed, _our_exit, _our_hook
     if _installed:
         return
     _installed = True
@@ -269,11 +291,19 @@ def _install() -> None:
         # so the isinstance branch is only for a hook chained ahead of ours.
         if isinstance(exc, SystemExit):
             _observe(exc.code, "SystemExit")
+        elif issubclass(exc_type, KeyboardInterrupt):
+            # CPython does not exit 1 on Ctrl-C: it restores the default SIGINT
+            # handler and re-raises the signal at itself, so the parent sees
+            # 128+SIGINT = 130. Recording 1 here would put a status in the
+            # record that no parent ever saw.
+            _observe(130, "KeyboardInterrupt")
         else:
             _observe(1, "uncaught %s" % exc_type.__name__)
         previous_hook(exc_type, exc, tb)
 
     sys.excepthook = _tracking_excepthook
+    _our_exit = _tracking_exit
+    _our_hook = _tracking_excepthook
     atexit.register(_finalize)
 
 
@@ -284,15 +314,51 @@ def _install() -> None:
 SELFTEST_ENV = "RFX_EXIT_EVIDENCE_SELFTEST"
 
 
-def _selftest_late_exit(record_path: str, declared: int) -> None:
-    """Leave by a divergent door right after the record was persisted.
+EVIDENCE_TREE = os.path.dirname(os.path.abspath(__file__))
 
-    The defect #946 reports is an exit path added BETWEEN the write and the
-    script's own ``sys.exit``. Nothing in a passing run exercises it, so the
-    contract test needs a way to create one in the real cases -- cv01 and
-    cv02 above all, the two whose writers sit ~90 and ~250 lines ahead of
-    their exits. This is that way, and it fires here, at the first statement
-    after the write, which is exactly where such a path would be added.
+
+def is_inside_evidence_tree(path: str) -> bool:
+    """Whether ``path`` lands inside ``validation/crossval/``.
+
+    One spelling, so every guard that has to keep a write out of the committed
+    evidence tree asks the same question: the self-test knob below, and the
+    ``--replay`` out-dir check in the case scripts.
+    """
+    target = os.path.abspath(path)
+    try:
+        return os.path.commonpath([target, EVIDENCE_TREE]) == EVIDENCE_TREE
+    except ValueError:                      # different roots (never on POSIX)
+        return False
+
+
+def refuse_evidence_tree(path: str, what: str) -> str:
+    """Return ``abspath(path)``, or refuse it for being committed evidence.
+
+    ``what`` names the caller's knob (``"--out-dir"``, the env var) so the
+    message says which thing to point somewhere else. Raises before anything
+    is written -- a guard that fires after the write is not a guard, it is a
+    report (#967, PR #977).
+    """
+    target = os.path.abspath(path)
+    if is_inside_evidence_tree(target):
+        raise RuntimeError(
+            "%s refuses %s: it is inside the committed crossval evidence tree "
+            "%s, and nothing here may rewrite a retained record. Point it at a "
+            "directory outside that tree (#967 / PR #977)."
+            % (what, target, EVIDENCE_TREE))
+    return target
+
+
+def _selftest_mode(record_path: str) -> "str | None":
+    """Resolve ``RFX_EXIT_EVIDENCE_SELFTEST`` for this record, BEFORE the write.
+
+    Everything that can refuse -- a malformed spec, an unknown mode, a
+    non-numeric status, a record inside the evidence tree -- refuses HERE,
+    with nothing persisted and nothing armed. The first cut checked the
+    evidence tree after the write instead, so the refusal arrived as an
+    uncaught exception and the finalizer amended the very record the guard
+    existed to protect (review round 1, P2-2). Returns the mode to act on, or
+    ``None`` when the knob is off or names some other record.
 
     Off unless ``RFX_EXIT_EVIDENCE_SELFTEST`` is set, and then only for the
     ONE record it names::
@@ -302,40 +368,55 @@ def _selftest_late_exit(record_path: str, declared: int) -> None:
 
     Naming the absolute path is the guard: a variable left set in a CI
     environment cannot fire on a record it does not name, and the only place
-    the path is known is the test that just chose it. On top of that the hook
-    REFUSES outright for any record under ``validation/crossval/`` -- the
-    committed evidence tree -- so this knob can never be the thing that
-    rewrites a retained record (#967, PR #977).
+    the path is known is the test that just chose it.
     """
     spec = os.environ.get(SELFTEST_ENV)
     if not spec:
-        return
-    mode, _, target = spec.partition("|")
-    if not target:
+        return None
+    mode, sep, target = spec.partition("|")
+    if not sep or not target:
         raise ValueError(
             "%s must be '<mode>|<absolute record path>', got %r"
             % (SELFTEST_ENV, spec))
-    if os.path.abspath(target) != record_path:
+    if os.path.abspath(target) != os.path.abspath(record_path):
         _warn("EXIT-CODE SELFTEST IGNORED: %s names %s, this record is %s"
-              % (SELFTEST_ENV, os.path.abspath(target), record_path))
+              % (SELFTEST_ENV, os.path.abspath(target),
+                 os.path.abspath(record_path)))
+        return None
+    refuse_evidence_tree(record_path, SELFTEST_ENV)
+    if mode == "raise":
+        return mode
+    if mode.startswith("exit:"):
+        int(mode[len("exit:"):])            # reject a bad status now, not later
+        return mode
+    raise ValueError("unknown %s mode %r (want 'raise' or 'exit:<n>')"
+                     % (SELFTEST_ENV, mode))
+
+
+def _selftest_late_exit(record_path: str, declared: int,
+                        mode: "str | None") -> None:
+    """Leave by a divergent door right after the record was persisted.
+
+    The defect #946 reports is an exit path added BETWEEN the write and the
+    script's own ``sys.exit``. Nothing in a passing run exercises it, so the
+    contract test needs a way to create one in the real cases -- cv01 and
+    cv02 above all, the two whose writers sit ~90 and ~250 lines ahead of
+    their exits. This is that way, and it fires here, at the first statement
+    after the write, which is exactly where such a path would be added.
+
+    ``mode`` comes from ``_selftest_mode``, which already refused everything
+    refusable before the write happened. This function only acts.
+    """
+    if mode is None:
         return
-    here = os.path.dirname(os.path.abspath(__file__))
-    if os.path.commonpath([record_path, here]) == here:
-        raise RuntimeError(
-            "%s refuses to fire on %s: it is inside the committed crossval "
-            "evidence tree %s. Point the case at an --out-dir outside it "
-            "(#967 / PR #977)." % (SELFTEST_ENV, record_path, here))
     _warn("EXIT-CODE SELFTEST: %s persisted declaring exit %d; leaving by "
           "'%s' instead (issue #946 contract test)"
-          % (record_path, declared, mode))
+          % (os.path.abspath(record_path), declared, mode))
     if mode == "raise":
         raise RuntimeError(
             "forced late failure after the record was written (%s=%s)"
-            % (SELFTEST_ENV, spec))
-    if mode.startswith("exit:"):
-        sys.exit(int(mode[len("exit:"):]))
-    raise ValueError("unknown %s mode %r (want 'raise' or 'exit:<n>')"
-                     % (SELFTEST_ENV, mode))
+            % (SELFTEST_ENV, os.environ.get(SELFTEST_ENV)))
+    sys.exit(int(mode[len("exit:"):]))
 
 
 def write_record(path: str, doc: dict, *, exit_code: Any,
@@ -360,6 +441,9 @@ def write_record(path: str, doc: dict, *, exit_code: Any,
     Returns the normalized exit code, for the caller to ``sys.exit()`` or
     ``return``.
     """
+    # Before the document is touched and before anything reaches disk: a
+    # self-test knob that must refuse has to refuse with nothing written.
+    selftest = _selftest_mode(path)
     arm_was_explicit = arm is not None
     refusal = _arming_refusal(sys._getframe(1).f_globals)
     if arm is None:
@@ -391,7 +475,7 @@ def write_record(path: str, doc: dict, *, exit_code: Any,
             "a different status (issue #946). Call write_record from the case "
             "script's own body, and run that script as the program."
             % (os.path.abspath(path), code, refusal))
-    _selftest_late_exit(os.path.abspath(path), code)
+    _selftest_late_exit(path, code, selftest)
     return code
 
 
@@ -487,10 +571,39 @@ def _reconcile(arm: _Armed, actual: int, via: str) -> None:
 def _finalize() -> None:
     actual = 0 if _observed_code is None else _observed_code
     via = _observed_via
+    if _armed:
+        _warn_if_observation_was_displaced()
     for arm in list(_armed.values()):
         if arm.declared == actual:
             continue
         _reconcile(arm, actual, via)
+
+
+def _warn_if_observation_was_displaced() -> None:
+    """Say so if something replaced a wrapper after this module installed it.
+
+    ``_install`` chains, so a wrapper installed BEFORE ours is still seen. One
+    installed AFTER ours is only seen if IT chains -- and if it does not, this
+    module observed nothing and the records it holds keep the code their
+    verdict stage declared, silently. That is the pre-#946 state with no
+    signal, so there is a signal. It cannot tell a chaining replacement from a
+    swallowing one, and says which it is checking rather than asserting harm.
+    """
+    displaced = []
+    if _our_exit is not None and sys.exit is not _our_exit:
+        displaced.append("sys.exit")
+    if _our_hook is not None and sys.excepthook is not _our_hook:
+        displaced.append("sys.excepthook")
+    if not displaced:
+        return
+    _warn(
+        "EXIT-CODE OBSERVATION MAY BE INCOMPLETE: %s %s replaced after this "
+        "module wrapped %s, and a replacement that does not chain to the "
+        "wrapper hides the status from %d armed record(s). The code(s) below "
+        "are what was observed, which may be less than what happened "
+        "(issue #946)."
+        % (" and ".join(displaced), "were" if len(displaced) > 1 else "was",
+           "them" if len(displaced) > 1 else "it", len(_armed)))
 
 
 def _reset_for_tests() -> None:

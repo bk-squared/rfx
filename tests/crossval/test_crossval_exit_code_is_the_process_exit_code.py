@@ -285,28 +285,192 @@ def _load_helper():
     return _exit_evidence
 
 
-def test_the_forced_exit_knob_refuses_a_record_inside_the_evidence_tree(
-        monkeypatch: pytest.MonkeyPatch) -> None:
+FORCED_WRITE_FIXTURE = '''\
+import sys
+
+sys.path.insert(0, {crossval_dir!r})
+import _exit_evidence
+
+doc = {{"measured": {{"x": 1}}, "verdict": {{"judge_passed": True}}}}
+rc = _exit_evidence.write_record({record!r}, doc, exit_code=0)
+print("record written, declared exit", rc)
+sys.exit(rc)
+'''
+
+INTERRUPTED_FIXTURE = '''\
+import sys
+
+sys.path.insert(0, {crossval_dir!r})
+import _exit_evidence
+
+_exit_evidence.write_record({record!r}, {{"verdict": {{}}}}, exit_code=0)
+raise KeyboardInterrupt
+'''
+
+DISPLACED_HOOK_FIXTURE = '''\
+import sys
+
+sys.path.insert(0, {crossval_dir!r})
+import _exit_evidence
+
+_exit_evidence.write_record({record!r}, {{"verdict": {{}}}}, exit_code=0)
+sys.excepthook = lambda *a: None          # installed AFTER, does NOT chain
+raise RuntimeError("the tail blew up")
+'''
+
+
+def test_the_forced_exit_knob_refuses_before_it_writes_anything(
+        tmp_path: Path) -> None:
     """#967 / PR #977: no test may rewrite a retained crossval record.
 
-    The forcing hook is the one new way to end a case's run abnormally, and so
+    The forcing knob is the one new way to end a case's run abnormally, and so
     the one new way a test could leave a committed record amended. It refuses
-    by path. Asserted against the hook directly, with no write anywhere: the
-    guard has to hold before anything touches the tree, and a test that
-    demonstrated it by clobbering a real record would be the very defect
-    PR #977 closed.
+    by path -- and the refusal has to come BEFORE the write, not after. The
+    first cut checked after, so the refusal arrived as an uncaught exception
+    and the finalizer amended the very record the guard existed to protect: a
+    real committed record went from `exit_code 0` to `1` with a reconciliation
+    block attached (review round 1, P2-2).
+
+    Driven end to end in a subprocess, because the defect lived in the ORDER
+    of two statements inside ``write_record`` and calling the guard on its own
+    could not see it.
+
+    The write is aimed at a path that does not exist, in the same committed
+    directory as cv01's record rather than at the record itself. The guard is
+    by directory, so the probe proves the same thing -- and a regression then
+    leaves one stray file that this test deletes, instead of a clobbered
+    retained record it would have to restore. Measured, not hypothetical: the
+    first version of this test aimed at cv01's record, and verifying it by
+    reinstating the defect overwrote that record with the fixture's two-key
+    document.
     """
-    helper = _load_helper()
-    victim = CROSSVAL_DIR / "_01_waveguide_bend_results" / "crossval.json"
-    before = victim.read_bytes()
-    monkeypatch.setenv(SELFTEST_ENV, f"exit:3|{victim}")
+    results = CROSSVAL_DIR / "_01_waveguide_bend_results"
+    committed = results / "crossval.json"
+    committed_before = committed.read_bytes()
+    probe = results / "_946_selftest_guard_probe.json"
+    assert not probe.exists(), f"stale probe left behind: {probe}"
+    fixture = tmp_path / "writer.py"
+    fixture.write_text(FORCED_WRITE_FIXTURE.format(
+        crossval_dir=str(CROSSVAL_DIR), record=str(probe)))
+    env = dict(os.environ)
+    env[SELFTEST_ENV] = f"exit:3|{probe}"
 
-    with pytest.raises(RuntimeError) as excinfo:
-        helper._selftest_late_exit(str(victim), 0)
+    try:
+        proc = subprocess.run([sys.executable, str(fixture)],
+                              cwd=str(tmp_path), env=env, capture_output=True,
+                              text=True, timeout=120)
+        written = probe.exists()
+    finally:
+        probe.unlink(missing_ok=True)
 
-    assert "refuses to fire" in str(excinfo.value)
-    assert "#967" in str(excinfo.value)
-    assert victim.read_bytes() == before
+    assert proc.returncode not in (0, 3)
+    assert "refuses" in proc.stderr and "#967" in proc.stderr
+    # Nothing written, so nothing armed, so nothing amended.
+    assert not written, (
+        "the guard fired, but only AFTER write_record had already put a file "
+        "into the committed evidence tree -- which is the whole defect")
+    assert "record written" not in proc.stdout
+    assert "EXIT-CODE RECONCILED" not in proc.stderr
+    assert committed.read_bytes() == committed_before
+
+
+@pytest.mark.parametrize("case", sorted(REPLAY_CASES))
+def test_a_replay_refuses_an_out_dir_inside_the_evidence_tree(
+        case: str) -> None:
+    """The same guard on the other knob that names a write target.
+
+    ``--replay --out-dir`` took its path verbatim, so a replay could be aimed
+    at a case's own committed results directory and overwrite the record it
+    had just re-judged -- and a re-judge is not a reproduction (cv02's differs
+    from the committed one, post-#945 keys) (review round 1, P2-1). The
+    refusal is the helper's single spelling of "inside validation/crossval/",
+    the same one the self-test knob asks.
+
+    Aimed at a directory that does not exist inside the tree rather than at
+    the case's own results directory: the guard is by tree, so the probe
+    proves the same thing, and a regression leaves one stray directory this
+    test removes instead of a clobbered retained record.
+    """
+    script, source = REPLAY_CASES[case]
+    before = source.read_bytes()
+    probe = CROSSVAL_DIR / f"_946_replay_guard_probe_{case}"
+    assert not probe.exists(), f"stale probe left behind: {probe}"
+
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(script), "--replay", str(source),
+             "--out-dir", str(probe)],
+            cwd=str(REPO_ROOT), capture_output=True, text=True, timeout=600)
+        written = sorted(q.name for q in probe.glob("*")) if probe.exists() else None
+    finally:
+        if probe.exists():
+            for stray in probe.glob("*"):
+                stray.unlink()
+            probe.rmdir()
+
+    assert proc.returncode != 0
+    assert "--out-dir refuses" in proc.stderr
+    assert "#967" in proc.stderr
+    assert written is None, (
+        f"--out-dir was refused, but only after writing {written} into the "
+        "committed evidence tree")
+    assert source.read_bytes() == before
+
+
+def test_a_keyboard_interrupt_is_recorded_as_the_status_a_parent_sees(
+        tmp_path: Path) -> None:
+    """Ctrl-C is 130, not 1.
+
+    CPython does not exit 1 on ``KeyboardInterrupt``: it restores the default
+    SIGINT handler and re-raises the signal at itself, so the parent sees
+    128+SIGINT. Recording 1 -- what a generic "uncaught exception" branch
+    gives -- would put a status in the record that no parent ever saw
+    (review round 1, P3-1).
+    """
+    record = tmp_path / "crossval.json"
+    script = tmp_path / "interrupted.py"
+    script.write_text(INTERRUPTED_FIXTURE.format(
+        crossval_dir=str(CROSSVAL_DIR), record=str(record)))
+
+    proc = subprocess.run([sys.executable, str(script)], cwd=str(tmp_path),
+                          capture_output=True, text=True, timeout=120)
+    doc = json.loads(record.read_text())
+
+    assert proc.returncode in (130, -2), proc.stderr[-2000:]
+    assert doc["verdict"]["exit_code"] == 130
+    assert doc["verdict"]["exit_code_declared"] == 0
+    assert doc["verdict"]["exit_code_reconciliation"]["observed_via"] == (
+        "KeyboardInterrupt")
+
+
+def test_a_displaced_wrapper_is_announced_rather_than_assumed_harmless(
+        tmp_path: Path) -> None:
+    """A hook installed after ours, that does not chain, hides the status.
+
+    ``_install`` chains to whatever was there before, so a wrapper installed
+    EARLIER is still observed. One installed LATER is observed only if it
+    chains -- and if it does not, this module sees nothing and the record
+    quietly keeps its declared code, which is the pre-#946 state with no
+    signal. So there is a signal (review round 1, P3-3). It cannot tell a
+    chaining replacement from a swallowing one, and names what it checked
+    rather than claiming harm.
+    """
+    record = tmp_path / "crossval.json"
+    script = tmp_path / "displaced.py"
+    script.write_text(DISPLACED_HOOK_FIXTURE.format(
+        crossval_dir=str(CROSSVAL_DIR), record=str(record)))
+
+    proc = subprocess.run([sys.executable, str(script)], cwd=str(tmp_path),
+                          capture_output=True, text=True, timeout=120)
+
+    assert "EXIT-CODE OBSERVATION MAY BE INCOMPLETE" in proc.stderr
+    assert "sys.excepthook" in proc.stderr
+    # And the honest consequence the warning exists for: the status was not
+    # observed, so the record keeps what it declared while the process
+    # returned 1. The warning is the only thing standing between that and
+    # silence.
+    assert proc.returncode == 1
+    assert json.loads(record.read_text())["verdict"]["exit_code"] == 0
 
 
 def test_the_forced_exit_knob_ignores_a_record_it_does_not_name(

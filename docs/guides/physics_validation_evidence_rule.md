@@ -71,12 +71,20 @@ Two tests compare the two numbers, and both are needed:
   cannot see an exit taken by another route, which is why #946 stayed open
   after PR #999 shipped one.
 
+Nothing that re-judges a record may write into `validation/crossval/`. cv01's
+and cv02's `--replay` and the contract test's forced-exit knob both refuse an
+absolute path inside that tree, through one helper
+(`_exit_evidence.refuse_evidence_tree`), and both refuse **before** anything
+reaches disk — a guard that fires after the write is a report, not a guard.
+
 The one writer deliberately outside this rule is
 `scripts/crossval/merge_cv26_arm_shards.py`: it assembles a case verdict from
 shards that already ran, so the `exit_code` it writes is the case's and its own
 process status is only "did the merge succeed". Amending one with the other
 would replace a verdict with a statement about file-combining. It says so at
-the line that writes the key.
+the line that writes the key. cv26's committed `_26_oblique_results/rfx.json`
+is one of its outputs (`merged_from_shards: true`, 7 shards); cv26's own writer
+produces the per-shard and per-arm records beside it, and is migrated.
 
 ## Port / S-parameter-specific requirement
 

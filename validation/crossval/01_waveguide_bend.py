@@ -119,6 +119,9 @@ def _replay(argv) -> int:
     parser.add_argument("--replay", required=True, metavar="RECORD")
     parser.add_argument("--out-dir", required=True)
     a = parser.parse_args(argv)
+    # A replay is a re-judge, not a reproduction: it must never land in the
+    # committed evidence tree, whatever --out-dir says (#967 / PR #977).
+    out_dir = _exit_evidence.refuse_evidence_tree(a.out_dir, "--out-dir")
     with open(a.replay) as fh:
         doc = _j.load(fh)
     m = doc["measured"]
@@ -142,7 +145,7 @@ def _replay(argv) -> int:
         "meep_present": meep_mean is not None,
         "all_gates_ok": bool(passed),
     }
-    out_path = os.path.join(a.out_dir, "crossval.json")
+    out_path = os.path.join(out_dir, "crossval.json")
     rc = _exit_evidence.write_record(out_path, doc, exit_code=rc_declared,
                                      summary=_summary)
     print(f"  replay artifact: {out_path}")
