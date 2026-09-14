@@ -300,6 +300,29 @@ _REEXPORTED_FROM_COMMON = (
     "_fmt_signed",
 )
 
+#: Names #980 Phase 3 leg 1 moved to ``rfx.preflight.msl``. Two of them --
+#: ``_MSL_REALIZED_THICKNESS_Z0_SENSITIVITY`` and
+#: ``_MSL_REALIZED_THICKNESS_Z0_BUDGET`` -- have no reader inside the package
+#: at all; ``tests/unit/ports/test_msl_port_preflight.py`` imports them from
+#: the facade and nothing else does, so the re-export is their only path.
+_REEXPORTED_FROM_MSL = (
+    "MSL_EPS_EFF_PROXY", "_MSL_NEAR_FIELD_MIN_OFFSET_CELLS",
+    "_MSL_NEAR_FIELD_STANDOFF_H_SUB", "_MSL_REALIZED_THICKNESS_TOL",
+    "_MSL_REALIZED_THICKNESS_Z0_BUDGET",
+    "_MSL_REALIZED_THICKNESS_Z0_SENSITIVITY",
+    "msl_absorber_compliant_offset_max", "msl_min_probe_clearance",
+    "msl_nearest_downstream_reflector", "msl_probe_clearance_for_port",
+    "msl_source_near_field_standoff_cells",
+)
+
+#: Every leg's re-export block, keyed by the module it pulls from. The
+#: identity and whole-block tests below walk this, so a new leg adds one row
+#: here instead of a second copy of either test.
+_REEXPORT_BLOCKS = {
+    "rfx.preflight._common": _REEXPORTED_FROM_COMMON,
+    "rfx.preflight.msl": _REEXPORTED_FROM_MSL,
+}
+
 def test_reexported_preflight_names_are_the_same_objects():
     """``rfx.api._preflight.<name> is rfx.preflight._common.<name>``.
 
@@ -307,21 +330,24 @@ def test_reexported_preflight_names_are_the_same_objects():
     the facade instead of importing it would keep this module's namespace lock
     green while breaking every identity comparison in the suite.
     """
+    import importlib
+
     import rfx.api._preflight as facade
-    import rfx.preflight._common as common
 
     wrong = []
-    for name in _REEXPORTED_FROM_COMMON:
-        assert hasattr(common, name), f"rfx.preflight._common lost {name}"
-        assert hasattr(facade, name), (
-            f"rfx.api._preflight no longer binds {name}; the re-export block "
-            "is incomplete")
-        if getattr(facade, name) is not getattr(common, name):
-            wrong.append(name)
+    for modname, names in _REEXPORT_BLOCKS.items():
+        leg = importlib.import_module(modname)
+        for name in names:
+            assert hasattr(leg, name), f"{modname} lost {name}"
+            assert hasattr(facade, name), (
+                f"rfx.api._preflight no longer binds {name}; the re-export "
+                f"block for {modname} is incomplete")
+            if getattr(facade, name) is not getattr(leg, name):
+                wrong.append(f"{modname}.{name}")
     assert not wrong, (
-        f"rfx.api._preflight REDEFINES {wrong} instead of re-exporting "
-        "rfx.preflight._common's objects. Two classes reached by one name is "
-        "how pytest.warns and isinstance start testing the wrong one.")
+        f"rfx.api._preflight REDEFINES {wrong} instead of re-exporting the "
+        "leg modules' objects. Two classes reached by one name is how "
+        "pytest.warns and isinstance start testing the wrong one.")
 
 
 def test_the_declared_reexport_surface_is_the_whole_import_block():
@@ -335,24 +361,41 @@ def test_the_declared_reexport_surface_is_the_whole_import_block():
     import ast
 
     src = (_REPO / "rfx" / "api" / "_preflight.py").read_text(encoding="utf-8")
-    imported: list[str] = []
+    imported: dict[str, list[str]] = {m: [] for m in _REEXPORT_BLOCKS}
     star = []
-    for node in ast.walk(ast.parse(src)):
-        if isinstance(node, ast.ImportFrom) and node.module == "rfx.preflight._common":
-            for alias in node.names:
-                if alias.name == "*":
-                    star.append(node.lineno)
-                assert alias.asname is None, (
-                    f"re-export line {node.lineno} renames {alias.name}; the "
-                    "surface is the contract, so it must keep its own name")
-                imported.append(alias.name)
+    stray = []
+    # MODULE-level statements only, deliberately not ast.walk: a later leg
+    # binds moved METHOD bodies back with a CLASS-scoped import from the same
+    # leg module, and those names belong to the mixin, not to this module's
+    # re-export surface. Walking the whole tree would pour them into the same
+    # bucket and the two surfaces could no longer be told apart.
+    for node in ast.parse(src).body:
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if not (node.module or "").startswith("rfx.preflight"):
+            continue
+        if node.module not in imported:
+            stray.append((node.lineno, node.module))
+            continue
+        for alias in node.names:
+            if alias.name == "*":
+                star.append(node.lineno)
+            assert alias.asname is None, (
+                f"re-export line {node.lineno} renames {alias.name}; the "
+                "surface is the contract, so it must keep its own name")
+            imported[node.module].append(alias.name)
     assert not star, (
-        f"rfx/api/_preflight.py line(s) {star} re-export rfx.preflight._common "
-        "with `import *`. The surface is the contract; list the names.")
-    assert sorted(imported) == sorted(_REEXPORTED_FROM_COMMON), (
-        "the re-export block and _REEXPORTED_FROM_COMMON disagree: "
-        f"block-only={sorted(set(imported) - set(_REEXPORTED_FROM_COMMON))}, "
-        f"pinned-only={sorted(set(_REEXPORTED_FROM_COMMON) - set(imported))}")
+        f"rfx/api/_preflight.py line(s) {star} re-export a leg module with "
+        "`import *`. The surface is the contract; list the names.")
+    assert not stray, (
+        f"rfx/api/_preflight.py imports {stray} from a leg module with no "
+        "pinned re-export tuple; add it to _REEXPORT_BLOCKS")
+    for modname, declared in _REEXPORT_BLOCKS.items():
+        got = imported[modname]
+        assert sorted(got) == sorted(declared), (
+            f"the {modname} re-export block and its pinned tuple disagree: "
+            f"block-only={sorted(set(got) - set(declared))}, "
+            f"pinned-only={sorted(set(declared) - set(got))}")
 
 
 # ===========================================================================

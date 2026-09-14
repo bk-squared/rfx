@@ -17,6 +17,14 @@ Modules:
   :class:`~rfx.preflight._common.PreflightIssue`,
   :class:`~rfx.preflight._common.PreflightReport`), the unit-adaptive
   formatting leaves, and the absorber membership/proximity leaves.
+* :mod:`rfx.preflight.msl` — the MSL port-geometry family: the
+  probe-clearance geometry helpers
+  (:func:`~rfx.preflight.msl.msl_min_probe_clearance`,
+  :func:`~rfx.preflight.msl.msl_source_near_field_standoff_cells`,
+  :func:`~rfx.preflight.msl.msl_nearest_downstream_reflector`,
+  :func:`~rfx.preflight.msl.msl_probe_clearance_for_port`,
+  :func:`~rfx.preflight.msl.msl_absorber_compliant_offset_max`), their
+  constants, and the five ``_PreflightMixin`` MSL check bodies.
 
 ``_PreflightMixin`` itself STAYS in ``rfx/api/_preflight.py``: its
 ``_validate_simulation_config`` body is an ordered sequence of 38 calls and
