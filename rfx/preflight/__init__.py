@@ -48,6 +48,12 @@ Modules:
   features the non-uniform and SBP-SAT subgridded lanes refuse. Its three
   class-BODY constants (``_MULTIBAND_RATIO_CAP``, ``_INPLANE_RATIO_CAP``,
   ``_AXIS_OF_COMPONENT``) deliberately stay on ``_PreflightMixin``.
+* :mod:`rfx.preflight.sources` — the source-configuration family: four
+  ``_PreflightMixin`` bodies covering the #471 TFSF vacuum-boundary lane
+  guard (the split's one remaining ``@staticmethod``, re-wrapped by the
+  facade), the P1.6 source-on-a-PEC/PMC-face check, the P0.5 no-sources
+  guard and the #386 unresolved-pulse advisory. It moves no module-level
+  name.
 * :mod:`rfx.preflight.ports` — the lumped/wire-port and coaxial-port
   family: six ``_PreflightMixin`` bodies covering the #589 coax
   junction-aperture short, the #425 TFSF-plus-lumped-RLC refusal, the two

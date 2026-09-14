@@ -754,46 +754,31 @@ class _CampaignStaticsContext:
 class _PreflightMixin:
     """Preflight / validation methods mixed into :class:`Simulation`."""
 
-    @staticmethod
-    def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg) -> None:
-        """Ensure the TFSF boundary planes remain vacuum.
-
-        The TFSF correction assumes vacuum on and immediately adjacent to
-        the TFSF boundaries. Fail loudly instead of allowing silently wrong
-        scattered fields. For the 4-edge Method-B box this means the y planes
-        as well as the x planes (issue #471 F5: the x-only check let a PEC
-        strip on the y_lo plane pass silently); the check for that path lives
-        with the source in ``tfsf_oblique_open.validate_vacuum_boundary`` so
-        ``compute_rcs`` can run the identical check.
-        """
-        from rfx.sources.tfsf import is_tfsf_methodB
-
-        if is_tfsf_methodB(tfsf_cfg):
-            from rfx.sources.tfsf_oblique_open import validate_vacuum_boundary
-
-            validate_vacuum_boundary(materials, tfsf_cfg)
-            return
-
-        boundary_slices = (
-            ("x_lo-1", slice(tfsf_cfg.x_lo - 1, tfsf_cfg.x_lo)),
-            ("x_lo", slice(tfsf_cfg.x_lo, tfsf_cfg.x_lo + 1)),
-            ("x_hi", slice(tfsf_cfg.x_hi, tfsf_cfg.x_hi + 1)),
-            ("x_hi+1", slice(tfsf_cfg.x_hi + 1, tfsf_cfg.x_hi + 2)),
-        )
-
-        for plane_name, xs in boundary_slices:
-            eps = np.asarray(materials.eps_r[xs, :, :])
-            sigma = np.asarray(materials.sigma[xs, :, :])
-            mu = np.asarray(materials.mu_r[xs, :, :])
-            if not (
-                np.allclose(eps, 1.0)
-                and np.allclose(sigma, 0.0)
-                and np.allclose(mu, 1.0)
-            ):
-                raise ValueError(
-                    "TFSF plane-wave source requires vacuum on and adjacent to "
-                    f"the TFSF x boundaries; non-vacuum material found at {plane_name}"
-                )
+    # ------------------------------------------------------------------
+    # #980 Phase 3 leg 6: the TFSF vacuum-boundary lane guard moved
+    # VERBATIM to ``rfx/preflight/sources.py`` and is bound back here, AT
+    # THE POSITION it held in this class body.
+    #
+    # It is the ONE ``@staticmethod`` this leg moves, and the decorator
+    # cannot travel with the body: at module level ``@staticmethod`` makes a
+    # staticmethod OBJECT, which is not callable. So the leg module holds a
+    # plain function and the wrapper is re-applied on the line below the
+    # import. That wrapper is load-bearing, not cosmetic -- the sole caller,
+    # ``rfx/runners/uniform.py:610``, writes
+    # ``sim._validate_tfsf_vacuum_boundary(materials, tfsf[0])`` through an
+    # INSTANCE, so dropping it would bind ``sim`` to ``materials`` and shift
+    # every argument by one. Leg 2 established the pattern with
+    # ``_congruence_origin_shift``; both are pinned by
+    # ``tests/locks/test_preflight_split_snapshot.py``'s
+    # ``_REBOUND_AS_STATICMETHOD``.
+    #
+    # The import is CLASS-scoped rather than module-level because this
+    # module's namespace is pinned by SET EQUALITY (55 names, none added,
+    # none dropped), so even a module-level ``_sources`` alias would be a
+    # surface change.
+    # ------------------------------------------------------------------
+    from rfx.preflight.sources import _validate_tfsf_vacuum_boundary
+    _validate_tfsf_vacuum_boundary = staticmethod(_validate_tfsf_vacuum_boundary)
 
     def _validate_run_sparameter_request(
         self,
@@ -2371,118 +2356,15 @@ class _PreflightMixin:
     # ------------------------------------------------------------------
     from rfx.preflight.absorber import _validate_cfg_absorber_placement
 
-    def _validate_cfg_source_on_reflector_plane(
-        self, _w, dx: float, _pmc_faces_set: set
-    ) -> None:
-        """P1.6: Source / port placed ON a PEC or PMC face plane. Both
-        reflectors zero specific field components at the plane every
-        time step (PEC: tangential E; PMC: tangential H); a source
-        that drives a zeroed component is silently discarded. A
-        source that drives a component forced to zero by the mirror
-        image (e.g. normal E on a PMC face) fights the symmetry and
-        yields numerically inconsistent results.
-
-        Component-specific rule:
-          PEC face (axis = ax_name): tangential E (Ex/Ey/Ez with
-            component axis != ax_name) is zeroed every E update.
-            Normal E (component axis == ax_name) is the legitimate
-            way to drive a PEC mirror.
-          PMC face (axis = ax_name): tangential H (Hx/Hy/Hz with
-            component axis != ax_name) is zeroed; the outgoing
-            wave from an on-plane tangential E source is killed via
-            this H zeroing. Normal E (component axis == ax_name) is
-            odd-symmetric and must be zero at the plane by image,
-            so injecting it fights the mirror.
-
-        This follows the industry convention (Meep / OpenEMS /
-        Tidy3D all follow the same rule).
-        """
-        _all_reflector_faces = set(self._pec_faces) | set(_pmc_faces_set)
-        if _all_reflector_faces:
-            _dx_axis = [float(dx), float(dx), float(dx)]
-            if (self._dz_profile is not None
-                    and not is_tracer(self._dz_profile)):
-                _dx_axis[2] = float(self._dz_profile[0])
-            for face in _all_reflector_faces:
-                ax_name = face[0]
-                side = face[2:]
-                ax_i = "xyz".index(ax_name)
-                face_kind = "PMC" if face in _pmc_faces_set else "PEC"
-                d_ext = self._domain[ax_i] if ax_i < len(self._domain) else self._domain[-1]
-                plane_coord = 0.0 if side == "lo" else float(d_ext)
-                tol = 0.5 * _dx_axis[ax_i]
-                for pe in self._ports:
-                    pos = pe.position
-                    coord = pos[ax_i]
-                    if abs(coord - plane_coord) > tol:
-                        continue
-                    # Classify the source component vs. the face axis.
-                    comp = pe.component.lower()
-                    comp_field = comp[0]       # 'e' or 'h'
-                    comp_axis = comp[1:]       # 'x' / 'y' / 'z'
-                    is_tangential = (comp_axis != ax_name)
-                    if face_kind == "PMC":
-                        if comp_field == "e" and is_tangential:
-                            msg = (
-                                f"Source/port at {pos} (component={pe.component}) "
-                                f"sits on the PMC {face} plane. The outgoing "
-                                f"tangential H is zeroed every step by "
-                                f"apply_pmc_faces, so no wave radiates — the "
-                                f"probe records silent zero field. Offset by "
-                                f"one cell ({_dx_axis[ax_i]*1e3:.3g} mm) off "
-                                f"the plane to let the Yee curl run normally."
-                            )
-                        elif comp_field == "e" and not is_tangential:
-                            msg = (
-                                f"Source/port at {pos} (component={pe.component}) "
-                                f"sits on the PMC {face} plane and drives the "
-                                f"NORMAL E component. PMC imposes odd symmetry "
-                                f"on normal E (it must be zero at the plane), "
-                                f"so the source fights the mirror image. Use a "
-                                f"tangential E source offset by one cell "
-                                f"({_dx_axis[ax_i]*1e3:.3g} mm) off the plane."
-                            )
-                        elif comp_field == "h" and is_tangential:
-                            msg = (
-                                f"Source/port at {pos} (component={pe.component}) "
-                                f"sits on the PMC {face} plane and drives a "
-                                f"tangential H. apply_pmc_faces zeros this "
-                                f"component at the plane every step, so the "
-                                f"source has no effect."
-                            )
-                        else:
-                            msg = None      # normal H on PMC plane is legit
-                    else:                    # PEC
-                        if comp_field == "e" and is_tangential:
-                            msg = (
-                                f"Source/port at {pos} (component={pe.component}) "
-                                f"sits on the PEC {face} plane and drives a "
-                                f"tangential E. PEC zeros E_tan at the plane "
-                                f"every step, so the source is silently "
-                                f"discarded. Use a normal E source at this "
-                                f"face, or offset by one cell "
-                                f"({_dx_axis[ax_i]*1e3:.3g} mm) off the plane."
-                            )
-                        elif comp_field == "h" and not is_tangential:
-                            msg = (
-                                f"Source/port at {pos} (component={pe.component}) "
-                                f"sits on the PEC {face} plane and drives the "
-                                f"NORMAL H component. PEC imposes odd symmetry "
-                                f"on normal H (it must be zero at the plane). "
-                                f"Use a tangential H source or offset by one "
-                                f"cell ({_dx_axis[ax_i]*1e3:.3g} mm) off the plane."
-                            )
-                        else:
-                            msg = None      # tangential H or normal E on PEC is legit
-                    if msg is not None:
-                        _w.warn(
-                            PreflightWarning(
-                                msg,
-                                code="source_decoupled",
-                                source="_validate_cfg_source_on_reflector_plane",
-                            ),
-                            stacklevel=3,
-                        )
+    # ------------------------------------------------------------------
+    # #980 Phase 3 leg 6: the P1.6 source-on-a-reflector-plane check moved
+    # VERBATIM to ``rfx/preflight/sources.py``, bound back at its original
+    # position. Position is not cosmetic --
+    # ``_validate_simulation_config`` calls these checks in a fixed
+    # sequence and the resulting advisory ORDER is the observable
+    # ``tests/locks/test_preflight_split_snapshot.py`` renders.
+    # ------------------------------------------------------------------
+    from rfx.preflight.sources import _validate_cfg_source_on_reflector_plane
 
     def _validate_cfg_ntff_absorber_overlap(
         self,
@@ -2622,24 +2504,12 @@ class _PreflightMixin:
     # ------------------------------------------------------------------
     from rfx.preflight.absorber import _validate_cfg_pec_boundary_open_structure
 
-    def _validate_cfg_no_sources(self, _w) -> None:
-        """P0.5: No sources configured."""
-        if (
-            not self._ports
-            and self._tfsf is None
-            and not self._waveguide_ports
-            and not self._floquet_ports
-            and not self._msl_ports
-        ):
-            _w.warn(
-                PreflightWarning(
-                    "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. "
-                    "Simulation will produce zero fields.",
-                    code="no_sources",
-                    source="_validate_cfg_no_sources",
-                ),
-                stacklevel=3,
-            )
+    # ------------------------------------------------------------------
+    # #980 Phase 3 leg 6: the P0.5 no-sources guard moved VERBATIM to
+    # ``rfx/preflight/sources.py``, bound back at its original position for
+    # the reason the blocks above give.
+    # ------------------------------------------------------------------
+    from rfx.preflight.sources import _validate_cfg_no_sources
 
     # Validated multi-band grading envelope (SPEC-01 WP6, #780; witness
     # battery validation/research/multiband_nu/, pre-declaration note
@@ -2757,74 +2627,12 @@ class _PreflightMixin:
     )
 
 
-    def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
-        """Warn when a pulse waveform is unresolved by the time step (#386).
-
-        ``tau < 3*dt`` means the sampled excitation is a sub-dt spike: the
-        pulse's spectrum extends far past the grid Nyquist limit and the
-        discrete time integral no longer cancels, so a soft source leaves a
-        static charge field that CPML cannot absorb. The canonical way to
-        get here is passing an absolute-Hz number as ``bandwidth`` where a
-        FRACTIONAL one is expected (``tau = 1/(f0*bandwidth*pi)`` then
-        misses by ~9 orders of magnitude), so this fires regardless of
-        ``until_decay`` — a sub-dt spike is always broken.
-
-        ``dt`` is estimated from the preflight ``dx`` via the uniform-lane
-        3D Courant formula (``Grid.courant_dt``). A refining ``dz_profile``
-        makes the actual dt smaller, so the estimate errs toward firing; a
-        strictly coarsening profile can raise the NU dt above this estimate
-        by at most sqrt(3/2) ~ 1.22x (the NU dt combines per-axis minimum
-        cell sizes, ``rfx/nonuniform.py``), so the check can under-fire by
-        <= 22% — harmless against a mistake that misses the threshold by
-        ~9 orders of magnitude, not by percent.
-        """
-        dt = dx / (C0 * math.sqrt(3.0)) * 0.99  # Grid.courant_dt(dx, ndim=3)
-        entries = list(self._ports) + list(self._msl_ports)
-        if self._tfsf is not None:
-            entries.append(self._tfsf)
-        for entry in entries:
-            wf = getattr(entry, "waveform", None)
-            tau = None
-            if wf is not None and not isinstance(wf, str):
-                try:
-                    tau = float(wf.tau)
-                except (AttributeError, TypeError, ValueError,
-                        ZeroDivisionError):
-                    tau = None
-            else:
-                # String-named waveforms (the TFSF entry's
-                # "differentiated_gaussian" / "modulated_gaussian"): both
-                # pulse families share tau = 1/(pi*f0*bandwidth), so the
-                # absolute-Hz-bandwidth footgun on
-                # add_tfsf_source(bandwidth=...) is computable from the
-                # entry's own f0/bandwidth attributes when both are set.
-                f0 = getattr(entry, "f0", None)
-                bw = getattr(entry, "bandwidth", None)
-                if f0 and bw:
-                    try:
-                        tau = 1.0 / (math.pi * float(f0) * float(bw))
-                    except (TypeError, ValueError, ZeroDivisionError):
-                        tau = None
-            if tau is None or not math.isfinite(tau) or tau <= 0.0:
-                continue
-            if tau < 3.0 * dt:
-                _wf_name = wf if isinstance(wf, str) else type(wf).__name__
-                _w.warn(
-                    PreflightWarning(
-                        f"waveform tau={tau:.3g}s is below 3*dt "
-                        f"(dt~{dt:.3g}s, tau/dt={tau/dt:.3g}): pulse "
-                        "unresolved by the time step — an absolute-Hz "
-                        "bandwidth was likely passed where a FRACTIONAL "
-                        "one is expected; the discrete DC residue leaves "
-                        "a static charge field CPML cannot absorb "
-                        "(issue #386)",
-                        code="unresolved_pulse",
-                        loc=f"waveform {_wf_name} at "
-                            f"{getattr(entry, 'position', None)}",
-                        source="_validate_cfg_unresolved_pulse",
-                    ),
-                    stacklevel=3,
-                )
+    # ------------------------------------------------------------------
+    # #980 Phase 3 leg 6: the #386 unresolved-pulse advisory moved VERBATIM
+    # to ``rfx/preflight/sources.py``, bound back at its original position
+    # for the reason the blocks above give.
+    # ------------------------------------------------------------------
+    from rfx.preflight.sources import _validate_cfg_unresolved_pulse
 
     # ------------------------------------------------------------------
     # #980 Phase 3 leg 5: the two lane-limitation checks -- what the

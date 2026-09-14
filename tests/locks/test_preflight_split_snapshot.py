@@ -706,6 +706,22 @@ _REBOUND_ON_MIXIN = {
     # self._wire_port_cell_centers (intra-module) plus the module-global
     # _component_is_dead, which this leg put in rfx/preflight/_common.py
     # rather than beside it because _RealizedPEC still reads it too.
+    # Leg 6, second module. _validate_tfsf_vacuum_boundary is the ONE
+    # @staticmethod of the whole split after leg 2's, and unlike every other
+    # rebound name here it is NOT reached from preflight() at all: it is a
+    # runtime lane guard called from rfx/runners/uniform.py:610 during a run,
+    # through an INSTANCE. That is why the staticmethod wrapper below is
+    # load-bearing rather than decorative, and why the snapshot corpus cannot
+    # witness this body -- its gate is behavioural (five tests enter it; the
+    # positive control on its raise is
+    # tests/unit/farfield/test_oblique_rcs_absolute_sigma.py::
+    # test_simulation_lane_vacuum_guard_fires_on_y_plane).
+    "rfx.preflight.sources": (
+        "_validate_cfg_no_sources",
+        "_validate_cfg_source_on_reflector_plane",
+        "_validate_cfg_unresolved_pulse",
+        "_validate_tfsf_vacuum_boundary",
+    ),
     "rfx.preflight.ports": (
         "_check_coaxial_port_junction_aperture",
         "_validate_cfg_floating_single_cell_port",
@@ -745,7 +761,17 @@ _REBOUND_ON_MIXIN = {
 #:     ``inspect.isfunction`` and has always skipped staticmethods. Pinned so
 #:     a later "fix" to Simulation.<name> is recognised as the behaviour
 #:     change it would be.
-_REBOUND_AS_STATICMETHOD = frozenset({"_congruence_origin_shift"})
+#: Leg 6 added the second and, as of that leg, last one:
+#: ``_validate_tfsf_vacuum_boundary``. Its caller is
+#: ``rfx/runners/uniform.py:610``, which writes
+#: ``sim._validate_tfsf_vacuum_boundary(materials, tfsf[0])`` -- so dropping
+#: the wrapper binds ``sim`` to ``materials`` and shifts every argument by
+#: one, the same failure mode as ``_congruence_origin_shift``'s but on the
+#: RUN path rather than the preflight one, where this lock's fixtures would
+#: never see it.
+_REBOUND_AS_STATICMETHOD = frozenset({
+    "_congruence_origin_shift", "_validate_tfsf_vacuum_boundary",
+})
 
 
 def test_moved_mixin_methods_are_rebound_objects_with_their_qualname():
