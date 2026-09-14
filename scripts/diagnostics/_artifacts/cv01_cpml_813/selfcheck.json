@@ -6,8 +6,13 @@
   "n_steps_is_cv01_value": true,
   "gate": "pass = mean_self in [0.95, 1.05] (cv01 G2, 01:356)",
   "rig_fidelity_check": {
-    "checked_lines": 23,
+    "checked_lines": 34,
     "all_present_verbatim": true
+  },
+  "rfx_provenance_check": {
+    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a6e7c79b0ee83cd0d/rfx/__init__.py",
+    "under_repo_root": true,
+    "repo_root": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a6e7c79b0ee83cd0d"
   },
   "arms_added_after_the_first_run": [
     "upml_aperture"
@@ -17,10 +22,10 @@
     "mean_self_smoothed_over_band": 0.9891610388008335
   },
   "provenance": {
-    "utc": "2026-09-13T18:14:09+00:00",
-    "commit": "81b7d69463f2cfc8532cbded42c8d6d599cacbbf",
+    "utc": "2026-09-14T06:49:31+00:00",
+    "commit": "da82d4668231d75d81070146babdd83c8b4d9247",
     "rfx_version": "1.8.0",
-    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/rfx/__init__.py",
+    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a6e7c79b0ee83cd0d/rfx/__init__.py",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_enable_x64": "1",
@@ -1290,7 +1295,9 @@
           }
         ]
       },
-      "preflight_warnings": [],
+      "preflight_warnings": [
+        "add_source(..., amplitude_kind=None): on this simulation the waveform amplitude is a Cb-normalized field add (E += Cb*w; NOT one of the two named kinds \u2014 to keep today's numbers, multiply your waveform amplitude by the cell volume dV and pass amplitude_kind='current'). This per-path default is deprecated (issue #571): pass amplitude_kind='current' (amperes, resolution-independent power \u2014 the future default) or amplitude_kind='field' (raw E increment). amplitude_kind becomes required in 1.9 (and 'current' the default in 2.0)."
+      ],
       "run_warnings": [
         "[run] preflight found 4 advisory issue(s) - pass skip_preflight=True to suppress:\n  - dielectric 'wg' on x: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - dielectric 'wg' on y: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - dielectric 'wg' on z: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - all dielectric(s) ['wg'] are perfectly lossless in an open (UPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)"
       ],
@@ -1311,7 +1318,7 @@
         },
         "dx_m": 1e-07
       },
-      "wall_s": 34.9
+      "wall_s": 34.3
     },
     "cpml_full": {
       "boundary": "cpml",
@@ -2575,7 +2582,9 @@
           }
         ]
       },
-      "preflight_warnings": [],
+      "preflight_warnings": [
+        "add_source(..., amplitude_kind=None): on this simulation the waveform amplitude is a Cb-normalized field add (E += Cb*w; NOT one of the two named kinds \u2014 to keep today's numbers, multiply your waveform amplitude by the cell volume dV and pass amplitude_kind='current'). This per-path default is deprecated (issue #571): pass amplitude_kind='current' (amperes, resolution-independent power \u2014 the future default) or amplitude_kind='field' (raw E increment). amplitude_kind becomes required in 1.9 (and 'current' the default in 2.0)."
+      ],
       "run_warnings": [
         "[run] preflight found 4 advisory issue(s) - pass skip_preflight=True to suppress:\n  - dielectric 'wg' on x: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - dielectric 'wg' on y: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - dielectric 'wg' on z: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)"
       ],
@@ -2596,7 +2605,7 @@
         },
         "dx_m": 1e-07
       },
-      "wall_s": 38.2
+      "wall_s": 39.3
     },
     "upml_interior": {
       "boundary": "upml",
@@ -3981,7 +3990,9 @@
           }
         ]
       },
-      "preflight_warnings": [],
+      "preflight_warnings": [
+        "add_source(..., amplitude_kind=None): on this simulation the waveform amplitude is a Cb-normalized field add (E += Cb*w; NOT one of the two named kinds \u2014 to keep today's numbers, multiply your waveform amplitude by the cell volume dV and pass amplitude_kind='current'). This per-path default is deprecated (issue #571): pass amplitude_kind='current' (amperes, resolution-independent power \u2014 the future default) or amplitude_kind='field' (raw E increment). amplitude_kind becomes required in 1.9 (and 'current' the default in 2.0)."
+      ],
       "run_warnings": [
         "[run] preflight found 4 advisory issue(s) - pass skip_preflight=True to suppress:\n  - dielectric 'wg' on x: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - dielectric 'wg' on y: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - dielectric 'wg' on z: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - all dielectric(s) ['wg'] are perfectly lossless in an open (UPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)"
       ],
@@ -4119,7 +4130,7 @@
         },
         "dx_m": 1e-07
       },
-      "wall_s": 29.1
+      "wall_s": 29.0
     },
     "cpml_interior": {
       "boundary": "cpml",
@@ -5504,7 +5515,9 @@
           }
         ]
       },
-      "preflight_warnings": [],
+      "preflight_warnings": [
+        "add_source(..., amplitude_kind=None): on this simulation the waveform amplitude is a Cb-normalized field add (E += Cb*w; NOT one of the two named kinds \u2014 to keep today's numbers, multiply your waveform amplitude by the cell volume dV and pass amplitude_kind='current'). This per-path default is deprecated (issue #571): pass amplitude_kind='current' (amperes, resolution-independent power \u2014 the future default) or amplitude_kind='field' (raw E increment). amplitude_kind becomes required in 1.9 (and 'current' the default in 2.0)."
+      ],
       "run_warnings": [
         "[run] preflight found 4 advisory issue(s) - pass skip_preflight=True to suppress:\n  - dielectric 'wg' on x: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - dielectric 'wg' on y: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - dielectric 'wg' on z: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)"
       ],
@@ -5642,7 +5655,7 @@
         },
         "dx_m": 1e-07
       },
-      "wall_s": 38.4
+      "wall_s": 39.0
     },
     "cpml_aperture": {
       "boundary": "cpml",
@@ -7027,7 +7040,9 @@
           }
         ]
       },
-      "preflight_warnings": [],
+      "preflight_warnings": [
+        "add_source(..., amplitude_kind=None): on this simulation the waveform amplitude is a Cb-normalized field add (E += Cb*w; NOT one of the two named kinds \u2014 to keep today's numbers, multiply your waveform amplitude by the cell volume dV and pass amplitude_kind='current'). This per-path default is deprecated (issue #571): pass amplitude_kind='current' (amperes, resolution-independent power \u2014 the future default) or amplitude_kind='field' (raw E increment). amplitude_kind becomes required in 1.9 (and 'current' the default in 2.0)."
+      ],
       "run_warnings": [
         "[run] preflight found 4 advisory issue(s) - pass skip_preflight=True to suppress:\n  - dielectric 'wg' on x: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - dielectric 'wg' on y: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - dielectric 'wg' on z: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)"
       ],
@@ -7165,7 +7180,7 @@
         },
         "dx_m": 1e-07
       },
-      "wall_s": 34.5
+      "wall_s": 35.8
     },
     "upml_aperture": {
       "boundary": "upml",
@@ -8550,7 +8565,9 @@
           }
         ]
       },
-      "preflight_warnings": [],
+      "preflight_warnings": [
+        "add_source(..., amplitude_kind=None): on this simulation the waveform amplitude is a Cb-normalized field add (E += Cb*w; NOT one of the two named kinds \u2014 to keep today's numbers, multiply your waveform amplitude by the cell volume dV and pass amplitude_kind='current'). This per-path default is deprecated (issue #571): pass amplitude_kind='current' (amperes, resolution-independent power \u2014 the future default) or amplitude_kind='field' (raw E increment). amplitude_kind becomes required in 1.9 (and 'current' the default in 2.0)."
+      ],
       "run_warnings": [
         "[run] preflight found 4 advisory issue(s) - pass skip_preflight=True to suppress:\n  - dielectric 'wg' on x: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - dielectric 'wg' on y: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - dielectric 'wg' on z: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - all dielectric(s) ['wg'] are perfectly lossless in an open (UPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)"
       ],
@@ -8688,7 +8705,7 @@
         },
         "dx_m": 1e-07
       },
-      "wall_s": 21.2
+      "wall_s": 19.7
     }
   },
   "control_reproduces_committed_run": {
