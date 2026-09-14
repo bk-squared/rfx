@@ -2151,6 +2151,13 @@
         "late_fraction"
       ]
     },
+    "subtract_flux_monitors": {
+      "kind": "function",
+      "params": [
+        "sample",
+        "ref"
+      ]
+    },
     "suggest_refinement_regions": {
       "kind": "function",
       "params": [
