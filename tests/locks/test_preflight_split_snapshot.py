@@ -706,6 +706,18 @@ _REBOUND_ON_MIXIN = {
     # self._wire_port_cell_centers (intra-module) plus the module-global
     # _component_is_dead, which this leg put in rfx/preflight/_common.py
     # rather than beside it because _RealizedPEC still reads it too.
+    # Leg 6, third module. _validate_cfg_ntff_min_steps is the one rebound
+    # name in the whole split with NO emission site: it writes the instance
+    # attribute self._ntff_min_steps_hint, which rfx/interop/_design.py names
+    # in EXCLUDED_SIMULATION_ATTRS. An instance write is unaffected by where
+    # the body is defined, so the rebind below is all that has to hold, and
+    # the snapshot has nothing of its own to pin.
+    "rfx.preflight.ntff": (
+        "_validate_cfg_ntff_absorber_overlap",
+        "_validate_cfg_ntff_min_steps",
+        "_validate_ntff_inverse_design",
+        "_validate_ntff_small_ground_plane",
+    ),
     # Leg 6, second module. _validate_tfsf_vacuum_boundary is the ONE
     # @staticmethod of the whole split after leg 2's, and unlike every other
     # rebound name here it is NOT reached from preflight() at all: it is a

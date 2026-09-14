@@ -38,8 +38,8 @@ moves with it. The family's own leaves -- ``_absorber_boundary_for_axis``,
 and ``_ABSORBER_PROXIMITY_CELLS`` -- went to ``rfx/preflight/_common.py`` in
 leg 0, precisely because their readers were never confined to this family:
 ``_check_msl_port_geometry`` reads three of them and
-``_validate_cfg_ntff_absorber_overlap``, which stays in the facade, reads a
-fourth. Measured over the eleven bodies below, every free module-level name
+``_validate_cfg_ntff_absorber_overlap``, which leg 6 moved on to
+``rfx/preflight/ntff.py``, reads a fourth. Measured over the eleven bodies below, every free module-level name
 they hold is already in ``_common``: ``PreflightWarning``,
 ``PreflightConfigError``, ``_fmt_len``, ``_ABSORBER_PROXIMITY_CELLS``,
 ``_coord_in_absorber``, ``_coord_near_absorber`` and

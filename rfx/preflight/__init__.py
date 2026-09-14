@@ -48,6 +48,12 @@ Modules:
   features the non-uniform and SBP-SAT subgridded lanes refuse. Its three
   class-BODY constants (``_MULTIBAND_RATIO_CAP``, ``_INPLANE_RATIO_CAP``,
   ``_AXIS_OF_COMPONENT``) deliberately stay on ``_PreflightMixin``.
+* :mod:`rfx.preflight.ntff` — the near-to-far-field family: four
+  ``_PreflightMixin`` bodies covering the #334 inverse-design umbrella
+  (PEC overlap as an error, the lambda/4 near-field advisory) with the
+  small-ground-plane check it calls, the #500 NTFF-box-in-the-absorber
+  check, and the minimum-steps hint, which emits nothing and only writes
+  ``self._ntff_min_steps_hint``. It moves no module-level name.
 * :mod:`rfx.preflight.sources` — the source-configuration family: four
   ``_PreflightMixin`` bodies covering the #471 TFSF vacuum-boundary lane
   guard (the split's one remaining ``@staticmethod``, re-wrapped by the
