@@ -36,11 +36,16 @@ T3  the referee is physical (self > 0, image < 0, a PEC ground removes
     exactly, so there is no corner convention to gate.
 T4  the volumetric (uniform-current) bar fixture at the coarsest level is
     reciprocal and passive, ``sigma = 3e6`` S/m sits on the uniform-current
-    plateau (+0.22 % from 1e6 to 3e6, already +2.0 % at 1e7), the PEC
-    fixture is +20.0 % ABOVE that plateau (the opposite sign to the
-    spiral's -6.7 %) and the plateau value sits -50.31 % from the referee
-    at the ``centres`` plane and +55.07 % at the ``post_edges`` plane. All
-    asserted as MEASURED numbers, nothing hidden behind an xfail.
+    plateau (+0.22 % from 1e6 to 3e6, already +2.0 % at 1e7), and the
+    plateau value sits -50.31 % from the referee at the ``centres`` plane
+    and +55.07 % at the ``post_edges`` plane. The PEC fixture is +20.0 %
+    above the plateau at l = 100 um but only +0.9 % at l = 200 um on the
+    same grid: the PEC-vs-uniform-current difference is a roughly lumped
+    residual of the PEC fixture's own de-embedding (3.933 pH and 0.570 pH,
+    against the 2.0 x it would have to grow by if it were a per-unit-length
+    property of the metal model), so it is not a statement about the
+    strip's cross-section and nothing in the study's conclusion rests on
+    it. All asserted as MEASURED numbers, nothing hidden behind an xfail.
 T5  gate B2 at the two coarsest levels: the plane-free differential
     ``[L(200 um) - L(100 um)]`` is 0.9076 (W/1) and 0.9364 (W/3) of the
     referee's, i.e. the FDFD's inductance PER UNIT LENGTH of strip is 9.2 %
@@ -48,21 +53,44 @@ T5  gate B2 at the two coarsest levels: the plane-free differential
     numbers; the test also asserts the ratio IMPROVES with refinement.
 T6  gate B4: ``jax.grad`` of the de-embedded L in ``theta = (l_bar, W)``
     against FD4 with 1 % steps (which move L by ~1e-2 relative, far above
-    the ~1e-9 LU noise floor) -- measured 1.13e-6 and 2.04e-6 at the
-    coarsest level, gate 1e-4.
+    the ~1e-9 LU noise floor) -- measured 1.09e-6 and 3.80e-6 on the
+    study's cheapest healthy bar (W = 10 um, l = 100 um, W/1, N = 11864),
+    gate 1e-4.
 T7  the study's JSON exists, is self-consistent (every recorded level
     carries its referee values and gaps, no two levels of a case share a
     grid), its recorded W/1 ``L_dut`` reproduces a fresh solve to 1e-7
-    relative, and the four conclusion numbers hold: the wall correction is
-    validated against a direct ``pad_cells = 12`` solve to +0.026 %; the
-    WALL-CORRECTED differential converges (0.829 / 0.932 / 0.975 at 1/2/3
-    cells across W = 10 um, 0.925 / 0.981 / 0.975 / 1.004 at 1/3/4/6 cells
-    across W = 20 um) and passes 3 % from three cells on while the raw
-    ``pad_cells = 4`` series does not; the SPIRAL's own lead differential,
-    remeasured here, is 0.770 / 0.883 at W/1 and W/2 against the CORNERLESS
-    bar's 0.814 / 0.893; and the wall bias is the bar's problem, not the
-    spiral's (+0.12 % / +0.39 % on the spiral against +0.92 % / +2.73 % on
-    the bar).
+    relative, and the conclusion numbers hold:
+
+    *  THE THREE-POINT RULE. A wall-corrected differential is admitted only
+       where BOTH legs have a full ``pad_cells`` 4 / 6 / 8 ladder. The test
+       asserts the rule structurally (every admitted level records
+       ``wall_ladder_points`` >= 3 on both legs) and asserts that the two
+       levels with a short ladder are recorded under the explicit
+       ``..._two_point_EXCLUDED`` key instead.
+    *  the wall correction is validated against direct ``pad_cells = 12``
+       solves at TWO levels: +0.026 % where the correction is +0.92 %
+       (W = 10 um, W/1) and +0.107 % where it is +2.90 % (W = 20 um, W/3,
+       N = 104888) -- against +0.807 % for the 2-point ladder at the same
+       level, which is why 2-point ladders are excluded.
+    *  the admitted WALL-CORRECTED differential against cells across the
+       width: 0.8286 +- 0.0035 (1 cell) and 0.9319 +- 0.0075 (2 cells) at
+       W = 10 um; 0.9251 +- 0.0042 (1), 0.9808 +- 0.0082 (3) and
+       0.9746 +- 0.0082 (4) at W = 20 um. The raw ``pad_cells = 4`` gate
+       fails; ``passed_wall_corrected`` also fails (W = 10 um reaches only
+       two cells with a valid ladder and is 6.8 % low); the statement that
+       PASSES is ``passed_wall_corrected_from_3_cells`` -- every admitted
+       point with three or more cells across the width is inside 3 %.
+    *  the attribution: the SPIRAL's own lead differential, remeasured
+       here, is 0.770 / 0.883 at W/1 and W/2 against the CORNERLESS bar's
+       0.814 / 0.893.
+    *  the wall bias is the bar's problem, not the spiral's (+0.12 % /
+       +0.39 % on the spiral against +0.92 % / +2.73 % on the bar), and
+       four harder-graded padding cells cannot replace eight gentle ones
+       (-4.78 % at ``pad_ratio = 2.67``).
+    *  the PEC offset does not scale with the bar length at either probe
+       (x0.89 at W = 10 um / W/1 and x0.085 at W = 20 um / W/3 for a 2 x
+       length), so it is a fixture residual, ~5 pH = ~2 % of the spiral's
+       262.44 pH.
 
 x64 is scoped per test through ``tests._x64_compat.enable_x64`` (never
 flipped at module level); the static models and the coarse solves are
@@ -305,14 +333,24 @@ def test_uniform_current_bar_is_reciprocal_passive_and_sits_below_the_referee():
     Protocol gate A -- ``sigma_volumetric = 3e6`` S/m must sit ON the
     uniform-current plateau, because that is the referee's model. Measured
     ``L_diff`` = 19.5946 / 19.6005 / 19.6432 / 20.0409 pH at sigma = 3e5 /
-    1e6 / 3e6 / 1e7 S/m: flat to +0.22 % from 1e6 to 3e6 (skin depth 29.1 um
-    = 1.45 x the width and 14.5 x the thickness) and already +2.0 % away at
-    1e7. PEC gives 23.5765 pH, i.e. +20.0 % ABOVE the uniform-current
-    plateau -- the OPPOSITE sign to the spiral study's -6.7 %, and the
-    volumetric model reproduces it from the other end (23.97 pH at
-    sigma = 1e9, skin depth 1.6 um < the 2 um thickness). Both signs are
-    asserted as measured numbers; nothing here claims which is "right" --
-    the point is that the uniform-current plateau, and only it, is what the
+    1e6 / 3e6 S/m: flat to +0.22 % from 1e6 to 3e6 (skin depth 29.1 um
+    = 1.45 x the width and 14.5 x the thickness). That this is a PLATEAU and
+    not a low-sigma limit is the study's recorded six-point sigma ladder
+    (+1.60 % at 1e7, +17.5 % at 1e8), gated in T7.
+
+    THE PEC FIXTURE IS NOT A METAL-MODEL CONTRAST. PEC gives 23.5765 pH
+    here, +20.0 % above the uniform-current plateau, which invites reading
+    it as a cross-section effect. It is not: the SAME comparison on the
+    SAME grid at l = 200 um gives 62.6551 vs 62.0848 pH, only +0.92 %. In
+    absolute terms the offset goes 3.933 -> 0.570 pH when the bar is
+    doubled, where a per-unit-length property of the metal model would have
+    to DOUBLE. So what the PEC fixture adds is a roughly lumped residual of
+    its own open/short de-embedding -- its ports, lead columns and short
+    post are a different metal from the volumetric ones -- and the study's
+    conclusion rests on no PEC solve anywhere. The l = 100 um value is
+    solved live here and the l = 200 um one read back from the study's
+    record (the dedicated three-length sweeps are in ``pec_offset`` and are
+    gated in T7); the uniform-current plateau, and only it, is what the
     referee models.
 
     Gate B1 at this level: the plateau value sits -50.31 % from the
@@ -336,12 +374,24 @@ def test_uniform_current_bar_is_reciprocal_passive_and_sits_below_the_referee():
         lo = _solve(L1, W_TEST, COARSE, sigma=1e6)["L"]
         flat = vol["L"] / lo - 1.0
         assert abs(flat) <= 0.01, flat                          # measured +0.218 %
-        # ... and 1e7 must already be off it (this is a plateau, not a limit)
-        hi = _solve(L1, W_TEST, COARSE, sigma=1e7)["L"]
-        assert hi / vol["L"] - 1.0 > 0.005, hi / vol["L"] - 1.0  # measured +2.02 %
+        # (that it is a PLATEAU and not a limit -- 1e7 already +1.6 % off it --
+        # is the study's recorded six-point sigma ladder, gated in T7; a live
+        # solve for it would cost another 8 s here for nothing new)
         # PEC is ABOVE the uniform-current plateau for this bar (measured +20.0 %)
         pec_rel = pec["L"] / vol["L"] - 1.0
         assert abs(pec_rel - 0.2003) <= 0.02, pec_rel
+        # ... and this offset is +3.933 pH here against +0.570 pH at l = 200 um
+        # on the same grid (the study's recorded levels; the three-length
+        # sweeps of ``pec_offset`` are gated in T7), i.e. it SHRINKS when the
+        # bar is doubled where a per-unit-length effect would double. Asserted
+        # here only for the length this test already solves, to keep the live
+        # solve count down.
+        off1 = pec["L"] - vol["L"]
+        assert abs(off1 - 3.933e-12) <= 0.2e-12, off1
+        rec2 = _json()["levels"][st.case_key(W_TEST, L2)][f"{COARSE:g}"]
+        off2 = rec2["L_pec"] - rec2["L_dut"]
+        assert abs(off2 - 0.570e-12) <= 0.2e-12, off2
+        assert off2 / off1 < 1.0, (off1, off2)          # measured x0.145, not x2.0
         ref = st.referee_bar(_referee(), L1, W_TEST).total
         gap = vol["L"] / ref - 1.0
         assert abs(gap - (-0.5031)) <= 0.02, gap                # the B1 failure, as measured
@@ -391,33 +441,38 @@ def test_jax_grad_matches_fd4_for_dL_dl_bar_and_dL_dwidth():
     A 1 % step moves L by ~1e-2 relative, four orders of magnitude above the
     ~1e-9 LU noise floor, so the FD truncation is what is being measured.
 
-    Measured at W = 20 um, l = 100 um, base_dx = W (N = 13477):
-    dL/dl_bar = +3.3212e-7 H/m and dL/dW = -6.1036e-7 H/m, agreeing with
-    FD4 to 1.13e-6 and 2.04e-6 relative -- gate 1e-4. The signs are
-    physical: a longer bar has more inductance, a wider one less."""
+    Run on the study's OTHER width, W = 10 um, l = 100 um, base_dx = W
+    (21 x 11 x 15 cells, N = 11864, the cheapest healthy bar in the study
+    and 9 solves here): L = 27.4647 pH, dL/dl_bar = +3.7949e-7 H/m and
+    dL/dW = -1.0161e-6 H/m, agreeing with FD4 to 1.09e-6 and 3.80e-6
+    relative -- gate 1e-4. The signs are physical: a longer bar has more
+    inductance, a wider one less. The study's own B4 record, at
+    W = 20 um / W/3, is gated in T7 (worst 1.49e-6)."""
     with enable_x64():
         st = _study()
-        model = _model(L1, W_TEST, COARSE)
+        w_g = 10e-6
+        model = _model(L1, w_g, COARSE)
+        assert model.n_unknowns == 11864, model.n_unknowns
 
         def scalar(t):
             return jnp.real(st.l_dut(model, t))
 
-        val, grad = jax.value_and_grad(scalar)(jnp.asarray((L1, W_TEST), dtype=jnp.float64))
+        val, grad = jax.value_and_grad(scalar)(jnp.asarray((L1, w_g), dtype=jnp.float64))
         jax.block_until_ready(grad)
         grad = [float(v) for v in grad]
         assert grad[0] > 0 > grad[1], grad
         fd = []
         for k in range(2):
             def f(v: float, k: int = k) -> float:
-                t = [L1, W_TEST]
+                t = [L1, w_g]
                 t[k] = v
                 return float(scalar(jnp.asarray(t, dtype=jnp.float64)))
-            fd.append(st.fd4(f, (L1, W_TEST)[k], st.FD_STEP_REL * (L1, W_TEST)[k]))
+            fd.append(st.fd4(f, (L1, w_g)[k], st.FD_STEP_REL * (L1, w_g)[k]))
         rel = [abs(g - f_) / abs(f_) for g, f_ in zip(grad, fd)]
-        assert max(rel) <= 1e-4, (grad, fd, rel)                # measured 1.13e-6 / 2.04e-6
-        assert abs(grad[0] - 3.3212e-7) <= 1e-9, grad
-        assert abs(grad[1] + 6.1036e-7) <= 1e-9, grad
-        assert abs(float(val) - _solve(L1, W_TEST, COARSE)["L"]) <= 1e-12 * abs(float(val))
+        assert max(rel) <= 1e-4, (grad, fd, rel)                # measured 1.09e-6 / 3.80e-6
+        assert abs(grad[0] - 3.7949e-7) <= 1e-9, grad
+        assert abs(grad[1] + 1.0161e-6) <= 1e-9, grad
+        assert abs(float(val) - 27.4647e-12) <= 0.01e-12, float(val)
 
 
 # ----------------------------------------------------------------------------
@@ -431,28 +486,53 @@ def test_study_json_is_self_consistent_and_reproduces_a_fresh_solve():
 
     The conclusion numbers asserted here (all recorded in this session):
 
-    *  the wall correction is validated, not assumed: the 3-point
-       Richardson in ``1 / wall_distance`` over ``pad_cells`` 4 / 6 / 8
-       agrees with a DIRECT ``pad_cells = 12`` solve to +0.026 %.
-    *  with the walls extrapolated away the bar's inductance per unit
-       length converges: 0.829 / 0.932 / 0.975 at 1 / 2 / 3 cells across
-       W = 10 um and 0.925 / 0.981 / 0.975 / 1.004 at 1 / 3 / 4 / 6 cells
-       across W = 20 um, i.e. within 3 % from three cells on.
+    *  THE THREE-POINT RULE, asserted structurally and not by value: a
+       wall-corrected differential ratio exists in the JSON only where BOTH
+       legs carry a full ``pad_cells`` 4 / 6 / 8 ladder
+       (``wall_ladder_points`` >= 3 on both), and the two levels with a
+       short ladder on their l = 200 um leg -- W = 10 um W/3 and
+       W = 20 um W/6 -- appear only under the explicitly labelled
+       ``ratio_centres_wall_corrected_two_point_EXCLUDED`` key and in no
+       gate.
+    *  the wall correction is validated, not assumed, at TWO levels: the
+       3-point Richardson in ``1 / wall_distance`` over ``pad_cells``
+       4 / 6 / 8 agrees with a DIRECT ``pad_cells = 12`` solve to +0.026 %
+       where the correction is +0.92 % (W = 10 um, l = 100 um, W/1,
+       N = 73960) and to +0.107 % where it is +2.90 % (W = 20 um,
+       l = 100 um, W/3, N = 104888). The 4 / 6 pair alone would have been
+       +0.807 % at that second level -- 7.5 x worse -- which is the
+       measurement that justifies excluding 2-point ladders.
+    *  with the walls extrapolated away on an admitted ladder, the bar's
+       inductance per unit length converges with the cells across the
+       width: 0.8286 +- 0.0035 (1 cell) and 0.9319 +- 0.0075 (2 cells) at
+       W = 10 um, and 0.9251 +- 0.0042 (1), 0.9808 +- 0.0082 (3),
+       0.9746 +- 0.0082 (4) at W = 20 um. The uncertainties are each
+       level's own 2-point/3-point extrapolation spread. The raw gate
+       fails; ``passed_wall_corrected`` fails too, because W = 10 um only
+       reaches 2 cells with an admitted ladder and is 6.8 % low; what
+       passes is ``passed_wall_corrected_from_3_cells``, and only W = 20 um
+       contributes to it.
     *  the attribution: the SPIRAL's own lead-length differential, rebuilt
        from its published parameters and remeasured here, is 0.770 (W/1)
        and 0.883 (W/2) -- the same slow, distributed per-unit-length
        deficit the CORNERLESS, UNDERPASS-FREE, VIA-FREE bar shows at the
        same resolutions under the same protocol (0.814 and 0.893).
-    *  and the walls are the bar's problem, not the spiral's: the same
+    *  the walls are the bar's problem, not the spiral's: the same
        ``pad_cells`` ladder on the spiral fixture gives +0.12 % (W/1) and
-       +0.39 % (W/2) against +0.92 % and +2.73 % for the bar."""
+       +0.39 % (W/2) against +0.92 % and +2.73 % for the bar, and four
+       harder-graded cells cannot buy the same wall distance (-4.78 % at
+       ``pad_ratio = 2.67`` against the gentle 8-cell grid).
+    *  the PEC-vs-uniform-current offset is a fixture residual: x0.891
+       (W = 10 um, W/1) and x0.085 (W = 20 um, W/3) for a doubled length,
+       where a per-unit-length metal effect would give x2.0."""
     with enable_x64():
         st = _study()
         d = _json()
         for block in ("fixture", "referee", "levels", "richardson", "differential", "gates",
                       "wall_ladder", "wall_corrected_levels", "richardson_wall_extrapolated",
                       "gradient", "spiral_reference", "area_gate", "sigma_plateau",
-                      "wall_extrapolation_check", "spiral_wall_cross_check",
+                      "wall_extrapolation_check", "wall_extrapolation_check_fine",
+                      "pad_ratio_check", "pec_offset", "spiral_wall_cross_check",
                       "spiral_lead_differential", "systematics"):
             assert block in d, block
         key = st.case_key(W_TEST, L1)
@@ -476,24 +556,72 @@ def test_study_json_is_self_consistent_and_reproduces_a_fresh_solve():
         assert g["B4"]["passed"] and g["B4"]["worst"] <= 1e-4, g["B4"]
         assert g["B2"]["tolerance"] == 0.03 and g["B3"]["tolerance"] == 0.03
 
-        # 1. the wall correction is validated against a direct pad_cells = 12 solve
+        # 1. the wall correction is validated against direct pad_cells = 12 solves
+        #    at TWO levels -- the coarse one (+0.92 % correction) and one where
+        #    the correction is +2.90 %, inside the range the conclusion uses
         chk = d["wall_extrapolation_check"]
         assert abs(chk["extrapolation_error"]) <= 2e-3, chk    # measured +2.62e-4
         assert chk["rows"][-1]["pad_cells"] == 12
+        fine = d["wall_extrapolation_check_fine"]
+        assert fine["rows"][-1]["pad_cells"] == 12
+        assert fine["direct_pad12_n_unknowns"] == 104888, fine  # fits the ~110k budget
+        assert abs(fine["correction_size"] - 0.0290) <= 0.002, fine
+        assert abs(fine["extrapolation_error"] - 0.00107) <= 5e-4, fine
+        # the 2-point ladder at the SAME level is 7.5 x worse: this is the
+        # measurement that justifies the three-point rule
+        assert abs(fine["extrapolation_error_2pt"] - 0.00807) <= 2e-3, fine
+        assert abs(fine["extrapolation_error_2pt"]) > 5.0 * abs(fine["extrapolation_error"]), fine
 
-        # 2. the wall-corrected differential converges to 1 and PASSES from 3 cells on
+        # 2. THE THREE-POINT RULE, asserted structurally: every wall-corrected
+        #    ratio in the JSON has a full 4/6/8 ladder on BOTH legs, and the
+        #    short-ladder levels are recorded only under the EXCLUDED key.
+        for wk, dw in d["differential"].items():
+            for lk, row in dw["levels"].items():
+                pts = row.get("wall_ladder_points")
+                if "ratio_centres_wall_corrected" in row:
+                    assert pts is not None and min(pts) >= 3, (wk, lk, pts)
+                    assert "wall_correction_uncertainty" in row, (wk, lk)
+                if pts is not None and min(pts) < 3:
+                    assert "ratio_centres_wall_corrected" not in row, (wk, lk, pts)
+                    assert "ratio_centres_wall_corrected_two_point_EXCLUDED" in row, (wk, lk)
+        assert g["B2"]["three_point_ladder_required"] is True
+        excl10 = g["B2"]["per_width"]["W10"]["ratio_wall_corrected_two_point_EXCLUDED"]
+        excl20 = g["B2"]["per_width"]["W20"]["ratio_wall_corrected_two_point_EXCLUDED"]
+        assert set(excl10) == {"W/3"} and set(excl20) == {"W/6"}, (excl10, excl20)
+        assert abs(excl10["W/3"] - 0.9751) <= 0.01, excl10     # the contaminated W = 10 headline
+        assert abs(excl20["W/6"] - 1.0039) <= 0.01, excl20     # the contaminated W = 20 headline
+
+        # 3. the ADMITTED wall-corrected differential, with its uncertainty
         assert g["B2"]["passed"] is False                       # the raw pad_cells = 4 series
-        assert g["B2"]["passed_wall_corrected"] is True
+        # W = 10 um only reaches TWO cells across the width with a ladder on
+        # both legs, and two cells is 6.8 % low -- so the finest-level
+        # wall-corrected gate FAILS, and is reported failing with numbers.
+        assert g["B2"]["passed_wall_corrected"] is False
+        # what passes is the statement the conclusion actually makes
+        assert g["B2"]["passed_wall_corrected_from_3_cells"] is True
+        assert g["B2"]["widths_reaching_3_cells_with_a_3_point_ladder"] == ["W20"]
         wc20 = g["B2"]["per_width"]["W20"]["ratio_wall_corrected_per_level"]
-        assert abs(wc20["W/1"] - 0.9251) <= 0.01, wc20
-        assert abs(wc20["W/6"] - 1.0039) <= 0.01, wc20
-        for lvl in ("W/3", "W/4", "W/6"):
+        u20 = g["B2"]["per_width"]["W20"]["ratio_wall_corrected_uncertainty"]
+        assert sorted(wc20) == ["W/1", "W/3", "W/4"], wc20
+        assert [round(wc20[k], 4) for k in ("W/1", "W/3", "W/4")] == [0.9251, 0.9808, 0.9746], wc20
+        assert [round(u20[k], 4) for k in ("W/1", "W/3", "W/4")] == [0.0042, 0.0082, 0.0082], u20
+        for lvl in ("W/3", "W/4"):                              # >= 3 cells across W
             assert abs(wc20[lvl] - 1.0) <= 0.03, (lvl, wc20[lvl])
         wc10 = g["B2"]["per_width"]["W10"]["ratio_wall_corrected_per_level"]
-        assert [round(wc10[k], 3) for k in ("W/1", "W/2", "W/3")] == [0.829, 0.932, 0.975], wc10
-        assert wc10["W/1"] < wc10["W/2"] < wc10["W/3"], wc10    # monotone once the walls are fixed
+        u10 = g["B2"]["per_width"]["W10"]["ratio_wall_corrected_uncertainty"]
+        assert sorted(wc10) == ["W/1", "W/2"], wc10
+        assert [round(wc10[k], 4) for k in ("W/1", "W/2")] == [0.8286, 0.9319], wc10
+        assert [round(u10[k], 4) for k in ("W/1", "W/2")] == [0.0035, 0.0075], u10
+        assert wc10["W/1"] < wc10["W/2"], wc10       # monotone once the walls are fixed
+        assert abs(wc10["W/2"] - 1.0) > 0.03, wc10   # two cells is NOT enough, as measured
+        # the uncertainty is the level's own 2-point/3-point spread and is
+        # conservative: at the one level where the direct pad = 12 solve exists
+        # the measured error (0.107 % of L) is 6.5 x smaller than the spread
+        wcl = d["wall_corrected_levels"]["W20_l100"]["3"]
+        assert abs(wcl["extrapolation_uncertainty"] - 0.00699) <= 5e-4, wcl
+        assert wcl["extrapolation_uncertainty"] > 3.0 * abs(fine["extrapolation_error"]), wcl
 
-        # 3. the attribution: the spiral's own straight-run deficit matches the bar's
+        # 4. the attribution: the spiral's own straight-run deficit matches the bar's
         sld = d["spiral_lead_differential"]["levels"]
         bar = g["B2"]["per_width"]["W10"]["ratio_per_level"]
         for lvl, want in (("1", 0.7699), ("2", 0.8833)):
@@ -504,16 +632,57 @@ def test_study_json_is_self_consistent_and_reproduces_a_fresh_solve():
         sp = d["spiral_wall_cross_check"]["levels"]
         assert abs(sp["1"]["L_pad4"] - 262.439e-12) <= 0.05e-12, sp["1"]["L_pad4"]
 
-        # 4. the walls are the bar's problem, not the spiral's
+        # 5. the walls are the bar's problem, not the spiral's
         assert sp["1"]["rel_pad4"] < 0.005 and sp["2"]["rel_pad4"] < 0.01, sp
         bar_wall = d["wall_ladder"][st.case_key(10e-6, L1)]
         assert bar_wall["1"]["rel_pad4"] > 2.0 * sp["1"]["rel_pad4"], (bar_wall["1"], sp["1"])
         assert bar_wall["2"]["rel_pad4"] > 0.02, bar_wall["2"]   # measured +2.73 %
+        # ... and four harder-graded padding cells cannot replace eight gentle
+        # ones: pad_ratio 2.67 reaches a 812 um y wall on the same 11864
+        # unknowns but is -4.78 % on the gentle pad_cells = 8 grid
+        prc = d["pad_ratio_check"]
+        assert abs(prc["worst_rel_gentle"] - (-0.0478)) <= 0.01, prc
+        assert prc["worst_pad_ratio"] == 2.67, prc
+        assert all(r["n_unknowns"] == prc["rows"][0]["n_unknowns"] for r in prc["rows"]), prc
 
-        # the sigma plateau: 3e6 is ON it, PEC is not
+        # the sigma plateau: 3e6 is ON it and it IS a plateau, not a limit
         sig = d["sigma_plateau"]
         assert abs(sig["plateau_rel_change_1e6_to_3e6"]) <= 0.01, sig
         assert sig["L_pec_over_plateau_minus_1"] > 0.1, sig      # measured +18.6 %
+        i3, i7 = sig["sigma"].index(3e6), sig["sigma"].index(1e7)
+        assert sig["L_dut"][i7] / sig["L_dut"][i3] - 1.0 > 0.005, sig   # measured +1.60 %
+        assert sig["skin_over_width"][i3] > 1.0 > sig["skin_over_width"][i7], sig
+
+        # 6. ... but that +18.6 % is a FIXTURE residual, not a metal-model
+        # statement: doubling the bar length multiplies the offset by 0.891
+        # (W = 10 um, W/1) and 0.085 (W = 20 um, W/3) where a per-unit-length
+        # effect would multiply it by 2.0. Its size, ~5 pH, is ~2 % of the
+        # spiral's 262.44 pH L_diff.
+        po = d["pec_offset"]
+        assert set(po) == {"W20_div3", "W10_div1"}, sorted(po)
+        for pk, want_ratio in (("W10_div1", 0.891), ("W20_div3", 0.085)):
+            blk = po[pk]
+            assert len(blk["rows"]) == 3, blk
+            assert blk["length_ratio_long_over_short"] == 2.0, blk
+            assert abs(blk["offset_ratio_long_over_short"] - want_ratio) <= 0.02, (pk, blk)
+            assert blk["consistent_with_lumped"] is True, (pk, blk)
+        w10 = po["W10_div1"]["rows"]
+        assert [round(r["offset"] * 1e12, 2) for r in w10] == [5.59, 5.23, 4.98], w10
+        spiral_l = d["spiral_wall_cross_check"]["levels"]["1"]["L_pad4"]
+        assert 0.015 < po["W10_div1"]["offset_mean"] / spiral_l < 0.025, (
+            po["W10_div1"]["offset_mean"], spiral_l)          # measured 2.0 %
+
+        # the frequency flatness is 0.69 %, not 2e-7: at 200 MHz the skin depth
+        # is ~one width and the DUT is leaving the uniform-current plateau
+        sysb = d["systematics"]
+        assert abs(sysb["freq_flatness_rel_spread"] - 0.0069) <= 5e-4, sysb
+        fk = sorted(sysb["freq_flatness"], key=float)        # 50 / 100 / 200 MHz
+        assert [float(k) for k in fk] == [5e7, 1e8, 2e8], fk
+        assert [round(sysb["freq_flatness"][k] * 1e12, 3) for k in fk] == [23.360, 23.395,
+                                                                          23.522], sysb
+        sow = sysb["freq_flatness_skin_over_width"]
+        assert [round(sow[k], 2) for k in fk] == [2.05, 1.45, 1.03], sow
+        assert sow[fk[-1]] < 1.1, sow      # at 200 MHz the skin depth is ~one width
 
         # the implied de-embedded length grows with refinement (the deficit shrinks)
         imp = [d["levels"][key][k]["implied_length"] for k in sorted(d["levels"][key], key=float)]

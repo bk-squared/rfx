@@ -12,9 +12,12 @@ The message of this study is SOLVE COUNT and CONSTRAINT ACCURACY, not
   de-embedded ``L_diff`` against an independent Greenhouse
   partial-inductance referee under a physics-consistent protocol
   (uniform-current volumetric metal, vacuum dielectrics, graded wall
-  padding, area-exact corners) and found it 24.9 / 16.1 / 14.0 % LOW at
-  ``base_dx`` = W/1, W/2, W/3, with the Richardson extrapolation still
-  9.6-12.2 % low: gate V1 FAILED. The same comparison is repeated HERE at
+  padding, area-exact corners) and found it 21.2 / 12.0 / 9.8 % LOW at
+  ``base_dx`` = W/1, W/2, W/3 against the referee quantity the open/short
+  fixture actually measures, L(strip) - L(short's bridge) = 333.1 pH
+  (24.9 / 16.1 / 14.0 % against the strip alone), with the Richardson
+  extrapolation still 5.2-7.9 % low (2.3-5.5 % after the measured
+  vertical-grid correction): gate V1 FAILED. The same comparison is repeated HERE at
   this study's own nominal geometry (``referee_bias`` in the JSON) so the
   number quoted is one measured on the geometry actually optimised, not
   one carried over. A design loop on the W/1 grid therefore optimises a
@@ -22,8 +25,8 @@ The message of this study is SOLVE COUNT and CONSTRAINT ACCURACY, not
   ``L_target`` or for the final ``L``.
 * SHAPE DERIVATIVES are the part that is validated. D2's gate V3 measured
   ``dL/dtheta`` of the FDFD against the referee's own FD4 derivative to
-  within 5-15 % per component at W/1-W/3 (ratios 0.84 / 1.01 / 0.85 at
-  W/1), and gate V2 measured ``jax.grad`` against a 4th-order central
+  within 5-15 % per component at W/1-W/3 (ratios 0.92 / 0.94 / 0.88 at
+  W/3 against the de-embedded referee), and gate V2 measured ``jax.grad`` against a 4th-order central
   finite difference of the same discrete model to 6e-7. Gate O4 below
   repeats the FD4 check at the FINAL theta and on the FULL objective (not
   just L). A loop driven by derivatives that are right to 5-15 % on a
@@ -93,23 +96,35 @@ Cost model (what "one solve" means)
 One objective evaluation = one FORWARD solve of the three fixtures (DUT,
 OPEN, SHORT: three SuperLU factorisations of the same sparsity pattern) plus
 one ADJOINT pass (three transposed solves that REUSE those factorisations
-through the LU cache of ``rfx.fdfd.linear_solve``). The adjoint is
-therefore much cheaper than the forward: the seconds are in the JSON.
-One sweep point = one forward solve, no adjoint.
+through the LU cache of ``rfx.fdfd.linear_solve``). Counted rather than
+timed (``factorisations`` in the JSON): the forward solve is 3 ``_factor``
+calls with 3 misses, ``value_and_grad`` is 6 calls with the SAME 3 misses,
+so the adjoint adds no factorisation at all. One sweep point = one forward
+solve, no adjoint.
 
 And the honest caveat: with THREE parameters reverse mode is not the point.
-Forward mode (``jax.jvp``, 3 tangents) would cost 3 extra solves per
-gradient against the adjoint's 1, but those are extra SOLVES against the
-SAME three factorisations, so at this size the two are within a factor of
-about 1.3 of each other. What the gradient buys here over the sweep is not
+Forward mode (``jax.jvp``, 3 tangents) would cost 3 extra passes per
+gradient against the adjoint's 1, but those are passes over the SAME three
+factorisations, and a pass that hits the cache was measured at 0.33 s
+against a 38.6 s solve -- so at this size both modes are one factorisation
+set plus a few percent, within about 3 % of each other. What the gradient buys here over the sweep is not
 asymptotic cheapness in the parameter count, it is that 27 blind samples do
 not land on the constraint surface at all, while a few dozen guided ones
 land on it to 1 %. That is what gates O2 and O3 measure.
 
-Gates and RESULTS (every number measured in this session, all in the JSON)
---------------------------------------------------------------------------
+Gates and RESULTS (every number below is the one in the JSON on disk)
+---------------------------------------------------------------------
+The gradient loop, the sweep and the FD stencil are the recorded run:
+their raw per-evaluation logs are in the JSON and the derived blocks
+(gates, the lambda summary, the figure) are recomputed from those logs by
+``--from-json``, never re-timed. Everything else -- the nominal, lambda,
+the three memory probes, the factorisation accounting, the referee
+cross-check and the W/2 re-solve -- was measured in this session, and the
+nominal and lambda came back bit-identical to the recorded run
+(``L_diff`` = 5.090106167675779e-10 H, ``lam`` = 11.242904519421213 to the
+last digit), which is the drift check ``--verify`` does.
 Fixture: W/1 grid (25, 27, 15), N = 33352 unknowns, one three-fixture
-forward solve 39 s. Nominal L_diff = 509.011 pH, Q_diff = 11.0566, so
+forward solve 38.6-44.0 s depending on the load of this shared machine. Nominal L_diff = 509.011 pH, Q_diff = 11.0566, so
 L_target = 432.659 pH and Q_ref = 11.0566. Measured gradients at the
 nominal theta: ``g_L = (+1.907, -0.338, -0.787)``, ``g_Q = (+0.288,
 -0.104, +0.357)`` (scaled units), ``|g_Q| = 0.4701``, ``|g_L| = 2.0907``,
@@ -146,97 +161,176 @@ O4  PASS. ``jax.grad`` vs FD4 (1 % scaled steps) at the final theta:
     dL/dtheta = (7.983e-10, -1.306e-10, -3.056e-10) and dQ/dtheta =
     (+4.675, -0.962, +2.626), and the chain rule ``dloss = -dQ/Q_ref +
     2 lam e dL/L_t`` reproduces the objective's FD4 to 3.55e-7.
-O5  REPORT ONLY. W/2 (N = 87438, 230 s per forward solve):
-      nominal theta  L 509.011 -> 543.673 pH (+6.81 %), Q 11.0566 ->
-                     11.0652 (+0.08 %)
-      final theta    L 437.069 -> 465.341 pH (+6.47 %), Q 11.7618 ->
-                     11.6621 (-0.85 %)
+O5  REPORT ONLY. W/2 (N = 87438, 214 s per forward solve, 18.21 GB):
+      nominal theta  L 509.011 -> 543.673 pH (+6.810 %), Q 11.0566 ->
+                     11.0652 (+0.077 %)
+      final theta    L 437.069 -> 465.341 pH (+6.468 %), Q 11.7618 ->
+                     11.6621 (-0.848 %)
     So the ANSWER moves: on the W/2 grid the optimum misses the (W/1)
-    target by +7.55 % instead of +1.02 %. But the shift is almost pure
-    COMMON MODE -- +6.81 % at the nominal against +6.47 % at the optimum,
-    a 0.34-point difference on a 6.5-point shift -- which is the
-    quantitative version of "the derivatives are right and the absolute
-    value is not": the design DIRECTION survives the grid change, the
-    absolute target does not. D2's own per-level gaps (-24.9 % -> -16.1 %)
-    imply +11.6 % for its fixture; this geometry, with Leontovich metal and
-    the real dielectrics, gives +6.5 %, the same sign and order.
+    target by +7.554 % instead of +1.019 %. But the shift is almost pure
+    COMMON MODE -- +6.810 % at the nominal against +6.468 % at the
+    optimum, a 0.341-point differential on a 6.810-point shift, i.e.
+    ``common_mode_fraction`` = 0.950 -- which is the quantitative version
+    of "the derivatives are right and the absolute value is not": the
+    design DIRECTION survives the grid change, the absolute target does
+    not. D2's own W/1 -> W/2 move on ITS fixture is +11.65 %, quoted for
+    its SIGN only: it was measured at r_out = 52 um with vacuum
+    dielectrics and uniform-current metal, so nothing about its size
+    transfers to this geometry, and no window is asserted around it.
 BIAS (``referee_bias``, measured HERE, not carried over). At this study's
     nominal geometry, under D2's physics-consistent protocol
     (uniform-current volumetric metal, vacuum dielectrics, 100 MHz), the
     FDFD gives L_diff = 482.397 pH against the area-exact Greenhouse
-    referee's 601.412 pH: -19.79 % (D2 measured -24.9 % on its r_out =
-    52 um fixture at the same W/1 resolution; the corner systematic here
-    is +0.60 %). That is the size of the absolute error the design loop
+    referee's 601.412 pH: -19.79 % against the strip alone, -17.6 % with
+    the same 16.3 pH short-standard bridge subtracted as in D2's primary
+    convention (D2 measured -21.2 % / -24.9 % on its r_out = 52 um
+    fixture at the same W/1 resolution; the corner systematic here is
+    +0.60 %). That is the size of the absolute error the design loop
     optimises through.
+M1  FAILED, with numbers (the memory rule of this machine, section 0b and
+    "Environment" below). Peak physical footprint per block against the
+    limit that block ran under, in GB:
 
-Cost, measured (``mode_cost``, ``factorisations``)
---------------------------------------------------
-One forward solve = THREE LU factorisations (``_factor`` called 3 times,
-3 misses) and they ARE the cost: 38.7 s of factorisation inside a 39.1 s
-wall time. ``value_and_grad`` calls ``_factor`` six times with the same
-three misses -- the adjoint adds ZERO factorisations, only three
-transposed back-substitutions on the cached factors -- and a pass that
-re-solves the same point entirely from the cache costs 0.41-0.58 s, i.e.
-1.0-1.5 % of a solve. Forward mode with three tangents adds three more
-back-substitutions on those same factors.
+        nominal 4.53   lambda 5.63   loop 5.29 (16 chunks of ONE
+        evaluation)   probe 4.96   referee_bias 4.92        limit 6.0, ok
+        sweep 8.39   fd_check 21.64                         limit 6.0, OVER
+        factorisations 8.38 (12)   probe_jit 15.08 (16)
+        refine, the W/2 re-solve 18.21 (22)                 raised, ok
+        probe_grad 8.51 (6.0)                               over BY DESIGN
 
-So the gradient is ~1.5 % on top of the forward solve in WORK, and with
-three parameters forward mode is just as cheap: reverse mode is not the
-story here. The story is the count. The loop spent 16 objective
-evaluations (15 distinct thetas plus one that L-BFGS-B re-requested and
-the LU cache answered in 0.5 s) = 16 forward + 16 adjoint passes, 419 s
-total, and landed on the constraint to 1 %. The sweep spent 27 forward
-solves, 179 s, and landed nowhere near it. A finite-difference gradient
-at ONE point would have cost 12 forward solves = 470 s -- more than the
-entire loop.
+    The two failures are the sweep and the FD stencil, both measured
+    before this instrumentation existed and both of them several jitted
+    solves in one process. The reverse-mode probe crosses the limit on
+    purpose -- it is the measurement OF the crossing and stops itself
+    there -- and is listed apart. The three raised limits were passed on
+    the command line for one block each and are recorded per block in the
+    JSON. Nothing is widened to make the gate pass: it is reported
+    FAILING.
 
-Wall-clock warning. This machine ran three agents concurrently and the
-seconds are not comparable across minutes: measured sequentially, the
-same three blocks gave "forward 39.2 s, value_and_grad 26.1 s, three jvps
-16.4 s", monotonically decreasing, which is the load falling, not
-algorithms. ``mode_cost`` therefore runs in interleaved ROUNDS and records
-``os.getloadavg``. Even so, ``value_and_grad`` reproducibly comes out
-BELOW the forward-only solve (26.9 s twice against 39.0 and 39.3 s) while
-doing strictly more work: the reverse-mode graph has enough independent
+Cost, measured (``factorisations``)
+-----------------------------------
+Counted, not timed -- on a machine with three other agents on it the
+seconds move by 40 % between minutes, so the claim is made on the LU
+factorisation COUNT (``factorisations`` in the JSON: ``_factor`` is
+wrapped for the duration of the block and the wrapper removed again;
+nothing in ``rfx`` is modified). Measured in one process at the final
+theta:
+
+    forward           wall 38.6 s   _factor calls 3, misses 3, 38.2 s
+                                    inside ``_factor`` (99.2 % of it)
+    forward_cached    wall  0.33 s  calls 3, misses 0  (0.85 % of a solve)
+    value_and_grad    wall 25.7 s   calls 6, misses 3, 38.0 s summed
+
+So: one forward solve IS its three LU factorisations; the ADJOINT ADDS
+ZERO of them (six calls, the same three misses -- three transposed
+back-substitutions on the cached factors); and a pass that re-solves the
+same point entirely from the cache costs 0.33 s, i.e. 0.85 % of a solve.
+Forward mode with three tangents would add three such back-substitution
+passes, ~2.5 % of a solve, which is why with three parameters reverse
+mode is NOT the story here.
+
+The story is the count. Measured, summing the per-solve seconds the
+blocks logged: the loop spent 16 objective evaluations = 16 forward + 16
+adjoint passes, 450.5 s, and landed on the constraint to 1.019 %; the
+sweep spent 27 forward solves, 1053.6 s, and landed nowhere near it; and
+the FD4 gradient at ONE point (gate O4) cost 12 forward solves, 493.1 s,
+more than the entire loop.
+
+Wall-clock warning, and the one number that looks wrong. ``value_and_grad``
+comes out BELOW the forward-only solve (25.7 s against 38.6 s) while doing
+strictly more work. That is not the adjoint being cheaper than the solve
+it differentiates: the summed factorisation time INSIDE that 25.7 s is
+38.0 s (ratio 1.48), i.e. the reverse-mode graph has enough independent
 work for XLA to run the three host callbacks CONCURRENTLY (SuperLU
-releases the GIL, and the summed factorisation time 39.5 s exceeds the
-27.0 s wall time, ratio 1.46), while the forward-only graph serialises
-them. That is a scheduling property of this backend, recorded and not
-used as a cost claim.
+releases the GIL) while the forward-only graph serialises them. A
+scheduling property of this backend, recorded and never used as a cost
+claim. The four-execution-mode wall-time block (``mode_cost``) that would
+compare forward / cached / reverse / forward mode within one process is
+NOT RUN, and the JSON says why under ``not_run``: at +3.3 to +4.0 GB of
+physical footprint per factorising pass (see below) it needs 20-25 GB,
+which this shared 38 GB machine cannot give one of four agents.
 
 Run::
 
     .venv/bin/python validation/fdfd/spiral_design.py [--no-refine]
         [--no-fd] [--no-sweep] [--maxiter 30] [--from-json]
         [--max-solves K] [--recompute BLOCK ...] [--verify]
+        [--mem-limit GB] [--memory-probe K] [--memory-probe-jit K]
+        [--memory-probe-grad K] [--mode-cost]
+
+``--from-json`` is also the REASSEMBLY path: with every block already in
+the JSON it re-runs nothing (no solve, no 450 s loop) and only recomputes
+what is derived from the raw logs -- the gate dictionary, the seconds
+summary and the figure. That is how the gates and the PNG are refreshed
+after a reporting fix.
 
 ``--verify`` is the script-only drift check: it re-solves the nominal theta
-on the CURRENT ``rfx.fdfd.spiral`` and compares with the JSON (one 40 s
-solve, too slow for the test file). Run 2026-09-14 against a concurrently
-edited ``spiral.py`` (the ``dut_kind="bar"`` addition): bit-identical,
-0.0e0 relative on both L and Q.
+on the CURRENT ``rfx.fdfd.spiral`` and compares with the JSON (one 44 s
+solve, too slow for the test file). The same check was made here by
+recomputing the whole ``nominal`` and ``lambda`` blocks against a
+concurrently edited ``spiral.py``: ``L_diff``, ``Q_diff``, both gradients
+and ``lam`` came back bit-identical to the recorded run (0.0e0 relative).
 
 writes ``spiral_design.json`` and ``spiral_design.png`` next to this file.
 The JSON is rewritten after every block AND after every objective
 evaluation, so an interrupted run keeps everything already measured.
 ``tests/test_fdfd_spiral_design.py`` asserts the gates from that JSON and
 re-runs a 2-iterate smoke test of the same driver on a cheap model
-(7 tests, 50 s measured, of which 49 s is that live smoke test).
+(8 tests, 56.7 s measured in this session, of which 55.4 s is that live
+smoke test and 0.8 s the seven JSON gates).
 
 Environment, and how to rerun it
 --------------------------------
 Two things about this machine shaped the run and are reported rather than
 hidden:
 
-1. MEMORY. Repeated solves in one process grow the resident set without
-   bound -- measured +3.6 GB per three-fixture solve of the W/1 grid with
-   the LU cache explicitly emptied and ``gc.collect()`` called, for
-   repeated solves at the SAME theta (5.6, 9.2, 12.8, 16.4 GB after 1-4
-   solves; ``/usr/bin/time -l`` agrees, 16.4 GB for a 4-solve process).
-   A single solve peaks at 2.9 GB, so the growth is not the working set
-   and not the factor cache; it is not diagnosed here (it lives below
-   ``rfx.fdfd.linear_solve``'s ``pure_callback``) and is listed as an open
-   issue. The consequence for this study is ``--max-solves``.
+1. MEMORY. An earlier revision of this file carried two contradictory
+   claims (+3.6 GB of RSS per three-fixture solve in the docstring,
+   ~0.5 GB in the budget comment). Both were RSS, and RSS is the wrong
+   number here (section 0b). The measurement that settles it is ONE
+   controlled series per execution path, all three taken in this session
+   in a single process at the loop's own grid (N = 33352), same theta,
+   ``clear_factor_cache()`` and ``gc.collect()`` between solves, physical
+   footprint (``memory.probe``, ``memory.probe_jit``, ``memory.probe_grad``
+   in the JSON):
+
+     solves in one process         1      2      3      4      5
+     solve_spiral, NO jit        4.94   4.96   4.69   4.70   4.79  GB
+     the same solve JITTED       5.03   8.37  11.71  15.08         GB
+     jax.value_and_grad of it    4.60   8.51                       GB
+
+   i.e. the un-jitted call is FLAT (-0.05 GB per solve, fit residual
+   0.12 GB, and the resident series agrees: 5.05 -> 4.96 GB) while the
+   JITTED path -- the one the loop, the sweep and the FD stencil all take
+   -- grows +3.351 GB per forward solve (fit residual 0.007 GB over four
+   points, resident +2.495 GB) and the reverse pass +3.904 GB. THE single
+   number this study runs on is that +3.35 GB per jitted forward solve,
+   +3.90 GB per value_and_grad. It has since been diagnosed and fixed in
+   ``rfx.fdfd.linear_solve`` (``validation/fdfd/memory_probe.py``): scipy
+   1.18.1's ``SuperLU`` does not free its factor when it is deallocated on
+   a thread other than the one that built it, and under ``jax.jit`` the
+   factors were built on XLA's callback threads and dropped on the caller's.
+   Every factor now lives on one dedicated thread and the jitted N = 33352
+   path measures flat (5.22 / 5.33 / 5.08 / 5.02 GB over four solves). The
+   numbers above are the PRE-FIX record this study ran under;
+   ``--max-solves`` remains as an optional budget and is no longer needed.
+
+   The consequences, measured and not smoothed over:
+
+   * the gradient loop gets exactly ONE evaluation per process and
+     resumes by replaying its log: the 16 recorded evaluations peak at
+     4.60-5.29 GB each, all inside the 6 GB rule. The same 16 in ONE
+     process would have reached about 4.60 + 15 x 3.904 = 63 GB, which is
+     more than this machine has; any claim that the recorded loop ran as
+     one 16-solve process would be false, and gate M1 records the 16
+     per-chunk footprints that show it did not;
+   * the two blocks measured BEFORE this instrumentation existed did put
+     several jitted solves in one process and DID break the 6 GB rule:
+     the sweep reached 8.39 GB (2 solves per process) and the FD stencil
+     21.64 GB (up to 6). Gate M1 therefore FAILS, with those numbers, and
+     nothing is widened to hide it: re-running those two blocks one solve
+     per process costs 39 x 40 s and buys no new physics, so the honest
+     record is the failing gate.
 2. A ~530 s WATCHDOG on detached background processes killed two full runs
    mid-sweep (at 550 s and 529 s of wall time) with no traceback. Both
    are the reason every solve block here is RESUMABLE and the run is
@@ -246,9 +340,12 @@ hidden:
                --from-json --max-solves 5; do :; done
 
    Each chunk reuses the completed blocks, continues the partial one, and
-   exits 3 while work remains. The gradient loop is the ONE block that
-   cannot be chunked (L-BFGS-B holds the state): it took 419 s and 16
-   solves in a single process and is reused from the JSON afterwards.
+   exits 3 while work remains. L-BFGS-B holds state that cannot be
+   pickled, so the gradient loop is chunked by REPLAY instead (see
+   ``run_loop``): 16 chunks of ONE evaluation each, 450.5 s of solve time
+   in total, the log replayed exactly (0 mismatches) at the start of each
+   chunk. The claim that it ran as a single 16-solve process would be
+   false, and would also be impossible: 63 GB, see above.
 """
 from __future__ import annotations
 
@@ -302,24 +399,31 @@ SWEEP_N = 3
 # ----------------------------------------------------------------------------
 # 0. solve budget (memory control)
 #
-# MEASURED in this session: one three-fixture forward solve of the W/1 grid
-# (N = 33352) peaks at 2.9 GB, and every FURTHER solve in the same process
-# adds ~0.5 GB of resident set that is never returned -- with the LU factor
-# cache explicitly emptied (``clear_factor_cache``) and ``gc.collect()``
-# called, and for repeated solves at the SAME theta, so it is not the cache
-# and not the fixture data: ``/usr/bin/time -l`` reported 3.3 GB peak for a
-# 2-solve process and 8.1 GB for an 11-solve one. On this shared 38 GB
-# machine the 8.1 GB process was killed by the OS twice. The study therefore
-# runs its solve blocks under a BUDGET: ``--max-solves K`` stops cleanly
-# after K three-fixture solves, writes the JSON, and exits with code 3 to
-# say "more work to do"; every solve block resumes from what is already in
-# the JSON. ``--loop`` drives that from the shell:
+# MEASURED in this session, one process, W/1 grid (N = 33352), same theta,
+# LU factor cache emptied (``clear_factor_cache``) and ``gc.collect()``
+# forced between solves -- the three ``memory_probe`` series of section 0b,
+# physical footprint in GB after 1, 2, ... solves:
+#
+#     solve_spiral, NO jit        4.94  4.96  4.69  4.70  4.79   FLAT
+#     the same solve JITTED       5.03  8.37 11.71 15.08         +3.351/solve
+#     jax.value_and_grad of it    4.60  8.51                     +3.904/pass
+#
+# (PRE-FIX record: the growth was a scipy SuperLU cross-thread deallocation
+# leak, since fixed in rfx.fdfd.linear_solve; see validation/fdfd/
+# memory_probe.json, where the jitted N = 33352 path is flat.)
+# The first solve of a process costs ~5 GB whatever the path; what GREW is
+# the jitted one, which is the path every block of this study takes, and it
+# grew linearly (fit residual 0.007 GB over the four points). At the ~6 GB
+# this machine can give one of four concurrent agents that is ONE jitted
+# solve, or one value_and_grad pass, per process. The study therefore runs
+# its solve blocks under a BUDGET: ``--max-solves K`` stops cleanly after K
+# three-fixture solves, writes the JSON, and exits with code 3 to say "more
+# work to do"; every solve block resumes from what is already in the JSON,
+# and the gradient loop resumes by replaying its evaluation log. Drive it
+# from the shell:
 #
 #     until .venv/bin/python validation/fdfd/spiral_design.py \
-#             --from-json --max-solves 5; do :; done
-#
-# Five solves per process is ~4.9 GB peak (measured slope), which is inside
-# the ~6 GB this machine can give one of three concurrent agents.
+#             --from-json --max-solves 1; do :; done
 
 _BUDGET: dict[str, Any] = {"used": 0, "max": None}
 EXIT_INCOMPLETE = 3
@@ -336,12 +440,12 @@ def exhausted() -> bool:
 # ----------------------------------------------------------------------------
 # 0b. memory accounting: WHICH number, and why not ``ru_maxrss``
 #
-# This machine runs three agents on 38 GB and the rule for this track is a
+# This machine runs four agents on 38 GB and the rule for this track is a
 # peak of ~6 GB per solve process. Getting that right needed the right
 # METRIC, and the obvious ones are wrong here.
 #
-# MEASURED in this session, on a process that had run 12 three-fixture
-# ``value_and_grad`` evaluations of the W/1 grid: ``ru_maxrss`` said
+# MEASURED on the loop run (2026-09-14), on a process that had run 12
+# three-fixture ``value_and_grad`` evaluations of the W/1 grid: ru_maxrss said
 # 5.93 GB and ``ps -o rss=`` said 0.007 GB, while the PHYSICAL FOOTPRINT
 # (what Activity Monitor calls Memory: resident + compressed + swapped
 # anonymous) was ~16 GB -- killing that one process returned 16 GB of swap
@@ -350,14 +454,30 @@ def exhausted() -> bool:
 # moment, read 5.2 GB resident against a 24.0 GB footprint (``vmmap
 # --summary``: "Physical footprint: 24.0G, peak 32.9G").
 #
-# So: repeated solving in one process DOES grow the process without bound,
-# and the growth is invisible to RSS under memory pressure, because the
-# cold leaked pages are exactly what the OS compresses and swaps first. An
-# earlier revision of this file carried two contradictory claims about it
-# (+3.6 GB per solve in the docstring, ~0.5 GB per solve in the budget
-# comment); both were RSS measurements of the same real effect at different
-# levels of system pressure, which is why they disagreed. The measurement
-# that settles it is ``memory_probe`` below, on the footprint.
+# So: repeated solving in one process DOES grow the process, and under
+# memory pressure the growth is invisible to RSS, because the cold leaked
+# pages are exactly what the OS compresses and swaps first.
+#
+# An earlier revision of this file carried two contradictory claims about
+# the growth (+3.6 GB per solve in the docstring, ~0.5 GB per solve in the
+# budget comment). The three ``memory_probe`` series of section 0 settle
+# it, and they show the two claims were not two readings of one number but
+# two different EXECUTION PATHS:
+#
+#   * the jitted forward solve grows +3.351 GB of footprint and +2.495 GB
+#     of resident per solve, which is the +3.6 GB claim, roughly right and
+#     attached to the wrong generality;
+#   * ``solve_spiral`` called directly does not grow at all (-0.052 GB per
+#     solve over five, fit residual 0.124 GB), so no path in this study
+#     reproduces a steady ~0.5 GB per solve;
+#   * one ``value_and_grad`` pass is worse than either: +3.904 GB.
+#
+# Which path a block takes therefore decides its budget, and the rule of
+# this machine allowed exactly one jitted solve per process. The cause was
+# diagnosed afterwards by validation/fdfd/memory_probe.py (scipy SuperLU
+# losing its factor when deallocated off its creating thread, triggered by
+# XLA's callback threads) and fixed in rfx.fdfd.linear_solve; these series
+# are the pre-fix record.
 #
 # ``footprint_gb`` reads ``ri_phys_footprint`` from ``proc_pid_rusage``
 # (libSystem, flavour ``RUSAGE_INFO_V0``); it was CHECKED against ``vmmap
@@ -375,17 +495,23 @@ def exhausted() -> bool:
 MEM_LIMIT_GB = 6.0
 EXIT_MEM = 4
 
-# One block is deliberately NOT re-measured under this instrumentation, and
-# says so in the JSON rather than being quietly absent.
-MEM_NOT_MEASURED = {
-    "mode_cost": "by construction this block compares four execution modes (forward, "
-                 "LU-cache hit, reverse, three forward-mode jvps) WITHIN one process, so "
-                 "it cannot be chunked. memory.probe_grad measures +4.0 GB of footprint per "
-                 "factorising reverse pass, which puts this block at an estimated 12-25 GB "
-                 "-- more than this shared 38 GB machine can give one of three agents, and "
-                 "it thrashed once today at 37.8 GB of swap. Its numbers are those of the "
-                 "session that first measured them (the block is unchanged); the memory "
-                 "instrumentation was written afterwards and is not retro-fitted to them.",
+# Every block that RUNS is measured under this instrumentation. One block is
+# deliberately NOT RUN, and says so in the JSON (``not_run``) with its reason
+# rather than being quietly absent; ``--mode-cost`` runs it anyway.
+MEM_NOT_MEASURED: dict[str, str] = {}
+BLOCKS_NOT_RUN = {
+    "mode_cost": "the four-execution-mode cost block (forward / LU-cache hit / reverse / "
+                 "three forward-mode jvps) has to run all four WITHIN one process, so it "
+                 "cannot be chunked, and each factorising pass adds about 3.3 GB "
+                 "(memory.probe_jit) to 4.0 GB (memory.probe_grad) of physical footprint: "
+                 "2 rounds x 3 factorising passes puts it at 20-25 GB on a 38 GB machine "
+                 "shared with three other agents, and this machine already thrashed once "
+                 "today at 37.8 GB of swap. It is NOT run, and the cost claims of this "
+                 "study are made instead from the factorisation COUNTS and the cache-hit "
+                 "cost measured in one process by the `factorisations` block (2 solves) "
+                 "plus the per-solve wall times logged by the loop, the sweep and the FD "
+                 "stencil. Run it explicitly with --mode-cost --mem-limit 26 on an idle "
+                 "machine if the four wall-time ratios are wanted.",
 }
 _MEM: dict[str, Any] = {"limit_gb": MEM_LIMIT_GB, "blocks": {}, "probe": None}
 _T_PROC = time.time()
@@ -595,10 +721,16 @@ def memory_probe(model, n_solves: int = 6, clear_cache: bool = True,
     ``growth_gb_per_solve``; the fit residual and the first/last values are
     recorded so the linearity can be judged rather than assumed.
 
-    ``mode="grad"`` repeats the same measurement with ``jax.value_and_grad``
-    (one forward solve plus the adjoint pass, the shape of work the design
-    loop does) instead of a forward solve. That is the number that decides
-    the loop's chunk size, and it is much worse than the forward one.
+    THREE modes, because they do not agree and the disagreement is the
+    finding (see section 0b):
+
+    * ``mode="forward"`` -- ``spiral.solve_spiral`` called directly, no
+      ``jax.jit`` around it;
+    * ``mode="jit"``  -- the SAME solve under ``jax.jit``, i.e. the path the
+      loop, the sweep and the FD stencil all take;
+    * ``mode="grad"`` -- ``jax.value_and_grad`` of it (one forward solve plus
+      the adjoint pass), the shape of work the design loop does. That is the
+      number that decides the loop's chunk size.
     """
     import gc
 
@@ -609,6 +741,7 @@ def memory_probe(model, n_solves: int = 6, clear_cache: bool = True,
     from rfx.fdfd.linear_solve import clear_factor_cache
     vg = (jax.jit(jax.value_and_grad(lambda u_: metrics_fn(model)(u_)[0]))
           if mode == "grad" else None)
+    fwd_jit = jax.jit(metrics_fn(model)) if mode == "jit" else None
     u_one = jnp.ones(3, dtype=jnp.float64)
     trace: list[dict[str, Any]] = []
     stopped_at_limit = False
@@ -624,6 +757,12 @@ def memory_probe(model, n_solves: int = 6, clear_cache: bool = True,
                            "grad_norm": float(np.linalg.norm(np.asarray(grad))),
                            "seconds": time.time() - t0})
             del l_value, grad
+        elif fwd_jit is not None:                # the jitted path the study runs on
+            l_value, q_value = fwd_jit(u_one)
+            jax.block_until_ready(l_value)
+            values.append({"i": i, "L": float(l_value), "Q": float(q_value),
+                           "seconds": time.time() - t0})
+            del l_value, q_value
         else:
             res = sm.solve_spiral(model, FREQ, theta=jnp.asarray(THETA0),
                                   sigma_metal=SIGMA_CU, sigma_si=SIGMA_SI)
@@ -681,6 +820,12 @@ def memory_probe(model, n_solves: int = 6, clear_cache: bool = True,
             "growth_gb_per_solve_maxrss": fit(mrs)[0],
             "solves_per_process_at_limit": (
                 int(max(1.0, (float(_MEM["limit_gb"]) - fps[0]) / slope + 1.0))
+                if fps and slope and slope > 1e-3 else None),
+            # the same count against the DEFAULT 6 GB rule of this track, so a
+            # probe that had to be run under a raised limit still reports the
+            # number the rule implies
+            "solves_per_process_at_default_limit": (
+                int(max(1.0, (MEM_LIMIT_GB - fps[0]) / slope + 1.0))
                 if fps and slope and slope > 1e-3 else None),
             "L_spread": float(spread),
             "limit_gb": float(_MEM["limit_gb"]), "seconds": time.time() - t_start,
@@ -743,7 +888,8 @@ def run_loop(model, l_target: float, q_ref: float, lam: float, maxiter: int = MA
     PREVIOUS theta into the next one. Measured on this machine
     (N = 33352): with the cache retained the process peak reached 6.33 GB
     by the third evaluation and tripped the 6.0 GB limit of section 0b;
-    with it cleared the whole 16-evaluation loop peaks at 4.71 GB. The
+    with it cleared, and one evaluation per process, no evaluation of the
+    16 exceeded 5.29 GB. The
     price is the one theta scipy re-requests (it re-evaluates x0 after the
     warm-up call): with the cache live that repeat cost 0.5 s, with it
     cleared it costs a full solve. Nothing NUMERIC changes -- the solves
@@ -1229,8 +1375,15 @@ def factorisation_accounting(model, l_target: float, q_ref: float, lam: float,
     out: dict[str, Any] = {"u": [float(v) for v in u0]}
     try:
         ls._factor = counted                     # instrumentation, restored below
-        for name, fn in (("forward", fwd), ("value_and_grad", vg)):
-            ls.clear_factor_cache()
+        # "forward_cached" deliberately does NOT clear the cache: it is the
+        # same point solved again, so every _factor call hits and what is left
+        # is the three back-substitutions. That is the cost a forward-mode
+        # tangent pays on top of a solve, measured instead of asserted, and it
+        # costs no factorisation and no extra memory.
+        for name, fn, clear in (("forward", fwd, True), ("forward_cached", fwd, False),
+                                ("value_and_grad", vg, True)):
+            if clear:
+                ls.clear_factor_cache()
             counter.update(calls=0, misses=0, factor_seconds=0.0)
             t0 = time.time()
             jax.block_until_ready(fn(u0))
@@ -1245,6 +1398,9 @@ def factorisation_accounting(model, l_target: float, q_ref: float, lam: float,
         ls.clear_factor_cache()
     out["extra_factorisations_for_the_gradient"] = (out["value_and_grad"]["misses"]
                                                     - out["forward"]["misses"])
+    out["cached_over_full"] = (out["forward_cached"]["wall_seconds"]
+                               / out["forward"]["wall_seconds"])
+    out["fd4_equivalent_forward_solves"] = 12
     out["factor_over_wall_forward"] = (out["forward"]["factor_seconds"]
                                        / out["forward"]["wall_seconds"])
     out["concurrency_in_value_and_grad"] = (out["value_and_grad"]["factor_seconds"]
@@ -1412,6 +1568,16 @@ def evaluate_gates(study: dict[str, Any]) -> dict[str, Any]:
     sweep = study.get("sweep", {})
     best = sweep.get(f"best_in_band_{L_BAND:g}")
     q_fin = loop.get("final_Q")
+    # the COST comparison, summed from the per-solve seconds the blocks
+    # logged. A block's own "seconds" field is the chunk that wrote it (the
+    # study runs as resumable chunks), so it is not the study's cost; the sum
+    # over the logged solves is.
+    cost = {"loop_evaluations": len(evals),
+            "loop_solve_seconds": float(sum(e["seconds"] for e in evals)),
+            "sweep_forward_solves": sweep.get("n_forward_solves"),
+            "sweep_solve_seconds": float(sum(p["seconds"] for p in sweep.get("points", []))),
+            "fd4_gradient_forward_solves": len((study.get("fd_check") or {}).get("stencil", {})),
+            "fd4_gradient_seconds": (study.get("fd_check") or {}).get("seconds")}
     if best is None:
         wider = {b: sweep.get(f"best_in_band_{b:g}") for b in (0.05, 0.10, 0.25)}
         qualifying = {f"{b:g}": (w["Q"] if w else None) for b, w in wider.items()}
@@ -1423,7 +1589,7 @@ def evaluate_gates(study: dict[str, Any]) -> dict[str, Any]:
                    "final_Q": q_fin, "best_sweep_Q_in_wider_bands": qualifying,
                    "best_sweep_Q_anywhere": (sweep.get("best_Q_anywhere") or {}).get("Q"),
                    "best_sweep_loss": (sweep.get("best_loss") or {}).get("loss"),
-                   "final_loss": loop.get("final_loss"),
+                   "final_loss": loop.get("final_loss"), **cost,
                    "passed": None}
     else:
         g["O3"] = {"name": "final Q >= best sweep Q inside the 2 % L band",
@@ -1431,6 +1597,7 @@ def evaluate_gates(study: dict[str, Any]) -> dict[str, Any]:
                    "final_Q": q_fin, "best_sweep_Q": best["Q"], "best_sweep_theta": best["theta"],
                    "best_sweep_L_rel_error": best["L_rel_error"],
                    "margin": (q_fin - best["Q"]) / best["Q"] if q_fin is not None else None,
+                   **cost,
                    "passed": bool(q_fin is not None and q_fin >= best["Q"])}
 
     fd = study.get("fd_check")
@@ -1447,7 +1614,7 @@ def evaluate_gates(study: dict[str, Any]) -> dict[str, Any]:
         # bound-active components agree to 3.4e-7 and 1.1e-7. The gate is
         # therefore stated on the error relative to the gradient NORM,
         # which is the quantity an optimiser actually consumes; both forms
-        # are recorded. The absolute errors (3.0e-8 / 6.1e-9 / 4.3e-8) are
+        # are recorded. The absolute errors (3.0e-7 / 6.1e-9 / 4.3e-8) are
         # all at the same level, i.e. the FD4 truncation floor of this
         # 1 %-step stencil, not a gradient defect.
         g["O4"] = {"name": "jax.grad vs FD4 at the final theta (objective)",
@@ -1495,24 +1662,72 @@ def evaluate_gates(study: dict[str, Any]) -> dict[str, Any]:
                            "metal), so only its SIGN is a prediction for this fixture",
                    "passed": None}
 
+    def per_process_at_default(rec: dict[str, Any]) -> int | None:
+        """Solves one process gets under the DEFAULT 6 GB rule, recomputed
+        here from the probe's raw series so a probe that had to be run under
+        a raised limit still reports the number the rule implies."""
+        fps = rec.get("footprint_gb") or []
+        slope = rec.get("growth_gb_per_solve")
+        if not fps or not slope or slope <= 1e-3:
+            return None
+        return int(max(1.0, (MEM_LIMIT_GB - fps[0]) / slope + 1.0))
+
     # ---- M1: the memory rule this machine imposes (see section 0b) ---------
     mem = study.get("memory") or {}
     blocks = mem.get("by_block") or {}
     probe = mem.get("probe") or {}
-    peaks = {k: float(v.get("footprint_gb_max", v.get("footprint_gb_after", float("nan"))))
-             for k, v in blocks.items()}
+    probe_jit = mem.get("probe_jit") or {}
+
+    def logged_peak(record: Any) -> float:
+        """The highest footprint any ``mem_note`` INSIDE a block recorded.
+
+        The per-chunk numbers are taken at the END of a chunk, after the
+        factor cache is dropped and ``gc.collect()`` has run, so they
+        understate what the block reached: the W/2 re-solve ends a chunk at
+        14.01 GB having passed through 18.21 GB, and one sweep process ends
+        at 3.72 GB having reached 8.56 GB. A block's peak is therefore the
+        max over its own logged notes as well."""
+        best = float("nan")
+        stack: list[Any] = [record]
+        while stack:
+            node = stack.pop()
+            if isinstance(node, dict):
+                v = node.get("footprint_gb")
+                if isinstance(v, (int, float)) and not (best == best and v <= best):
+                    best = float(v)
+                stack.extend(node.values())
+            elif isinstance(node, list):
+                stack.extend(node)
+        return best
+
+    # the probe blocks keep their trace under memory.probe*, not under a
+    # top-level key of the study
+    sources = dict(study, memory_probe=probe, memory_probe_jit=probe_jit,
+                   memory_probe_grad=mem.get("probe_grad") or {})
+    peaks = {}
+    for k, v in blocks.items():
+        chunk_peak = float(v.get("footprint_gb_max", v.get("footprint_gb_after", float("nan"))))
+        inner = logged_peak(sources.get(k))
+        peaks[k] = max(chunk_peak, inner) if inner == inner else chunk_peak
     limits = {k: float(v.get("limit_gb", MEM_LIMIT_GB)) for k, v in blocks.items()}
     over = {k: [peaks[k], limits[k]] for k in peaks if peaks[k] > limits[k]}
+    # the memory probes are the measurement OF the limit: the reverse-mode one
+    # is supposed to cross it (it records the crossing and stops itself), so it
+    # is listed separately from the blocks that crossed it by accident. The
+    # gate judges only the latter.
+    by_design = {k: v for k, v in over.items() if k.startswith("memory_probe")}
+    unintended = {k: v for k, v in over.items() if k not in by_design}
     missing = sorted(k for k, v in study.items()
                      if isinstance(v, dict) and k not in peaks and k not in
-                     ("fixture", "design", "memory", "gates", "seconds_by_block"))
+                     ("fixture", "design", "memory", "gates", "seconds_by_block", "not_run"))
     g["M1"] = {"name": "physical footprint of every block within the limit it ran under, "
                        "and the per-solve growth measured rather than assumed",
                "metric": "ri_phys_footprint (proc_pid_rusage), NOT ru_maxrss -- see the "
                          "study's section 0b: under memory pressure RSS falls while the "
                          "process grows",
                "footprint_gb_by_block": peaks, "limit_gb_by_block": limits,
-               "blocks_over_limit": over,
+               "blocks_over_limit": unintended,
+               "blocks_over_limit_by_design": by_design,
                "blocks_not_measured": missing,
                "why_not_measured": mem.get("not_measured") or {},
                "probe_n_solves": probe.get("n_solves"),
@@ -1522,6 +1737,21 @@ def evaluate_gates(study: dict[str, Any]) -> dict[str, Any]:
                "probe_growth_gb_per_solve_resident": probe.get("growth_gb_per_solve_resident"),
                "probe_growth_fit_residual_gb": probe.get("growth_fit_residual_gb"),
                "probe_solves_per_process_at_limit": probe.get("solves_per_process_at_limit"),
+               # the same series on the JITTED path -- the one the loop, the
+               # sweep and the FD stencil actually take, and the only one of
+               # the three that grows (section 0b)
+               "probe_jit_n_solves": probe_jit.get("n_solves"),
+               "probe_jit_footprint_gb_first_last": probe_jit.get("footprint_gb_first_last"),
+               "probe_jit_resident_gb_first_last": probe_jit.get("resident_gb_first_last"),
+               "probe_jit_growth_gb_per_solve": probe_jit.get("growth_gb_per_solve"),
+               "probe_jit_growth_gb_per_solve_resident":
+                   probe_jit.get("growth_gb_per_solve_resident"),
+               "probe_jit_growth_fit_residual_gb": probe_jit.get("growth_fit_residual_gb"),
+               "probe_jit_solves_per_process_at_limit":
+                   probe_jit.get("solves_per_process_at_limit"),
+               "probe_jit_solves_per_process_at_default_limit":
+                   per_process_at_default(probe_jit),
+               "probe_jit_limit_gb": probe_jit.get("limit_gb"),
                "probe_grad_n_passes": (mem.get("probe_grad") or {}).get("n_solves"),
                "probe_grad_footprint_gb_first_last":
                    (mem.get("probe_grad") or {}).get("footprint_gb_first_last"),
@@ -1533,8 +1763,10 @@ def evaluate_gates(study: dict[str, Any]) -> dict[str, Any]:
                    (mem.get("probe_grad") or {}).get("solves_per_process_at_limit"),
                "default_limit_gb": MEM_LIMIT_GB,
                # a block may be left unmeasured only if it says WHY (MEM_NOT_MEASURED)
-               "passed": bool(peaks and not over
+               "blocks_not_run": sorted(study.get("not_run") or {}),
+               "passed": bool(peaks and not unintended
                               and probe.get("growth_gb_per_solve") is not None
+                              and probe_jit.get("growth_gb_per_solve") is not None
                               and (mem.get("probe_grad") or {}).get("growth_gb_per_solve")
                               is not None
                               and set(missing) <= set(mem.get("not_measured") or {}))}
@@ -1626,20 +1858,23 @@ def figure(study: dict[str, Any], path: pathlib.Path) -> None:
     ax3.set_title(title)
     ax3.grid(alpha=0.3, which="both")
     ax3.legend(fontsize=8)
-    cost, fac = study.get("mode_cost"), study.get("factorisations")
-    if cost and fac:
-        sweep_n = (study.get("sweep") or {}).get("n_forward_solves", 0)
+    fac = study.get("factorisations")
+    if fac:
+        sw = study.get("sweep") or {}
+        fdb = study.get("fd_check") or {}
+        loop_s = sum(e["seconds"] for e in evals)
+        sweep_s = sum(pt["seconds"] for pt in sw.get("points", []))
         ax3.text(0.03, 0.06,
-                 f"cost, measured at the optimum (N = {cost['n_unknowns']}):\n"
-                 f"one forward = {fac['forward']['misses']} LU factorisations = "
-                 f"{cost['forward']:.0f} s\n"
+                 f"cost, measured at the optimum (N = {study['nominal']['grid']['n_unknowns']}):"
+                 f"\none forward = {fac['forward']['misses']} LU factorisations = "
+                 f"{fac['forward']['wall_seconds']:.0f} s "
+                 f"({100 * fac['factor_over_wall_forward']:.0f} % of it inside _factor)\n"
                  f"the adjoint adds {fac['extra_factorisations_for_the_gradient']} "
-                 f"factorisations (a cache-hit pass is "
-                 f"{100 * cost['cached_over_full']:.1f} % of a solve)\n"
-                 f"FD4 at one point = 12 forward solves = "
-                 f"{cost['fd4_estimated_seconds']:.0f} s\n"
-                 f"loop {loop['n_objective_evaluations']} evaluations vs sweep "
-                 f"{sweep_n} forward solves",
+                 f"factorisations (a cache-hit repeat is "
+                 f"{100 * fac['cached_over_full']:.1f} % of a solve)\n"
+                 f"FD4 at one point = 12 forward solves = {fdb.get('seconds', float('nan')):.0f} s"
+                 f"\nloop {loop['n_objective_evaluations']} evaluations ({loop_s:.0f} s) vs "
+                 f"sweep {sw.get('n_forward_solves', 0)} solves ({sweep_s:.0f} s)",
                  transform=ax3.transAxes, fontsize=7.5, va="bottom",
                  bbox={"facecolor": "white", "alpha": 0.85, "edgecolor": "0.7"})
 
@@ -1654,35 +1889,53 @@ def figure(study: dict[str, Any], path: pathlib.Path) -> None:
                  label="probe: resident (RSS)")
         ax4.plot(xs, probe["maxrss_gb"], "^:", color="C2", ms=4, lw=1.0,
                  label="probe: ru_maxrss")
+    for key, style, colour, label in (
+            ("probe_jit", "o-", "C3", "probe, JITTED forward (the study's path)"),
+            ("probe_grad", "D-", "C4", "probe, value_and_grad")):
+        pr2 = mem.get(key) or {}
+        if pr2.get("footprint_gb"):
+            ax4.plot(range(1, len(pr2["footprint_gb"]) + 1), pr2["footprint_gb"], style,
+                     color=colour, ms=5, lw=1.4, label=label)
     lp = [e.get("mem", {}).get("footprint_gb") for e in evals]
     if any(v is not None for v in lp):
         ax4.plot([i + 1 for i, v in enumerate(lp) if v is not None],
-                 [v for v in lp if v is not None], "o-", color="C3", ms=4, lw=1.0,
-                 label="loop evaluations (value_and_grad)")
+                 [v for v in lp if v is not None], "o-", ms=4, lw=1.0,
+                 label="loop evaluations (1 per process)", color="C5")
     ax4.axhline(mem.get("limit_gb", MEM_LIMIT_GB), color="k", ls="--", lw=1.2,
                 label=f"limit {mem.get('limit_gb', MEM_LIMIT_GB):g} GB")
     ax4.set_xlabel("solve within one process")
     ax4.set_ylabel("memory [GB]")
-    ax4.set_title("(e) why the study runs in chunks: RSS is not the metric")
+    ax4.set_title("(e) one process, repeated solves: the JITTED path grows")
     ax4.grid(alpha=0.3)
     ax4.legend(fontsize=7.5)
 
     # (f) the footprint each block actually reached
     blocks = mem.get("by_block") or {}
     if blocks:
+        m1 = (study.get("gates") or {}).get("M1") or {}
+        # the peak M1 reports (the max over the block's own logged notes), not
+        # the end-of-chunk value, and the two kinds of overage kept apart
+        peaks = m1.get("footprint_gb_by_block") or {}
+        by_design = set(m1.get("blocks_over_limit_by_design") or {})
         names = list(blocks)
-        vals = [float(b.get("footprint_gb_max", b.get("footprint_gb_after", 0.0)))
-                for b in blocks.values()]
-        lims = [float(b.get("limit_gb", MEM_LIMIT_GB)) for b in blocks.values()]
+        vals = [float(peaks.get(n, blocks[n].get("footprint_gb_max",
+                                                 blocks[n].get("footprint_gb_after", 0.0))))
+                for n in names]
+        lims = [float(blocks[n].get("limit_gb", MEM_LIMIT_GB)) for n in names]
         y = np.arange(len(names))
-        ax5.barh(y, vals, color=["C3" if v > q else "C0" for v, q in zip(vals, lims)])
+        ax5.barh(y, vals, color=["C1" if n in by_design else "C3" if v > q else "C0"
+                                 for n, v, q in zip(names, vals, lims)])
         for i, q in enumerate(lims):
             ax5.plot([q], [i], "|", color="k", ms=14, mew=2)
         ax5.set_yticks(y)
-        ax5.set_yticklabels([f"{n}  ({blocks[n].get('solves_total', blocks[n].get('solves'))}"
-                             f" solves)" for n in names], fontsize=8)
+        labels = []
+        for n in names:
+            k = blocks[n].get("solves_total", blocks[n].get("solves")) or 0
+            tag = " (over BY DESIGN)" if n in by_design else f"  ({k} solves)" if k else ""
+            labels.append(f"{n}{tag}")
+        ax5.set_yticklabels(labels, fontsize=8)
         ax5.invert_yaxis()
-        ax5.set_xlabel("peak physical footprint of the chunk that measured it [GB]")
+        ax5.set_xlabel("peak physical footprint measured in the block [GB]")
         ax5.set_title("(f) per block, against the limit it ran under (|)")
         ax5.grid(alpha=0.3, axis="x")
 
@@ -1728,6 +1981,9 @@ def _main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--no-fd", action="store_true")
     ap.add_argument("--no-refine", action="store_true")
     ap.add_argument("--no-cost", action="store_true")
+    ap.add_argument("--mode-cost", action="store_true",
+                    help="run the four-execution-mode cost block; OFF by default because it "
+                         "cannot be chunked and needs 12-25 GB (see BLOCKS_NOT_RUN)")
     ap.add_argument("--no-referee", action="store_true")
     ap.add_argument("--from-json", action="store_true",
                     help="reuse the blocks already in the JSON (and resume the partial ones)")
@@ -1742,6 +1998,9 @@ def _main(argv: Sequence[str] | None = None) -> int:
                          f"(default {MEM_LIMIT_GB:g}); "
                          "raise it ONLY for a block measured to need more, and say so -- the "
                          "limit actually used is recorded in the JSON")
+    ap.add_argument("--memory-probe-jit", type=int, default=0, metavar="K",
+                    help="the same probe on the JITTED forward solve (the path the loop, the "
+                         "sweep and the FD stencil take); K solves")
     ap.add_argument("--memory-probe-grad", type=int, default=0, metavar="K",
                     help="the same probe with jax.value_and_grad instead of a forward solve "
                          "(the number that sets the gradient loop's chunk size)")
@@ -1756,7 +2015,8 @@ def _main(argv: Sequence[str] | None = None) -> int:
     import jax
     jax.config.update("jax_enable_x64", True)
     _BUDGET["used"], _BUDGET["max"] = 0, args.max_solves
-    _MEM["blocks"], _MEM["probe"], _MEM["probe_grad"] = {}, None, None
+    _MEM["blocks"], _MEM["probe"] = {}, None
+    _MEM["probe_jit"], _MEM["probe_grad"] = None, None
     _MEM["limit_gb"] = float(args.mem_limit)
 
     t_start = time.time()
@@ -1778,7 +2038,15 @@ def _main(argv: Sequence[str] | None = None) -> int:
 
     # a chunk that does not re-run the probe must not wipe the one that did
     _MEM["probe"] = (previous.get("memory") or {}).get("probe")
+    _MEM["probe_jit"] = (previous.get("memory") or {}).get("probe_jit")
     _MEM["probe_grad"] = (previous.get("memory") or {}).get("probe_grad")
+    # ... and neither must a chunk that skips a block (--no-sweep, --no-fd):
+    # the per-block memory records are seeded from the JSON and only
+    # OVERWRITTEN by a chunk that actually measures the block again. An
+    # earlier revision dropped them, which silently deleted the sweep's and
+    # the FD stencil's measured footprints from the JSON.
+    _MEM["blocks"] = {k: dict(v, reused=True)
+                      for k, v in ((previous.get("memory") or {}).get("by_block") or {}).items()}
 
     # A chunked run rewrites the whole JSON every time, so anything this
     # process neither recomputes nor visits (because an earlier block ran out
@@ -1799,7 +2067,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
             "process_footprint_gb": footprint_gb(), "process_maxrss_gb": maxrss_gb(),
             "process_solves": int(_BUDGET["used"]),
             "by_block": _MEM["blocks"], "probe": _MEM["probe"],
-            "probe_grad": _MEM.get("probe_grad"),
+            "probe_jit": _MEM.get("probe_jit"), "probe_grad": _MEM.get("probe_grad"),
             "not_measured": {k: v for k, v in MEM_NOT_MEASURED.items() if k in study},
             "note": "peak_gb is ru_maxrss of the process that MEASURED the block (monotone "
                     "over a process, so a block's own peak is peak_gb_after minus the "
@@ -1832,7 +2100,11 @@ def _main(argv: Sequence[str] | None = None) -> int:
                 "maxrss_gb_after": maxrss_gb(), "solves": int(_BUDGET["used"]) - used0,
                 "limit_gb": float(_MEM["limit_gb"])}
         prior = prev_mem.get(name) or {}
-        chunks = [dict(c) for c in prior.get("chunks", [])]
+        # chunk records written by the EARLIER instrumentation of this study
+        # (ru_maxrss only, keys peak_gb_*) are dropped rather than merged: the
+        # two metrics are not comparable, and a block re-measured now reports
+        # the footprint of the chunks that measured the footprint
+        chunks = [dict(c) for c in prior.get("chunks", []) if "footprint_gb_after" in c]
         chunks.append(this)
         _MEM["blocks"][name] = dict(this, chunks=chunks, reused=False,
                                     n_chunks=len(chunks),
@@ -1937,6 +2209,22 @@ def _main(argv: Sequence[str] | None = None) -> int:
               flush=True)
         dump()
 
+    if args.memory_probe_jit:
+        print(f"memory probe, JITTED forward ({args.memory_probe_jit} solves in THIS process):",
+              flush=True)
+        peak0, used0 = footprint_gb(), int(_BUDGET["used"])
+        spend(args.memory_probe_jit)
+        _MEM["probe_jit"] = memory_probe(model, args.memory_probe_jit, mode="jit")
+        measured("memory_probe_jit", peak0, used0)
+        pj = _MEM["probe_jit"]
+        print(f"  footprint {pj['footprint_gb_first_last'][0]:.2f} -> "
+              f"{pj['footprint_gb_first_last'][1]:.2f} GB over {pj['n_solves']} solves, "
+              f"growth {pj['growth_gb_per_solve']:+.3f} GB/solve (resident "
+              f"{pj['growth_gb_per_solve_resident']:+.3f}); at the {MEM_LIMIT_GB:.0f} GB rule "
+              f"that is {pj['solves_per_process_at_default_limit']} solves per process",
+              flush=True)
+        dump()
+
     if args.memory_probe_grad:
         print(f"memory probe, REVERSE MODE ({args.memory_probe_grad} value_and_grad passes "
               f"in THIS process):", flush=True)
@@ -2001,10 +2289,12 @@ def _main(argv: Sequence[str] | None = None) -> int:
         block(name, fn)
         return True
 
-    if not args.no_cost and not incomplete:
+    if args.mode_cost and not args.no_cost and not incomplete:
         print("cost of one gradient (measured, LU cache cleared before each):", flush=True)
         unbudgeted("mode_cost", 7,
                    lambda: mode_cost(model, l_target, q_ref, lam, u=loop["final_u"]))
+    elif "mode_cost" not in study:
+        study["not_run"] = {k: v for k, v in BLOCKS_NOT_RUN.items()}
 
     if not args.no_cost and not incomplete:
         print("factorisation accounting (counts, not seconds):", flush=True)

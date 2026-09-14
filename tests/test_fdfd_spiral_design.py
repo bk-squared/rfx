@@ -41,12 +41,17 @@ D6  O5 (report only): the W/2 re-solve. No pass/fail on the SIZE of the
     the arithmetic, the sign (both points move UP), and the claim the
     block exists to make: the shift is COMMON MODE (measured
     ``common_mode_fraction`` = 0.950, asserted > 0.5).
-D8  M1: the peak-RSS rule. Every block records ``ru_maxrss`` and the limit
-    it ran under, and the study's ``memory.probe`` measures what repeated
-    solving does to a process (it saturates: 2.77 -> 3.77 GB over 8
-    solves, nothing added after the third). This gate is what caught the
-    gradient loop at 6.33 GB with the LU cache retained across
-    evaluations; it now clears the cache and peaks at 4.71 GB.
+D8  M1: the memory rule, and it FAILS. Every block records the physical
+    footprint it reached and the limit it ran under. Three controlled
+    series (same theta, one process, cache cleared, gc forced) separate
+    what grows from what does not: ``solve_spiral`` un-jitted is flat
+    (4.94 -> 4.79 GB over five solves), the SAME solve jitted grows
+    +3.351 GB per solve (5.03 -> 15.08 over four) and one
+    ``value_and_grad`` pass +3.904 GB. Hence one loop evaluation per
+    process (16 chunks, 4.60-5.29 GB, all inside 6 GB) -- and hence the
+    two blocks measured before that instrumentation existed broke the
+    rule: sweep 8.39 GB, FD stencil 21.64 GB. The test asserts the
+    failure with its numbers instead of waiving it.
 D7  LIVE: the same driver (``choose_lambda`` -> ``run_loop``) on the cheap
     default ``SpiralSpec`` (N = 12739, one forward solve ~5 s), 2 iterates,
     with a 4-point central difference of the objective along ``width``
@@ -88,12 +93,12 @@ JSON_PATH = REPO / "validation" / "fdfd" / "spiral_design.json"
 PNG_PATH = REPO / "validation" / "fdfd" / "spiral_design.png"
 CONV_JSON = REPO / "validation" / "fdfd" / "spiral_convergence.json"
 
-# Measured in this session on the contended machine: the whole file 50.4 s,
-# of which 49 s is the live smoke test D7 (build 0.2 s, nominal forward
-# solve 4.7 s, choose_lambda 13.1 s = 1 forward + 2 adjoints, 2 L-BFGS-B
-# iterates 11.3 s over 4 evaluations of which one is an LU-cache repeat,
-# FD4 4 x 5 s). The six JSON gates are pure arithmetic: 0.92 s together.
-_SMOKE_SECONDS = 49.0
+# Measured in this session: the whole file 56.7 s, of which 55.4 s is the
+# live smoke test D7 (build, one nominal forward solve, choose_lambda = 1
+# forward + 2 adjoints, 2 L-BFGS-B iterates over 4 evaluations, and a
+# 4-point FD4 stencil, all on the N = 12739 model). The seven JSON gates
+# are pure arithmetic: 0.77 s together.
+_SMOKE_SECONDS = 55.4
 
 _CACHE: dict = {}
 
@@ -278,8 +283,10 @@ def test_gate_O3_the_gradient_optimum_against_the_sweep_baseline():
     the 2 % band (4 inside 5 %, 7 inside 10 %, 17 inside 25 %), the best
     sweep loss is -1.053077 at (72, 10, 12) um with Q = 11.7502 at L
     +2.93 %, and the gradient optimum is -1.062610 with Q = 11.7618 at L
-    +1.019 %. The sweep spent 27 forward solves to get there; the loop
-    spent 16 forward + 16 adjoint passes."""
+    +1.019 %. Cost, summed from the per-solve seconds in the raw logs:
+    the sweep spent 27 forward solves and 1053.6 s, the loop 16 forward +
+    16 adjoint passes and 450.5 s, and the FD4 gradient at ONE point (gate
+    O4) 12 forward solves and 493.1 s -- more than the whole loop."""
     d = _json()
     g, loop, sw = d["gates"]["O3"], d["loop"], d["sweep"]
     ok = [p for p in sw["points"] if p["feasible"]]
@@ -296,6 +303,14 @@ def test_gate_O3_the_gradient_optimum_against_the_sweep_baseline():
     # the sweep cost 27 forward solves and produced no gradient information;
     # the loop's cost is its own evaluation count (1 forward + 1 adjoint each)
     assert sw["n_forward_solves"] + sw["n_infeasible"] == 27
+    # the cost comparison, recomputed from the raw per-solve seconds
+    assert g["loop_evaluations"] == len(d["loop"]["evals"]) == 16
+    assert g["loop_solve_seconds"] == pytest.approx(
+        sum(e["seconds"] for e in d["loop"]["evals"]), rel=1e-12)
+    assert g["sweep_solve_seconds"] == pytest.approx(
+        sum(pt["seconds"] for pt in sw["points"]), rel=1e-12)
+    assert g["sweep_solve_seconds"] > 2.0 * g["loop_solve_seconds"]   # 1053.6 vs 450.5
+    assert g["fd4_gradient_forward_solves"] == 12
 
 
 # ----------------------------------------------------------------------------
@@ -377,11 +392,11 @@ def test_gate_O5_the_finer_grid_resolve_is_reported_and_is_mostly_common_mode():
     * COMMON MODE -- the claim this block actually makes. The nominal and
       the optimum move by nearly the same amount, so the part of the shift
       that could move the DESIGN is small: measured +6.810 % (nominal) vs
-      +6.468 % (optimum), a differential of -0.342 points on a 6.8-point
+      +6.468 % (optimum), a differential of -0.341 points on a 6.810-point
       move, i.e. ``common_mode_fraction`` = 0.950. The assertion is the
       qualitative claim -- differential smaller than half the common part
-      (fraction > 0.5) -- which the measurement clears by 9x, not a band
-      fitted to it.
+      (fraction > 0.5) -- which the measurement clears by 10x (the
+      differential is 5.0 % of the common shift), not a band fitted to it.
 
     Also asserted: the L error against the W/1 target GROWS (+1.019 % ->
     +7.55 %, the honest consequence -- a target hit to 1 % on the coarse
@@ -413,8 +428,8 @@ def test_gate_O5_the_finer_grid_resolve_is_reported_and_is_mostly_common_mode():
 # ----------------------------------------------------------------------------
 # D8: the peak-RSS rule (gate M1)
 
-def test_gate_M1_memory_is_measured_per_block_and_within_the_limit_it_ran_under():
-    """M1. This machine runs three agents on 38 GB and the rule for this
+def test_gate_M1_memory_FAILED_on_two_blocks_and_the_growth_is_in_the_jitted_path():
+    """M1. This machine runs four agents on 38 GB and the rule for this
     track is ~6 GB of peak memory per solve process, so the study MEASURES
     it -- and the first thing that measurement had to get right is WHICH
     number.
@@ -424,31 +439,48 @@ def test_gate_M1_memory_is_measured_per_block_and_within_the_limit_it_ran_under(
     cold pages are what macOS compresses and swaps first. Measured on a
     loop process that had run 12 evaluations: ru_maxrss 5.93 GB, resident
     0.007 GB, actual physical footprint ~16 GB (killing it returned 16 GB
-    of swap on a machine that was 37.8 of 38.9 GB into swap at load 144); a
-    concurrent agent's solve process read 5.2 GB resident against a 24.0 GB
-    footprint. So the study records ``ri_phys_footprint`` from
-    ``proc_pid_rusage`` (verified against ``vmmap --summary`` to 0.03 GB)
-    after every solve, per block and per evaluation, and stops cleanly when
-    it crosses the limit. That instrumentation replaced two contradictory
-    RSS claims in an earlier revision (+3.6 GB per solve in the module
-    docstring, ~0.5 GB per solve in the budget comment); both were the same
-    real effect seen through the wrong number.
+    of swap on a machine that was 37.8 of 38.9 GB into swap at load 144).
+    So the study records ``ri_phys_footprint`` from ``proc_pid_rusage``
+    (verified against ``vmmap --summary`` to 0.03 GB) after every solve,
+    per block and per evaluation. That instrumentation replaced two
+    contradictory RSS claims in an earlier revision (+3.6 GB per solve in
+    the module docstring, ~0.5 GB per solve in the budget comment).
 
-    What it measures, and what this test asserts:
+    WHAT GROWS, measured as three controlled series in this session -- same
+    theta, one process, N = 33352, ``clear_factor_cache()`` and
+    ``gc.collect()`` between solves (``memory.probe``, ``probe_jit``,
+    ``probe_grad``), footprint in GB after 1, 2, ... solves:
 
-    * ``memory.probe`` -- {N_PROBE} forward solves of the SAME theta in one
-      process, LU cache emptied and ``gc.collect()`` forced between:
-      {PROBE_FIRST} -> {PROBE_LAST} GB, {PROBE_GROWTH} GB per solve, i.e.
-      about {PROBE_PER_PROC} forward solves per process at the 6 GB limit;
-    * the loop's per-evaluation trace -- ONE reverse-mode evaluation is
-      {LOOP_FP_MIN}-{LOOP_FP_MAX} GB and two in the same process reached
-      8.64 GB (+4.03 GB per evaluation, which neither
-      ``clear_factor_cache()`` nor ``gc.collect()`` returns), so the loop
-      gets exactly one evaluation per process and resumes by replaying its
-      log. All {N_EVALS} evaluations of the recorded run are inside the
-      limit;
-    * every block records the footprint it reached and the limit it ran
-      under, and nothing exceeds its own limit. {OVER_NOTE}
+        solve_spiral, NO jit      4.94  4.96  4.69  4.70  4.79
+        the same solve JITTED     5.03  8.37 11.71 15.08
+        jax.value_and_grad of it  4.60  8.51  (stopped: over the limit)
+
+    i.e. the un-jitted path is FLAT (-0.052 GB/solve, fit residual 0.124
+    GB) and the JITTED one -- the path the loop, the sweep and the FD
+    stencil all take -- grows +3.351 GB per forward solve (residual 0.007
+    GB over four points; resident +2.495) and +3.904 GB per reverse pass.
+    The cause is below ``rfx.fdfd.linear_solve``'s ``pure_callback`` and is
+    NOT diagnosed here.
+
+    The consequences this test asserts:
+
+    * the loop gets ONE evaluation per process and resumes by replaying its
+      log: 16 chunks of one solve, footprints 4.60-5.29 GB, all inside 6.
+      The same 16 in one process would have reached 4.60 + 15 x 3.904 =
+      63 GB, which this machine does not have;
+    * the gate FAILS on the two blocks that were measured before the
+      instrumentation existed and did put several jitted solves in one
+      process: the sweep reached 8.39 GB and the FD stencil 21.64 GB
+      against the 6 GB they ran under. Reported failing, not widened and
+      not xfailed; re-running them one solve per process costs 39 solves
+      (~26 min) and buys no new physics;
+    * three blocks ran under an explicitly RAISED limit, passed on the
+      command line and recorded per block: factorisations 8.38 (12),
+      probe_jit 15.08 (16), the W/2 re-solve 18.21 (22). The reverse-mode
+      probe is over the limit BY DESIGN (it measures the crossing) and is
+      listed separately from the two failures;
+    * every block that ran is measured; the one block NOT RUN
+      (``mode_cost``, 20-25 GB) says why in the JSON.
     """
     d = _json()
     st = _study()
@@ -456,50 +488,77 @@ def test_gate_M1_memory_is_measured_per_block_and_within_the_limit_it_ran_under(
     blocks = mem["by_block"]
     assert set(blocks) >= {"nominal", "lambda", "loop", "sweep", "fd_check",
                            "factorisations", "referee_bias", "refine"}, sorted(blocks)
-    # exactly one block is left unmeasured, and it has to say why in the JSON
-    assert set(g["blocks_not_measured"]) == set(mem["not_measured"]) == {"mode_cost"}
-    assert len(mem["not_measured"]["mode_cost"]) > 200          # the reason, not a shrug
     for name, rec in blocks.items():
-        peak = rec.get("footprint_gb_max", rec["footprint_gb_after"])
-        assert peak == pytest.approx(g["footprint_gb_by_block"][name], rel=1e-12)
-        assert peak <= rec["limit_gb"], (name, peak, rec["limit_gb"])
-        assert rec["limit_gb"] >= st.MEM_LIMIT_GB == 6.0                 # never lowered
-        assert peak > 0.5                                                # it was measured
-    assert g["blocks_over_limit"] == {}
-    # the blocks that fit the default limit, and the two that provably cannot:
-    # mode_cost must compare forward / cached / reverse / forward mode WITHIN
-    # one process, and refine's W/2 solve is 87438 unknowns. Both were run in
-    # isolation under an explicit --mem-limit and say so.
+        peak = g["footprint_gb_by_block"][name]
+        assert peak >= rec.get("footprint_gb_max", rec["footprint_gb_after"]) - 1e-12
+        assert peak > 0.5                                   # it really was measured
+        assert rec["limit_gb"] >= st.MEM_LIMIT_GB == 6.0    # a limit is never LOWERED
+        assert g["limit_gb_by_block"][name] == rec["limit_gb"]
     for name in ("nominal", "lambda", "loop", "sweep", "fd_check", "referee_bias"):
         assert blocks[name]["limit_gb"] == st.MEM_LIMIT_GB, name
     raised = {n for n, b in blocks.items() if b["limit_gb"] > st.MEM_LIMIT_GB}
-    assert raised <= {"factorisations", "refine"}, raised
+    assert raised == {"factorisations", "memory_probe_jit", "refine"}, raised
 
-    pr = mem["probe"]                                            # the controlled measurement
-    assert pr["n_solves"] >= 6 and pr["clear_cache"] is True
-    assert pr["L_spread"] == 0.0                                 # same theta -> identical L
-    assert pr["footprint_gb_max"] < st.MEM_LIMIT_GB              # it never tripped
-    assert pr["stopped_at_limit"] is False
-    assert 0.0 <= pr["growth_gb_per_solve"] < 1.0                # measured +0.250 GB/solve
-    assert pr["solves_per_process_at_limit"] >= 4                # measured 9
-    assert pr["growth_fit_residual_gb"] < 1.0                    # the fit is not nonsense
+    # the failure, asserted as a fact with its numbers (never waived)
+    assert g["passed"] is False
+    assert set(g["blocks_over_limit"]) == {"sweep", "fd_check"}, g["blocks_over_limit"]
+    assert g["blocks_over_limit"]["sweep"][0] == pytest.approx(8.391, rel=1e-3)
+    assert g["blocks_over_limit"]["fd_check"][0] == pytest.approx(21.641, rel=1e-3)
+    for over, limit in g["blocks_over_limit"].values():
+        assert over > limit == st.MEM_LIMIT_GB
+    assert set(g["blocks_over_limit_by_design"]) == {"memory_probe_grad"}
+    # nothing measured is missing, and the block that was not RUN says why
+    assert g["blocks_not_measured"] == [] and mem["not_measured"] == {}
+    assert set(d["not_run"]) == set(st.BLOCKS_NOT_RUN) == {"mode_cost"}
+    assert len(d["not_run"]["mode_cost"]) > 200             # the reason, not a shrug
 
-    pg = mem["probe_grad"]                   # reverse mode: the number that sets the chunk size
-    assert pg["mode"] == "grad" and pg["n_solves"] >= 2
+    # ---- the three series -------------------------------------------------
+    pr, pj, pg = mem["probe"], mem["probe_jit"], mem["probe_grad"]
+    for rec in (pr, pj, pg):
+        assert rec["clear_cache"] is True and rec["L_spread"] == 0.0
+        assert rec["grid"]["n_unknowns"] == d["nominal"]["grid"]["n_unknowns"] == 33352
+        assert rec["theta"] == d["fixture"]["theta_nominal"]
+        assert len(rec["footprint_gb"]) == rec["n_solves"] >= 2
+    assert (pr["mode"], pj["mode"], pg["mode"]) == ("forward", "jit", "grad")
+    assert pr["n_solves"] >= 4 and pj["n_solves"] >= 4      # RSS after 1..4 solves
+
+    # the un-jitted path does not grow. Threshold from the measurement: the
+    # slope is -0.052 GB/solve with a 0.124 GB fit residual, i.e. flat to the
+    # noise of the series, so anything under half a GB per solve is "flat"
+    # and the jitted +3.351 is 64x outside it.
+    assert abs(pr["growth_gb_per_solve"]) < 0.5, pr["growth_gb_per_solve"]
+    assert pr["footprint_gb_max"] < st.MEM_LIMIT_GB and pr["stopped_at_limit"] is False
+    assert max(pr["footprint_gb"]) - min(pr["footprint_gb"]) < 0.5   # measured 0.28
+
+    # the jitted path does, and linearly: 5.03 -> 15.08 GB over four solves
+    assert pj["growth_gb_per_solve"] > 2.0, pj["growth_gb_per_solve"]   # measured 3.351
+    assert pj["growth_fit_residual_gb"] < 0.1                          # measured 0.0066
+    assert pj["growth_gb_per_solve"] > 5.0 * abs(pr["growth_gb_per_solve"])
+    # at the 6 GB rule that slope gives ONE jitted solve per process
+    # (recomputed from the raw series by evaluate_gates, because this probe
+    # itself had to run under a raised limit to reach four solves)
+    assert g["probe_jit_solves_per_process_at_default_limit"] == 1
+    assert g["probe_jit_limit_gb"] > st.MEM_LIMIT_GB
+    fps = pj["footprint_gb"]
+    for i in range(1, len(fps)):                            # monotone, unlike RSS
+        assert fps[i] > fps[i - 1], fps
+
+    # reverse mode is worse again, and it stops itself at the crossing
+    assert pg["growth_gb_per_solve"] > pj["growth_gb_per_solve"]        # 3.904 vs 3.351
+    assert pg["stopped_at_limit"] is True
     assert pg["footprint_gb"][0] <= st.MEM_LIMIT_GB < pg["footprint_gb"][-1]
-    assert pg["stopped_at_limit"] is True        # it crosses the limit, and records the crossing
-    assert pg["growth_gb_per_solve"] > 10.0 * pr["growth_gb_per_solve"], (
-        pg["growth_gb_per_solve"], pr["growth_gb_per_solve"])   # measured +4.0 vs +0.25 GB
-    assert pg["solves_per_process_at_limit"] == 1               # hence one evaluation per chunk
+    assert pg["solves_per_process_at_limit"] == 1           # hence one evaluation per chunk
 
-    # the loop: one reverse-mode evaluation per process, all inside the limit
-    fps = [e["mem"]["footprint_gb"] for e in d["loop"]["evals"]]
-    assert len(fps) == d["loop"]["n_objective_evaluations"]
-    assert max(fps) <= st.MEM_LIMIT_GB, max(fps)
+    # ---- the loop: one evaluation per process, and the peak it avoided ----
+    fp = [e["mem"]["footprint_gb"] for e in d["loop"]["evals"]]
+    assert len(fp) == d["loop"]["n_objective_evaluations"] == 16
+    assert max(fp) <= st.MEM_LIMIT_GB, max(fp)
+    assert [c["solves"] for c in blocks["loop"]["chunks"]] == [1] * 16
+    implied = fp[0] + (len(fp) - 1) * pg["growth_gb_per_solve"]
+    assert implied > 50.0, implied                          # measured 63 GB
     assert d["loop"]["clear_cache"] is True
-    assert d["loop"]["n_replay_mismatches"] == 0                 # the replay was exact
-    assert d["loop"]["n_evals_replayed"] >= 1                    # it really was resumed
-    assert g["passed"] is True
+    assert d["loop"]["n_replay_mismatches"] == 0            # the replay was exact
+    assert d["loop"]["n_evals_replayed"] >= 1               # it really was resumed
 
 
 # ----------------------------------------------------------------------------

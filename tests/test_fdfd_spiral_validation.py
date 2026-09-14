@@ -5,7 +5,7 @@ uniform-current metal, the five non-ground PEC walls pushed away by graded
 padding, the area-exact corner convention, a matched reference plane).
 
 The study itself runs three in-plane levels (W/1, W/2, W/3; 23k / 56k /
-109k unknowns, ~65 min). This file re-runs the COARSEST level (W/1,
+109k unknowns, 140 min measured, ``seconds_measuring`` in the JSON). This file re-runs the COARSEST level (W/1,
 N = 23062, one three-fixture solve ~15 s) live and asserts the parts of the
 protocol that grid supports, plus the two parts that need no solver at all
 (the corner-convention area gate and the referee itself). Everything that
@@ -31,14 +31,16 @@ T2b the referee quantity the FIXTURE measures is the strip MINUS the short
     through the lead-column footprint moves the strip by 2.916 % and the
     DIFFERENCE by 0.0914 %, a 32x collapse.
 T3  the volumetric (uniform-current) FDFD fixture at W/1 is reciprocal and
-    passive, its L_diff (262.44 pH) exceeds the PEC L_diff (244.88 pH) by
-    6.7 % -- the DC internal inductance the referee also carries -- and it
-    sits 21.2 % below the de-embedded referee (24.9 % below the strip
-    alone). That is the V1 FAILURE at this level, asserted as a measured
-    value: the test fails if it moves, in either direction.
+    passive, its L_diff (262.439 pH) exceeds the PEC L_diff (244.877 pH) by
+    6.69 % -- the DC internal inductance the referee also carries -- and it
+    sits 21.202 % below the de-embedded referee 333.055 pH (the PRIMARY V1
+    comparison) and 24.882 % below the strip alone (the secondary
+    convention). That is the V1 FAILURE at this level, asserted as a
+    measured value: the test fails if it moves, in either direction.
 T4  the graded wall padding works: the closed PEC box is 31.5 % below the
-    padded value, and adding a fourth padding cell moves L_diff by
-    +0.50 % < 1 % (the V5 wall-independence gate).
+    padded value (both solved live), and the recorded padding series --
+    pinned to those two live solves -- moves L_diff by +0.504 % for the
+    last meshed cell and +0.114 % for pad 4 -> 8, the V5 gate.
 T4b a DUT made identical to the short standard's bridge (``dut_kind="bar"``,
     40 um) de-embeds to +1.621 pH, 9.6 % of the 16.896 pH the referee gives
     for that bar: the de-embedding's zero is a strip between the column
@@ -47,10 +49,16 @@ T5  ``jax.grad`` of the de-embedded L vs FD2 on a cheaper (pad = 2, 11.9k)
     grid of the same fixture, and the sign of all three derivatives against
     the referee's own FD4 gradient of the de-embedded quantity.
 T6  the study's JSON exists, is self-consistent, its derived blocks
-    (Richardson, vertical budget, every gate verdict) re-derive exactly
-    from its recorded raw measurements, and its recorded W/1 ``L_dut`` /
-    ``L_pec`` / referee value reproduce the fresh solve to 1e-7 relative
-    (100x the fixture's LU noise floor).
+    (Richardson, the post-corrected Richardson, the vertical budget and
+    every gate verdict) re-derive EXACTLY from its recorded raw
+    measurements, its recorded W/1 ``L_dut`` / ``L_pec`` / referee value
+    reproduce the fresh solve to 1e-7 relative (100x the fixture's LU noise
+    floor), and every recorded gate number -- the V1 primary range
+    -7.943 % to -5.222 %, the strip-alone secondary -12.242 % to -9.648 %,
+    the post-short correction -10.109 % to -7.913 %, the vertical-grid
+    correction +2.699 % to +3.092 % and the two combined -7.682 % to
+    -5.065 % -- is asserted as a hard number, so the JSON cannot be edited
+    silently and no failing gate can be quietly widened.
 
 x64 is scoped per test through ``tests._x64_compat.enable_x64`` (never
 flipped at module level); the static models and the W/1 solves are cached
@@ -115,6 +123,16 @@ def _solve(pad: int, sigma: float | None) -> dict:
         res = sm.solve_spiral(_model(pad), st.FREQ, sigma_volumetric=sigma)
         jax.block_until_ready(res.L_diff)
         _CACHE[key] = {"res": res, "L": float(res.L_diff), "seconds": time.time() - t0}
+    return _CACHE[key]
+
+
+def _referee_grad(deembedded: bool = False) -> list:
+    """Cached FD4 gradient of the referee (12 Greenhouse sums per call, ~3 s
+    each; T2b and T5 both want them)."""
+    key = f"refgrad{deembedded}"
+    if key not in _CACHE:
+        _CACHE[key] = _study().referee_gradient(_referee(), _study().THETA0,
+                                                "area_exact", deembedded)
     return _CACHE[key]
 
 
@@ -249,8 +267,8 @@ def test_the_referee_quantity_the_fixture_measures_is_the_strip_minus_the_bridge
     assert pp["port_line"]["bridge"] > pp["column_centre"]["bridge"] > pp["far_edge"]["bridge"]
     # the derivative of the de-embedded quantity is what V3 compares against:
     # the bridge does not depend on r_out, but it does on spacing and width
-    gd = st.referee_gradient(sg, st.THETA0, "area_exact", True)
-    gs = st.referee_gradient(sg, st.THETA0, "area_exact", False)
+    gd = _referee_grad(True)
+    gs = _referee_grad(False)
     assert abs(gd[0] / gs[0] - 1.0) <= 1e-9, (gd[0], gs[0])           # bridge indep. of r_out
     assert abs(gd[1] / gs[1] - 1.0) > 0.05, (gd[1], gs[1])            # measured +10.7 %
     assert abs(gd[2] / gs[2] - 1.0) > 0.01, (gd[2], gs[2])            # measured +1.86 %
@@ -322,26 +340,40 @@ def test_graded_wall_padding_makes_the_de_embedded_l_wall_independent():
     (``spiral.pad_lines``, ratio 1.5) on the four side walls and the lid --
     never on the ground plane, which is the physical wall both tools model.
 
-    Measured at W/1 (base_dz = 10 um, volumetric metal): L_diff = 179.899 pH
-    with the closed PEC box (pad = 0, walls 62 um from the centre),
-    261.124 pH at pad = 3 (133 um) and 262.439 pH at pad = 4 (184 um). So
-    the closed box is 31.5 % low -- the five extra walls are NOT a small
-    correction, which is what refuted the first study -- and the last cell
-    moves L by +0.504 %, inside the 1 % wall-independence gate. The padding
-    converges monotonically from below (the study's ``wall_gate`` carries
-    pad = 6 and 8 too: 262.731 and 262.740 pH, i.e. +0.114 % from pad 4 to
-    pad 8, which is the V5 number)."""
+    Measured LIVE here at W/1 (base_dz = 10 um, volumetric metal):
+    L_diff = 179.899 pH with the closed PEC box (pad = 0, walls 62 um from
+    the centre) against 262.439 pH at pad = 4 (184 um), i.e. the closed box
+    is 31.5 % low -- the five extra walls are NOT a small correction, which
+    is what refuted the first study.
+
+    The rest of the padding series is the study's recorded ``wall_gate``
+    (261.124 pH at pad = 3, 262.731 at pad = 6, 262.740 at pad = 8), and it
+    is trusted here because its pad = 0 and pad = 4 entries ARE the two
+    solves this test just ran, asserted to 1e-7 relative. It converges
+    monotonically from below; the last meshed cell is worth +0.504 %
+    (pad 3 -> 4) and doubling the padding afterwards +0.114 % (pad 4 -> 8),
+    which is the V5 number. Only two grids are compiled here because XLA
+    compilation, not the solve, is what costs seconds in this file."""
     with enable_x64():
         st = _study()
         padded = _solve(st.PAD_CELLS, st.SIGMA_VOL)["L"]
         closed = _solve(0, st.SIGMA_VOL)["L"]
-        one_less = _solve(st.PAD_CELLS - 1, st.SIGMA_VOL)["L"]
         assert _model(0).n_unknowns < _model(st.PAD_CELLS).n_unknowns
-        assert closed < one_less < padded, (closed, one_less, padded)    # monotone from below
+        assert closed < padded, (closed, padded)
         closed_rel = closed / padded - 1.0
         assert closed_rel < -0.1, closed_rel                         # measured -31.5 %
-        step = padded / one_less - 1.0
+        # the recorded series, pinned to this session's two live solves
+        wg = json.loads(JSON_PATH.read_text())["wall_gate"]
+        assert wg["pad_cells"] == [0, 3, 4, 6, 8], wg["pad_cells"]
+        ls = wg["L_dut"]
+        # 1e-7 relative: the LU noise floor of this fixture (~1e-9, measured
+        # on track D1) amplified by a rebuilt SuperLU, taken 100x
+        assert abs(ls[0] / closed - 1.0) <= 1e-7, (ls[0], closed)
+        assert abs(ls[2] / padded - 1.0) <= 1e-7, (ls[2], padded)
+        assert ls[0] < ls[1] < ls[2] < ls[3] < ls[4], ls    # monotone from below
+        step = ls[2] / ls[1] - 1.0
         assert abs(step) <= 0.01, step                               # V5: measured +0.504 %
+        assert abs(wg["rel_change_plus_4_cells"]) <= 0.01             # measured +0.114 %
         _CACHE["wall_step"] = step
 
 
@@ -440,7 +472,7 @@ def test_shape_gradients_match_finite_differences_and_the_referee_signs():
             assert abs(fd * d / float(val)) > 1e-3, (k, fd, val)
             rel.append(abs(grad[k] - fd) / abs(fd))
         assert max(rel) <= 1e-3, rel                                 # measured <= 3.1e-5 (FD2)
-        gref = st.referee_gradient(_referee(), st.THETA0, "area_exact")
+        gref = _referee_grad(True)      # the DE-EMBEDDED quantity (V3's referee)
         assert all(a * b > 0 for a, b in zip(grad, gref)), (grad, gref)
         assert np.argmax(np.abs(grad)) == np.argmax(np.abs(gref))
         assert grad[0] > 0 and grad[1] < 0 and grad[2] < 0, grad
@@ -454,15 +486,25 @@ def test_shape_gradients_match_finite_differences_and_the_referee_signs():
 
 def test_the_recorded_study_json_matches_a_fresh_coarsest_level_solve():
     """T6. ``validation/fdfd/spiral_convergence.json`` is the study's
-    deliverable; this gates it against the live W/1 solve (1e-9 relative on
-    L_dut, L_pec and the referee value) and checks its internal structure:
-    the three levels, the Richardson estimates and every gate verdict.
-    The V1 verdict recorded there is FALSE -- the post-corrected
-    extrapolated range [299.39, 306.70] pH is 7.9-10.1 % below the
-    de-embedded referee's 333.055 pH -- and this test asserts that it is
-    recorded as a failure with those numbers, not silently passed or
-    widened. V1c (the same with the vertical grid extrapolated too,
-    [307.47, 316.19] pH = -7.7 to -5.1 %) is asserted to fail as well."""
+    deliverable; this gates it against the live W/1 solve (1e-7 relative on
+    L_dut and L_pec, 1e-12 on the referee value), re-derives every derived
+    block from the recorded raw measurements, and asserts every recorded
+    gate number as a HARD number so the JSON cannot be edited silently.
+
+    The V1 verdict recorded there is FALSE, and these are the numbers it
+    fails with. PRIMARY statement (both sides de-embedded, no correction
+    applied to either): FDFD 262.44 / 293.00 / 300.56 pH against the
+    referee's ``L(strip) - L(bridge)`` = 349.371 - 16.316 = 333.055 pH,
+    i.e. -21.20 / -12.03 / -9.76 %, extrapolating (observed order 1.514) to
+    [306.60, 315.66] pH = -7.94 % to -5.22 %, outside +-5 % at BOTH ends.
+    SECONDARY convention (the strip alone, 349.371 pH): -24.88 / -16.13 /
+    -13.97 % per level, -12.24 % to -9.65 % extrapolated. The two measured
+    corrections are asserted as separately stated ranges, not folded in:
+    the short's post short (from the thru probe) deepens it to -10.11 % to
+    -7.91 %, the vertical-grid extrapolation (+2.699 to +3.092 %) lifts it
+    to -5.46 % to -2.29 % (that is V1c, which STRADDLES the tolerance and
+    is therefore recorded as failing), and both together give -7.68 % to
+    -5.06 %. No combination lands inside +-5 %."""
     with enable_x64():
         st = _study()
         assert JSON_PATH.exists(), f"run {STUDY_PATH} first"
@@ -516,29 +558,97 @@ def test_the_recorded_study_json_matches_a_fresh_coarsest_level_solve():
         if "thru" in _CACHE:      # T4b ran first (file order); cross-check its record
             assert abs(study["thru_probe"]["levels"]["1"]["L_deembedded"]
                        / _CACHE["thru"]["L_deembedded"] - 1.0) <= 1e-7
-        assert g["V2"]["worst"] <= 1e-4, g["V2"]["worst"]
-        assert abs(g["V5"]["rel_change_plus_4_cells"]) <= 0.01
-        # V1 is a recorded FAILURE with numbers, not an xfail
+        # the other gate verdicts, as hard recorded numbers (same 1e-6
+        # absolute / 1e-9 relative basis as V1 below)
+        assert g["V2"]["worst"] == pytest.approx(5.717820091e-07, rel=1e-6), g["V2"]
+        assert g["V2"]["worst"] <= g["V2"]["tolerance"] == 1e-4, g["V2"]
+        assert g["V5"]["rel_change_plus_4_cells"] == pytest.approx(0.00114489, abs=1e-6)
+        assert abs(g["V5"]["rel_change_plus_4_cells"]) <= g["V5"]["tolerance"] == 0.01
+        assert g["V6"]["worst_over_referee_bar"] == pytest.approx(0.35780910, abs=1e-6)
+        assert g["V6"]["tolerance"] == 0.5
+        v1b = g["V1b"]
+        assert v1b["passed"] is True, v1b
+        assert v1b["internal_inductance_round_wire"] == pytest.approx(3.21e-11, rel=1e-9)
+        for key, want in (("W/1", 0.54712417), ("W/2", 0.82992636), ("W/3", 0.84735077)):
+            assert v1b["per_level_over_round_wire"][key] == pytest.approx(want, abs=1e-6)
+        v3 = g["V3"]
+        assert v3["passed"] is True and v3["all_same_sign"] is True, v3
+        for k, want in enumerate((0.91841741, 0.93590792, 0.88048982)):
+            assert v3["per_level"]["W/3"]["ratio"][k] == pytest.approx(want, abs=1e-6), v3
+        v4 = g["V4"]
+        assert v4["passed"] is False, v4          # 7.69e-07 then 9.08e-07: it GROWS
+        assert v4["level_to_level_change"][0] == pytest.approx(7.692167843e-07, rel=1e-6)
+        assert v4["level_to_level_change"][1] == pytest.approx(9.084599963e-07, rel=1e-6)
+        assert v4["level_to_level_change"][1] > v4["level_to_level_change"][0], v4
+        # --- V1 is a recorded FAILURE with HARD numbers, not an xfail ----
+        # Tolerance on every recorded ratio below: 1e-6 absolute. It comes
+        # from this test's own measurement two blocks up -- the recorded W/1
+        # L_dut reproduces a fresh solve to <= 1e-7 relative (the ~1e-9 LU
+        # noise floor amplified by a rebuilt SuperLU) -- taken 10x. The W/2
+        # and W/3 levels are not re-solved here, so for them this is exactly
+        # "the JSON was not edited".
+        tol = 1e-6
         v1 = g["V1"]
         assert v1["passed"] is False
-        assert v1["post_corrected"] is True, v1
-        assert max(abs(r) for r in v1["rel_range"]) > 0.05, v1["rel_range"]
-        assert -0.115 < min(v1["rel_range"]) < -0.090, v1["rel_range"]   # measured -0.1011
-        assert -0.090 < max(v1["rel_range"]) < -0.065, v1["rel_range"]   # measured -0.0791
-        assert 1.0 < v1["observed_order"] < 2.5, v1["observed_order"]    # measured 1.705
-        # the post correction has the sign the mechanism requires (it takes
-        # inductance OFF the FDFD side) at every level, and it grows
-        bias = [v1["post_bias"][k] for k in ("1", "2", "3")]
+        assert v1["tolerance"] == 0.05, v1["tolerance"]
+        # PRIMARY: both sides de-embedded, no correction applied to either
+        assert v1["referee_deembedded"] == pytest.approx(3.330551089691e-10, rel=1e-11)
+        assert v1["referee_strip_only"] == pytest.approx(3.493712871351e-10, rel=1e-11)
+        assert v1["referee_bridge"] == pytest.approx(1.631617816600e-11, rel=1e-11)
+        for key, want in (("W/1", -0.21202451), ("W/2", -0.12025159), ("W/3", -0.09757370)):
+            assert v1["per_level_gap"][key] == pytest.approx(want, abs=tol), (key, v1)
+        assert v1["L_extrapolated_range"][0] == pytest.approx(3.066000801835e-10, rel=1e-9)
+        assert v1["L_extrapolated_range"][1] == pytest.approx(3.156636649505e-10, rel=1e-9)
+        assert v1["rel_range"][0] == pytest.approx(-0.07943139, abs=tol), v1["rel_range"]
+        assert v1["rel_range"][1] == pytest.approx(-0.05221792, abs=tol), v1["rel_range"]
+        assert v1["observed_order"] == pytest.approx(1.51442368, abs=1e-6)
+        # the failure itself: BOTH ends of the primary range are outside 5 %
+        assert min(abs(r) for r in v1["rel_range"]) > v1["tolerance"], v1["rel_range"]
+        # SECONDARY convention (the strip alone): reported, deeper, not gated
+        sec = v1["secondary_convention"]
+        assert sec["referee"] == v1["referee_strip_only"]
+        for key, want in (("W/1", -0.24882418), ("W/2", -0.16133720), ("W/3", -0.13971840)):
+            assert sec["per_level_gap"][key] == pytest.approx(want, abs=tol), (key, sec)
+        assert sec["rel_range"][0] == pytest.approx(-0.12242336, abs=tol), sec["rel_range"]
+        assert sec["rel_range"][1] == pytest.approx(-0.09648080, abs=tol), sec["rel_range"]
+        for key in ("W/1", "W/2", "W/3"):
+            assert sec["per_level_gap"][key] < v1["per_level_gap"][key], key
+        # the two SEPARATELY STATED corrections, each with its own range
+        cor = v1["corrections"]
+        assert set(cor) == {"post_short", "vertical_grid", "both"}, sorted(cor)
+        ps = cor["post_short"]
+        bias = [ps["per_level_bias"][k] for k in ("1", "2", "3")]
         assert all(b > 0 for b in bias), bias                  # measured 1.62/4.59/6.05 pH
-        assert bias[0] < bias[1] < bias[2], bias
-        for k in ("W/1", "W/2", "W/3"):
-            assert v1["per_level_gap"][k] < v1["per_level_gap_uncorrected"][k], (k, v1)
-            assert v1["per_level_gap_vs_strip_only"][k] < v1["per_level_gap_uncorrected"][k]
-        # V1c: even with the vertical direction extrapolated too it fails
+        assert bias[0] < bias[1] < bias[2], bias               # it GROWS with refinement
+        for key, want in (("W/1", -0.21689273), ("W/2", -0.13402474), ("W/3", -0.11572542)):
+            assert ps["per_level_gap"][key] == pytest.approx(want, abs=tol), (key, ps)
+        assert ps["rel_range"][0] == pytest.approx(-0.10108597, abs=tol), ps["rel_range"]
+        assert ps["rel_range"][1] == pytest.approx(-0.07912679, abs=tol), ps["rel_range"]
+        assert ps["observed_order"] == pytest.approx(1.70485242, abs=1e-6)
+        # it makes the gap LARGER at every level -- it is not a repair
+        for key in ("W/1", "W/2", "W/3"):
+            assert ps["per_level_gap"][key] < v1["per_level_gap"][key], key
+        vgc = cor["vertical_grid"]
+        assert vgc["rel_correction_range"][0] == pytest.approx(0.02699270, abs=tol)
+        assert vgc["rel_correction_range"][1] == pytest.approx(0.03092432, abs=tol)
+        assert vgc["observed_order"] == pytest.approx(1.69763480, abs=1e-6)
+        assert vgc["rel_range"][0] == pytest.approx(-0.05458275, abs=tol), vgc["rel_range"]
+        assert vgc["rel_range"][1] == pytest.approx(-0.02290840, abs=tol), vgc["rel_range"]
+        assert cor["both"]["rel_range"][0] == pytest.approx(-0.07682186, abs=tol)
+        assert cor["both"]["rel_range"][1] == pytest.approx(-0.05064941, abs=tol)
+        # neither correction, nor both together, brings the range inside 5 %
+        for name, c in cor.items():
+            assert max(abs(r) for r in c["rel_range"]) > v1["tolerance"], (name, c["rel_range"])
+        # V1c: the vertical correction promoted to its own verdict. It
+        # STRADDLES the tolerance (optimistic end inside, pessimistic end
+        # outside) and is therefore recorded as a failure, not a pass.
         v1c = g["V1c"]
         assert v1c["passed"] is False, v1c
-        assert 0.02 < min(v1c["vertical_correction_range"]) < 0.05, v1c   # measured +2.70 %
-        assert max(abs(r) for r in v1c["rel_range"]) > 0.05, v1c["rel_range"]  # measured -7.7 %
+        assert v1c["straddles_tolerance"] is True, v1c
+        assert v1c["rel_range"] == v1["corrections"]["vertical_grid"]["rel_range"]
+        assert min(abs(r) for r in v1c["rel_range"]) <= v1c["tolerance"], v1c
+        assert max(abs(r) for r in v1c["rel_range"]) > v1c["tolerance"], v1c
+        assert v1c["with_post_short"] == v1["corrections"]["both"]["rel_range"]
         # V6's diagnosis: the residual tracks the short's post width
         assert g["V6"]["residual_tracks_post_width"] is True, g["V6"]
         assert study["gates"]["V4"]["passed"] in (True, False)

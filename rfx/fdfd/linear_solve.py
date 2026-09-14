@@ -76,6 +76,68 @@ set it -- unlike a plain module global, which two concurrent sweeps would
 race on. Neither the solution nor a gradient depends on the ordering beyond
 roundoff; that is gated in ``tests/test_fdfd_linear_solve.py``.
 
+Memory
+------
+Every factorisation, every triangular solve and every drop of a cached
+factor runs on ONE dedicated thread (``_on_factor_thread``). That is not an
+optimisation, it is a correctness requirement: ``scipy.sparse.linalg.SuperLU``
+(1.18.1) does not return its factor to the allocator when the object is
+deallocated on a thread other than the one that built it. Measured with no
+JAX in the loop, on the N = 12739 spiral DUT operator, one 1.17e7-nonzero
+factor, malloc's own live-byte counter after each of four build/destroy
+rounds:
+
+===============  ===============  ==============================
+built on         destroyed on     malloc live bytes, per factor
+===============  ===============  ==============================
+worker thread    worker thread    0.0000 GB
+main thread      main thread      0.0000 GB
+worker thread    MAIN thread      0.2537 GB (the whole factor)
+main thread      WORKER thread    0.2537 GB (the whole factor)
+===============  ===============  ==============================
+
+Under ``jit`` XLA runs ``pure_callback`` on its own worker pool, so the
+factors were built there while ``clear_factor_cache()`` destroyed them on
+the caller's thread and every one was lost. Whether that shows at all
+depends on where XLA decides to put the callback: it keeps small programs
+on the caller's thread and only moves to its pool above some size
+(measured on a self-contained 3-D Laplacian: caller's thread at 13824
+unknowns, pool thread at 17576), so a single jitted ``sparse_solve`` at
+N = 12739 stayed on the caller's thread and never grew. The three-fixture
+spiral solve is the case that did: it lost 2.54 of its three factors per
+solve. At N = 12739, four jitted three-fixture solves at the SAME theta
+with the cache emptied and ``gc.collect()`` forced between them, RSS after
+each: 1.319 / 1.962 / 2.608 / 3.250 GB, +0.644 GB per solve, unbounded.
+With the factor thread, six solves: 1.317 / 1.347 / 1.347 / 1.347 / 1.347 /
+1.347 GB, +0.000042 GB per solve, i.e. 0.016 % of the first solve's
+1.021 GB increment. ``jax.value_and_grad`` of the same behaves identically
+(+0.63 GB per solve before, +0.000092 after).
+
+At N = 33352 -- the design study's fixture, LU 5.54e7 nonzeros, 1.277 GB per
+factor -- the old path lost 3.24 GB per solve; four solves now measure
+5.22 / 5.33 / 5.08 / 5.02 GB, so a 16-solve design loop peaks at 5.33 GB
+where the old one extrapolates to ~54 GB. That reconciles the two
+contradictory claims in ``validation/fdfd/spiral_design.py``: its
+"+3.6 GB per solve (5.6 / 9.2 / 12.8 / 16.4 GB after 1-4 solves)" was a
+correct measurement of the JITTED path, and its "~0.5 GB per further solve"
+was not the same experiment -- the eager path never leaked at all (a
+six-solve eager loop is flat to 0.0002 GB per solve).
+
+Nothing about the solution moves: the four N = 33352 solves above are
+bit-identical to each other and to a one-solve-per-process control, and
+match the design study's independently recorded nominal ``L_diff``
+(5.090106167675779e-10 H, an eager solve written before this fix existed)
+to 3.97e-12 relative.
+
+The price is that the three fixtures' factorisations no longer overlap. A
+jitted three-fixture ``value_and_grad`` at N = 12739 goes from 3.13 s to
+4.42 s (x1.41); a forward solve is unchanged (4.61 -> 4.42 s, inside the
+contention noise of this shared machine). Peak memory is now bounded by
+``factor_cache_size()`` factors of 23.3 (N = 12739) to 24.7 (N = 33352)
+bytes per LU nonzero, measured. The whole series is in
+``validation/fdfd/memory_probe.json``; ``validation/fdfd/memory_probe.py``
+re-measures it, block by block.
+
 Precision
 ---------
 The systems this is built for (Helmholtz with discrete DtN ports) have
@@ -89,8 +151,12 @@ from __future__ import annotations
 import contextlib
 import contextvars
 import hashlib
+import os
+import threading
 from collections import OrderedDict
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, TypeVar
 
 import jax
 import jax.numpy as jnp
@@ -99,7 +165,8 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as spl
 
 __all__ = ["sparse_solve", "sparse_matvec", "clear_factor_cache",
-           "default_permc_spec", "get_default_permc_spec", "PERMC_SPECS"]
+           "factor_cache_size", "default_permc_spec", "get_default_permc_spec",
+           "PERMC_SPECS"]
 
 # Column orderings SuperLU accepts. ``None`` means "scipy's own default",
 # which is COLAMD -- verified identical here: ``splu(a, permc_spec=None)``
@@ -118,6 +185,53 @@ _DEFAULT_PERMC_SPEC: contextvars.ContextVar[str | None] = contextvars.ContextVar
 # share a factorisation while two different problems never collide.
 _FACTOR_CACHE: OrderedDict[bytes, spl.SuperLU] = OrderedDict()
 _FACTOR_CACHE_SIZE = 4
+
+# ---------------------------------------------------------------------------
+# The factor thread. See "Memory" in the module docstring: a
+# ``scipy.sparse.linalg.SuperLU`` built on one thread and deallocated on
+# another does not give its factor back to the allocator, and under ``jit``
+# XLA runs the host callbacks on its own worker pool while
+# ``clear_factor_cache()`` runs on the caller's thread. Every splu, every
+# triangular solve and every drop of a cached factor therefore happens on
+# ONE dedicated thread, so create and destroy always pair up.
+_FACTOR_EXECUTOR: ThreadPoolExecutor | None = None
+_FACTOR_TID: int | None = None
+_FACTOR_EXECUTOR_LOCK = threading.Lock()
+_T = TypeVar("_T")
+
+
+def _on_factor_thread(fn: Callable[..., _T], *args: Any) -> _T:
+    """Run ``fn(*args)`` on the one thread that owns every LU factor.
+
+    Re-entrant (a call already on that thread runs inline, so a callback
+    that reaches ``sparse_solve`` again cannot deadlock). The thread is
+    created on first use and is a daemon-free pool worker, joined by
+    ``concurrent.futures``' own atexit hook.
+    """
+    global _FACTOR_EXECUTOR, _FACTOR_TID
+    if threading.get_ident() == _FACTOR_TID:
+        return fn(*args)
+    ex = _FACTOR_EXECUTOR
+    if ex is None:
+        with _FACTOR_EXECUTOR_LOCK:
+            ex = _FACTOR_EXECUTOR
+            if ex is None:
+                ex = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rfx-fdfd-lu")
+                _FACTOR_TID = ex.submit(threading.get_ident).result()
+                _FACTOR_EXECUTOR = ex
+    return ex.submit(fn, *args).result()
+
+
+def _reset_factor_thread() -> None:
+    """A forked child inherits the cache but not the thread that owns it."""
+    global _FACTOR_EXECUTOR, _FACTOR_TID
+    _FACTOR_EXECUTOR = None
+    _FACTOR_TID = None
+    _FACTOR_CACHE.clear()
+
+
+if hasattr(os, "register_at_fork"):               # posix only
+    os.register_at_fork(after_in_child=_reset_factor_thread)
 
 
 def get_default_permc_spec() -> str | None:
@@ -143,8 +257,64 @@ def default_permc_spec(spec: str | None) -> Iterator[None]:
         _DEFAULT_PERMC_SPEC.reset(token)
 
 
+def _trim_factor_cache() -> None:
+    while len(_FACTOR_CACHE) > _FACTOR_CACHE_SIZE:
+        _FACTOR_CACHE.popitem(last=False)
+
+
 def clear_factor_cache() -> None:
-    _FACTOR_CACHE.clear()
+    """Drop every memoised LU factor.
+
+    The drop is performed on the factor thread, which is the thread that
+    built them: a ``SuperLU`` deallocated anywhere else keeps its whole
+    factor (measured: 0.2537 GB for one 1.17e7-nonzero factor, i.e. all of
+    it) for the life of the process. See "Memory" in the module docstring.
+
+    It is not needed for correctness and not needed to bound the process:
+    the cache is already capped at :func:`factor_cache_size` factors. Call
+    it to give back the last solve's factors before doing something else
+    large.
+    """
+    if _FACTOR_EXECUTOR is None:
+        _FACTOR_CACHE.clear()               # nothing was ever built off-thread
+    else:
+        _on_factor_thread(_FACTOR_CACHE.clear)
+
+
+def factor_cache_size(size: int | None = None) -> int:
+    """Get, or (``size`` given) set, the number of LU factors kept.
+
+    The cache is what lets the forward solve and the transposed adjoint
+    solve of one gradient evaluation share a single factorisation, so
+    ``size`` must be at least 1 for a gradient to cost one factorisation
+    instead of two; ``0`` disables memoisation entirely. The default is 4.
+
+    It is the knob for PEAK memory, not for the growth (there is none left;
+    see "Memory" in the module docstring). A factor costs 23.3 bytes per LU
+    nonzero measured -- 0.2538 GB for the 1.17e7-nonzero LU of the
+    N = 12739 spiral fixture, 1.277 GB for the 5.54e7-nonzero LU of the
+    N = 33352 one (24.7 bytes/nonzero) -- so the default bounds a process at
+    4 x that: 1.02 GB and 5.11 GB of factors respectively. A three-fixture
+    solve needs 3 live at once and a three-fixture *gradient* re-uses
+    exactly those 3, so 3 is the smallest size that keeps the adjoint pass
+    free of a second factorisation; below it every adjoint re-factorises.
+    Measured at N = 12739, six jitted three-fixture solves at a MOVING theta
+    and no ``clear_factor_cache()``: the plateau is 1.773 GB at size 4 and
+    1.518 GB at size 3, a difference of 0.255 GB = one factor. Shrinking
+    takes effect immediately (the excess is dropped on the factor thread).
+    """
+    global _FACTOR_CACHE_SIZE
+    if size is None:
+        return _FACTOR_CACHE_SIZE
+    n = int(size)
+    if n < 0:
+        raise ValueError(f"factor_cache_size must be >= 0, got {size!r}")
+    _FACTOR_CACHE_SIZE = n
+    if _FACTOR_EXECUTOR is None:
+        _trim_factor_cache()
+    else:
+        _on_factor_thread(_trim_factor_cache)
+    return _FACTOR_CACHE_SIZE
 
 
 def _check_permc_spec(spec: str | None) -> None:
@@ -179,8 +349,7 @@ def _factor(data: np.ndarray, rows: np.ndarray, cols: np.ndarray, n: int,
         a.sum_duplicates()
         lu = spl.splu(a, permc_spec=permc_spec)
         _FACTOR_CACHE[key] = lu
-        while len(_FACTOR_CACHE) > _FACTOR_CACHE_SIZE:
-            _FACTOR_CACHE.popitem(last=False)
+        _trim_factor_cache()
     else:
         _FACTOR_CACHE.move_to_end(key)
     return lu
@@ -250,11 +419,18 @@ def sparse_solve(data: jax.Array, rows: np.ndarray, cols: np.ndarray, b: jax.Arr
     pattern_key = _pattern_digest(rows, cols, n, permc_spec)
 
     def _host(trans: bool):
+        tr = "T" if trans else "N"
+
+        def on_thread(d, rhs):
+            # factorise, solve and drop the local reference all on the ONE
+            # thread that owns the factors (see ``_on_factor_thread``)
+            lu = _factor(d, rows, cols, n, permc_spec, pattern_key)
+            return lu.solve(rhs, trans=tr)
+
         def f(d, rhs):
             d = np.asarray(d, dtype=np.complex128)
             rhs = np.asarray(rhs, dtype=np.complex128)
-            lu = _factor(d, rows, cols, n, permc_spec, pattern_key)
-            return lu.solve(rhs, trans="T" if trans else "N")
+            return _on_factor_thread(on_thread, d, rhs)
         return f
 
     host_solve = _host(False)

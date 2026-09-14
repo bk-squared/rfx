@@ -335,7 +335,7 @@
    "total_centreline_length": 0.000597
   }
  },
- "seconds": 12.22103500366211,
+ "seconds": 13.326766014099121,
  "seconds_measuring": 8411.890516996384,
  "wall_gate": {
   "div": 1.0,
@@ -659,58 +659,107 @@
  },
  "gates": {
   "V1": {
+   "quantity": "PRIMARY: FDFD de-embedded L_diff vs the referee's L(strip) - L(bridge); no FDFD-side correction applied. See secondary_convention for the strip-alone comparison and corrections for the two measured, separately stated extrapolations.",
    "referee_deembedded": 3.3305510896906523e-10,
    "referee_strip_only": 3.493712871350631e-10,
    "referee_bridge": 1.6316178165997864e-11,
-   "quantity": "L(strip) - L(short-standard bridge), the FDFD side corrected for the post short by the thru probe; see bridge_segments and thru_probe",
-   "post_corrected": true,
-   "post_bias": {
-    "1": 1.621384337543804e-12,
-    "2": 4.5872190796040325e-12,
-    "3": 6.045525239484214e-12
-   },
+   "referee_bridge_over_strip": 0.04670154293386511,
+   "referee_reference_plane_spread": 0.000913903729231006,
+   "referee_reference_plane_spread_strip_only": 0.029163703657849954,
    "per_level_gap": {
-    "W/1": -0.21689272645558466,
-    "W/2": -0.1340247418931798,
-    "W/3": -0.11572542450734502
-   },
-   "per_level_gap_uncorrected": {
     "W/1": -0.21202451007372947,
     "W/2": -0.12025158857388896,
     "W/3": -0.09757369803121485
    },
-   "per_level_gap_vs_strip_only": {
-    "W/1": -0.24882418124735461,
-    "W/2": -0.16133719678110514,
-    "W/3": -0.13971839871725922
-   },
    "L_extrapolated_estimates": {
-    "p1_finest_pair": 3.067015273912775e-10,
-    "p2_finest_pair": 2.993879100160791e-10,
-    "observed_order": 3.006299374998693e-10
+    "p1_finest_pair": 3.1566366495052205e-10,
+    "p2_finest_pair": 3.066000801834674e-10,
+    "observed_order": 3.094656411597025e-10
    },
    "L_extrapolated_range": [
-    2.993879100160791e-10,
-    3.067015273912775e-10
-   ],
-   "L_extrapolated_range_uncorrected": [
     3.066000801834674e-10,
     3.1566366495052205e-10
    ],
-   "observed_order": 1.704852418484085,
-   "observed_order_uncorrected": 1.5144236756242244,
+   "observed_order": 1.5144236756242244,
    "rel_range": [
-    -0.10108597059867719,
-    -0.07912678973567544
-   ],
-   "rel_range_uncorrected": [
     -0.07943138559707552,
     -0.05221791694586653
    ],
-   "rel_range_vs_strip_only": [
-    -0.12242336026618239,
-    -0.09648080258956726
-   ],
+   "secondary_convention": {
+    "what": "the strip ALONE, i.e. the de-embedding read as 'the inductance of the conductor between the reference planes'. The thru probe (V6) refutes that reading directly, so this is reported, not gated.",
+    "referee": 3.493712871350631e-10,
+    "per_level_gap": {
+     "W/1": -0.24882418124735461,
+     "W/2": -0.16133719678110514,
+     "W/3": -0.13971839871725922
+    },
+    "L_extrapolated_range": [
+     3.066000801834674e-10,
+     3.1566366495052205e-10
+    ],
+    "rel_range": [
+     -0.12242336026618239,
+     -0.09648080258956726
+    ]
+   },
+   "corrections": {
+    "post_short": {
+     "what": "the short standard's grounded post shorts the bridge over its own width, so the fixture subtracts LESS than a whole bridge; the thru probe (dut_kind='bar', V6) measures the residual level by level and L_dut - L_thru = L(strip) - L(whole bridge)",
+     "sign": "increases the gap",
+     "per_level_bias": {
+      "1": 1.621384337543804e-12,
+      "2": 4.5872190796040325e-12,
+      "3": 6.045525239484214e-12
+     },
+     "per_level_bias_over_referee": {
+      "1": 0.0048682163818552955,
+      "2": 0.013773153319290778,
+      "3": 0.01815172647613021
+     },
+     "per_level_gap": {
+      "W/1": -0.21689272645558466,
+      "W/2": -0.1340247418931798,
+      "W/3": -0.11572542450734502
+     },
+     "L_extrapolated_range": [
+      2.993879100160791e-10,
+      3.067015273912775e-10
+     ],
+     "observed_order": 1.704852418484085,
+     "rel_range": [
+      -0.10108597059867719,
+      -0.07912678973567544
+     ]
+    },
+    "vertical_grid": {
+     "what": "the three levels refine IN PLANE only, so the vertical error is common to all three and cancels out of the in-plane Richardson; base_dz/2 and /4 at W/1 give +1.913 % and +2.503 %, observed order 1.698",
+     "sign": "reduces the gap",
+     "rel_correction_range": [
+      0.026992698221977696,
+      0.030924323864944814
+     ],
+     "observed_order": 1.6976347984209075,
+     "L_extrapolated_range": [
+      3.1487604362269394e-10,
+      3.2542535035784743e-10
+     ],
+     "rel_range": [
+      -0.054582754795873156,
+      -0.02290839685610846
+     ]
+    },
+    "both": {
+     "what": "the post-short correction and the vertical extrapolation applied together",
+     "L_extrapolated_range": [
+      3.074691975224517e-10,
+      3.1618606475419865e-10
+     ],
+     "rel_range": [
+      -0.07682185547554532,
+      -0.050649408342909985
+     ]
+    }
+   },
    "tolerance": 0.05,
    "passed": false
   },
@@ -721,10 +770,15 @@
    ],
    "vertical_observed_order": 1.6976347984209075,
    "L_range_corrected": [
-    3.074691975224517e-10,
-    3.1618606475419865e-10
+    3.1487604362269394e-10,
+    3.2542535035784743e-10
    ],
    "rel_range": [
+    -0.054582754795873156,
+    -0.02290839685610846
+   ],
+   "straddles_tolerance": true,
+   "with_post_short": [
     -0.07682185547554532,
     -0.050649408342909985
    ],

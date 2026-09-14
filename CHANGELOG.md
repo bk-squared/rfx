@@ -6,6 +6,57 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased]
 
+### Added — `rfx.fdfd.spiral`: differentiable rectangular spiral inductor, validated against an independent referee
+
+- **`rfx.fdfd.spiral`** — `SpiralSpec` / `build_spiral` / `solve_spiral`: the
+  rectangular spiral from `gds.rect_spiral` on a body-fitted 3-D grid whose
+  lines move with `theta = (r_out, spacing, width)` (`jnp.interp` between the
+  polygon-edge breakpoints; topology, masks and pattern static), two lumped
+  ports on vertical lead columns, DUT / OPEN / SHORT fixtures on one grid,
+  open-short de-embedding, `L_diff` / `Q_diff` / `L_se` / `Q_se`. PEC,
+  Leontovich (`sigma_metal`) or uniform-current volumetric metal
+  (`sigma_volumetric`); lossy silicon; graded wall padding (`pad_cells`) —
+  the PML is measured useless for quasi-static 100 MHz fields (the stretch is
+  dominated by σ_w/(jωε₀), κ has no effect). `dut_kind="bar"` gives a straight
+  bar on the same fixture. `jax.grad` vs FD4: 4e-7 on `dL/dtheta`.
+- **`validation/crossval/comparators/spiral_greenhouse.py`** — numpy-only
+  Greenhouse partial-inductance referee (Hoer–Love closed form with an
+  automatic Gauss–Legendre switch where it loses digits, PEC ground by images,
+  Mohan–Wheeler), 25 tests against Neumann quadrature (≤ 2e-12).
+- **`validation/fdfd/spiral_convergence`** — FDFD vs referee under a
+  physics-consistent protocol (uniform-current metal, vacuum dielectrics,
+  walls padded away, area-exact corners). Finding: the open/short fixture
+  measures L(strip) − L(short's bridge), so the comparable referee is
+  333.1 pH, not 349.4; against it the de-embedded FDFD is −21.2 / −12.0 /
+  −9.8 % at 1 / 2 / 3 cells across W, Richardson −7.9..−5.2 % (order 1.5),
+  −5.5..−2.3 % after the measured vertical-grid term. **V1 fails at ±5 %,
+  recorded as such.** AD vs FD4 5.7e-7; dL/dθ vs referee 0.88–0.94 at W/3.
+- **`validation/fdfd/straight_bar_convergence`** — the same-fixture straight
+  bar shows the same distributed per-unit-length deficit as the spiral
+  (differential 0.81 / 0.89 vs 0.77 / 0.88 at 1 / 2 cells across W), so the
+  gap is strip cross-section discretisation, not spiral geometry; with the
+  walls extrapolated on validated 3-point ladders the per-unit-length ratio
+  is 0.83–0.93 (1 cell), 0.93 (2), 0.98 (3), 0.97 (4) ± 0.008.
+- **`validation/fdfd/spiral_design`** — L-BFGS-B on (r_out, S, W) at 2.4 GHz
+  with Leontovich copper and lossy silicon reaches the L target to 1.0 % in
+  16 evaluations (16 forward + 16 adjoint), a 27-point sweep lands no point
+  in the 2 % band; AD vs FD4 at the optimum 7.6e-7; W/2 re-solve shifts L by
+  +6.5 % (95 % common mode). Absolute L is biased (−17.6 % vs referee at
+  this geometry); the loop's claims are solve count and constraint accuracy.
+
+### Fixed
+
+- **`rfx.fdfd.linear_solve`** — every LU factorisation, triangular solve and
+  cache drop now runs on one dedicated thread: scipy 1.18.1's `SuperLU` does
+  not free its factor when deallocated on a thread other than the one that
+  built it, and under `jax.jit` the factors were built on XLA's callback
+  threads and dropped on the caller's (+3.4 GB per jitted three-fixture solve
+  at N = 33k, measured in `validation/fdfd/memory_probe.json`; flat after the
+  fix). Also: `permc_spec` keyword (COLAMD stays default: MMD_AT_PLUS_A is
+  1.5× faster on 2-D, 9.7× slower on 3-D), `factor_cache_size()` knob.
+- **`rfx.fdfd.yee3d.curl_h`** dropped the rows for edge ids ≥ n_faces,
+  corrupting `ports3d.port_current` for high-index ports; regression test.
+
 ### Added — `rfx.fdfd` pipeline: 3-D vector FDFD, ports, conductors, de-embedding, GDS front end
 
 Built on the differentiable sparse solve below; every module keeps the same

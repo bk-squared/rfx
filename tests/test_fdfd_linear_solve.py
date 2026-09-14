@@ -451,3 +451,192 @@ def test_gradient_is_independent_of_the_lu_ordering():
                 fd = float(_with_ordering(spec, lambda: _fd4(shifted, 0.0, 1.0, 0.02 * m.h)))
                 assert abs(float(g[i]) - fd) < 1e-5 * abs(fd), (spec, i, g[i], fd)
                 assert abs(fd) * 0.02 * m.h > 1e-5             # FD moves the objective
+
+
+# ---------------------------------------------------------------------------
+# memory: the process must not grow with the number of solves
+#
+# scipy's SuperLU keeps its whole factor when the object is deallocated on a
+# thread other than the one that built it, and under ``jit`` XLA runs the
+# ``pure_callback`` host solves on its own worker pool while
+# ``clear_factor_cache()`` runs on the caller's thread. Before
+# ``linear_solve``'s factor thread, a jitted THREE-solve program lost 2.54 of
+# its three factors per call: at N = 12739 (the spiral fixture) RSS went
+# 1.319 / 1.962 / 2.608 / 3.250 GB over four solves at the same theta with
+# the cache emptied and gc forced between them. The gates below run the same
+# shape of program on a self-contained system small enough for the fast lane.
+# Full series and the diagnosis: validation/fdfd/memory_probe.{py,json}.
+
+LAP_K = 20              # 20^3 = 8000 unknowns, 5.36e4 stored entries; measured
+                        # 3877216 LU nonzeros, 0.084 GB and 0.25 s per splu here
+
+
+def _lap3(k=LAP_K):
+    """Complex 7-point Laplacian on a k x k x k grid, as a COO pattern.
+
+    Chosen because it FILLS: the point of the test is a factor big enough
+    that losing one is visible in RSS above the ~0.01 GB noise of a Python
+    process, without paying for a real 3-D FDFD model.
+    """
+    n = k ** 3
+    idx = np.arange(n).reshape(k, k, k)
+    rows = [idx.ravel()]
+    cols = [idx.ravel()]
+    vals = [np.full(n, 6.0 + 0.01j)]
+    for ax in range(3):
+        a = np.take(idx, np.arange(k - 1), axis=ax).ravel()
+        b = np.take(idx, np.arange(1, k), axis=ax).ravel()
+        rows += [a, b]
+        cols += [b, a]
+        vals += [np.full(a.size, -1.0 + 0j)] * 2
+    return (np.concatenate(rows), np.concatenate(cols),
+            jnp.asarray(np.concatenate(vals)), n)
+
+
+def _three_solve_program(rows, cols, n):
+    """A jitted program with THREE independent sparse_solves -- the shape of
+    ``spiral.solve_spiral``'s dut/open/short, and the shape that made the
+    leak visible (one callback alone only plateaus)."""
+    rhs = jnp.ones((n, 2), jnp.complex128)
+
+    def three(d):
+        return sum(sparse_solve(d * (1.0 + 1e-3 * j), rows, cols, rhs).sum()
+                   for j in range(3))
+
+    return jax.jit(three)
+
+
+def test_repeated_jitted_solves_do_not_grow_the_resident_set():
+    """Six jitted three-solve calls: growth after the second solve must be
+    under 15 % of the first solve's increment.
+
+    The calls are driven from a WORKER thread and the cache is emptied from
+    this one, which is the design loop's situation made deterministic: under
+    ``jit`` XLA decides for itself whether to run a ``pure_callback`` on the
+    calling thread or on its pool, and it only moves off the caller's thread
+    above some program size (measured here: the same program runs on the
+    main thread at 13824 unknowns and on a pool thread at 17576). Driving it
+    from a worker pins the build thread without needing a system big enough
+    to make XLA do it, so the gate keeps its teeth in the fast lane.
+
+    Threshold from the measurement: after the fix the growth over solves
+    2..6 is 0.000 GB here, and 0.016 % of the first increment at N = 12739
+    (0.00017 GB on 1.021 GB, validation/fdfd/memory_probe.json); with the
+    release path this module used before, the same loop here grows
+    0.21 GB per solve -- 0.842 GB over solves 2..6 against a 0.292 GB first
+    increment, a ratio of 2.89. 15 % sits two orders of magnitude above the
+    fixed behaviour and 19x below the broken one, and clears the ~0.01 GB
+    RSS jitter of a Python process on this machine.
+    """
+    import gc
+    from concurrent.futures import ThreadPoolExecutor
+    psutil = pytest.importorskip("psutil")
+    proc = psutil.Process()
+
+    def rss_gb():
+        return proc.memory_info().rss / 2.0 ** 30
+
+    with enable_x64():
+        rows, cols, data, n = _lap3()
+        f = _three_solve_program(rows, cols, n)
+        ls.clear_factor_cache()
+        gc.collect()
+        series = []
+        with ThreadPoolExecutor(max_workers=1) as ex:
+            base = rss_gb()
+            for _ in range(6):
+                ex.submit(lambda: jax.block_until_ready(f(data))).result()
+                ls.clear_factor_cache()          # from THIS thread, as a design loop does
+                gc.collect()
+                series.append(rss_gb())
+    first = series[0] - base
+    later = series[-1] - series[1]
+    # the test only means something if the factors are big enough to see
+    assert first > 0.05, (first, series)
+    assert later < 0.15 * first, (first, later, series)
+
+
+def test_every_factor_is_built_and_dropped_on_one_thread():
+    """The invariant the fix rests on, guarded structurally as well as by
+    RSS: all three host callbacks of one jitted program factorise on the
+    SAME thread, it is not the caller's, and ``clear_factor_cache()``
+    empties the cache on that same thread."""
+    import threading
+    seen: list[int] = []
+    orig = ls._factor
+
+    def spy(*a):
+        seen.append(threading.get_ident())
+        return orig(*a)
+
+    with enable_x64():
+        rows, cols, data, n = _lap3(8)              # tiny: this is not a timing test
+        f = _three_solve_program(rows, cols, n)
+        ls._factor = spy
+        try:
+            jax.block_until_ready(f(data))
+        finally:
+            ls._factor = orig
+        assert len(seen) == 3, seen                 # three fixtures, three factorisations
+        assert len(set(seen)) == 1, seen
+        assert seen[0] != threading.get_ident()
+        assert ls._on_factor_thread(threading.get_ident) == seen[0]
+        ls.clear_factor_cache()
+        assert len(ls._FACTOR_CACHE) == 0
+
+
+def test_factor_cache_size_knob_bounds_the_live_factors():
+    """``factor_cache_size`` is the documented knob for peak memory: the
+    cache never holds more than it says, shrinking drops the excess at once,
+    and the default is restored by this test."""
+    assert ls.factor_cache_size() == 4               # documented default
+    with enable_x64():
+        rows, cols, data, n = _lap3(8)
+        f = _three_solve_program(rows, cols, n)
+        try:
+            ls.clear_factor_cache()
+            ls.factor_cache_size(2)
+            assert ls.factor_cache_size() == 2
+            jax.block_until_ready(f(data))           # three distinct matrices
+            assert len(ls._FACTOR_CACHE) == 2
+            ls.factor_cache_size(4)
+            jax.block_until_ready(f(data * 1.7))     # three more
+            assert len(ls._FACTOR_CACHE) == 4
+            ls.factor_cache_size(1)                  # shrinking trims immediately
+            assert len(ls._FACTOR_CACHE) == 1
+            ls.factor_cache_size(0)
+            assert len(ls._FACTOR_CACHE) == 0
+            with pytest.raises(ValueError, match=">= 0"):
+                ls.factor_cache_size(-1)
+        finally:
+            ls.factor_cache_size(4)
+            ls.clear_factor_cache()
+
+
+def test_gradient_still_shares_one_factorisation_with_the_adjoint():
+    """The factor thread must not have broken what the cache is FOR: a
+    reverse-mode pass re-uses the forward solve's factorisation, so a
+    gradient costs one ``splu``, not two."""
+    import scipy.sparse.linalg as spl
+    calls = []
+    orig = spl.splu
+
+    def counted(*a, **k):
+        calls.append(1)
+        return orig(*a, **k)
+
+    with enable_x64():
+        rows, cols, data, b = _system()
+
+        def loss(d):
+            return jnp.sum(jnp.abs(sparse_solve(d, rows, cols, b)) ** 2)
+
+        ls.clear_factor_cache()
+        ls.spl.splu = counted
+        try:
+            g = jax.grad(loss)(data)
+            jax.block_until_ready(g)
+        finally:
+            ls.spl.splu = orig
+        assert len(calls) == 1, len(calls)
+        assert float(jnp.linalg.norm(g)) > 0.0

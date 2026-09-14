@@ -77,6 +77,15 @@ against the exact uniform-current value. It is the direct analogue of the
 spiral study's lead-length differential (ratio 0.763 at W/1) and it is what
 decides between explanation (i) and (ii).
 
+Each leg of the differential carries its own wall correction (below), and a
+WALL-CORRECTED ratio is quoted only where BOTH legs have a full three-point
+``pad_cells`` 4 / 6 / 8 ladder -- the extrapolation this study validated
+against direct ``pad_cells = 12`` solves. Where one leg has only a two-point
+ladder the level is recorded under
+``ratio_centres_wall_corrected_two_point_EXCLUDED`` and kept out of every
+gate and out of the conclusion; ``wall_ladder_points`` records the two ladder
+lengths at every level so the rule is auditable from the JSON alone.
+
 The walls are NOT level-independent at ``pad_cells = 4`` (a finding)
 --------------------------------------------------------------------
 ``spiral.pad_lines`` grows its ``pad_cells`` padding cells geometrically
@@ -90,19 +99,22 @@ at W/3 the y wall is only 56 um out and 4 -> 8 gives 38.026 -> 40.000 pH
 (+5.19 %). So a ``pad_cells``-fixed refinement sequence carries a wall bias
 that GROWS with refinement and partly cancels the discretisation error it
 is trying to measure. The cheap escape -- fewer, faster-growing padding
-cells -- does not work: ``pad_cells = 4`` with ``pad_ratio`` raised to
-2.67 reaches the same 865 um wall but gives 26.38 pH at W/1 against the
-27.71 pH of the gentle 8-cell padding at 804 um, i.e. the aggressive
-grading contributes an error of its own, five times the wall error it
-removes. Therefore this study keeps ``pad_cells = 4``, ``pad_ratio = 1.5``
-(identical to the spiral study) for the primary series AND measures a wall
-ladder (``pad_cells`` 4 / 6 / 8) at every level of the cheapest width, from
-which a wall-extrapolated value and a wall-corrected differential ratio are
-reported.
+cells -- does not work (``pad_ratio_check``, W = 10 um, l = 100 um, W/1):
+``pad_cells = 4`` with ``pad_ratio`` raised to 2.67 pushes the y wall out to
+812 um on 11864 unknowns but gives 26.382 pH, against 27.707 pH for the
+gentle ``pad_cells = 8``, ``pad_ratio = 1.5`` grid at a 754 um y wall --
+-4.78 %, i.e. the aggressive grading contributes an error of its own 5.4 x
+the +0.88 % wall error it removes (``pad_ratio = 2.0`` is already -2.19 %).
+Therefore this study keeps ``pad_cells = 4``, ``pad_ratio = 1.5`` (identical
+to the spiral study) for the primary series AND measures a wall ladder
+(``pad_cells`` 4 / 6 / 8) at every level of every case, from which a
+wall-extrapolated value and a wall-corrected differential ratio are
+reported -- the latter only where the ladder is three points long on BOTH
+legs.
 
 Protocol (identical to the spiral study unless stated)
 ------------------------------------------------------
-100 MHz, ``sigma_volumetric = 3e6`` S/m (skin depth 29.1 um: 14.6 x the
+100 MHz, ``sigma_volumetric = 3e6`` S/m (skin depth 29.1 um: 14.5 x the
 2 um metal thickness and >= 1.5 x the widths used, so the current density is
 uniform and L carries the DC internal inductance, as the referee does),
 VACUUM dielectrics (``eps_si = eps_ox = 1``: the referee is
@@ -124,7 +136,12 @@ Run::
 
 writes ``straight_bar_convergence.json`` and ``.png`` next to this file;
 the JSON is rewritten after every single solve, so an interrupted run keeps
-everything it had measured.
+everything it had measured. ``--from-json`` REASSEMBLES: it reuses every
+per-level record, wall ladder and systematics block already in the JSON,
+re-derives everything downstream of them from scratch (the ladders through
+:func:`normalise_wall_ladder`, so a reused ladder can never carry an older
+or differently derived correction forward) and measures only the blocks
+that are missing.
 
 Gates and what they measured (every number below is in the JSON)
 -----------------------------------------------------------------
@@ -138,21 +155,46 @@ B1  per-level gap of ``L_dut`` against the referee at all three plane
     -17.6 / -6.3 / -2.7 % against ``post_edges`` -- the plane the short
     standard actually grounds. Same picture at W = 20 um, where the
     wall-corrected ``post_edges`` gap is -1.0 / -1.1 / +1.1 % at 3 / 4 / 6
-    cells across the width (and -1.0 / -1.5 % for l = 200 um). So the FDFD
-    plus the open/short de-embedding reproduce the EXACT uniform-current
-    inductance of a strip over a PEC ground -- image term included -- to
-    1-3 % from three cells across the width, once the walls are removed and
-    the plane is taken where the short puts it.
+    cells across the width (and -1.0 / -1.5 % for l = 200 um at 3 / 4).
+    Every wall-corrected level carries ``extrapolation_uncertainty``, the
+    2-point/3-point spread of its own extrapolation. Over the twelve
+    admitted levels it runs 0.246 % to 1.220 % of L and tracks the size of
+    the correction itself at 0.19-0.27 x it (0.246 % on a +0.918 %
+    correction, 0.699 % on +2.902 %, 1.166 % on +5.792 %).
+    So the FDFD plus the
+    open/short de-embedding reproduce the EXACT uniform-current inductance
+    of a strip over a PEC ground -- image term included -- to 1-3 % from
+    three cells across the width, once the walls are removed and the plane
+    is taken where the short puts it.
 B2  the differential ratio. RAW (``pad_cells = 4``, the spiral study's
     protocol) it FAILS and is non-monotone: 0.814 / 0.893 / 0.889 / 0.872
     at W = 10 um (W/1..W/4) and 0.908 / 0.936 / 0.930 / 0.912 at W = 20 um
-    (W/1, W/3, W/4, W/6). WALL-CORRECTED it converges:
-    0.829 / 0.932 / 0.975 at W = 10 um (1 / 2 / 3 cells across the width)
-    and 0.925 / 0.981 / 0.975 / 1.004 at W = 20 um (1 / 3 / 4 / 6 cells),
-    i.e. it PASSES the 3 % gate from three cells on. Its own plane
-    sensitivity is small, as the measurement requires: taking the referee
-    difference at the ``post_edges`` plane instead of ``centres`` moves the
-    ratio by at most 2.6 % (0.908 -> 0.933) and usually under 1 %.
+    (W/1, W/3, W/4, W/6). WALL-CORRECTED, and counting ONLY the levels with
+    a full three-point ladder on BOTH legs, it converges towards 1 with the
+    number of cells across the width:
+
+      W = 10 um   1 cell  0.8286 +- 0.0035   2 cells 0.9319 +- 0.0075
+      W = 20 um   1 cell  0.9251 +- 0.0042   3 cells 0.9808 +- 0.0082
+                  4 cells 0.9746 +- 0.0082
+
+    The uncertainty is that level's own 2-point/3-point extrapolation
+    spread propagated through the differential, and it is conservative (see
+    the fine wall check below). Two levels have a two-point ladder on their
+    l = 200 um leg and are therefore EXCLUDED from the gate, labelled in
+    the JSON, and NOT quoted in the conclusion: W = 10 um W/3 (which would
+    read 0.9751) and W = 20 um W/6 (which would read 1.0039).
+    Gate outcome, reported as measured: ``passed`` is False (the raw series
+    is 12.8 % and 8.8 % from 1 at the finest level of each width);
+    ``passed_wall_corrected`` is False, because the finest admitted level
+    at W = 10 um is only TWO cells across the width and is 6.8 % low;
+    ``passed_wall_corrected_from_3_cells`` is True -- every admitted point
+    with three or more cells across the width is inside 3 % (-1.9 % and
+    -2.5 %), and only W = 20 um reaches three cells with a valid ladder on
+    both legs (N = 22560/33600 at W/3 and 28699/44359 at W/4).
+    The differential's own plane sensitivity is small, as the measurement
+    requires: taking the referee difference at the ``post_edges`` plane
+    instead of ``centres`` moves the raw ratio by at most 2.6 %
+    (0.908 -> 0.933) and usually under 1 %.
 B3  the Richardson range (p = 1, p = 2, observed order). Against the
     ``centres`` plane it FAILS by a wide margin at ``pad_cells = 4`` (the
     plane, not the field solution). The wall-extrapolated series over the
@@ -162,52 +204,104 @@ B3  the Richardson range (p = 1, p = 2, observed order). Against the
     -5.3 % / +5.5 %), and for W = 20 um / l = 100 um [29.29, 31.79] pH
     against 30.36 pH (-3.5 % / +4.7 %). The per-level ``post_edges``
     statement of B1 is the tighter and better-posed one.
-B4  ``jax.grad`` vs FD4 (1 % steps) for ``dL/dl_bar`` and ``dL/dW``:
-    worst 1.49e-6 at W = 20 um, l = 100 um, W/3 (dL/dl_bar = +3.7212e-7,
-    dL/dW = -7.5679e-7 H/m), and 1.13e-6 / 2.04e-6 at W/1. PASSES (1e-4).
+B4  ``jax.grad`` vs FD4 (1 % steps, which move L by ~1e-2 relative -- far
+    above the ~1e-9 LU noise floor -- so the FD truncation is what is being
+    measured) for ``dL/dl_bar`` and ``dL/dW`` at W = 20 um, l = 100 um, W/3
+    (N = 22560): AD gives +3.72115e-7 and -7.56785e-7 H/m, FD4 gives
+    +3.72116e-7 and -7.56785e-7, agreeing to 1.49e-6 and 5.1e-9 relative.
+    PASSES (gate 1e-4).
 
 Protocol checks
 ---------------
 *  sigma plateau: ``L_dut`` = 23.348 / 23.354 / 23.395 / 23.769 / 25.058 /
    27.492 pH at sigma = 3e5 / 1e6 / 3e6 / 1e7 / 3e7 / 1e8 S/m (W = 20 um,
    l = 100 um, W/3), so ``SIGMA_VOL = 3e6`` is on the uniform-current
-   plateau (+0.18 % from 1e6) and 1e7 is already +1.6 % off it. PEC gives
-   27.745 pH, +18.6 % ABOVE the plateau -- the OPPOSITE sign to the
-   spiral's -6.7 %, and reproduced from the other end by the volumetric
-   model itself (27.49 pH at sigma = 1e8, skin depth 5.0 um).
-*  the wall extrapolation is itself validated: the 3-point Richardson in
-   ``1 / wall_distance`` from ``pad_cells`` 4 / 6 / 8 gives 27.7168 pH at
-   W = 10 um, l = 100 um, W/1 against a DIRECT ``pad_cells = 12`` solve
-   (walls 3872 um out, N = 73960) of 27.7095 pH: +0.026 %. Only levels with
-   a full three-point ladder feed the wall-corrected series; a two-point
-   one overshoots (pad 4/6 alone gives +10.4 % at W/4 against +5.5 % for
-   4/6/8 one level coarser) and is excluded.
+   plateau (+0.18 % from 1e6) and 1e7 is already +1.6 % off it.
+*  the PEC fixture is NOT a metal-model contrast (``pec_offset``). The PEC
+   solve of the same fixture sits ABOVE the uniform-current plateau, by
+   +4.350 pH (+18.6 %) at W = 20 um, l = 100 um, W/3 -- but repeating it at
+   l = 150 and 200 um gives +2.383 pH (+5.2 %) and +0.371 pH (+0.6 %), and
+   at W = 10 um, W/1 the same sweep gives +5.588 / +5.234 / +4.981 pH
+   (+20.3 / +10.2 / +6.6 %) at l = 100 / 150 / 200 um. Doubling the length
+   multiplies the offset by 0.89 (W = 10 um) and by 0.085 (W = 20 um) where
+   a per-unit-length property of the metal model would multiply it by 2.0.
+   So the PEC-vs-uniform-current difference is a LUMPED residual of the PEC
+   fixture's own open/short de-embedding -- its ports, lead columns and
+   short post are a different metal from the volumetric ones -- and not a
+   statement about the strip's cross-section. Its size, ~5 pH, is ~2 % of
+   the spiral's 262.44 pH ``L_diff``. Nothing in this study's conclusion
+   rests on a PEC solve; the comparison with the referee uses the
+   volumetric uniform-current series only.
+*  the wall extrapolation is validated at TWO levels, one of them inside
+   the range of corrections the conclusion uses:
+   -  W = 10 um, l = 100 um, W/1, where the correction is +0.92 %: the
+      3-point Richardson in ``1 / wall_distance`` over ``pad_cells``
+      4 / 6 / 8 gives 27.7168 pH against a DIRECT ``pad_cells = 12`` solve
+      (walls 3872 um out, N = 73960) of 27.7095 pH -- +0.026 %.
+   -  W = 20 um, l = 100 um, W/3, where the correction is +2.90 %
+      (``wall_extrapolation_check_fine``): 4 / 6 / 8 gives 24.0737 pH
+      against a direct ``pad_cells = 12`` solve (walls 1941 um out,
+      N = 104888, 505 s) of 24.0478 pH -- +0.107 %. The 4 / 6 PAIR ALONE
+      would have given 24.2419 pH, +0.807 %: 7.5 x worse. This is why only
+      three-point ladders are admitted, and it is measured, not assumed.
+   The uncertainty quoted on every wall-corrected number is that level's
+   2-point/3-point spread (0.25-1.22 % of L, +-0.0035..0.0082 on a
+   differential ratio), which at the one level where both are available is
+   6.5 x larger than the directly measured error (0.699 % against
+   0.107 %). It is a conservative bar, not a tight one.
 *  ``metal_cells`` 2 -> 4 (2 -> 4 cells across the 2 um thickness): +0.13 %.
    ``base_dz`` 10 -> 5 -> 2.5 um (the grid between the strip and the ground,
-   held fixed by the protocol): +1.60 % / +0.28 %. Frequency flatness
-   50-200 MHz: 2e-7.
+   held fixed by the protocol): +1.60 % / +0.28 %.
+*  frequency flatness is 0.69 %, NOT negligible: 23.360 / 23.395 /
+   23.522 pH at 50 / 100 / 200 MHz (W = 20 um, l = 100 um, W/3). At 200 MHz
+   the skin depth is 20.6 um (``freq_flatness_skin_depth``), i.e. 1.03 x
+   the width, so the top of the band is already leaving the uniform-current
+   plateau the referee models; at the study's 100 MHz it is 29.1 um =
+   1.45 W and 14.5 x the metal thickness. The 0.69 % is therefore a real
+   physical drift of the DUT across the band, not solver noise, and it is
+   small compared with the discretisation errors this study measures.
 
-Conclusion: where the spiral's 10-12 % goes
---------------------------------------------
+Conclusion: what the data supports
+-----------------------------------
 1. The deficit is NOT spiral-specific. A bar with no corner, no underpass,
    no via and no turn-to-turn mutual shows the same slow, distributed,
    per-unit-length deficit at the same resolutions and under the same
    protocol. Measured side by side here (same ``pad_cells = 4``, same
-   stack, same sigma, same de-embedding): the bar's differential ratio is
-   0.814 (W/1) and 0.893 (W/2) at W = 10 um, the SPIRAL's own lead-length
-   differential -- remeasured in this session, not quoted -- is 0.770 (W/1)
-   and 0.883 (W/2). Two geometries that share nothing but the strip
-   cross-section and the fixture agree to 4 points at W/1 and 1 point at
-   W/2.
-2. It is the strip CROSS-SECTION discretisation, and it converges. With the
-   PEC walls held at a fixed distance the bar's inductance per unit length
-   is 17 % low at ONE cell across the width, 7 % low at two, 2.5 % low at
-   three and 0.4 % HIGH at six (2 cells across the 2 um thickness
-   throughout). So ``base_dx = W/3`` with ``metal_cells = 2`` is what a 3 %
-   inductance needs, and W/6 buys 1 %. The thickness is not the limiter
-   (``metal_cells`` 2 -> 4 is +0.13 %); the vertical grid between the strip
-   and the ground is worth more (+1.6 % for ``base_dz`` 10 -> 5 um) and is
-   held fixed by this protocol, so it is a floor on both studies.
+   stack, same sigma, same de-embedding): the bar's LENGTH-differential
+   ratio is 0.814 (W/1) and 0.893 (W/2) at W = 10 um, and the SPIRAL's own
+   lead-length differential -- rebuilt from its published parameters and
+   remeasured in this session, not quoted -- is 0.770 (W/1) and 0.883
+   (W/2). Two geometries that share nothing but the strip cross-section and
+   the fixture agree to 4 points at W/1 and 1 point at W/2.
+2. What is left is therefore the strip CROSS-SECTION discretisation, and it
+   converges with the number of cells across the width. With the PEC walls
+   extrapolated away on a validated three-point ladder, the bar's
+   inductance per unit length against the exact uniform-current value is:
+
+      1 cell across W     0.9251 +- 0.0042  (W = 20 um)
+                          0.8286 +- 0.0035  (W = 10 um)
+      2 cells across W    0.9319 +- 0.0075  (W = 10 um)
+      3 cells across W    0.9808 +- 0.0082  (W = 20 um)
+      4 cells across W    0.9746 +- 0.0082  (W = 20 um)
+
+   i.e. 7-17 % low at one cell, 6.8 % low at two, and 1.9-2.5 % low at
+   three and four -- with 2 cells across the 2 um thickness throughout.
+   So ``base_dx = W/3`` with ``metal_cells = 2`` is what a 3 % inductance
+   needs (N = 22560 for the 20 um x 100 um bar), and W/1 and W/2 are not
+   enough. "Cells across W" is a summary axis, not the only variable: the
+   two one-cell points differ (0.9251 at W = 20 um against 0.8286 at
+   W = 10 um) although both have exactly one cell across the width, because
+   the two bars also differ in width-to-thickness (10:1 against 5:1) and in
+   absolute cell size, and this study does not separate those. From two
+   cells on the two widths agree to within the spread quoted above.
+   This study does not reach 6 cells with a valid three-point ladder on
+   both legs of the differential, so it does NOT claim a 1 % resolution;
+   the two points that would have said so are 2-point extrapolations and
+   are excluded.
+   The thickness is not the limiter (``metal_cells`` 2 -> 4 is +0.13 %);
+   the vertical grid between the strip and the ground is worth more
+   (+1.6 % for ``base_dz`` 10 -> 5 um) and is held fixed by this protocol,
+   so it is a floor on both studies.
 3. The walls are the BAR's problem, not the spiral's. ``pad_cells = 4``
    padding reaches only ``12.19 base_dx``, so an open bar's wall bias grows
    from +0.9 % (W/1) to +5.8 % (W/6) and masks the convergence entirely.
@@ -217,40 +311,38 @@ Conclusion: where the spiral's 10-12 % goes
    wall-contaminated and this finding does not move its numbers. It does
    mean the ``pad_cells`` protocol must not be reused for open structures
    without re-gating the walls at every level.
-4. What the bar adds about the reference plane. For the spiral the short
-   standard's bar leaves the lead column PERPENDICULAR to the DUT current,
-   so the study put the plane at the footprint centre with a +-1.46 % band.
-   For the bar the same bar is COLLINEAR and the measurement is
-   unambiguous: the de-embedded conductor is the one between the short's
-   ground POSTS, ``l - W - 2 base_dx``, and only at that plane does the
-   extracted L match the referee (B1 above). Applied to the spiral, the
-   plane sits ``base_dx`` further in than assumed at each of its two
-   terminals, worth ``2 base_dx`` of conductor = 2.9 % of L at W/1 and
-   1.0 % at W/3 (from the measured referee 0.501 pH/um) -- larger than the
-   +-1.46 % band the spiral study quoted, and in the direction that closes
-   the gap.
-   Adding it up at the spiral's W/2: 11.7 % from the strip (its own
-   differential), ~1.4 % from the plane and 1.2 % from the corner
-   convention account for ~14.3 % of its measured -16.4 %. The unexplained
-   remainder is a few points and, from these numbers, the only structures
-   left to carry it are the NINE right-angle corners of that 10-bar chain
-   (9 W^2 = 9.0e-10 m^2 of the 5.97e-9 m^2 strip polygon, i.e. 15 % of the
-   metal, and the one place where a staircase Yee grid misplaces both the
-   path length and the local self term) and the via, which the referee does
-   not model at all. This study cannot separate those two; a corner-only
-   DUT on the same fixture would, and is the obvious next decomposition.
+4. What the bar adds about the reference plane, and what it does NOT. For
+   the BAR the short standard's post is COLLINEAR with the DUT current, so
+   the de-embedded conductor is unambiguous -- the one between the short's
+   ground posts, ``l - W - 2 base_dx`` -- and only at that plane does the
+   extracted L match the referee (B1 above). That is a statement about THIS
+   fixture. It does not transfer to the spiral: as this file's own fixture
+   description says, the spiral's post is PERPENDICULAR to its lead and
+   therefore shifts its reference plane by nothing, so no plane correction
+   is derived for the spiral here and none is claimed. Whether the spiral's
+   +-1.46 % plane band is right is a question for a spiral-fixture
+   measurement, not for this one.
+5. What this study does NOT decide. It measures that the spiral's residual
+   is dominated by a per-unit-length effect that a corner-free, via-free
+   bar reproduces; it does not measure the size of any remaining
+   spiral-specific term. Separating a corner contribution from the via
+   would need a corner-only DUT on the same fixture, and is the obvious
+   next decomposition.
 
 Scope fence. One frequency, one thickness, one stack, one ground height;
 in-plane refinement only (the vertical grid is held fixed and its
 sensitivity is reported, not extrapolated); the referee is
 magnetoquasistatic with uniform current density and an infinite PEC ground.
-The wall-corrected series carries the +0.026 % (3-point, validated) or
-worse (2-point, excluded) uncertainty of its extrapolation. The spiral
-blocks rebuild that fixture from its published parameters -- they never
-import the spiral study -- and reproduce its W/1 ``pad_cells = 4``
-``L_diff`` of 262.439 pH exactly. Sizes are CPU-SuperLU sizes and the
-timings were taken with two other solver jobs on the same machine, so they
-are upper bounds.
+Every wall-corrected number carries the 2-point/3-point spread of its own
+extrapolation as an uncertainty (0.25-1.22 % of L; +-0.0035..0.0082 on a
+differential ratio), validated against direct ``pad_cells = 12`` solves at
++0.026 % (0.9 % correction) and +0.107 % (2.9 % correction); two-point
+ladders are recorded, labelled and excluded everywhere. The spiral blocks
+rebuild that fixture from its published parameters -- they never import the
+spiral study -- and reproduce its W/1 ``pad_cells = 4`` ``L_diff`` of
+262.439 pH exactly. Sizes are CPU-SuperLU sizes and the timings were taken
+with two or three other solver jobs on the same machine, so they are upper
+bounds.
 
 """
 from __future__ import annotations
@@ -286,8 +378,17 @@ WIDTHS = (10e-6, 20e-6)
 LENGTHS = (100e-6, 200e-6)
 LEVELS = (1.0, 2.0, 3.0, 4.0, 6.0)
 WALL_PADS = (4, 6, 8)
-WALL_WIDTH = 20e-6         # the wall ladder runs on the cheapest width
 PLANES = ("centres", "inner_edges", "post_edges")
+# the PEC-vs-uniform-current offset is measured at three lengths, at the
+# (width, level) of the sigma plateau block and at the cheapest level of the
+# narrow bar; every one of these grids is under 35k unknowns
+PEC_OFFSET_LENGTHS = (100e-6, 150e-6, 200e-6)
+PEC_OFFSET_PROBES = ((20e-6, 3.0), (10e-6, 1.0))
+# the fine wall-extrapolation error bar: (width, length, level). W = 20 um,
+# l = 100 um, W/3 is the finest level whose direct pad_cells = 12 grid still
+# fits under ~110k unknowns (N = 104888, measured), and its wall correction
+# is +2.9 %, in the range the conclusion actually uses.
+WALL_CHECK_FINE = (20e-6, 100e-6, 3.0)
 
 
 def case_key(w: float, ell: float) -> str:
@@ -511,7 +612,27 @@ def differential(sg, levels: dict[str, Any], width: float, l1: float, l2: float,
     ``wall`` (the wall ladder of this width, if measured) supplies a
     per-level multiplicative wall correction ``L_wall_extrapolated /
     L(pad=4)`` for each length; the corrected ratio uses the corrected
-    increments."""
+    increments.
+
+    THE THREE-POINT RULE. A wall correction is admitted into
+    ``ratio_centres_wall_corrected`` -- the number the gates and the
+    conclusion quote -- only when BOTH legs of the differential have a full
+    ``pad_cells`` 4 / 6 / 8 ladder. That is the extrapolation validated
+    against a direct ``pad_cells = 12`` solve (``wall_extrapolation_check``
+    and ``wall_extrapolation_check_fine``); a 2-point ladder is not
+    validated and measurably overshoots, so a level whose ladder is short on
+    either leg is recorded under the explicit key
+    ``ratio_centres_wall_corrected_two_point_EXCLUDED`` and is kept out of
+    every gate. ``wall_ladder_points`` records the two ladder lengths at
+    every level so this is auditable from the JSON alone.
+
+    THE ERROR BAR. Each admitted point is repeated on the 2-point (pad 4/6)
+    basis, ``ratio_centres_wall_corrected_2pt_basis``; the difference,
+    ``wall_correction_uncertainty``, is the uncertainty quoted on that
+    point. It is the spread of the extrapolation itself, and it is the right
+    order for corrections of several per cent (measured 0.004-0.008 on the
+    ratio, against the +0.026 % the pad = 12 check gives on a 0.9 %
+    correction)."""
     k1, k2 = case_key(width, l1), case_key(width, l2)
     out: dict[str, Any] = {"width": width, "l1": l1, "l2": l2, "levels": {}}
     for key in sorted(set(levels[k1]) & set(levels[k2]), key=float):
@@ -526,27 +647,91 @@ def differential(sg, levels: dict[str, Any], width: float, l1: float, l2: float,
             row[f"dL_referee_{conv}"] = d_r
             row[f"ratio_{conv}"] = d_f / d_r
         if wall:
-            corr = []
+            corr: list[float | None] = []
+            corr2: list[float | None] = []
+            npts: list[int] = []
             for case_k in (k1, k2):
                 we = wall.get(case_k, {}).get(key)
-                corr.append(we["L_wall_extrapolated"] / we["L_pad4"]
-                            if we and "L_wall_extrapolated" in we else None)
+                if we and "L_wall_extrapolated" in we:
+                    corr.append(we["L_wall_extrapolated"] / we["L_pad4"])
+                    corr2.append(we.get("L_wall_extrapolated_2pt", we["L_wall_extrapolated"])
+                                 / we["L_pad4"])
+                    npts.append(int(we.get("n_pad_points", len(we.get("rows", [])))))
+                else:
+                    corr.append(None)
+                    corr2.append(None)
+                    npts.append(0)
             if all(c is not None for c in corr):
                 d_fc = corr[1] * b["L_dut"] - corr[0] * a["L_dut"]
+                ratio_c = d_fc / row["dL_referee_centres"]
                 row["wall_correction"] = corr
+                row["wall_ladder_points"] = npts
                 row["dL_fdfd_wall_corrected"] = d_fc
-                row["ratio_centres_wall_corrected"] = d_fc / row["dL_referee_centres"]
+                if min(npts) >= 3:
+                    row["ratio_centres_wall_corrected"] = ratio_c
+                    d_f2 = corr2[1] * b["L_dut"] - corr2[0] * a["L_dut"]
+                    r2 = d_f2 / row["dL_referee_centres"]
+                    row["ratio_centres_wall_corrected_2pt_basis"] = r2
+                    row["wall_correction_uncertainty"] = abs(r2 - ratio_c)
+                else:
+                    # a 2-point ladder on at least one leg: recorded, labelled,
+                    # and excluded from every gate and from the conclusion
+                    row["ratio_centres_wall_corrected_two_point_EXCLUDED"] = ratio_c
         out["levels"][key] = row
+        tail = ""
+        if "ratio_centres_wall_corrected" in row:
+            tail = (f", wall-corrected {row['ratio_centres_wall_corrected']:.4f}"
+                    f" +- {row['wall_correction_uncertainty']:.4f}")
+        elif "ratio_centres_wall_corrected_two_point_EXCLUDED" in row:
+            tail = (f", 2-POINT LADDER {row['wall_ladder_points']} -> "
+                    f"{row['ratio_centres_wall_corrected_two_point_EXCLUDED']:.4f} EXCLUDED")
         print(f"    W/{a['div']:g}: dL_fdfd={d_f * 1e12:+.3f} "
               f"dL_ref={row['dL_referee_centres'] * 1e12:+.3f} pH  "
-              f"ratio={row['ratio_centres']:.4f} (post-edge plane {row['ratio_post_edges']:.4f}"
-              + (f", wall-corrected {row['ratio_centres_wall_corrected']:.4f}"
-                 if "ratio_centres_wall_corrected" in row else "") + ")", flush=True)
+              f"ratio={row['ratio_centres']:.4f} (post-edge plane "
+              f"{row['ratio_post_edges']:.4f}" + tail + ")", flush=True)
     return out
 
 
 # ----------------------------------------------------------------------------
 # 5. the wall ladder (pad_cells 4 / 6 / 8 at every level)
+
+def ladder_entry(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """Everything derived from one ``pad_cells`` ladder, as a pure function of
+    its rows, so that a ladder REUSED from an older JSON gets exactly the
+    same derived fields as a freshly measured one.
+
+    ``L_wall_extrapolated`` is the Richardson in ``1 / wall_distance`` over
+    ALL the rows; ``L_wall_extrapolated_2pt`` is the same over the two
+    COARSEST rows only (pad 4 / 6). For a three-point ladder the difference
+    between them, ``extrapolation_spread_2pt_vs_3pt``, is the error bar on
+    the correction at that level; for a two-point ladder they are the same
+    number and ``three_point`` is False, which keeps the level out of the
+    wall-corrected series, out of the differential's corrected ratio and out
+    of every gate."""
+    rows = sorted(rows, key=lambda r: r["pad_cells"])
+    rich = richardson([1.0 / r["wall_distance"] for r in rows], [r["L_dut"] for r in rows])
+    rich2 = richardson([1.0 / r["wall_distance"] for r in rows[:2]],
+                       [r["L_dut"] for r in rows[:2]])
+    entry: dict[str, Any] = {
+        "rows": list(rows), "L_pad4": rows[0]["L_dut"],
+        "n_pad_points": len(rows), "three_point": bool(len(rows) >= 3),
+        "wall_richardson": rich,
+        "L_wall_extrapolated": float(np.mean(rich["range"])),
+        "L_wall_extrapolated_2pt": float(np.mean(rich2["range"])),
+    }
+    entry["rel_pad4"] = entry["L_wall_extrapolated"] / entry["L_pad4"] - 1.0
+    entry["extrapolation_spread_2pt_vs_3pt"] = (
+        entry["L_wall_extrapolated_2pt"] / entry["L_wall_extrapolated"] - 1.0)
+    return entry
+
+
+def normalise_wall_ladder(ladder: dict[str, Any]) -> dict[str, Any]:
+    """Re-derive every ladder entry of a case from its rows (see
+    :func:`ladder_entry`). Applied to ladders reused from the JSON so that a
+    ``--from-json`` reassembly can never carry an older, differently derived
+    correction forward."""
+    return {k: ladder_entry(v["rows"]) for k, v in ladder.items() if len(v.get("rows", ())) >= 2}
+
 
 def wall_ladder(sg, ell: float, width: float, divs: Sequence[float], pads: Sequence[int] = WALL_PADS,
                 n_max: int = N_MAX, known: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -573,14 +758,11 @@ def wall_ladder(sg, ell: float, width: float, divs: Sequence[float], pads: Seque
                   f"({rows[-1]['seconds']:.0f} s)", flush=True)
         if len(rows) < 2:
             continue
-        entry: dict[str, Any] = {"rows": rows, "L_pad4": rows[0]["L_dut"]}
-        if len(rows) >= 2:
-            rich = richardson([1.0 / r["wall_distance"] for r in rows], [r["L_dut"] for r in rows])
-            entry["wall_richardson"] = rich
-            entry["L_wall_extrapolated"] = float(np.mean(rich["range"]))
-            entry["rel_pad4"] = entry["L_wall_extrapolated"] / entry["L_pad4"] - 1.0
-            print(f"      -> wall-extrapolated {entry['L_wall_extrapolated'] * 1e12:.4f} pH "
-                  f"({100 * entry['rel_pad4']:+.2f} % on pad=4)", flush=True)
+        entry = ladder_entry(rows)
+        print(f"      -> wall-extrapolated {entry['L_wall_extrapolated'] * 1e12:.4f} pH "
+              f"({100 * entry['rel_pad4']:+.2f} % on pad=4, {len(rows)}-point ladder, "
+              f"2-point basis {100 * entry['extrapolation_spread_2pt_vs_3pt']:+.2f} %)",
+              flush=True)
         out[f"{div:g}"] = entry
     return out
 
@@ -666,6 +848,24 @@ def systematics(sg, ell: float, width: float, div: float) -> dict[str, Any]:
     return out
 
 
+def annotate_skin_depths(block: dict[str, Any]) -> dict[str, Any]:
+    """Add the analytic skin depth of each frequency of the ``freq_flatness``
+    sweep to a ``systematics`` block (no solve; pure
+    ``1 / sqrt(pi f mu0 sigma)``), so the docstring's statement about the
+    200 MHz end of the band is a number ON DISK and not one recomputed by a
+    reader. Applied to reused blocks too, so a ``--from-json`` reassembly
+    fills it in."""
+    ff = block.get("freq_flatness")
+    if not ff:
+        return block
+    mu0 = 4.0e-7 * np.pi
+    delta = {k: float(1.0 / np.sqrt(np.pi * float(k) * mu0 * SIGMA_VOL)) for k in ff}
+    block["freq_flatness_skin_depth"] = delta
+    block["freq_flatness_skin_over_width"] = {k: v / block["width"] for k, v in delta.items()}
+    block["freq_flatness_skin_over_thickness"] = {k: v / T_M2 for k, v in delta.items()}
+    return block
+
+
 def wall_extrapolation_check(sg, ell: float, width: float, div: float,
                              pads: Sequence[int] = (4, 6, 8, 12),
                              n_max: int = N_MAX) -> dict[str, Any]:
@@ -697,6 +897,174 @@ def wall_extrapolation_check(sg, ell: float, width: float, div: float,
         print(f"      extrapolated {est * 1e12:.4f} vs direct pad=12 "
               f"{rows[3]['L_dut'] * 1e12:.4f} pH "
               f"({100 * out['extrapolation_error']:+.3f} %)", flush=True)
+    return out
+
+
+def pad_ratio_check(sg, ell: float, width: float, div: float,
+                    gentle_pad: int = 8, ratios: Sequence[float] = (1.5, 2.0, 2.67),
+                    n_max: int = N_MAX) -> dict[str, Any]:
+    """Can the wall bias be bought off cheaply, by grading the SAME four
+    padding cells harder instead of adding cells?
+
+    The wall bias of this fixture comes from ``pad_lines`` growing its
+    ``pad_cells`` cells geometrically from a ``base_dx``-sized cell, so the
+    obvious cheap escape is to raise ``pad_ratio`` and reach the same wall
+    with four cells. This measures that: ``pad_cells = 4`` at several
+    ``pad_ratio`` values against the gentle ``pad_cells = gentle_pad``,
+    ``pad_ratio = 1.5`` reference, all at one level. Reported as
+    ``rel_gentle``, the disagreement with the gentle grid at a comparable
+    wall distance -- if the aggressive grading were harmless it would be
+    zero."""
+    out: dict[str, Any] = {"bar_length": ell, "width": width, "div": div, "rows": []}
+    ref = run_case(sg, ell, width, div, pad=gentle_pad, n_max=n_max, with_pec=False,
+                   verbose=False)
+    if ref is None:
+        out["skipped"] = True
+        return out
+    out["gentle"] = {"pad_cells": gentle_pad, "pad_ratio": PAD_RATIO, "L_dut": ref["L_dut"],
+                     "wall_distance": ref["grid"]["wall_distance"],
+                     "wall_y": ref["grid"]["wall_y"][1],
+                     "n_unknowns": ref["grid"]["n_unknowns"]}
+    print(f"    gentle pad={gentle_pad} ratio={PAD_RATIO}: N={ref['grid']['n_unknowns']} "
+          f"wall={ref['grid']['wall_distance'] * 1e6:.0f} um (y wall "
+          f"{ref['grid']['wall_y'][1] * 1e6:.0f} um)  L={ref['L_dut'] * 1e12:.4f} pH", flush=True)
+    for pr in ratios:
+        r = run_case(sg, ell, width, div, pad=PAD_CELLS, pad_ratio=pr, n_max=n_max,
+                     with_pec=False, verbose=False)
+        if r is None:
+            continue
+        out["rows"].append({"pad_cells": PAD_CELLS, "pad_ratio": pr, "L_dut": r["L_dut"],
+                            "wall_distance": r["grid"]["wall_distance"],
+                            "wall_y": r["grid"]["wall_y"][1],
+                            "n_unknowns": r["grid"]["n_unknowns"],
+                            "rel_gentle": r["L_dut"] / ref["L_dut"] - 1.0})
+        row = out["rows"][-1]
+        print(f"    pad=4 ratio={pr}: N={row['n_unknowns']} "
+              f"wall={row['wall_distance'] * 1e6:.0f} um (y wall {row['wall_y'] * 1e6:.0f} um)  "
+              f"L={row['L_dut'] * 1e12:.4f} pH ({100 * row['rel_gentle']:+.2f} % on the gentle "
+              f"grid)", flush=True)
+    if out["rows"]:
+        worst = max(out["rows"], key=lambda r: abs(r["rel_gentle"]))
+        out["worst_rel_gentle"] = worst["rel_gentle"]
+        out["worst_pad_ratio"] = worst["pad_ratio"]
+    return out
+
+
+def wall_extrapolation_check_fine(sg, ell: float, width: float, div: float,
+                                  ladder: dict[str, Any] | None = None,
+                                  pad_direct: int = 12,
+                                  n_max: int = 120_000) -> dict[str, Any]:
+    """The SAME error bar as :func:`wall_extrapolation_check`, repeated at a
+    level where the wall correction is several per cent rather than the
+    0.9 % of the W/1 point.
+
+    The reviewer's objection to the coarse check is exact: a +0.026 %
+    extrapolation error measured where the correction itself is +0.9 % says
+    nothing about a level where the correction is +2.9 %. This runs one
+    direct ``pad_cells = 12`` solve at that finer level and compares it with
+    the 4 / 6 / 8 Richardson the study actually uses there. The 4 / 6 / 8
+    rows are REUSED from the wall ladder already in the JSON (they are the
+    identical grids), so the cost is a single solve; ``n_unknowns`` of that
+    solve is reported."""
+    rows: list[dict[str, Any]] = []
+    if ladder:
+        rows = [dict(r) for r in ladder.get(f"{div:g}", {}).get("rows", [])]
+    for pad in WALL_PADS:
+        if any(r["pad_cells"] == pad for r in rows):
+            continue
+        r = run_case(sg, ell, width, div, pad=pad, n_max=n_max, with_pec=False, verbose=False)
+        if r is not None:
+            rows.append({"pad_cells": pad, "L_dut": r["L_dut"],
+                         "wall_distance": r["grid"]["wall_distance"],
+                         "n_unknowns": r["grid"]["n_unknowns"], "seconds": r["seconds"]})
+    rows.sort(key=lambda r: r["pad_cells"])
+    out: dict[str, Any] = {"bar_length": ell, "width": width, "div": div,
+                           "cells_across_width": div, "rows": rows,
+                           "reused_from_wall_ladder": bool(ladder)}
+    direct = run_case(sg, ell, width, div, pad=pad_direct, n_max=n_max, with_pec=False,
+                      verbose=False)
+    if direct is None or len(rows) < 3:
+        out["skipped"] = True
+        return out
+    rows.append({"pad_cells": pad_direct, "L_dut": direct["L_dut"],
+                 "wall_distance": direct["grid"]["wall_distance"],
+                 "n_unknowns": direct["grid"]["n_unknowns"], "seconds": direct["seconds"]})
+    three = rows[:3]
+    rich = richardson([1.0 / r["wall_distance"] for r in three], [r["L_dut"] for r in three])
+    est = float(np.mean(rich["range"]))
+    rich2 = richardson([1.0 / r["wall_distance"] for r in three[:2]],
+                       [r["L_dut"] for r in three[:2]])
+    est2 = float(np.mean(rich2["range"]))
+    out["extrapolated_from_4_6_8"] = est
+    out["extrapolated_from_4_6"] = est2
+    out["direct_pad12"] = direct["L_dut"]
+    out["direct_pad12_n_unknowns"] = int(direct["grid"]["n_unknowns"])
+    out["direct_pad12_wall_distance"] = direct["grid"]["wall_distance"]
+    out["direct_pad12_seconds"] = direct["seconds"]
+    out["correction_size"] = est / rows[0]["L_dut"] - 1.0
+    out["extrapolation_error"] = est / direct["L_dut"] - 1.0
+    out["extrapolation_error_2pt"] = est2 / direct["L_dut"] - 1.0
+    print(f"    W/{div:g} correction {100 * out['correction_size']:+.2f} %: "
+          f"4/6/8 -> {est * 1e12:.4f} pH, direct pad={pad_direct} "
+          f"(N={out['direct_pad12_n_unknowns']}, wall "
+          f"{out['direct_pad12_wall_distance'] * 1e6:.0f} um) -> "
+          f"{direct['L_dut'] * 1e12:.4f} pH  ({100 * out['extrapolation_error']:+.3f} %; "
+          f"the 4/6 pair alone would be {100 * out['extrapolation_error_2pt']:+.3f} %)",
+          flush=True)
+    return out
+
+
+def pec_offset(sg, width: float, div: float, lengths: Sequence[float],
+               n_max: int = N_MAX, on_row: Callable[[], None] | None = None) -> dict[str, Any]:
+    """Is the PEC-vs-uniform-current difference a METAL-MODEL effect or a
+    FIXTURE residual?
+
+    A metal-model effect (skin-confined vs uniform current in the strip's
+    cross-section) is a per-unit-length property: it must scale with the bar
+    length. A de-embedding residual of the PEC fixture -- the ports, the
+    columns, the short standard's post, all of which the PEC solve models
+    with a different metal than the volumetric one -- is a LUMPED, roughly
+    length-independent offset. Measuring ``L_pec - L_uniform`` at more than
+    one length separates the two, and nothing else in this study does.
+
+    Returns the offset in H at every length plus ``offset_per_um`` (the
+    per-unit-length reading, which would be constant if it were a metal
+    effect) and ``offset_ratio_long_over_short`` (which would be ``l2 / l1``
+    for a metal effect and 1 for a lumped one)."""
+    out: dict[str, Any] = {"width": width, "div": div, "rows": []}
+    for ell in lengths:
+        r = run_case(sg, ell, width, div, n_max=n_max, with_pec=True, verbose=False)
+        if r is None:
+            continue
+        out["rows"].append({
+            "bar_length": ell, "n_unknowns": r["grid"]["n_unknowns"],
+            "L_uniform": r["L_dut"], "L_pec": r["L_pec"],
+            "offset": r["L_pec"] - r["L_dut"],
+            "offset_rel": r["L_pec_over_L_uniform_minus_1"],
+            "offset_per_um": (r["L_pec"] - r["L_dut"]) / (ell * 1e6),
+            "seconds": r["seconds"] + r["pec_seconds"]})
+        row = out["rows"][-1]
+        print(f"    l={ell * 1e6:g} um (N={row['n_unknowns']}): uniform "
+              f"{row['L_uniform'] * 1e12:.4f}  PEC {row['L_pec'] * 1e12:.4f} pH  "
+              f"offset {row['offset'] * 1e12:+.3f} pH ({100 * row['offset_rel']:+.2f} %, "
+              f"{row['offset_per_um'] * 1e12:.4f} pH/um)", flush=True)
+        if on_row is not None:
+            on_row()
+    if len(out["rows"]) >= 2:
+        offs = [r["offset"] for r in out["rows"]]
+        lens = [r["bar_length"] for r in out["rows"]]
+        out["offset_mean"] = float(np.mean(offs))
+        out["offset_range"] = [float(min(offs)), float(max(offs))]
+        out["length_ratio_long_over_short"] = lens[-1] / lens[0]
+        out["offset_ratio_long_over_short"] = offs[-1] / offs[0]
+        out["consistent_with_lumped"] = bool(
+            abs(out["offset_ratio_long_over_short"] - 1.0)
+            < abs(out["offset_ratio_long_over_short"] - out["length_ratio_long_over_short"]))
+        print(f"    -> offsets {[round(v * 1e12, 3) for v in offs]} pH over lengths "
+              f"{[round(v * 1e6) for v in lens]} um: ratio "
+              f"{out['offset_ratio_long_over_short']:.3f} against "
+              f"{out['length_ratio_long_over_short']:.1f} for a per-unit-length effect "
+              f"(lumped: {out['consistent_with_lumped']})", flush=True)
     return out
 
 
@@ -899,14 +1267,27 @@ def evaluate_gates(study: dict[str, Any]) -> dict[str, Any]:
     g["B1"] = b1
 
     # --- B2: the differential ratio ----------------------------------------
-    b2: dict[str, Any] = {"tolerance": 0.03, "per_width": {}}
+    # Two statements, both reported with numbers:
+    #   ``passed``                 the RAW pad_cells = 4 series at the finest
+    #                              level of each width (it fails: the walls);
+    #   ``passed_wall_corrected``  the finest level of each width that has a
+    #                              validated THREE-POINT wall ladder on both
+    #                              legs of the differential. A 2-point ladder
+    #                              never enters either statement; the value it
+    #                              would have given is carried, labelled, in
+    #                              ``ratio_wall_corrected_two_point_EXCLUDED``.
+    # ``passed_wall_corrected_from_3_cells`` is the resolution statement the
+    # conclusion makes: every admitted point with >= 3 cells across the width.
+    b2: dict[str, Any] = {"tolerance": 0.03, "per_width": {},
+                          "three_point_ladder_required": True}
     ok = []
     for wk, d in study["differential"].items():
         keys = sorted(d["levels"], key=float)
         if not keys:
             continue
         fin = d["levels"][keys[-1]]
-        entry = {
+        wc_keys = [k for k in keys if "ratio_centres_wall_corrected" in d["levels"][k]]
+        entry: dict[str, Any] = {
             "finest_div": fin["div"], "finest_base_dx": fin["base_dx"],
             "ratio_per_level": {f"W/{d['levels'][k]['div']:g}": d["levels"][k]["ratio_centres"]
                                 for k in keys},
@@ -914,23 +1295,56 @@ def evaluate_gates(study: dict[str, Any]) -> dict[str, Any]:
                                            d["levels"][k]["ratio_post_edges"] for k in keys},
             "ratio_wall_corrected_per_level": {
                 f"W/{d['levels'][k]['div']:g}": d["levels"][k]["ratio_centres_wall_corrected"]
-                for k in keys if "ratio_centres_wall_corrected" in d["levels"][k]},
+                for k in wc_keys},
+            "ratio_wall_corrected_uncertainty": {
+                f"W/{d['levels'][k]['div']:g}": d["levels"][k]["wall_correction_uncertainty"]
+                for k in wc_keys},
+            "wall_ladder_points_per_level": {
+                f"W/{d['levels'][k]['div']:g}": d["levels"][k]["wall_ladder_points"]
+                for k in keys if "wall_ladder_points" in d["levels"][k]},
+            "ratio_wall_corrected_two_point_EXCLUDED": {
+                f"W/{d['levels'][k]['div']:g}":
+                    d["levels"][k]["ratio_centres_wall_corrected_two_point_EXCLUDED"]
+                for k in keys
+                if "ratio_centres_wall_corrected_two_point_EXCLUDED" in d["levels"][k]},
             "finest_ratio": fin["ratio_centres"],
-            "finest_ratio_wall_corrected": fin.get("ratio_centres_wall_corrected"),
             "finest_deviation": abs(fin["ratio_centres"] - 1.0),
             "passed": bool(abs(fin["ratio_centres"] - 1.0) <= 0.03),
         }
-        if entry["finest_ratio_wall_corrected"] is not None:
-            entry["finest_deviation_wall_corrected"] = abs(entry["finest_ratio_wall_corrected"] - 1.0)
-            entry["passed_wall_corrected"] = bool(entry["finest_deviation_wall_corrected"] <= 0.03)
+        if wc_keys:
+            fw = d["levels"][wc_keys[-1]]
+            entry["finest_wall_corrected_div"] = fw["div"]
+            entry["finest_wall_corrected_base_dx"] = fw["base_dx"]
+            entry["finest_wall_corrected_n_unknowns"] = fw["n_unknowns"]
+            entry["finest_ratio_wall_corrected"] = fw["ratio_centres_wall_corrected"]
+            entry["finest_ratio_wall_corrected_uncertainty"] = fw["wall_correction_uncertainty"]
+            entry["finest_deviation_wall_corrected"] = abs(
+                fw["ratio_centres_wall_corrected"] - 1.0)
+            entry["passed_wall_corrected"] = bool(
+                entry["finest_deviation_wall_corrected"] <= 0.03)
+            fine = [d["levels"][k] for k in wc_keys if d["levels"][k]["div"] >= 3.0]
+            entry["wall_corrected_levels_with_3_or_more_cells"] = [
+                f"W/{r['div']:g}" for r in fine]
+            entry["passed_wall_corrected_from_3_cells"] = bool(
+                fine and all(abs(r["ratio_centres_wall_corrected"] - 1.0) <= 0.03 for r in fine))
+        else:
+            entry["finest_ratio_wall_corrected"] = None
         ok.append(entry["passed"])
         b2["per_width"][wk] = entry
     b2["passed"] = bool(ok) and bool(all(ok))
     wc = [e["passed_wall_corrected"] for e in b2["per_width"].values()
           if "passed_wall_corrected" in e]
     b2["passed_wall_corrected"] = bool(wc) and bool(all(wc))
+    f3 = [e["passed_wall_corrected_from_3_cells"] for e in b2["per_width"].values()
+          if e.get("wall_corrected_levels_with_3_or_more_cells")]
+    b2["passed_wall_corrected_from_3_cells"] = bool(f3) and bool(all(f3))
+    b2["widths_reaching_3_cells_with_a_3_point_ladder"] = [
+        k for k, e in b2["per_width"].items()
+        if e.get("wall_corrected_levels_with_3_or_more_cells")]
     b2["finest_ratio_wall_corrected"] = {
         k: e.get("finest_ratio_wall_corrected") for k, e in b2["per_width"].items()}
+    b2["finest_ratio_wall_corrected_uncertainty"] = {
+        k: e.get("finest_ratio_wall_corrected_uncertainty") for k, e in b2["per_width"].items()}
     g["B2"] = b2
 
     # --- B3: Richardson vs the referee -------------------------------------
@@ -1081,11 +1495,22 @@ def figure(study: dict[str, Any], path: pathlib.Path) -> None:
         ax3.plot([d["levels"][k]["base_dx"] * 1e6 for k in keys],
                  [d["levels"][k]["ratio_centres"] for k in keys], "o-", color=c,
                  label=f"bar {wk} raw (pad_cells = 4)")
-        rc = [(d["levels"][k]["base_dx"] * 1e6, d["levels"][k]["ratio_centres_wall_corrected"])
+        rc = [(d["levels"][k]["base_dx"] * 1e6, d["levels"][k]["ratio_centres_wall_corrected"],
+               d["levels"][k]["wall_correction_uncertainty"])
               for k in keys if "ratio_centres_wall_corrected" in d["levels"][k]]
         if rc:
-            ax3.plot([a for a, _ in rc], [b for _, b in rc], "s--", color=c, alpha=0.75,
-                     label=f"bar {wk} wall-corrected")
+            ax3.errorbar([a for a, _, _ in rc], [b for _, b, _ in rc],
+                         yerr=[e for _, _, e in rc], fmt="s--", color=c, alpha=0.85,
+                         capsize=3, label=f"bar {wk} wall-corrected (3-point ladder)")
+        # the two-point ladders, shown open and NOT used by any gate
+        ex = [(d["levels"][k]["base_dx"] * 1e6,
+               d["levels"][k]["ratio_centres_wall_corrected_two_point_EXCLUDED"])
+              for k in keys
+              if "ratio_centres_wall_corrected_two_point_EXCLUDED" in d["levels"][k]]
+        if ex:
+            ax3.plot([a for a, _ in ex], [b for _, b in ex], "x", color=c, alpha=0.9,
+                     markersize=9, markeredgewidth=2,
+                     label=f"bar {wk} 2-point ladder (EXCLUDED)")
     sld = study.get("spiral_lead_differential")
     if sld and sld["levels"]:
         keys = sorted(sld["levels"], key=float)
@@ -1099,7 +1524,7 @@ def figure(study: dict[str, Any], path: pathlib.Path) -> None:
     ax3.set_ylabel("[dL]_FDFD / [dL]_referee")
     ax3.set_xlim(0.0, None)
     ax3.set_title("(c) B2: the plane-free differential [L(l2) - L(l1)]\n"
-                  "the bar and the spiral lose the same inductance per unit length")
+                  "wall-corrected only where BOTH legs have a 3-point pad ladder")
     ax3.legend(fontsize=6)
     ax3.grid(alpha=0.3)
 
@@ -1261,7 +1686,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             for ell in lengths:
                 key = case_key(w, ell)
                 if key in study["wall_ladder"]:
-                    print(f"  {key}: reused from the JSON", flush=True)
+                    study["wall_ladder"][key] = normalise_wall_ladder(study["wall_ladder"][key])
+                    npts = {k: e["n_pad_points"] for k, e in study["wall_ladder"][key].items()}
+                    print(f"  {key}: reused from the JSON, re-derived (pad points {npts})",
+                          flush=True)
                     continue
                 print(f"  {key}:", flush=True)
                 divs = [study["levels"][key][k]["div"]
@@ -1279,8 +1707,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     study["richardson_wall_extrapolated"] = {}
     for key, ladder in study["wall_ladder"].items():
         rows = [(study["levels"][key][k]["base_dx"], ladder[k]["L_wall_extrapolated"],
-                 len(ladder[k]["rows"])) for k in sorted(ladder, key=float)
-                if "L_wall_extrapolated" in ladder[k]]
+                 int(ladder[k].get("n_pad_points", len(ladder[k]["rows"]))))
+                for k in sorted(ladder, key=float) if "L_wall_extrapolated" in ladder[k]]
         keep = [(h, v) for h, v, n in rows if n >= 3]
         if len(keep) >= 2:
             r = richardson([h for h, _ in keep], [v for _, v in keep])
@@ -1294,12 +1722,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         out: dict[str, Any] = {}
         for k in sorted(ladder, key=float):
             e = ladder[k]
-            if "L_wall_extrapolated" not in e or len(e["rows"]) < 3:
+            if "L_wall_extrapolated" not in e or int(e.get("n_pad_points", len(e["rows"]))) < 3:
                 continue
             lv = study["levels"][key][k]
             v = e["L_wall_extrapolated"]
+            v2 = e.get("L_wall_extrapolated_2pt", v)
             out[k] = {"div": lv["div"], "base_dx": lv["base_dx"], "L_wall_extrapolated": v,
+                      "n_pad_points": int(e.get("n_pad_points", len(e["rows"]))),
                       "rel_pad4": e["rel_pad4"],
+                      # the error bar on this level's correction: 2-point vs
+                      # 3-point extrapolation, as a relative change of L
+                      "extrapolation_uncertainty": abs(v2 / v - 1.0),
                       "gap": {c: v / lv["L_referee"][c] - 1.0 for c in PLANES},
                       "implied_length": invert_referee(sg, v, w)}
         study["wall_corrected_levels"][key] = out
@@ -1332,6 +1765,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("  reused from the JSON", flush=True)
         else:
             study["systematics"] = systematics(sg, ell, w, div)
+        annotate_skin_depths(study["systematics"])
+        ffk = sorted(study["systematics"]["freq_flatness"], key=float)
+        print("    frequency flatness "
+              f"{[round(study['systematics']['freq_flatness'][k] * 1e12, 3) for k in ffk]} pH at "
+              f"{[f'{float(k) / 1e6:g} MHz' for k in ffk]} = "
+              f"{100 * study['systematics']['freq_flatness_rel_spread']:.2f} % "
+              "(skin depth / width "
+              f"{[round(study['systematics']['freq_flatness_skin_over_width'][k], 2) for k in ffk]}"
+              ")", flush=True)
         dump()
         print(f"gradient check B4 ({case_key(w, ell)}, W/{div:g}):", flush=True)
         if args.from_json and "gradient" in previous:
@@ -1341,6 +1783,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             study["gradient"] = gradient_check(ell, w, div)
         dump()
 
+    # --- the PEC-vs-uniform-current offset at more than one length ----------
+    if not args.no_systematics:
+        print("PEC vs uniform-current offset against the bar length "
+              "(lumped fixture residual or per-unit-length metal effect?):", flush=True)
+        study["pec_offset"] = dict(previous.get("pec_offset", {})) if args.from_json else {}
+        for w_pec, div_pec in PEC_OFFSET_PROBES:
+            pk = f"W{w_pec * 1e6:g}_div{div_pec:g}"
+            if pk in study["pec_offset"]:
+                print(f"  {pk}: reused from the JSON", flush=True)
+                continue
+            print(f"  {pk}:", flush=True)
+            study["pec_offset"][pk] = pec_offset(sg, w_pec, div_pec, PEC_OFFSET_LENGTHS,
+                                                 n_max=args.n_max, on_row=dump)
+            dump()
+
     if not args.no_walls:
         print("wall-extrapolation error bar (pad 4/6/8 Richardson vs a direct pad 12):", flush=True)
         if args.from_json and "wall_extrapolation_check" in previous:
@@ -1349,6 +1806,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             study["wall_extrapolation_check"] = wall_extrapolation_check(
                 sg, lengths[0], min(widths), 1.0, n_max=args.n_max)
+        dump()
+        print("pad_ratio check (can four harder-graded cells replace eight gentle ones?):",
+              flush=True)
+        if args.from_json and "pad_ratio_check" in previous:
+            study["pad_ratio_check"] = previous["pad_ratio_check"]
+            print("  reused from the JSON", flush=True)
+        else:
+            study["pad_ratio_check"] = pad_ratio_check(sg, lengths[0], min(widths), 1.0,
+                                                       n_max=args.n_max)
+        dump()
+        print("wall-extrapolation error bar at a level where the correction is "
+              "several per cent:", flush=True)
+        if args.from_json and "wall_extrapolation_check_fine" in previous:
+            study["wall_extrapolation_check_fine"] = previous["wall_extrapolation_check_fine"]
+            print("  reused from the JSON", flush=True)
+        else:
+            w_f, l_f, div_f = WALL_CHECK_FINE
+            study["wall_extrapolation_check_fine"] = wall_extrapolation_check_fine(
+                sg, l_f, w_f, div_f, ladder=study["wall_ladder"].get(case_key(w_f, l_f)))
         dump()
 
     if not args.no_spiral_cross_check:

@@ -21,11 +21,14 @@ Layers, bottom up (all require x64):
 * :mod:`rfx.fdfd.deembed` -- jnp network conversions, the de-embedding
   functions of :mod:`rfx.deembed`, open-short de-embedding and inductor
   L/Q metrics, all differentiable.
+* :mod:`rfx.fdfd.spiral` -- the rectangular spiral inductor: body-fitted
+  (r_out, spacing, width) parameters, DUT/OPEN/SHORT fixtures on one grid,
+  open-short de-embedded L and Q, differentiable in all of them.
 * :mod:`rfx.fdfd.gds` -- GDS + layer-stack import, parametric spirals,
   edge-snapped tensor-grid planning and area-exact rasterisation (host
   numpy; the grid lines it returns are what the solver differentiates).
 """
-from rfx.fdfd import conductor, deembed, gds, hplane, linear_solve, ports3d, yee3d
+from rfx.fdfd import conductor, deembed, gds, hplane, linear_solve, ports3d, spiral, yee3d
 from rfx.fdfd.linear_solve import sparse_solve, sparse_matvec, clear_factor_cache
 from rfx.fdfd.hplane import (
     HPlaneSpec, HPlaneModel, build, assemble, solve, s_params,
@@ -35,9 +38,10 @@ from rfx.fdfd.yee3d import Yee3DSpec, Yee3DModel, BoundaryTerms
 from rfx.fdfd.ports3d import LumpedElement, s_matrix, z_matrix
 from rfx.fdfd.conductor import Conductor
 from rfx.fdfd.gds import LayerStack, rect_spiral, octagonal_spiral, mesh_lines, rasterise
+from rfx.fdfd.spiral import SpiralSpec, build_spiral, solve_spiral
 
 __all__ = [
-    "conductor", "deembed", "gds", "hplane", "linear_solve", "ports3d", "yee3d",
+    "conductor", "deembed", "gds", "hplane", "linear_solve", "ports3d", "spiral", "yee3d",
     "sparse_solve", "sparse_matvec", "clear_factor_cache",
     "HPlaneSpec", "HPlaneModel", "build", "assemble", "solve", "s_params",
     "richardson_first_order",
@@ -45,4 +49,5 @@ __all__ = [
     "LumpedElement", "s_matrix", "z_matrix",
     "Conductor",
     "LayerStack", "rect_spiral", "octagonal_spiral", "mesh_lines", "rasterise",
+    "SpiralSpec", "build_spiral", "solve_spiral",
 ]

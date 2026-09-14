@@ -18,14 +18,15 @@ A. metal. The FDFD is run with a VOLUMETRIC conductor: every conductor cell
    10 um width -- so the current density is uniform over the cross-section
    and L includes the DC internal inductance: exactly the referee's model.
    The plateau is measured, not assumed (``sigma_plateau`` in the JSON):
-   L_dut = 251.3 / 261.5 / 262.4 / 262.5 pH at sigma = 3e5 / 1e6 / 3e6 /
-   1e7 S/m on the W/1 grid, i.e. flat to 0.04 % over the last decade while
-   3e5 is still 4.2 % low (there the metal resistance is large enough for
-   the shunt capacitance to eat the reactance: Re Z11 = 20.7 Ohm at 3e5 vs
-   2.1 Ohm at 3e6). The dielectrics are set to VACUUM (``eps_si = eps_ox =
+   L_dut = 251.32 / 261.54 / 262.44 / 262.54 pH at sigma = 3e5 / 1e6 / 3e6 /
+   1e7 S/m on the W/1 grid, i.e. flat to 0.039 % over the last decade while
+   3e5 is still 4.236 % low (there the metal resistance is large enough for
+   the shunt capacitance to eat the reactance: Re Z11 = 20.66 Ohm at 3e5 vs
+   2.07 Ohm at 3e6). The dielectrics are set to VACUUM (``eps_si = eps_ox =
    1``) because the referee is magnetoquasistatic and has none, and because
    they are what makes that RC contamination large: with the real stack the
-   same sigma = 3e5 point sits 18 % low instead of 4.2 %.
+   same sigma = 3e5 point sits 18 % low instead of 4.236 % (a configuration
+   screen; only the vacuum sweep is recorded in ``sigma_plateau``).
    The PEC run is kept at every level and reported (V1b).
 
 B. walls. The referee models ONLY the PEC ground plane, by images (exact for
@@ -39,7 +40,9 @@ B. walls. The referee models ONLY the PEC ground plane, by images (exact for
      ``s = kappa - j sigma_w / (omega eps0)`` has |s| ~ 6e5 at 100 MHz, so
      the real part is irrelevant), and L moves NON-monotonically by 5-15 %
      with the PML depth (271.5 -> 312.1 pH for 2 -> 3 cells at W/2) and
-     downward when the walls are moved out. A PML absorbs propagating
+     downward when the walls are moved out. (These PML numbers come from
+     the configuration screen and are NOT in the JSON, which records only
+     the padded fixture that is actually used.) A PML absorbs propagating
      waves; a quasi-static near field sees an arbitrary complex material.
    * The documented fallback -- plain geometric grading of the cells toward
      the walls -- works. ``pad_cells = 4`` cells of ratio 1.5 appended
@@ -68,8 +71,8 @@ C. corners. ``rect_spiral_segments`` lets each bar END at the corner point,
    ``gds.polygon_area`` of the strip to 1e-12 relative AND union = sum to
    1e-12 (the sum alone is convention-blind -- it is equal for both
    conventions, measured -- so the non-overlap half of the gate is what
-   pins the convention). The corner systematic is +1.21 % (345.13 ->
-   349.37 pH); the area-exact value is used for every gate.
+   pins the convention). The corner systematic is +1.212 % (345.133 ->
+   349.371 pH); the area-exact value is used for every gate.
 
 D. ground and reference plane. Both tools use the same ground height
    ``h = 26 um`` (the ``rfx.fdfd.spiral`` stack: 20 um silicon + 1 um oxide
@@ -82,7 +85,7 @@ D. ground and reference plane. Both tools use the same ground height
    On the strip alone that choice is worth +-1.46 % (354.46 / 344.27 pH at
    the port line / far edge) -- but see E: on the quantity the fixture
    really measures it collapses to +0.091 %. The plane TRACKS the width
-   (``referee_segments(shift=None)``), which is 2.1 % of ``dL/dwidth``.
+   (``referee_segments(shift=None)``), which is 2.04 % of ``dL/dwidth``.
 
 E. what the fixture measures is the strip MINUS the short standard's
    bridge. Open/short de-embedding subtracts ``Z_short'`` from ``Z_dut'``,
@@ -129,24 +132,33 @@ E. what the fixture measures is the strip MINUS the short standard's
    ``L_dut - L_thru = r L(strip) - r L(bar) = r x`` the de-embedded referee,
    so the ratio IS r, with the bar's own discretisation error cancelling.
    The raw ``L_dut`` instead sits exactly ``L_thru`` above ``r x`` the
-   referee (+1.6 pH = +0.5 % at W/1, and more at the finer levels),
-   i.e. it flatters the agreement by the post short. So V1 subtracts the
-   probe level by level (-21.7 / -13.4 / -11.6 % instead of
-   the raw -21.2 / -12.0 / -9.8 %) and gates the corrected series. The
+   referee (+1.62 pH = +0.487 % of the referee at W/1, +1.38 % at W/2,
+   +1.82 % at W/3), i.e. it flatters the agreement by the post short.
+
+   That correction is NOT applied to the primary V1 number. V1 states the
+   two de-embedded quantities as each tool delivers them (-21.20 / -12.03 /
+   -9.76 %) and carries the post-short correction beside it as a separately
+   stated correction with its own extrapolation
+   (``gates.V1.corrections.post_short``: -21.69 / -13.40 / -11.57 % per
+   level), for the same reason the vertical budget is stated separately --
+   it is a model-based extrapolation of a fixture detail, with an
+   uncertainty of its own, not a measurement of the FDFD's error. The
    correction is positive, i.e. it makes the gap LARGER, and it GROWS with
-   refinement (9.6 / 27.1 / 35.8 % of the bar at W/1 / W/2 /
-   W/3) because the post is ``outer.i0 - inner.i1 - 2`` cells wide and so
-   covers more of the 40 um gap as ``base_dx`` shrinks: part of the raw
-   L_dut's apparent convergence is the short standard changing, not the
-   strip converging. The residual approximation is that the probe's bridge
-   is all-M2 while the spiral's is mixed M2/M1, and that the probe's mesh is
+   refinement (9.6 / 27.1 / 35.8 % of the bar at W/1 / W/2 / W/3) because
+   the post is ``outer.i0 - inner.i1 - 2`` cells wide and so covers more of
+   the 40 um gap as ``base_dx`` shrinks: part of the raw L_dut's apparent
+   convergence is the short standard changing, not the strip converging --
+   which is why the corrected series has the HIGHER observed order (1.705
+   vs 1.514). The residual approximation is that the probe's bridge is
+   all-M2 while the spiral's is mixed M2/M1, and that the probe's mesh is
    not bit-identical to the spiral's at the same ``base_dx``.
 
    The strip alone -- the referee the first version of this study used --
-   is 4.9 % larger than the de-embedded one, so every gap against it is
-   correspondingly deeper (-12.2 % to -9.6 % on the uncorrected
-   extrapolation); that comparison is reported as
-   ``rel_range_vs_strip_only`` but is NOT the gate.
+   is 4.899 % larger than the de-embedded one, so every gap against it is
+   correspondingly deeper (-24.88 / -16.13 / -13.97 % per level, -12.24 %
+   to -9.65 % extrapolated). That is the SECONDARY convention: reported in
+   full under ``gates.V1.secondary_convention``, but it is not what the
+   fixture measures and it is not the gate.
 
 F. the second grid direction. The three levels refine IN PLANE only:
    ``base_dz = 10 um`` and ``metal_cells = 2`` are held fixed, so the
@@ -154,10 +166,13 @@ F. the second grid direction. The three levels refine IN PLANE only:
    Richardson -- which therefore CANNOT see it. Measured separately at W/1
    (``systematics.vertical_grid``, ``vertical_budget``): halving and
    quartering ``base_dz`` (nz = 15 -> 20 -> 29, only 2 cells across the
-   26 um ground gap at the base) raises L_dut by +1.91 % and +2.50 %, observed
-   order 1.70, extrapolating to [+2.70, +3.09] %. Same sign as the V1 gap
-   and the second-largest identified term; it is folded into V1c, not into
-   V1, and it is NOT in the list of small fixture systematics.
+   26 um ground gap at the base) raises L_dut by +1.913 % and +2.503 %,
+   observed order 1.698, extrapolating to [+2.699, +3.092] %. Same sign as
+   the V1 gap and the second-largest identified term. It is stated as a
+   SEPARATE correction with its own range
+   (``gates.V1.corrections.vertical_grid``) and promoted to its own verdict
+   V1c; it is not folded into the primary V1 number and it is NOT in the
+   list of small fixture systematics.
 
 Geometry (identical in both tools)
 ----------------------------------
@@ -173,59 +188,125 @@ Levels and cost
 ---------------
 ``base_dx = W/1, W/2, W/3`` (1, 2, 3 cells across the strip width);
 ``base_dz = 10 um`` and ``metal_cells = 2`` at EVERY level (see F).
-N = 23062 / 56408 / 108898 unknowns, one three-fixture solve 20 / 100 / 347 s
-(SuperLU/COLAMD, x64 CPU), the FD4 gradient stencil 178 / 1154 / 5034 s.
+Grids (21,22,15) / (33,35,15) / (46,49,15), N = 23062 / 56408 / 108898
+unknowns. One forward three-fixture solve is 1.1 / 1.8 / 4.9 s; the
+``jax.value_and_grad`` of it 20 / 100 / 347 s, the PEC companion solve
+15 / 106 / 325 s, and the FD4 gradient stencil (12 extra three-fixture
+solves) 178 / 1154 / 5034 s (SuperLU/COLAMD, x64 CPU, three other agents
+sharing the machine -- these are upper bounds under contention).
 ``W/1.5`` is not a level: the mandatory grid lines of this geometry are
 10 um apart, so ``base_dx`` in (5, 10] um gives the same 2-cell grid as W/2
 (measured: (32,34,15) vs (33,35,15)). ``W/4`` would be 162k unknowns, above
-the ~105k single-solve guideline, and is NOT run. The whole study is
-140 min wall clock (two other agents sharing the machine).
+the ~105k single-solve guideline, and is NOT run. The measuring run is
+140.2 min wall clock (``seconds_measuring`` in the JSON); the
+``--from-json`` reassembly that produced the JSON and the PNG on disk is
+13.3 s (``seconds``).
 
 Run::
 
     .venv/bin/python validation/fdfd/spiral_convergence.py [--levels 1 2 3]
-        [--fd2-from 3] [--no-systematics]
+        [--fd2-from 3] [--no-systematics] [--no-wall-gate]
+        [--from-json [--recompute BLOCK ...]]
 
 writes ``spiral_convergence.json`` and ``spiral_convergence.png`` next to
-this file; the JSON is rewritten after every level and every systematics
-block, so a run that is interrupted still leaves everything it had already
-measured on disk (there is no resume: a restart recomputes).
+this file. The JSON is rewritten after every level and every measurement
+block, so a run that is interrupted leaves everything it had already
+measured on disk. ``--from-json`` then REUSES every measurement block that
+is already in the file (the per-level records and ``wall_gate``,
+``thru_probe``, ``sigma_plateau``, ``systematics``, ``lead_differential``,
+which are independent of each other) and recomputes only the host-numpy
+referee and the derived blocks -- ``richardson``,
+``richardson_post_corrected``, ``vertical_budget``, ``gates`` and the
+figure -- in seconds; ``--recompute NAME ...`` forces named measurement
+blocks to be re-measured anyway. That is how a study interrupted by a wall
+clock limit is finished without re-solving.
+
+Figure (``spiral_convergence.png``, three panels, 2655 x 720 px)
+----------------------------------------------------------------
+* LEFT -- de-embedded L against ``base_dx``: the FDFD ``L_dut`` (light blue
+  circles) and its PEC companion (pale blue squares); the PRIMARY
+  Richardson range [306.6, 315.7] pH as a blue band reaching h = 0, with
+  the three extrapolation estimates starred and labelled on the axis; the
+  two separately stated corrections as their own series and bands -- the
+  post-short-corrected series (purple, dashed, band [299.4, 306.7] pH) and
+  the vertical-grid extrapolation (green band [314.9, 325.4] pH, V1c); the
+  de-embedded referee 333.06 pH as a solid red line with its +-0.05 %
+  reference-plane band, and the strip-alone referee 349.37 pH as a dotted
+  red line with the +-1.5 % reference-plane band that convention carries.
+  The gap between the blue band and the solid red line IS the V1 failure.
+* MIDDLE -- the three shape derivatives as ratios to the referee's own FD4
+  gradient of the DE-EMBEDDED quantity, per level: ``jax.grad`` (circles,
+  joined) and the study's FD4 values (crosses) lie on top of each other at
+  every level (that is V2, <= 5.7e-07), and the shaded +-15 % band is V3.
+  All nine ratios are below 1 -- the FDFD gradient is low by about as much
+  as L is -- and they rise with refinement except ``dL/dspacing``, which
+  overshoots at W/2 (0.836 / 0.906 / 0.918, 0.914 / 0.953 / 0.936,
+  0.815 / 0.845 / 0.880 for r_out / spacing / width).
+* RIGHT -- the V1 diagnosis. The deficit of the fixture-free lead-length
+  differential ``1 - dL_fdfd/dL_referee`` (brown) and the deficit of
+  ``L_dut`` against the de-embedded referee (blue squares) fall together,
+  with an O(h) line through the finest differential point: the missing
+  inductance is distributed along the conductor, not a constant fixture
+  offset.
 
 Gates (the numbers are in the JSON; the test file asserts what the W/1 grid
 supports)
 --------
-V1  FAILS. Uniform-current FDFD ``L_dut`` = 262.44 / 293.00 / 300.56 pH at
-    W/1 / W/2 / W/3; minus the thru probe's post residual (E) the matched
-    series is 260.82 / 288.42 / 294.51 pH against the de-embedded referee
-    333.06 pH: -21.7 %, -13.4 %, -11.6 % (uncorrected -21.2 / -12.0 / -9.8 %).
-    Richardson over the three corrected levels gives an observed order
-    1.70 and extrapolates to 306.70 (p = 1, finest pair) / 299.39 (p = 2) /
-    300.63 pH (observed order), i.e. the range [299.39, 306.70] pH sits
-    -10.1 % to -7.9 % from the referee, outside +-5 %. (Uncorrected
-    -7.9 % to -5.2 %; against the strip alone, which is NOT what the
-    fixture measures, -12.2 % to -9.6 %.)
-V1c the same comparison with the vertical grid extrapolated too (F):
-    [307.47, 316.19] pH = -7.7 % to -5.1 %, still outside +-5 %. That
-    residual is about twice the p = 1 / p = 2 spread of the in-plane
-    extrapolation itself (2.4 %), so the two measured corrections do NOT
-    close the gap: something of order 5 % is left over.
+V1  FAILS. PRIMARY statement, both sides de-embedded, no correction applied
+    to either: uniform-current FDFD ``L_dut`` = 262.44 / 293.00 / 300.56 pH
+    at W/1 / W/2 / W/3 against the referee's ``L(strip) - L(bridge)`` =
+    349.371 - 16.316 = 333.055 pH, i.e. -21.20 %, -12.03 %, -9.76 %.
+    Richardson over the three levels gives an observed order 1.514 and
+    extrapolates to 315.66 (p = 1, finest pair) / 306.60 (p = 2) /
+    309.47 pH (observed order): the range [306.60, 315.66] pH sits
+    -7.94 % to -5.22 % from the referee, OUTSIDE the +-5 % tolerance at
+    both ends. V1 fails.
+    SECONDARY convention, reported not gated (``secondary_convention``):
+    against the strip ALONE, 349.371 pH -- what the fixture would measure
+    if the de-embedding's zero were an empty gap, which the thru probe V6
+    refutes directly -- the same series is -24.88 / -16.13 / -13.97 % per
+    level and -12.24 % to -9.65 % extrapolated. The bridge correction is
+    also what collapses the reference-plane ambiguity: +-1.46 % on the
+    strip alone, +0.091 % on the difference.
+    Two corrections are measured, quantified and stated SEPARATELY rather
+    than folded into the primary number (``gates.V1.corrections``), because
+    each is an extrapolation carrying its own range:
+      * ``post_short`` (E), which makes the gap LARGER: subtracting the
+        thru probe level by level gives -21.69 / -13.40 / -11.57 % and an
+        extrapolated [299.39, 306.70] pH = -10.11 % to -7.91 %, observed
+        order 1.705.
+      * ``vertical_grid`` (F), which makes it SMALLER: +2.699 % to
+        +3.092 %, observed order 1.698, giving [314.88, 325.43] pH =
+        -5.46 % to -2.29 % (this is V1c).
+      * ``both`` together: [307.47, 316.19] pH = -7.68 % to -5.06 %.
+    So no combination of the two measured corrections brings the whole
+    range inside +-5 %.
+V1c the primary statement with the vertical grid extrapolated too (F):
+    [314.88, 325.43] pH = -5.46 % to -2.29 %. It STRADDLES the tolerance --
+    the optimistic end is inside +-5 %, the pessimistic end is not -- so
+    the gate is recorded as FAILING (``straddles_tolerance`` is true).
+    The width of that residual, 3.17 %, is comparable to the p = 1 / p = 2
+    spread of the in-plane extrapolation itself (2.72 % of the referee),
+    so the two measured corrections do NOT close the gap: something of
+    order 5 % is left over.
     The mechanism the rest is attributed to is the FDFD's DISCRETE
     SELF-INDUCTANCE of a conductor resolved by 1-3 cells across its
     cross-section, measured fixture-free by the lead-length differential:
     lengthening the lead by 20 um (which adds 40 um of conductor: the lead
     AND the underpass, which ends on the port line) adds conductor to both
-    tools and the FDFD/referee ratio of that increment is 0.763 / 0.876 / 0.901 at
-    W/1 / W/2 / W/3, against total ratios 0.783 / 0.866 / 0.884 -- the
-    inductance per unit length of the strip is low by about as much as L
-    is, so the deficit is distributed along the conductor rather than a
-    constant fixture offset (the V3 gradient ratios say the same). A
-    strip's self-inductance goes as ``ln(2 l / GMD)`` with
+    tools and the FDFD/referee ratio of that increment is
+    0.763 / 0.876 / 0.901 at W/1 / W/2 / W/3, against total ratios
+    0.788 / 0.880 / 0.902 -- the inductance per unit length of the strip is
+    low by about as much as L is, so the deficit is distributed along the
+    conductor rather than a constant fixture offset (the V3 gradient ratios
+    say the same). A strip's self-inductance goes as ``ln(2 l / GMD)`` with
     ``GMD = 0.2235 (W + t)`` = 2.68 um here; the Yee grid replaces that GMD
     by one set by the cell size. The remaining fixture systematics are
     small: de-embedding invariance (``port_gap_cells`` 1 -> 2) -0.035 %,
-    wall residual +0.114 %, lid + air cells +0.504 %, ``metal_cells`` 2 -> 4
-    +0.281 %, frequency flatness 2e-07 between 50 and 200 MHz, reference
-    plane +0.091 %, corner convention +1.21 %.
+    wall residual +0.114 %, lid + air cells +0.504 %, meshed margin 3x
+    +0.287 %, ``metal_cells`` 2 -> 4 +0.281 %, frequency flatness 1.5e-07
+    between 50 and 200 MHz, reference plane +0.091 %, corner convention
+    +1.212 %.
 V1b the PEC fixture carries no DC internal inductance, so the
     uniform-current L must exceed it by the conductor's internal
     inductance -- a FINITE limit, not something that shrinks with
@@ -259,8 +340,9 @@ vertical direction is measured at the coarsest level and extrapolated
 separately in V1c, not refined jointly); the referee is magnetoquasistatic
 with uniform current density, no substrate eddy currents and no via, and it
 cannot represent the short standard's grounded post -- which the thru
-probe measures on the FDFD side instead, and V1 subtracts (up to 1.75 % of
-the referee at W/3). Nothing here validates losses, the frequency
+probe measures on the FDFD side instead and V1 reports as a separately
+stated correction rather than applying it (up to 1.82 % of the referee, at
+W/3). Nothing here validates losses, the frequency
 dependence or the PEC metal model -- the PEC numbers are reported for
 contrast only. Sizes are CPU-SuperLU sizes.
 """
@@ -356,8 +438,10 @@ def referee_segments(sg, theta: Sequence[float], convention: str = "area_exact",
     -- the plane TRACKS the width, because the FDFD footprint is the
     ``width x width`` square under the column. That matters only for the
     derivative: holding the shift at ``0.5 * WIDTH`` while differentiating
-    w.r.t. the width misses ``0.5 dL/d(lead_length)`` = 2.1 % of
-    ``dL/dwidth`` (measured: -2.4491e-5 vs -2.5001e-5 H/m). Pass a float to
+    w.r.t. the width misses ``0.5 dL/d(lead_length)`` = 2.04 % of
+    ``dL/dwidth`` (measured -2.4491e-5 vs the JSON's
+    ``gradient_area_exact_fd4[2]`` = -2.5001e-5 H/m; the pinned-plane value
+    is a side measurement and is not recorded). Pass a float to
     pin the plane (the reference-plane band uses 0, ``width``)."""
     r_out, spacing, width = (float(v) for v in theta)
     shift = 0.5 * width if shift is None else float(shift)
@@ -952,54 +1036,114 @@ def evaluate_gates(study: dict[str, Any]) -> dict[str, Any]:
     g: dict[str, Any] = {}
 
     dee = study["referee"]["deembedded"]["total"]
-    # The referee's bridge is a plain bar; the FIXTURE's bridge is shorted to
-    # the ground plane over the width of the short standard's post, so the
-    # fixture subtracts LESS than a whole bridge. The thru probe measures
-    # that at every level on the same grid and the same column separation
-    # (L_thru = L(bar) - L(bridge as built), the two being the same M2 cells),
-    # so ``L_dut - L_thru = L(strip) - L(whole bridge)`` -- the quantity the
-    # referee's ``deembedded`` block computes. The correction is positive, so
-    # it makes the gap LARGER; the uncorrected numbers are reported too.
-    bias = {k: v["L_deembedded"] for k, v in (study.get("thru_probe") or {}).get("levels", {}).items()}
-    rich_raw = study["richardson"]
-    rich = study.get("richardson_post_corrected") or rich_raw
+    # PRIMARY referee convention (E in the module doc): what the open/short
+    # fixture actually measures is the strip MINUS the short standard's
+    # bridge, so the referee is L(strip) - L(bridge) = 349.371 - 16.316 =
+    # 333.055 pH. The SECONDARY convention -- the strip alone, which the
+    # refuted first version of this study used -- is reported beside it but
+    # does NOT decide the gate. Both sides are compared as they come off
+    # their own de-embedding; the two model corrections that are known,
+    # measured and NOT applied to the primary number (the short's post
+    # short, from the thru probe, and the vertical grid) are stated
+    # separately below, each with its own range, because each is an
+    # extrapolation with an uncertainty of its own.
+    rich = study["richardson"]
     rel = [v / dee - 1.0 for v in rich["range"]]
-    g["V1"] = {
-        "referee_deembedded": dee,
-        "referee_strip_only": ref,
-        "referee_bridge": study["referee"]["deembedded"]["bridge"],
-        "quantity": ("L(strip) - L(short-standard bridge), the FDFD side corrected for the "
-                     "post short by the thru probe; see bridge_segments and thru_probe"),
-        "post_corrected": bool(bias and len(bias) == len(levels)),
-        "post_bias": bias,
-        "per_level_gap": {f"W/{lv['div']:g}": (lv["L_dut"] - bias.get(f"{lv['div']:g}", 0.0)) / dee - 1.0
-                          for lv in levels},
-        "per_level_gap_uncorrected": {f"W/{lv['div']:g}": lv["L_dut"] / dee - 1.0 for lv in levels},
-        "per_level_gap_vs_strip_only": {f"W/{lv['div']:g}": lv["L_dut"] / ref - 1.0 for lv in levels},
-        "L_extrapolated_estimates": rich["estimates"],
-        "L_extrapolated_range": rich["range"],
-        "L_extrapolated_range_uncorrected": rich_raw["range"],
-        "observed_order": rich["observed_order"],
-        "observed_order_uncorrected": rich_raw["observed_order"],
-        "rel_range": rel,
-        "rel_range_uncorrected": [v / dee - 1.0 for v in rich_raw["range"]],
-        "rel_range_vs_strip_only": [v / ref - 1.0 for v in rich_raw["range"]],
-        "tolerance": 0.05,
-        "passed": bool(max(abs(rel[0]), abs(rel[1])) <= 0.05),
-    }
-    # V1c: the same comparison with the SECOND (vertical) grid direction
-    # extrapolated too -- the in-plane levels share one vertical grid, so the
-    # in-plane Richardson above cannot see that error at all.
+    # 5 %: the tolerance this study was set up with, unchanged since the
+    # refuted first version (which failed it at -24.9 % against the strip
+    # alone). It is NOT derived from a measurement here -- it is the
+    # acceptance criterion the gate is judged by, and it is not widened.
+    tol = 0.05
+    bias = {k: v["L_deembedded"] for k, v in (study.get("thru_probe") or {}).get("levels", {}).items()}
+    rich_post = study.get("richardson_post_corrected")
     vb = study.get("vertical_budget") or {}
+    corrections: dict[str, Any] = {}
+    if rich_post and bias and len(bias) == len(levels):
+        rel_post = [v / dee - 1.0 for v in rich_post["range"]]
+        corrections["post_short"] = {
+            "what": ("the short standard's grounded post shorts the bridge over its own width, "
+                     "so the fixture subtracts LESS than a whole bridge; the thru probe "
+                     "(dut_kind='bar', V6) measures the residual level by level and "
+                     "L_dut - L_thru = L(strip) - L(whole bridge)"),
+            "sign": "increases the gap",
+            "per_level_bias": bias,
+            "per_level_bias_over_referee": {k: v / dee for k, v in bias.items()},
+            "per_level_gap": {f"W/{lv['div']:g}":
+                              (lv["L_dut"] - bias[f"{lv['div']:g}"]) / dee - 1.0 for lv in levels},
+            "L_extrapolated_range": rich_post["range"],
+            "observed_order": rich_post["observed_order"],
+            "rel_range": rel_post,
+        }
     if vb.get("range"):
         corr = vb["range"]
         lo = min(v * (1.0 + c) for v in rich["range"] for c in corr)
         hi = max(v * (1.0 + c) for v in rich["range"] for c in corr)
-        relc = [lo / dee - 1.0, hi / dee - 1.0]
-        g["V1c"] = {"vertical_correction_range": corr,
+        corrections["vertical_grid"] = {
+            "what": ("the three levels refine IN PLANE only, so the vertical error is common to "
+                     "all three and cancels out of the in-plane Richardson; base_dz/2 and /4 at "
+                     "W/1 give +1.913 % and +2.503 %, observed order 1.698"),
+            "sign": "reduces the gap",
+            "rel_correction_range": corr,
+            "observed_order": vb["observed_order"],
+            "L_extrapolated_range": [lo, hi],
+            "rel_range": [lo / dee - 1.0, hi / dee - 1.0],
+        }
+    if "post_short" in corrections and "vertical_grid" in corrections:
+        corr = vb["range"]
+        lo = min(v * (1.0 + c) for v in rich_post["range"] for c in corr)
+        hi = max(v * (1.0 + c) for v in rich_post["range"] for c in corr)
+        corrections["both"] = {
+            "what": "the post-short correction and the vertical extrapolation applied together",
+            "L_extrapolated_range": [lo, hi],
+            "rel_range": [lo / dee - 1.0, hi / dee - 1.0],
+        }
+    g["V1"] = {
+        "quantity": ("PRIMARY: FDFD de-embedded L_diff vs the referee's L(strip) - L(bridge); "
+                     "no FDFD-side correction applied. See secondary_convention for the "
+                     "strip-alone comparison and corrections for the two measured, separately "
+                     "stated extrapolations."),
+        "referee_deembedded": dee,
+        "referee_strip_only": ref,
+        "referee_bridge": study["referee"]["deembedded"]["bridge"],
+        "referee_bridge_over_strip": study["referee"]["deembedded"]["bridge"] / ref,
+        "referee_reference_plane_spread": study["referee"]["deembedded"]["reference_plane_spread"],
+        "referee_reference_plane_spread_strip_only":
+            study["referee"]["deembedded"]["reference_plane_spread_strip_only"],
+        "per_level_gap": {f"W/{lv['div']:g}": lv["L_dut"] / dee - 1.0 for lv in levels},
+        "L_extrapolated_estimates": rich["estimates"],
+        "L_extrapolated_range": rich["range"],
+        "observed_order": rich["observed_order"],
+        "rel_range": rel,
+        "secondary_convention": {
+            "what": ("the strip ALONE, i.e. the de-embedding read as 'the inductance of the "
+                     "conductor between the reference planes'. The thru probe (V6) refutes "
+                     "that reading directly, so this is reported, not gated."),
+            "referee": ref,
+            "per_level_gap": {f"W/{lv['div']:g}": lv["L_dut"] / ref - 1.0 for lv in levels},
+            "L_extrapolated_range": rich["range"],
+            "rel_range": [v / ref - 1.0 for v in rich["range"]],
+        },
+        "corrections": corrections,
+        "tolerance": tol,
+        "passed": bool(max(abs(rel[0]), abs(rel[1])) <= tol),
+    }
+    # V1c: the primary statement with the SECOND (vertical) grid direction
+    # extrapolated too -- the separately stated correction of V1, promoted to
+    # its own verdict because it is the one correction with the sign that
+    # could close the gap. Its own uncertainty is the p = 1 / p = 2 spread of
+    # the vertical extrapolation, carried through as a range.
+    if "vertical_grid" in corrections:
+        vc = corrections["vertical_grid"]
+        relc = list(vc["rel_range"])
+        g["V1c"] = {"vertical_correction_range": vc["rel_correction_range"],
                     "vertical_observed_order": vb["observed_order"],
-                    "L_range_corrected": [lo, hi], "rel_range": relc, "tolerance": 0.05,
-                    "passed": bool(max(abs(relc[0]), abs(relc[1])) <= 0.05)}
+                    "L_range_corrected": vc["L_extrapolated_range"],
+                    "rel_range": relc,
+                    "straddles_tolerance": bool(min(abs(r) for r in relc) <= tol < max(abs(r) for r in relc)),
+                    "with_post_short": (corrections["both"]["rel_range"]
+                                        if "both" in corrections else None),
+                    "tolerance": tol,
+                    "passed": bool(max(abs(relc[0]), abs(relc[1])) <= tol)}
     # V1b: the PEC fixture carries no DC internal inductance, so the
     # uniform-current value must exceed it by the conductor's internal
     # inductance -- a FINITE limit, not something that shrinks. The scale
@@ -1105,19 +1249,24 @@ def figure(study: dict[str, Any], path: pathlib.Path) -> None:
     ax1.plot(h, ldut, "o-", color="#7fb3d5", label="FDFD L_dut as de-embedded")
     ax1.plot(h, lpec, "s--", color="#9ecae1", label="FDFD L_dut, PEC metal")
     tp = study.get("thru_probe")
-    rich = study.get("richardson_post_corrected") or study["richardson"]
-    if tp and study.get("richardson_post_corrected"):
-        lcor = np.array([lv["L_dut"] - tp["levels"][f"{lv['div']:g}"]["L_deembedded"]
-                         for lv in levels]) * 1e12
-        ax1.plot(h, lcor, "o-", color="#1f77b4", linewidth=1.8,
-                 label="FDFD, post short removed (thru probe)")
+    rich = study["richardson"]                     # the PRIMARY series (no FDFD-side correction)
+    rich_post = study.get("richardson_post_corrected")
     for j, (name, val) in enumerate(sorted(rich["estimates"].items(), key=lambda kv: -kv[1])):
         ax1.plot([0.0], [val * 1e12], marker="*", markersize=11, linestyle="none", color="#1f77b4")
         ax1.annotate(f"{name} {val * 1e12:.1f}", (0.0, val * 1e12), textcoords="offset points",
                      xytext=(7, 6 - 11 * j), fontsize=7, color="#1f77b4")
     lo, hi = rich["range"]
-    ax1.fill_between([0.0, h.max() * 1.05], lo * 1e12, hi * 1e12, color="#1f77b4", alpha=0.12,
-                     label="Richardson range (p=1, p=2, observed order)")
+    ax1.fill_between([0.0, h.max() * 1.05], lo * 1e12, hi * 1e12, color="#1f77b4", alpha=0.18,
+                     label=f"PRIMARY Richardson range {lo * 1e12:.1f}-{hi * 1e12:.1f} pH "
+                           f"(p=1, p=2, observed order)")
+    if tp and rich_post:
+        lcor = np.array([lv["L_dut"] - tp["levels"][f"{lv['div']:g}"]["L_deembedded"]
+                         for lv in levels]) * 1e12
+        ax1.plot(h, lcor, "o--", color="#6a51a3", linewidth=1.4, markersize=4,
+                 label="correction: post short removed (thru probe)")
+        lo3, hi3 = rich_post["range"]
+        ax1.fill_between([0.0, h.max() * 1.05], lo3 * 1e12, hi3 * 1e12, color="#6a51a3", alpha=0.12,
+                         label=f"  its Richardson range {lo3 * 1e12:.1f}-{hi3 * 1e12:.1f} pH")
     dee = ref["deembedded"]
     ax1.axhline(dee["total"] * 1e12, color="#d62728", linestyle="-", linewidth=1.6,
                 label=f"referee de-embedded, strip - bridge {dee['total'] * 1e12:.1f} pH")
@@ -1135,7 +1284,7 @@ def figure(study: dict[str, Any], path: pathlib.Path) -> None:
         lo2 = min(v * (1.0 + c) for v in rich["range"] for c in vb["range"]) * 1e12
         hi2 = max(v * (1.0 + c) for v in rich["range"] for c in vb["range"]) * 1e12
         ax1.fill_between([0.0, h.max() * 1.05], lo2, hi2, color="#2ca02c", alpha=0.15,
-                         label="+ vertical-grid extrapolation (V1c)")
+                         label=f"correction: vertical grid (V1c) {lo2:.1f}-{hi2:.1f} pH")
     ax1.set_xlabel("base_dx [um]  (W/1, W/2, W/3)")
     ax1.set_ylabel("L [pH]")
     ax1.set_xlim(0.0, h.max() * 1.05)
@@ -1165,11 +1314,9 @@ def figure(study: dict[str, Any], path: pathlib.Path) -> None:
         ratio = np.array([ld["levels"][k]["ratio_fdfd_over_referee"] for k in keys])
         ax3.plot(hs, 100.0 * (1.0 - ratio), "o-", color="#8c564b",
                  label="deficit of dL/d(lead): 1 - FDFD/referee")
-        bias = np.array([(study.get("thru_probe") or {"levels": {}})["levels"]
-                         .get(f"{lv['div']:g}", {}).get("L_deembedded", 0.0) for lv in levels])
-        gap = (np.array([lv["L_dut"] for lv in levels]) - bias) / ref["deembedded"]["total"] - 1.0
+        gap = np.array([lv["L_dut"] for lv in levels]) / ref["deembedded"]["total"] - 1.0
         ax3.plot(h, -100.0 * gap, "s--", color="#1f77b4",
-                 label="deficit of L_dut (post short removed) vs the referee")
+                 label="deficit of L_dut vs the de-embedded referee (V1 primary)")
         ax3.plot(hs, 100.0 * (1.0 - ratio[-1]) * hs / hs[-1], ":", color="#8c564b", linewidth=1,
                  label="O(h) through the finest point")
         ax3.set_xlabel("base_dx [um]")
@@ -1257,30 +1404,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     study["referee"]["gradient_area_exact_fd4"] = referee_gradient(sg, THETA0, "area_exact", False)
     study["referee"]["gradient_greenhouse_fd4"] = referee_gradient(sg, THETA0, "greenhouse", False)
     study["area_gate"] = area_gate(sg, THETA0)
-    t = study.get("thru_probe")
-    if t:
-        # the short's post spans everything between the two column footprints
-        # except one cell on each side, so its width is analytic:
-        # (bar_length - width) - 2 base_dx. The residual of the thru probe is
-        # what that post shorts out, and it must track it.
-        keys = sorted(t["levels"], key=float)
-        post = {k: (t["bar_length"] - WIDTH) - 2.0 * t["levels"][k]["base_dx"] for k in keys}
-        res = [t["levels"][k]["over_referee_bar"] for k in keys]
-        pw = [post[k] for k in keys]
-        g["V6"] = {
-            "what": ("the DUT made identical to the short standard's bridge must de-embed to a "
-                     "small part of that bridge, and the residual must track the post's width"),
-            "referee_bar": t["referee_bar"],
-            "per_level": {k: t["levels"][k]["over_referee_bar"] for k in keys},
-            "post_width": post,
-            "post_width_over_bar_length": {k: v / t["bar_length"] for k, v in post.items()},
-            "residual_tracks_post_width": bool(
-                all(b > a for a, b in zip(res, res[1:])) and all(b > a for a, b in zip(pw, pw[1:]))),
-            "worst_over_referee_bar": t["worst_over_referee_bar"],
-            "tolerance": THRU_TOL,
-            "passed": bool(t["worst_over_referee_bar"] <= THRU_TOL
-                           and all(b > a for a, b in zip(res, res[1:]))
-                           and all(b > a for a, b in zip(pw, pw[1:])))}
     a = study["area_gate"]["area_exact"]
     print(f"  area gate (area-exact): sum/polygon-1={a['sum_over_polygon_minus_1']:+.2e} "
           f"union/sum-1={a['union_over_sum_minus_1']:+.2e}  "
@@ -1355,18 +1478,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     for name, gate in study["gates"].items():
         print(f"  {name}: passed={gate.get('passed')}", flush=True)
     v1 = study["gates"]["V1"]
-    print(f"  V1 detail: referee {v1['referee_deembedded'] * 1e12:.2f} pH "
+    print(f"  V1 PRIMARY: referee {v1['referee_deembedded'] * 1e12:.2f} pH "
           f"(= strip {v1['referee_strip_only'] * 1e12:.2f} - bridge "
-          f"{v1['referee_bridge'] * 1e12:.2f}), extrapolated "
-          f"[{v1['L_extrapolated_range'][0] * 1e12:.2f}, {v1['L_extrapolated_range'][1] * 1e12:.2f}] pH "
-          f"= [{100 * v1['rel_range'][0]:+.2f}, {100 * v1['rel_range'][1]:+.2f}] %, "
-          f"observed order {v1['observed_order']}", flush=True)
-    if "V1c" in study["gates"]:
-        v1c = study["gates"]["V1c"]
-        print(f"  V1c detail: + vertical extrapolation "
-              f"[{100 * v1c['vertical_correction_range'][0]:+.2f}, "
-              f"{100 * v1c['vertical_correction_range'][1]:+.2f}] % -> "
-              f"[{100 * v1c['rel_range'][0]:+.2f}, {100 * v1c['rel_range'][1]:+.2f}] %", flush=True)
+          f"{v1['referee_bridge'] * 1e12:.2f}); levels "
+          + " / ".join(f"{100 * v:+.2f} %" for v in v1["per_level_gap"].values())
+          + f"; extrapolated [{v1['L_extrapolated_range'][0] * 1e12:.2f}, "
+            f"{v1['L_extrapolated_range'][1] * 1e12:.2f}] pH = "
+            f"[{100 * v1['rel_range'][0]:+.2f}, {100 * v1['rel_range'][1]:+.2f}] % "
+            f"(order {v1['observed_order']:.3f}, tol +-{100 * v1['tolerance']:.0f} %)", flush=True)
+    sec = v1["secondary_convention"]
+    print(f"  V1 SECONDARY (strip alone, {sec['referee'] * 1e12:.2f} pH): levels "
+          + " / ".join(f"{100 * v:+.2f} %" for v in sec["per_level_gap"].values())
+          + f"; extrapolated [{100 * sec['rel_range'][0]:+.2f}, "
+            f"{100 * sec['rel_range'][1]:+.2f}] %", flush=True)
+    for name, c in v1["corrections"].items():
+        print(f"  V1 correction {name}: -> [{100 * c['rel_range'][0]:+.2f}, "
+              f"{100 * c['rel_range'][1]:+.2f}] %"
+              + (f"  (correction itself [{100 * c['rel_correction_range'][0]:+.2f}, "
+                 f"{100 * c['rel_correction_range'][1]:+.2f}] %)"
+                 if "rel_correction_range" in c else ""), flush=True)
     return 0
 
 
