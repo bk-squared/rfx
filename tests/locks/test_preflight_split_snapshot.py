@@ -286,21 +286,39 @@ and would red every same-process pytest-split shard.
 from __future__ import annotations
 
 LOCK_PROVENANCE = {
+    # Every module a fixture builder below imports from, plus the
+    # snapshot directory itself. REGENERATE, do not hand-edit: the
+    # generator is an ast walk of this file for ImportFrom/Import nodes
+    # whose module starts with "tests". The list stood at the 14 modules
+    # of the 8586f549 capture while legs 3-7 added 33 fixtures drawn from
+    # ten more, and four consecutive leg reports flagged it stale before
+    # leg 7 refreshed it; tests/locks/test_lock_provenance_gate.py checks
+    # only that each entry EXISTS, so a short list is green and useless.
     "fixture": (
         "tests/_pec_short_advisory_fixture.py,"
         "tests/_coax_msl_instrument_fixture.py,"
         "tests/_waveguide_chain_battery_fixture.py,"
-        "tests/unit/preflight/test_preflight_rasterization.py,"
-        "tests/unit/preflight/test_preflight_absorber.py,"
-        "tests/unit/preflight/test_preflight_guards.py,"
-        "tests/unit/preflight/test_inverse_design_preflight.py,"
-        "tests/unit/preflight/test_adi_preflight.py,"
-        "tests/unit/preflight/test_flux_region_preflight.py,"
-        "tests/unit/preflight/test_pec_face_short_of_domain_wall.py,"
-        "tests/unit/ports/test_msl_realized_port_contract.py,"
+        "tests/locks/test_refplane_port_waves.py,"
+        "tests/unit/boundaries/test_boundary_spec_cpml_budget.py,"
         "tests/unit/farfield/test_ntff_small_gp_advisory.py,"
+        "tests/unit/geometry/test_fidelity_topology_findings.py,"
         "tests/unit/geometry/test_subpixel_pec.py,"
         "tests/unit/materials/test_thin_conductor_honesty.py,"
+        "tests/unit/nonuniform/test_nonuniform_upml_guard.py,"
+        "tests/unit/nonuniform/test_nu_port_sigma_dual_spacing.py,"
+        "tests/unit/ports/test_msl_realized_port_contract.py,"
+        "tests/unit/preflight/test_adi_preflight.py,"
+        "tests/unit/preflight/test_flux_region_preflight.py,"
+        "tests/unit/preflight/test_inverse_design_preflight.py,"
+        "tests/unit/preflight/test_pec_face_short_of_domain_wall.py,"
+        "tests/unit/preflight/test_preflight_absorber.py,"
+        "tests/unit/preflight/test_preflight_guards.py,"
+        "tests/unit/preflight/test_preflight_rasterization.py,"
+        "tests/unit/preflight/test_waveguide_layout_from_band_low_edge.py,"
+        "tests/unit/preflight/test_wire_port_gap_distance.py,"
+        "tests/unit/sparams/test_mixed_port_sparam.py,"
+        "tests/unit/sparams/test_waveguide_nu_sparam.py,"
+        "tests/unit/subgrid/test_subgrid_validation.py,"
         "tests/data/preflight_split_snapshot"
     ),
     "generator": (

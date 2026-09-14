@@ -19,7 +19,7 @@ rather than trusting the figure beside it.
 |---|---|
 | test | `pytest` — live count: `python -m pytest --collect-only -q \| tail -1` |
 | lint | `ruff check rfx/ tests/ --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402` |
-| preflight | `sim.preflight()` — multi-check suite; grep `def _validate_` in `rfx/api/_preflight.py` for the live set |
+| preflight | `sim.preflight()` — multi-check suite; grep `def _validate_` in `rfx/preflight/*.py` AND `rfx/api/_preflight.py` for the live set (the check families live in the package; the facade keeps the entry points and the request validators) |
 
 Lint is gated in CI by `.github/workflows/lint.yml` on every push/PR. Note CI lints
 `rfx/ tests/ validation/`; `scripts/` is out of scope.

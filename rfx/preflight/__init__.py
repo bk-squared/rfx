@@ -2,11 +2,17 @@
 
 ``rfx/api/_preflight.py`` was one 9 400-line module holding the module-level
 report types and geometry leaves followed by the 7 800-line
-``_PreflightMixin`` class that ``Simulation`` inherits. #980 Phase 3 takes it
+``_PreflightMixin`` class that ``Simulation`` inherits. #980 Phase 3 took it
 apart in verbatim code-motion steps, on the recipe the ``rfx/api/_sparams.py``
 -> ``rfx/sparams/`` split just finished, each step gated on the committed
 advisory-text snapshot in
 ``tests/locks/test_preflight_split_snapshot.py``.
+
+Eight modules, and the motion is complete: every check family and the
+realization layer they all read now live here, and the facade keeps the
+EXECUTION family (``preflight``, ``preflight_sparameters``, the request
+validators and routers, the ADI/x64/settling-witness configuration checks)
+plus the re-export blocks and the class-body rebinds.
 
 Modules:
 
@@ -79,6 +85,21 @@ Modules:
   PEC-boundary-on-an-open-structure advisory). It is the only leg so far
   that moves NO module-level name: its leaves went to ``_common`` in leg 0
   because their readers were never confined to this family.
+
+* :mod:`rfx.preflight.realization` — the conductor-realization layer, which
+  is not a check family at all: it emits nothing and is the DATA every other
+  family reads under the #931 lattice ownership contract. Three module-level
+  classes (:class:`~rfx.preflight.realization._RealizedPEC` for the whole
+  model, :class:`~rfx.preflight.realization._EntryRealization` per
+  declaration, :class:`~rfx.preflight.realization._CampaignStaticsContext`
+  for the shared per-configuration state), the four numpy leaves only they
+  read (``_shape_bounds``, ``_shift_back_np``, ``_wall_nodes_on_plane``,
+  ``_realized_edges_np``) and the four ``_PreflightMixin`` accessors that
+  hand them out — ``_assemble_realized``, ``_port_realized_edges``, its
+  kept-name alias ``_port_pec_mask``, and the configuration-keyed cache
+  ``_campaign_ctx``, which 64 of the 65 snapshot fixtures enter. Its two
+  ``_common`` leaves, ``_sorted_box_corners`` and ``_component_is_dead``,
+  stay there because each still has a reader in ``pec_geometry`` / ``ports``.
 
 ``_PreflightMixin`` itself STAYS in ``rfx/api/_preflight.py``: its
 ``_validate_simulation_config`` body is an ordered sequence of 38 calls and

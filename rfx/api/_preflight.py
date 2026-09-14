@@ -11,6 +11,34 @@ The methods here were moved verbatim out of ``rfx/api/__init__.py``'s
 indentation, decorators, signatures, and logic. ``Simulation`` inherits
 ``_PreflightMixin`` so every method below remains a bound method on
 ``Simulation`` instances; ~79 test call-sites are unaffected.
+
+FINAL SHAPE after #980 Phase 3 (legs 0-7, complete). This file is now a
+FACADE and holds three things:
+
+1. The EXECUTION family, which stays here by design and is everything that
+   decides WHAT to run rather than checking a configuration: ``preflight``
+   and ``preflight_sparameters`` (the entry points), the run / forward
+   S-parameter request validators and the three per-calculator
+   ``_validate_*_sparameter_request_for_preflight`` routers,
+   ``_validate_simulation_config`` — whose body is an ordered sequence of
+   check calls, and that ORDER is the observable
+   ``tests/locks/test_preflight_split_snapshot.py`` pins —
+   ``_collect_flux_regions``, and the x64 / ADI / settling-witness
+   configuration checks.
+2. The module-level RE-EXPORT blocks. Every name any leg moved is re-bound
+   here, so the module namespace is exactly as wide as it was before the
+   split (55 names, pinned by set equality) and the 17 files that do
+   ``from rfx.api._preflight import <name>`` keep resolving. Classes are
+   re-exported, never redefined: one ``PreflightWarning``, one
+   ``_RealizedPEC``.
+3. The class-scoped REBINDS. Each moved check body is a module-level ``def``
+   in its leg module whose first parameter is still ``self``, imported back
+   into the ``_PreflightMixin`` class body AT THE POSITION it held, with
+   ``__qualname__`` restored at the leg module's foot and any
+   ``@staticmethod`` re-applied here.
+
+Every check family, and the conductor-realization layer they all read, lives
+in ``rfx/preflight/`` — see that package's docstring for the eight modules.
 """
 
 from __future__ import annotations
