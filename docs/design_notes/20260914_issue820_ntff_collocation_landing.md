@@ -373,6 +373,16 @@ Absolute null reduction, dB:
 
 Guards 58.9 / 86.3 / 95.0 dB; zero warnings at every depth.
 
+The groups add to within a few percent of `all6` rather than exactly — `lo+hi` is
+−3.1 / −1.8 / −2.4 % and `x+y+z` is −5.8 / −4.5 / −11.6 % — and that is expected
+rather than a bookkeeping error: the **field** perturbations are exactly additive (the
+round-1 per-face split re-summed to 2.8e-16 on the complex fields), but the tabulated
+quantity is `pp(baseline) − pp(group)`, a max−min of a **dB magnitude**, which is a
+nonlinear functional of that field. Same transform, different functional. Measured:
+the extremal offsets in fact coincide across groups in 14 of 15 cells, the one
+exception being `hi` at CPML 24 (max at −10 rather than −6), so the non-additivity is
+carried by the dB nonlinearity itself rather than mainly by shifting extrema.
+
 **Gate → LOCALIZED**, and it localizes to the end nobody was watching. N2 pointed
 at the **lo** faces because their adjacent planes sit on the first interior cell
 against the absorber — and the `lo` group is the **stable** one. What steps is the
@@ -380,9 +390,12 @@ against the absorber — and the `lo` group is the **stable** one. What steps is
 one-step-then-saturate shape as `all6`, on the faces whose averaged planes lie
 inward and never touch the absorber.
 
-**L7 is now answerable, and its question is narrow**: why does averaging H on the
-hi faces buy more as the absorber deepens, when those faces' averaged planes are
-nowhere near it? That is the pre-declared next step for whoever reopens this.
+**L7 is now answerable, and its question is one face.** Since `x` and `z` carry no
+effect (≤ 0.026 and ≤ 0.0001 dB), `hi` is effectively **`y_hi`** (0.079 → 0.129 dB
+with depth) and `lo` is effectively **`y_lo`** (stable at ~0.127 dB). So the
+pre-declared next step for whoever reopens this is: **why does averaging H on `y_hi`
+buy more as the absorber deepens, when that face's averaged plane lies inward and
+never touches it?**
 
 The `y`-group row is also the quantitative form of N6: the y faces carry nearly the
 whole effect (0.2262 of 0.2124 at CPML 8 — more than the six-face total, so the
