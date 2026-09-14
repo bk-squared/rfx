@@ -777,3 +777,33 @@ locked to a fixture: every lane's deliverable is a table of cells with
 verdicts and the law's range. The three reviews' scratch files
 (`nu_full_assumptions_repro.{py,json}`, `inplane_tied_set.json`) are
 evidence for the gap map only; none of their numbers is a lane result.
+
+## Addendum (Lane 1 result, 2026-09-14; sections 1-7 above not edited)
+
+Section 2's claim that the kernel path is an exact cyclic relabeling
+x -> y -> z -> x was measured in Lane 1 arm L1-R (pattern S, n_b = 4,
+B_sym, 1200 steps; stored in `results/e5_relabel.json`, lane note
+`20260913_nu_lane1_multilevel_xyz_predeclaration.md`, W5):
+
+- z -> x: exact. A and B traces bit-identical (relative max difference
+  0.0), `R_meas` identical in float64, `dt_x - dt_z = 0`.
+- z -> y: not exact. Trace relative max difference 6.71e-7 (A) and
+  6.85e-7 (B_sym), first differing step 16, 1.8 float32 eps RMS against
+  the running maximum and non-growing over 1200 steps; `R_meas` relative
+  difference 6.02e-6. Deterministic (y re-run twice is bit-identical to
+  itself). The W5 `R_meas` sub-criterion (1e-6) fired on y; both trace
+  criteria held; the window was not widened and the y cells carry the
+  declared "relabel identity fired: instrument class" flag. The y arms
+  then agree with the x arms to <= 4.1e-5 relative on all 40 arm pairs
+  with identical W1-W3 verdicts.
+
+Gap-map candidate (not located, not fixed in Lane 1; no `rfx/` change):
+a float32 summation-order difference on the z -> y leg of the
+relabeling, somewhere in the kernel path listed in section 2. Its size
+(7e-7 on traces) is far below every Lane 1 window, so it changes no
+verdict; the claim "exact cyclic relabelings" should be read as
+"exact for z -> x, float32-roundoff class for z -> y" until the leg is
+located. The scan of the rectangular DFT window ends recorded in the
+lane note's second pass (about 3 % of `R_meas` on this instrument, TE10
+cutoff ringing) is the other Lane 1 finding that later lanes reusing
+the E1 observable should read before quoting sub-3 % agreement.

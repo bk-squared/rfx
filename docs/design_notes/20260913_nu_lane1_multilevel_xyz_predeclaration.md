@@ -1037,3 +1037,43 @@ flags, and the statement that no recorded arm is within 0.30 of its
 half-window of a W1 edge). Command: `--window-scan
 validation/research/multiband_nu/results --out
 validation/research/multiband_nu/results/e5_window_scan.json`.
+
+### Window-end scan — measured (one attempt, `554d4b0f`, `git_dirty` false, 17:03:43Z, 9 FDTD runs, 5.8 s CPU)
+
+| axis | pattern | arm | rerun = stored | incident min..max / nominal (4-12 sigma) | p-p (%) | beat / cutoff (GHz) | reflection min..max / nominal | R over legal pairs (% of chain) | nominal (%) |
+|---|---|---|---|---|---|---|---|---|---|
+| z | S | single L | True (0.0) | 0.9727 .. 1.0053 | 3.26 | 5.83 / 4.993 | 0.9926 .. 1.0073 | -2.29 .. +2.48 | -1.04 |
+| z | S | S_nb4 | True (0.0) | 0.9727 .. 1.0053 | 3.26 | 5.83 / 4.993 | 0.9929 .. 1.0017 | -1.99 .. +2.19 | -0.77 |
+| z | T | T_c16_b8 | True (0.0) | 0.9726 .. 1.0052 | 3.26 | 5.84 / 4.992 | 0.9927 .. 1.0118 | -2.98 .. +2.20 | -1.76 |
+| x | P1 | P1_nb32 | True (0.0) | 0.9727 .. 1.0053 | 3.26 | 5.83 / 4.993 | 0.9869 .. 1.0313 | -3.25 .. +4.50 | -1.45 |
+| x | P2 | P2_nb32 | True (0.0) | 0.9734 .. 1.0058 | 3.24 | 5.81 / 4.993 | 0.9750 .. 1.0000 | -2.67 .. +3.15 | +0.40 |
+
+(a) All five reruns reproduce the stored `R_meas` to the float64 bit
+with the stored run ids (A and B). (b), (c), (d) equal the declared
+expectation to the printed digits; the 4-8 sigma sub-band already
+carries the full peak-to-peak (the extrema are inside it), so the
+declared 8-sigma end is neither the best nor the worst place. Largest
+half-range 4.50 % (x P1 n_b = 32); smallest 2.19 % (S n_b = 4).
+Two deviations from the declaration, recorded: the beat bin is 5.83 GHz
+at a 1.94 GHz FFT resolution (the 4-12 sigma scan is 0.512 ns long),
+where the declaration quoted 5.28 GHz at ~1.3 GHz from the review's
+longer 0.756 ns scan — each bin contains the 4.99 GHz cutoff within one
+resolution step, and the declared "~1.3 GHz" was the review's scan
+length, not the instrument's; and 9 FDTD runs, not 10, because the two S
+arms share `B_1.96` (the 1j cache rule). Reading: the instrument's
+window-end sensitivity is 2-4.5 % of `R_meas` on these arms; every W1
+half-window (20 % + 3e-5) is 4-10 x that, and the closest recorded arm
+to an edge is at 0.26 of its half-window, so no verdict of the lane
+depends on where the window ends fall. Any future arm quoting agreement
+under ~3 % on this instrument needs a window-insensitive observable
+(a tapered incident window is a candidate: a 4-sigma cosine taper moved
+`|DFT_F0(B)|` by -1.2 % in the review's diagnostic — not declared, not
+measured here). Windows unchanged; `stopped = false`.
+
+Record correction to the table above (third second-pass commit): row 10
+said the program-document addendum was "appended"; at `554d4b0f` it had
+not been written (the program document was unchanged since `d6bc5dde`).
+It is appended in the commit that stores the window scan, as a dated
+addendum after section 7 with sections 1-7 untouched; the program
+document keeps its no-artifact-reference classification (the addendum
+names the JSON file but carries no double-colon artifact-key span).

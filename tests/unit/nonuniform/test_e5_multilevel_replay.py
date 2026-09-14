@@ -376,3 +376,96 @@ def test_results_pin_bridge_replays():
     for rec in _arms(cell):
         assert rec["m_lo"] == 2 and rec["k_src_used"] == 87
         _check_arm_model(rec, cell["dt_s"], f"pinbridge/{rec.get('name')}")
+
+
+# --- second pass (2026-09-14): the numbers the note quotes, pinned to the JSONs ------------
+# Tolerances declared with the second pass: ratios of stored floats 1e-9 relative;
+# the prose ranges below are the corrected sentences of the note, re-derived here.
+
+def _stored_arm(res, pattern, name):
+    cell = res["cells"][pattern]
+    if name in cell["singles"]:
+        return cell["singles"][name]
+    return {b["name"]: b for b in cell["bands"]}[name]
+
+
+def test_results_prose_numbers_second_pass():
+    res = {ax: _load(_AXIS[ax]) for ax in ("z", "x", "y")}
+    # P1 vs P2 per width: z 0.02-0.11 %, x/y 0.13-1.84 % (|P1 - P2| / P2), growing with n_b in-plane
+    for ax, lo, hi in (("z", 1.0e-4, 1.2e-3), ("x", 1.3e-3, 1.85e-2), ("y", 1.3e-3, 1.85e-2)):
+        p1 = {b["n_b"]: b["meas"]["R_meas"] for b in res[ax]["cells"]["P1"]["bands"]}
+        p2 = {b["n_b"]: b["meas"]["R_meas"] for b in res[ax]["cells"]["P2"]["bands"]}
+        spread = [abs(p1[n] - p2[n]) / p2[n] for n in e5.WIDTHS]
+        assert lo <= min(spread) and max(spread) <= hi, (ax, spread)
+        if ax != "z":
+            assert spread == sorted(spread), (ax, spread)
+    # y vs x on all 40 arm pairs: largest 4.08e-5 (quoted <= 4.1e-5), median 3.4e-6
+    rels = []
+    for p in res["x"]["cells"]:
+        cx, cy = res["x"]["cells"][p], res["y"]["cells"][p]
+        for k in cx["singles"]:
+            rels.append(abs(cx["singles"][k]["meas"]["R_meas"] - cy["singles"][k]["meas"]["R_meas"])
+                        / cx["singles"][k]["meas"]["R_meas"])
+        for bx, by in zip(cx["bands"], cy["bands"]):
+            rels.append(abs(bx["meas"]["R_meas"] - by["meas"]["R_meas"]) / bx["meas"]["R_meas"])
+    assert len(rels) == 40 and 4.0e-5 < max(rels) <= 4.1e-5 and float(np.median(rels)) < 4e-6
+    # T ratio to the four-amplitude bound: 0.8767 z, 0.8779 x/y (quoted 0.878)
+    for ax, want in (("z", 0.8767), ("x", 0.8779), ("y", 0.8779)):
+        ratio = max(b["meas"]["R_meas"] / b["meas"]["bound_sum"] for b in res[ax]["cells"]["T"]["bands"])
+        assert abs(ratio - want) < 5e-5, (ax, ratio)
+    # single-arm bookkeeping: 11 entries per axis, 8 distinct FDTD runs
+    for ax in ("z", "x", "y"):
+        entries = [s["meas"]["run_id"] for c in res[ax]["cells"].values() for s in c["singles"].values()]
+        assert len(entries) == 11 and len(set(entries)) == 8, ax
+    # no arm within 0.30 of its half-window of a W1 edge (closest 0.26, x S n_b = 32)
+    worst = 0.0
+    for ax in ("z", "x", "y"):
+        for c in res[ax]["cells"].values():
+            for rec in _arms(c):
+                worst = max(worst, abs(rec["meas"]["R_meas"] - rec["R_model"]) / rec["meas"]["half"])
+    assert 0.25 < worst <= 0.30, worst
+    # the L1-Z re-run of the S single reproduced L1-0 to the bit in a new process
+    z = res["z"]["cells"]
+    assert z["P1"]["singles"]["L"]["meas"]["fdtd_run_cached"] is False
+    assert z["P1"]["singles"]["L"]["meas"]["R_meas"] == z["S"]["singles"]["L"]["meas"]["R_meas"]
+    # the regenerated W4 block carries its dirty-tree annotation
+    blk = res["z"]["w4_control_recomputed_from_stored"]
+    assert blk["git_dirty_at_refresh"] is True and len(blk["git_sha"]) == 40
+
+
+def test_results_window_scan_replays():
+    scan = _load(_RESULTS / "e5_window_scan.json")
+    assert scan["diagnostic"] == "window_scan" and scan["rfx_file"].endswith("rfx/__init__.py")
+    assert [tuple(a) for a in scan["arms_declared"]] == list(e5.WINDOW_SCAN_ARMS)
+    assert scan["inc_scan_sigmas_after_arrival"] == list(e5.WINDOW_SCAN_INC_SIGMAS)
+    assert len(scan["rows"]) == 5 and scan["all_reruns_bit_identical"] is True
+    res = {ax: _load(_AXIS[ax]) for ax in ("z", "x")}
+    for r in scan["rows"]:
+        stored = _stored_arm(res[r["axis"]], r["pattern"], r["arm"])
+        # precondition: the rerun reproduced the recorded arm (same run ids, same float64)
+        assert r["run_id"] == stored["meas"]["run_id"] and r["b_run_id"] == stored["meas"]["b_run_id"]
+        assert r["R_meas_rerun"] == r["R_meas_stored"] == stored["meas"]["R_meas"]
+        assert r["rerun_bit_identical"] is True and r["rerun_rel_diff"] == 0.0
+        assert _rel_close(r["R_model"], stored["R_model"])
+        # the scan's own arithmetic from its stored pieces
+        assert _rel_close(r["R_meas_rerun"], r["refl_abs"] / r["inc_abs"], 1e-9)
+        assert _rel_close(r["inc_peak_to_peak_rel"], r["inc_ratio_max"] - r["inc_ratio_min"], 1e-9)
+        assert r["inc_ratio_min"] <= r["inc_ratio_4_8_min"] <= r["inc_ratio_4_8_max"] <= r["inc_ratio_max"]
+        assert r["inc_ratio_min"] <= 1.0 <= r["inc_ratio_max"] and r["refl_ratio_min"] <= 1.0 <= r["refl_ratio_max"]
+        assert _rel_close(r["R_range_min"], r["refl_ratio_min"] * r["refl_abs"] / (r["inc_ratio_max"] * r["inc_abs"]), 1e-9)
+        assert _rel_close(r["R_range_max"], r["refl_ratio_max"] * r["refl_abs"] / (r["inc_ratio_min"] * r["inc_abs"]), 1e-9)
+        assert abs(r["R_range_rel_model"][0] - (r["R_range_min"] / r["R_model"] - 1)) <= 1e-12
+        assert abs(r["R_range_rel_model"][1] - (r["R_range_max"] / r["R_model"] - 1)) <= 1e-12
+        assert abs(abs(r["R_nominal_rel_model"]) - stored["meas"]["deviation_rel"]) <= 1e-12
+        # window ends: incident scan is arrival + 4..12 sigma; reflection scan ends at the gate
+        assert r["inc_scan_steps"][0] < r["n_inc_nominal"] < r["inc_scan_steps"][1]
+        assert r["refl_scan_steps"][1] == r["n_gate_nominal"] == stored["n_gate"]
+        # the discrete TE10 cutoff of the grid and the scan's beat agree within one FFT bin
+        assert _rel_close(r["te10_cutoff_grid_hz"], e5.te10_cutoff_hz(r["dt_s"]), 1e-12)
+        assert 4.9e9 < r["te10_cutoff_grid_hz"] < 5.1e9
+        assert abs(r["inc_scan_beat_hz"] - r["te10_cutoff_grid_hz"]) <= r["inc_scan_fft_resolution_hz"]
+    # the summary the note quotes: incident 3.2-3.3 % p-p on every arm, R half-range 2-4.5 %
+    assert all(0.032 <= r["inc_peak_to_peak_rel"] <= 0.033 for r in scan["rows"])
+    half = max(max(abs(r["R_range_rel_model"][0]), abs(r["R_range_rel_model"][1])) for r in scan["rows"])
+    assert abs(half - scan["max_half_range_rel_model"]) <= 1e-12 and 0.04 < half < 0.05
+    assert all(0.019 < max(abs(r["R_range_rel_model"][0]), abs(r["R_range_rel_model"][1])) for r in scan["rows"])
