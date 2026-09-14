@@ -1,4 +1,10 @@
-"""Attribute cv01's straight-guide flux self-check failure under CPML (issue #813).
+"""Measure cv01's straight-guide flux self-check failure under CPML (issue #813).
+
+It measures. It does not attribute: the arms below show the guided channel
+conserves under both boundaries and that cv01's G2 integrates the off-guide
+region too, but WHY that region carries net backward power under CPML is not
+established by anything here, and the pre-declaration's addendum names the
+measurement that would settle it.
 
 Pre-declaration: ``docs/design_notes/cv01_cpml_flux_selfcheck_predeclaration.md``
 (gate, falsifier, control and the prediction, all written before this ran).
@@ -12,7 +18,7 @@ self-calibration arm) only. The bend arm and the Meep leg play no part;
 ``mean_self`` is a self-invariant, so no external solver is needed and none is
 imported.
 
-Five arms, differing in the boundary and in the monitor window and in nothing
+Six arms, differing in the boundary and in the monitor window and in nothing
 else:
 
 ===============  ========  ===========================================
@@ -36,16 +42,27 @@ does not move ``mean_self``, that attribution is refuted.
 Rig fidelity
 ------------
 The rig below is a hand-copy of cv01's Run 1. ``_assert_rig_matches_cv01``
-greps the committed script for every copied line and fails loudly if any has
-changed, so an edit to cv01 reds this driver instead of silently leaving it
-measuring a different waveguide.
+greps the committed script for every copied line -- parameters, geometry,
+material, source, monitors and the two lines that make and gate ``mean_self``
+-- and fails loudly if any has changed, so an edit to cv01 reds this driver
+instead of silently leaving it measuring a different waveguide.
 
-Runtime: CPU, a few minutes for all five arms; cv01 is a ``cpu-runner`` case in
+Provenance
+----------
+``_assert_rfx_is_this_repo`` fails the run unless ``import rfx`` resolved under
+this script's own repo root. Running the file by path puts the *script's*
+directory on ``sys.path``, not the repo root, so without the check ``import
+rfx`` can silently come from another tree while the artifact records this
+tree's commit sha. The ``Usage`` line below pins it explicitly; `pip install
+-e` is not the fix and is deliberately absent from this environment.
+
+Runtime: CPU, a few minutes for all six arms; cv01 is a ``cpu-runner`` case in
 ``validation/crossval/manifest.json`` and needs no GPU.
 
 Usage::
 
-    python scripts/diagnostics/cv01_cpml_flux_selfcheck.py \
+    PYTHONPATH=$(git rev-parse --show-toplevel) \
+        python3 scripts/diagnostics/cv01_cpml_flux_selfcheck.py \
         --output scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck.json
 """
 from __future__ import annotations
@@ -96,6 +113,10 @@ f_cutoff = 1.0 / (2.0 * np.sqrt(eps_wg - 1.0))
 n_steps = 25000
 
 # Every one of these must still be present, verbatim, in the committed cv01.
+# Parameters, geometry, material, source, monitors, and the two lines that turn
+# the flux spectra into ``mean_self`` and gate it. The geometry/material/source
+# block is here because a driver that copied cv01's numbers but not its ``Box``
+# would pass a parameters-only check while solving a different waveguide.
 RIG_LINES = (
     "a = 1.0e-6",
     "eps_wg = 12.0",
@@ -113,6 +134,18 @@ RIG_LINES = (
     "src_x = pml + dx",
     "f_cutoff = 1.0 / (2.0 * np.sqrt(eps_wg - 1.0))",
     "n_steps = 25000",
+    # Geometry, material and source -- the structure itself, not just its numbers.
+    'sim_s = Simulation(freq_max=0.25 * C0 / a, domain=(sx, sy, dx), dx=dx,',
+    "                   boundary=BoundarySpec.uniform(boundary),",
+    '                   cpml_layers=cpml_n, mode="2d_tmz")',
+    'sim_s.add_material("wg", eps_r=eps_wg)',
+    "sim_s.add(Box((0, wg_y - w_wg / 2, 0), (sx, wg_y + w_wg / 2, dx)),",
+    '          material="wg")',
+    "add_line_source(sim_s, src_x, wg_y, w_wg)",
+    "        y = y_center - width / 2 + (i + 0.5) * width / 10",
+    '        sim.add_source(position=(x, y, 0), component="ez",',
+    "                       waveform=GaussianPulse(f0=fcen, bandwidth=fwidth / fcen,",
+    "                                              amplitude=1.0 / 10))",
     'above = (f_meep > f_cutoff + 0.005) & (f_meep < 0.20)',
     'sim_s.add_flux_monitor(axis="x", coordinate=4 * a, freqs=freqs, name="input")',
     'sim_s.add_flux_monitor(axis="x", coordinate=sx - pml - 5 * dx,',
@@ -121,6 +154,40 @@ RIG_LINES = (
     "mean_self = float(np.mean(T_self_smooth[above]))",
     "if 0.95 <= mean_self <= 1.05:",
 )
+
+
+def _assert_rfx_is_this_repo(rfx_module) -> dict:
+    """Fail loudly unless ``import rfx`` resolved inside THIS checkout.
+
+    ``python scripts/diagnostics/<name>.py`` puts the *script's* directory on
+    ``sys.path``, not the repo root, so ``import rfx`` falls through to
+    whatever install the interpreter can see -- an editable install pointing at
+    a different tree, a site-packages wheel, another worktree. The run then
+    records this branch's commit sha in ``provenance.commit`` while the solver
+    that produced the numbers came from somewhere else, and nothing in the
+    artifact says so. That is what happened on this driver's first run, whose
+    ``provenance.rfx_file`` names the primary checkout rather than the branch
+    tree, which is why the check exists.
+    """
+    rfx_file = pathlib.Path(rfx_module.__file__).resolve()
+    try:
+        rfx_file.relative_to(REPO)
+    except ValueError:
+        raise SystemExit(
+            "rfx provenance check FAILED -- `import rfx` resolved to\n"
+            f"    {rfx_file}\n"
+            f"which is NOT under this script's repo root\n    {REPO}\n"
+            "so the numbers this run would record are not this tree's. Re-run "
+            "with the repo root pinned, e.g.\n"
+            f"    PYTHONPATH={REPO} python3 scripts/diagnostics/"
+            f"{pathlib.Path(__file__).name} --output ...\n"
+            "(never `pip install -e`; see the module docstring.)"
+        ) from None
+    return {
+        "rfx_file": str(rfx_file),
+        "under_repo_root": True,
+        "repo_root": str(REPO),
+    }
 
 
 def _assert_rig_matches_cv01() -> dict:
@@ -152,23 +219,27 @@ def run_arm(boundary: str, size, steps: int = n_steps) -> dict:
 
     kw = {} if size is None else {"size": size}
     t0 = time.time()
-    sim = Simulation(freq_max=0.25 * C0 / a, domain=(sx, sy, dx), dx=dx,
-                     boundary=BoundarySpec.uniform(boundary),
-                     cpml_layers=cpml_n, mode="2d_tmz")
-    sim.add_material("wg", eps_r=eps_wg)
-    sim.add(Box((0, wg_y - w_wg / 2, 0), (sx, wg_y + w_wg / 2, dx)),
-            material="wg")
-    add_line_source(sim, src_x, wg_y, w_wg)
-    sim.add_flux_monitor(axis="x", coordinate=4 * a, freqs=freqs,
-                         name="input", **kw)
-    sim.add_flux_monitor(axis="x", coordinate=sx - pml - 5 * dx, freqs=freqs,
-                         name="output", **kw)
 
     # Preflight output is part of the result (repo rule): capture the banner
-    # AND every warnings.warn the build path raises.
+    # AND every warnings.warn raised while the simulation is BUILT. The build
+    # has to be INSIDE `catch_warnings`, not before it -- the first version of
+    # this driver opened the recorder after the last `add_flux_monitor`, so it
+    # recorded `preflight_warnings: []` on all six arms while the build's
+    # DeprecationWarning went to stderr and survived only in `run.log`.
     buf = io.StringIO()
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
+        sim = Simulation(freq_max=0.25 * C0 / a, domain=(sx, sy, dx), dx=dx,
+                         boundary=BoundarySpec.uniform(boundary),
+                         cpml_layers=cpml_n, mode="2d_tmz")
+        sim.add_material("wg", eps_r=eps_wg)
+        sim.add(Box((0, wg_y - w_wg / 2, 0), (sx, wg_y + w_wg / 2, dx)),
+                material="wg")
+        add_line_source(sim, src_x, wg_y, w_wg)
+        sim.add_flux_monitor(axis="x", coordinate=4 * a, freqs=freqs,
+                             name="input", **kw)
+        sim.add_flux_monitor(axis="x", coordinate=sx - pml - 5 * dx, freqs=freqs,
+                             name="output", **kw)
         with redirect_stdout(buf):
             report = sim.preflight(strict=False)
         preflight_warnings = [str(w.message) for w in caught]
@@ -270,6 +341,8 @@ def main() -> int:
     import jax
     import rfx
 
+    provenance_check = _assert_rfx_is_this_repo(rfx)
+
     out = {
         "issue": 813,
         "predeclaration": "docs/design_notes/cv01_cpml_flux_selfcheck_predeclaration.md",
@@ -278,6 +351,7 @@ def main() -> int:
         "n_steps_is_cv01_value": bool(args.n_steps == n_steps),
         "gate": "pass = mean_self in [0.95, 1.05] (cv01 G2, 01:356)",
         "rig_fidelity_check": rig,
+        "rfx_provenance_check": provenance_check,
         "arms_added_after_the_first_run": list(ARMS_ADDED_POST_HOC),
         "committed_upml_reference": {
             "path": "validation/crossval/_01_waveguide_bend_results/crossval.json",

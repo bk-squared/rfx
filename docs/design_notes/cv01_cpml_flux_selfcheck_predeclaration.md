@@ -89,3 +89,94 @@ change the integration plane and nothing else — is.
 No gate, tolerance, window or committed artifact is modified. The committed
 UPML run of 2026-09-06 stays exactly as it is; any new record is appended
 beside it, never over it.
+
+---
+
+## Addendum 2026-09-14 — the next measurement, pre-declared (not run)
+
+Everything above is the pre-declaration for the six-arm run that has now
+happened. Nothing above is edited; this section is appended, and it declares
+the next measurement before it runs, as R2 requires.
+
+What the six arms left open: the guided channel conserves under both
+boundaries (aperture `out/in` 0.98678 cpml, 0.99120 upml), so the 25-point
+`mean_self` deficit is entirely net backward power through the **off-guide**
+part of a full-cross-section plane — 26.04 points at the output plane, negative
+in 88 of 88 gated bins, under CPML only. **Why** that region returns power is
+not established. #813's own candidate (a), a far-x CPML return, is not refuted
+by anything measured so far.
+
+### Arm 1 (first) — `cpml_layers` sweep on the straight guide
+
+This is the discriminator #813 itself named ("sweep CPML layer count and pad
+clearance on the straight-guide arm alone") and the one the six arms did not
+run. It goes first because it varies the absorber directly, where the x-ladder
+varies only where the plane sits.
+
+cv01 pins `cpml_n = 10`, below rfx's own `Simulation(cpml_layers=16)` default —
+and that default is 16 *because* CPML guided-mode reflection was measured here
+(`docs/agent-memory/rfx-known-issues.md`, "CPML guided-mode reflection ~12% at
+default 8-10 layers": 10 layers → 11.7 %, 20 → 4.2 %, 40 → 1.8 %). So the rig
+runs at the layer count that entry says is the worst of the three.
+
+**Arms**: `cpml_full` at `cpml_layers` = 10 / 16 / 20 / 40. Four runs, CPU,
+~2.5 min total at cv01's `n_steps = 25000`.
+
+**Vary one thing.** cv01 writes `pml = cpml_n * dx` and then places the source
+at `src_x = pml + dx` and the output plane at `sx - pml - 5*dx`. Letting `pml`
+track the swept layer count would move the source and both monitors as well as
+the absorber, confounding absorber thickness with plane position — that is the
+naive sweep and it is **not** the measurement. The arm holds `src_x` and both
+monitor coordinates at cv01's values (`src_x = 1.1 µm`, input plane 4.0 µm,
+output plane 14.5 µm) and varies **only** `Simulation(cpml_layers=…)`.
+
+**Anti-confound witness, recorded per arm**: rfx pads the grid by
+`cpml_layers` on each face outside the declared 16 µm domain, so the interior
+must stay at 161 cells per axis while `grid.shape` goes 181 → 193 → 201 → 241
+and `grid.pad_*` follows the swept value; and preflight's realized monitor
+coordinate must read 1.45e-05 m on every arm (the `normal_index` shifts with
+the pad, the physical plane does not move). An arm that fails either check is
+not readable and is reported as such rather than averaged in.
+
+**Observable**: the outside-aperture band-summed backward power fraction at the
+output plane — today −26.04 % at 10 layers — reported alongside `mean_self`.
+
+**Gate (the absorber is the source of the backward power)**: the fraction is
+monotone non-increasing across 10 → 16 → 20 → 40 **and** its magnitude at 40
+layers is ≤ 1/3 of its magnitude at 10 layers. Equivalently, `mean_self` at 40
+layers must have closed ≥ 2/3 of the gap from today's 0.748852 to the
+`upml_full` control 0.989162 — i.e. ≥ 0.9092.
+
+**Falsifier**: the fraction is flat within 3 points across all four layer
+counts and `mean_self` stays within 0.03 of 0.748852. That refutes "the CPML
+backplane returns the off-guide power" — #813's candidate (a) — and leaves the
+corner regions and a domain-wide standing pattern as the live candidates.
+
+**Neither** (non-monotone, or a shrink smaller than 3× but larger than 3
+points) is **not a verdict**. It is reported as a non-closing attempt, and R2
+forbids a fifth layer count without a new pre-declaration naming a new
+mechanism or an identified defect in this one.
+
+### Arm 2 (second) — output-plane x-ladder
+
+`cpml_full`, full plane, same rig, output plane at x = 12.0 / 13.0 / 14.0 /
+14.5 µm. **Gate**: the outside-aperture backward fraction growing monotonically
+toward the boundary is boundary return. **Falsifier**: flat within 3 points
+across the ladder ⇒ a domain-wide pattern, boundary exonerated. Four arms,
+~2.5 min CPU.
+
+This was the previously announced "next measurement". It is demoted to second
+because a flat ladder is consistent with both a domain-wide pattern *and* a
+return that has already decayed to a plateau by 12 µm, while the layer sweep
+changes the absorber itself.
+
+### Arm 3 (independent route) — domain grown in x
+
+Re-run `cpml_full` with `sx` grown in x only. A boundary-return artefact moves
+with the boundary; a physical pattern does not. Independent of arms 1 and 2 in
+that it shares neither the swept quantity nor the plane position.
+
+### Still not in scope
+
+No gate, tolerance, window or committed crossval artifact is modified by any of
+these arms, and none of them is run in this PR.
