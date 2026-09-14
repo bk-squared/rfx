@@ -31,6 +31,31 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   anything" becomes `len(report)`; one that meant "is this safe to run"
   becomes `report.ok` or `report.raise_for_failure()`.
 
+### Added — `sim.compute_s_matrix(...)`, one entry point over the S-parameter lanes (#980)
+
+- `Simulation.compute_s_matrix(**kwargs)` reads the registered ports, selects
+  exactly one of the per-family calculators, and forwards every keyword
+  argument to it unchanged, so the delegate's defaults, preconditions,
+  warnings and result type are identical to calling it directly. Four lanes
+  (waveguide, MSL, coaxial two-port, coax↔MSL) are gated bit-identical against
+  the direct call, `np.array_equal` with no tolerance.
+  `Simulation.s_matrix_lane()` returns the same choice as a string and runs no
+  FDTD, so routing is checkable on a half-built simulation. Both are new
+  surface; nothing existing changed behaviour.
+- It refuses rather than guesses in three places. A single `add_coaxial_port()`
+  is ambiguous — `compute_coaxial_line_reflection` and
+  `compute_coaxial_two_port` have identical registration footprints, since the
+  two-port method mirrors that one port into a through-line internally rather
+  than consuming a second registration — so pass
+  `lane="compute_coaxial_two_port"` to choose. Lumped/wire-only raises and
+  names `run(compute_s_params=True)` instead of calling `run()`, whose return
+  type differs and whose `n_steps` has no default to supply. And the
+  deprecated `compute_coaxial_s_matrix` is never selected, by the dispatcher
+  or by `lane=`.
+- Preflight behaviour is inherited from the chosen lane and is not uniform:
+  the MSL and mixed lanes run preflight automatically, the waveguide and
+  coaxial lanes do not. Routing through `compute_s_matrix` adds none.
+
 ### Fixed — the TF/SF auxiliary grid's own absorber reflected 4–6 % (#888)
 
 - Both auxiliary grids now build their absorber through the same
