@@ -57,6 +57,16 @@ from rfx.geometry.csg import Box
 # ``tests/locks/test_preflight_split_snapshot.py`` pins it by set equality in
 # both directions. 13 names move and 13 names come back, so the module
 # namespace that lock pins is exactly as wide after this leg as before it.
+#
+# Leg 2 added a 14th, ``_sorted_box_corners``. It is a pure leaf with THREE
+# readers that this split separates: ``_validate_cfg_sheet_cavity_thickness``
+# (leaving with leg 2) and the two module-level ones below,
+# ``_shape_bounds`` and ``_CampaignStaticsContext``, which stay here until
+# the realization leg. A leg module may not import from this facade -- that
+# is the cycle the import contract forbids -- so the leaf had to move
+# somewhere both sides can reach, and ``_common`` is the module that exists
+# for exactly that. Put in ``pec_geometry`` instead it would have made the
+# realization leg import from a port-family peer for a nine-line helper.
 # ---------------------------------------------------------------------------
 from rfx.preflight._common import (
     _fmt_len,
@@ -67,6 +77,7 @@ from rfx.preflight._common import (
     _coord_in_absorber,
     _ABSORBER_PROXIMITY_CELLS,
     _coord_near_absorber,
+    _sorted_box_corners,
     PreflightWarning,
     PreflightErrorWarning,
     PreflightConfigError,
@@ -112,6 +123,39 @@ from rfx.preflight.msl import (
 )
 
 
+# ---------------------------------------------------------------------------
+# #980 Phase 3 re-export surface (leg 2).
+#
+# The five issue-#703 gate constants and the banner that derives them moved
+# verbatim to ``rfx.preflight.pec_geometry``. They are re-bound as module
+# globals of THIS module for the reasons the leg-0 block above lists -- the
+# namespace is pinned by set equality, and 17 files import names from here.
+#
+# What the re-export does NOT do, and must not be mistaken for: it is not the
+# patch point. ``tests/unit/preflight/test_preflight_rasterization.py`` proves
+# three of these gates load-bearing by mutating them in both directions, and
+# their readers are the check bodies, which resolve them in
+# ``rfx.preflight.pec_geometry``'s globals. A patch aimed here would rebind a
+# name no reader consults and BOTH arms of each such test would pass on an
+# unmutated gate -- the failure this split has to avoid quietly. Those four
+# tests were repointed at the leg module in the same commit that moved the
+# bodies; falsification of the repoint is recorded there.
+#
+# Leg 2 takes 6 module-level names out of this file: these 5 and
+# ``_sorted_box_corners``, which comes back through the ``_common`` block
+# above rather than this one. 6 out, 6 back, so the module namespace
+# ``tests/locks/test_preflight_split_snapshot.py`` pins by set equality is
+# exactly as wide after this leg as before it -- still 55.
+# ---------------------------------------------------------------------------
+from rfx.preflight.pec_geometry import (
+    _CONGRUENCE_EXTENT_QUANTUM_M,
+    _CONGRUENCE_SPREAD_TOL_EDGES,
+    _CAVITY_THICKNESS_TOL,
+    _OFF_LATTICE_EDGE_TOL,
+    _CAMPAIGN_MAX_OFFENDERS,
+)
+
+
 def _waveguide_skipped_note(skipped: list) -> str:
     """The trailing sentence naming ports whose launch direction was unreadable.
 
@@ -141,59 +185,6 @@ def resolve_waveguide_port_freqs(sim, entry):
     if entry.freqs is not None:
         return entry.freqs
     return jnp.linspace(sim._freq_max / 10, sim._freq_max, entry.n_freqs)
-
-
-# --------------------------------------------------------------------------
-# Issue #703: campaign statics checks — tunables + shared lazy context.
-#
-# Four failure classes a month-long external cross-validation hit, all
-# statically detectable before the first time step (issue #703; message
-# design per docs/design_notes/preflight_lessons_from_a_long_crossval.md:
-# every finding carries OBSERVED / WHY / COST / REMEDY / STALE-IF plus a
-# COVERAGE clause, and each check aggregates into ONE message per run —
-# the #697 failure mode was 84 advisories with 93% duplication).
-#
-# The gate values are module-level on purpose: the falsification tests
-# monkeypatch them in BOTH directions (loosen -> firing fixture goes
-# silent; tighten -> silent fixture fires) to prove each gate is
-# load-bearing (tests/unit/preflight/test_preflight_rasterization*.py).
-# --------------------------------------------------------------------------
-
-# Check 1 — congruence key quantum (extents equal within 1e-9 m) and the
-# tolerated realized-EDGE-count spread inside one congruence group. Under
-# the lattice ownership contract (#931) every conductor is realized as a
-# set of PEC E edges by one function (rfx.boundaries.pec
-# .realized_pec_edge_masks); two congruent members that land at different
-# sub-cell offsets realize different edge sets, and the edge count is the
-# quantity that decides whether the lattice kept the design's symmetry.
-# The tolerance is one edge: a symmetric pair realizes IDENTICAL counts,
-# so any spread at all is an asymmetry, and one edge is the smallest
-# spread a rounding tie on a single face can produce.
-_CONGRUENCE_EXTENT_QUANTUM_M = 1e-9
-_CONGRUENCE_SPREAD_TOL_EDGES = 1
-# Check 3 — advisory threshold on either electrical-thickness measure of a
-# cavity between two adjacent realized wall planes (sheet planes and the
-# faces of volumes alike). Mesh sums run over the cells strictly between
-# the two planes; the physical stack runs between the DECLARED faces, so
-# the difference is exactly the plane snap (declared face vs realized
-# node plane) plus any vacuum the declaration left at a sheet plane
-# (``sheet_slot_vacuum`` names that separately).
-_CAVITY_THICKNESS_TOL = 0.01
-# Check 4 — off-lattice face residual as a fraction of the axis extent.
-_OFF_LATTICE_EDGE_TOL = 5e-3
-# Shared cap on named offenders per aggregated message.
-_CAMPAIGN_MAX_OFFENDERS = 5
-
-
-def _sorted_box_corners(shape):
-    """``(lo, hi)`` float64 arrays for a Box-like shape, else ``(None, None)``."""
-    lo = getattr(shape, "corner_lo", None)
-    hi = getattr(shape, "corner_hi", None)
-    if lo is None or hi is None:
-        return None, None
-    lo = np.asarray(lo, dtype=np.float64)
-    hi = np.asarray(hi, dtype=np.float64)
-    return np.minimum(lo, hi), np.maximum(lo, hi)
 
 
 def _shape_bounds(shape):

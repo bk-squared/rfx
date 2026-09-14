@@ -314,6 +314,24 @@ _REEXPORTED_FROM_COMMON = (
     "_absorber_boundary_for_axis", "_axis_pad_thickness_m",
     "_coord_in_absorber", "_coord_near_absorber", "_fmt_freq", "_fmt_len",
     "_fmt_signed",
+    # Leg 2. A shared leaf whose readers straddle two legs: the cavity check
+    # left with pec_geometry, _shape_bounds and _CampaignStaticsContext stay
+    # in the facade until the realization leg. It lives in _common so neither
+    # side has to import from the other.
+    "_sorted_box_corners",
+)
+
+#: Names #980 Phase 3 leg 2 moved to ``rfx.preflight.pec_geometry``. Three of
+#: the five -- ``_CONGRUENCE_SPREAD_TOL_EDGES``, ``_CAVITY_THICKNESS_TOL`` and
+#: ``_OFF_LATTICE_EDGE_TOL`` -- are mutated in both directions by
+#: ``tests/unit/preflight/test_preflight_rasterization.py`` to prove each gate
+#: load-bearing. That patch must be aimed at the LEG module, where the readers
+#: resolve them; the re-export below exists for the namespace surface, not as
+#: a patch point.
+_REEXPORTED_FROM_PEC_GEOMETRY = (
+    "_CAMPAIGN_MAX_OFFENDERS", "_CAVITY_THICKNESS_TOL",
+    "_CONGRUENCE_EXTENT_QUANTUM_M", "_CONGRUENCE_SPREAD_TOL_EDGES",
+    "_OFF_LATTICE_EDGE_TOL",
 )
 
 #: Names #980 Phase 3 leg 1 moved to ``rfx.preflight.msl``. Two of them --
@@ -337,6 +355,7 @@ _REEXPORTED_FROM_MSL = (
 _REEXPORT_BLOCKS = {
     "rfx.preflight._common": _REEXPORTED_FROM_COMMON,
     "rfx.preflight.msl": _REEXPORTED_FROM_MSL,
+    "rfx.preflight.pec_geometry": _REEXPORTED_FROM_PEC_GEOMETRY,
 }
 
 def test_reexported_preflight_names_are_the_same_objects():

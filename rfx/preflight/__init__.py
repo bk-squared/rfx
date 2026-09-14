@@ -25,6 +25,11 @@ Modules:
   :func:`~rfx.preflight.msl.msl_probe_clearance_for_port`,
   :func:`~rfx.preflight.msl.msl_absorber_compliant_offset_max`), their
   constants, and the five ``_PreflightMixin`` MSL check bodies.
+* :mod:`rfx.preflight.pec_geometry` — the conductor-realization family: the
+  five issue-#703 gate constants and the ten ``_PreflightMixin`` check
+  bodies that read them (the #703 campaign-statics umbrella and its four
+  checks, the #931 per-declaration realization findings, the #669
+  Leontovich advisories and the conformal-fine-dx guard).
 
 ``_PreflightMixin`` itself STAYS in ``rfx/api/_preflight.py``: its
 ``_validate_simulation_config`` body is an ordered sequence of 38 calls and

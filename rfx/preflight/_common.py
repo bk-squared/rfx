@@ -15,6 +15,15 @@ unit-adaptive ``_fmt_*`` leaves, and the absorber membership/proximity leaves
 is NOT: ``_PreflightMixin``, the PEC realization block, the MSL module block
 and the waveguide leaves — later legs.
 
+Leg 2 added one more leaf, ``_sorted_box_corners``, at the relative position
+it held in the pre-split file. It came here rather than to
+``rfx/preflight/pec_geometry.py`` because its three readers straddle two legs:
+``_validate_cfg_sheet_cavity_thickness`` left with leg 2, while
+``_shape_bounds`` and ``_CampaignStaticsContext`` stay in the facade until the
+realization leg. A leg module may not import from the facade (the cycle the
+import contract forbids), so a shared leaf has to live where both sides can
+reach it — which is what this module is for.
+
 ``rfx.api._preflight`` re-exports every name below explicitly, so
 ``from rfx.api._preflight import <name>`` — which 17 files do, including
 ``rfx/sparams/_common.py`` for ``PreflightWarning`` — keeps working, and so do
@@ -207,6 +216,17 @@ def _coord_near_absorber(
     near_lo = lo_b is not None and lo_b <= coord < lo_b + margin
     near_hi = hi_b is not None and hi_b - margin < coord <= hi_b
     return near_lo or near_hi
+
+
+def _sorted_box_corners(shape):
+    """``(lo, hi)`` float64 arrays for a Box-like shape, else ``(None, None)``."""
+    lo = getattr(shape, "corner_lo", None)
+    hi = getattr(shape, "corner_hi", None)
+    if lo is None or hi is None:
+        return None, None
+    lo = np.asarray(lo, dtype=np.float64)
+    hi = np.asarray(hi, dtype=np.float64)
+    return np.minimum(lo, hi), np.maximum(lo, hi)
 
 
 class PreflightWarning(UserWarning):
