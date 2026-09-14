@@ -54,6 +54,18 @@ _GL2_EXPECTED = {
     "tm_60": (False, True),
 }
 
+# #1015 / standard section 13: GL1's validity domain on R, as MEASURED --
+# (bins in the domain, breaches inside it, breaches outside it).  A record of the
+# outcome, not a claim that the domain closes GL1: te_30's 18 breaches lie
+# ENTIRELY inside its own domain, which is why the domain is stated as a
+# necessary condition and GL1 stayed ungated here.  Of this case's 1291 R+T
+# breaches, 1156 (89.5 %) fall outside the domain and 135 inside.
+_DOMAIN_EXPECTED = {
+    "te_00": (290, 0, 0), "te_30": (441, 18, 0), "te_45": (341, 16, 59),
+    "te_60": (214, 8, 90), "tm_00": (290, 0, 0), "tm_45": (211, 13, 177),
+    "tm_60": (42, 14, 343),
+}
+
 
 def _artifact(name: str) -> dict:
     p = _RESULTS / name
@@ -158,6 +170,24 @@ def test_baseline_replays_and_passes_on_every_arm():
         # the window is built from witnesses, never from the residual it bounds
         assert lat["witness_rate_source"] == "derived", (arm, lat["witness_rate_source"])
         assert lat["GL1_gated"] is False and lat["GL1_not_gated_reason"]
+        # #1015: GL1's validity domain (standard section 13).  This rig admits its
+        # absorber echo INSIDE the record by AMPLITUDE, so the standard's section-3
+        # "zero by construction" does not hold here and the window is only a valid
+        # bound where the omitted term sits inside it.  The domain is REPORTED --
+        # GL1 stays ungated -- and the breach split is pinned per arm so a change
+        # that moved the coverage shows up here.  The domain is necessary, not
+        # sufficient: every arm below with a partial domain still has in-domain
+        # breaches, which is exactly why GL1 did not become a gate.
+        for obs, beyond in (("R", lat["GL1_R_bins_beyond"]), ("T", lat["GL1_T_bins_beyond"])):
+            dom = lat[f"domain_{obs}"]
+            assert dom["n_bins_gated"] == e2["n_bins_gated"], (arm, obs, dom)
+            assert (dom["n_bins_beyond_in_domain"]
+                    + dom["n_bins_beyond_outside_domain"]) == beyond, (arm, obs, dom)
+            assert 0.0 <= dom["domain_fraction"] <= 1.0, (arm, obs, dom)
+        assert _DOMAIN_EXPECTED[arm] == (
+            lat["domain_R"]["n_bins_in_domain"],
+            lat["domain_R"]["n_bins_beyond_in_domain"],
+            lat["domain_R"]["n_bins_beyond_outside_domain"]), (arm, lat["domain_R"])
         # the budget must use the ARM's source, not the slab family's constant
         assert lat["tau_src_s"] == pytest.approx(run["record"]["src_tau_s"], rel=1e-12), arm
         assert lat["tau_src_s"] != pytest.approx(_LW.TAU_SRC_S, rel=1e-9), (

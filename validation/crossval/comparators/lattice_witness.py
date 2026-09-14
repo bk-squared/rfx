@@ -86,6 +86,17 @@ WHAT MAKES IT NOT-TUNED. Two statements, both checkable:
   * ``ceiling_windows`` computes the same window with the DECLARED BARS in
     place of the measured levels. That number is available before any run and
     bounds every passing run's window from above.
+
+WHERE GL1 IS DEFINED (#1015, note section 13, added 2026-09-14). Terms (3) and
+(4) above are declared zero BY CONSTRUCTION, and the per-bin gate rests on
+that: the window bounds three things and the other three are asserted away. A
+rig that admits its absorber echo INSIDE the record by AMPLITUDE rather than by
+arrival -- cv26's oblique arms -- has no such assertion to stand on, and the
+size of what the budget then omits is its reference's own dependence on the
+absorber. ``witness_domain`` is that precondition, per bin; ``evaluate`` takes
+the term through ``unmodelled_term`` and defaults it to ZERO BY CONSTRUCTION,
+which is the slab family's case and leaves every number here unchanged. No
+window was widened for #1015 and no gate value moved.
 """
 
 from __future__ import annotations
@@ -246,6 +257,85 @@ def windows_from_terms(R_lat, T_lat, terms: dict):
     return wR, wT, wR + wT
 
 
+def witness_domain(W, unmodelled_term=None):
+    """The per-bin domain on which ``W_witness`` is a valid bound (#1015).
+
+    ``W_witness`` bounds the distance between the measurement and the lattice
+    reference using record truncation, incident-reference truncation and
+    float32 ONLY. Section 3 of the standard gets away with that because its
+    other three terms are declared ZERO BY CONSTRUCTION: the rig's own absorber
+    echo and the auxiliary grid's are both put outside the record by ARRIVAL
+    (``precond_cpml_gate``, ``precond_aux_echo_record``), and the family's
+    reference -- the infinite lattice of ``dispersive_eps`` -- contains no
+    absorber to be wrong about.
+
+    A rig that admits an echo INSIDE its record by AMPLITUDE instead (cv26's
+    oblique arms do: ``e_absorber`` / ``absorber_ok`` replaced the arrival cap)
+    breaks that construction. Its reference then carries an absorber of its
+    own, and the size of what the budget does not model is the reference's own
+    dependence on it,
+
+        U(f) = | X_ref(f; the realized absorbers) - X_ref(f; outgoing-wave
+                 termination) |,       X in {R, T}
+
+    which such a case measures for its own reasons. Where ``U(f) > W(f)`` the
+    window omits a term larger than itself, and a per-bin verdict there
+    measures the standard's own envelope rather than the solver. GL1 is defined
+    on the bins where ``U(f) <= W(f)`` and NOT on the others.
+
+    The default ``unmodelled_term=None`` means ZERO BY CONSTRUCTION -- the slab
+    family's case, where the domain is every gated bin and nothing changes.
+    This is the family default and is not a convenience: cv04, cv22 and cv23
+    assert the two preconditions above at every committed rung, and their
+    reference has no absorber in it.
+
+    **The predicate is NECESSARY, not sufficient.** It says where the bound is
+    not valid; it does not promise GL1 holds where it is. On cv26, 1156 of
+    1291 breaches (89.5 %) sit outside the domain and 135 sit inside it
+    (revision section 13 of the note).
+    """
+    w = np.asarray(W, dtype=float)
+    if unmodelled_term is None:
+        return np.ones(w.shape, dtype=bool)
+    u = np.asarray(unmodelled_term, dtype=float)
+    if np.any(~np.isfinite(u)):
+        raise ValueError("the unmodelled term has a non-finite bin; the domain would be undefined there")
+    if np.any(u < 0.0):
+        raise ValueError("the unmodelled term is a magnitude; a negative bin is a sign error")
+    return np.broadcast_to(u, w.shape) <= w
+
+
+def domain_report(W, resid, unmodelled_term=None, gated=None) -> dict:
+    """Per-bin GL1 bookkeeping split by ``witness_domain``: how much of the
+    gated band the window is valid on, and where the breaches fall.
+
+    ``resid`` is ``|measured - lattice|`` per bin. Returns only counts and
+    ratios -- it never decides a gate; ``evaluate`` does that.
+    """
+    w = np.asarray(W, dtype=float)
+    r = np.asarray(resid, dtype=float)
+    g = np.ones(w.shape, dtype=bool) if gated is None else np.asarray(gated, dtype=bool)
+    dom = witness_domain(w, unmodelled_term) & g
+    out_dom = (~witness_domain(w, unmodelled_term)) & g
+    beyond = r > w
+    n_in = int(dom.sum())
+    worst_in = float(np.max(r[dom] / w[dom])) if n_in else float("nan")
+    rep = {
+        "n_bins_gated": int(g.sum()),
+        "n_bins_in_domain": n_in,
+        "domain_fraction": (float(n_in) / float(g.sum())) if g.any() else float("nan"),
+        "n_bins_beyond_in_domain": int((beyond & dom).sum()),
+        "n_bins_beyond_outside_domain": int((beyond & out_dom).sum()),
+        "worst_ratio_in_domain": worst_in,
+    }
+    if unmodelled_term is not None:
+        u = np.broadcast_to(np.asarray(unmodelled_term, dtype=float), w.shape)
+        rep["max_unmodelled_over_window_gated"] = float(np.max(u[g] / w[g])) if g.any() else float("nan")
+        rep["mean_unmodelled_over_mean_window_gated"] = (
+            float(np.mean(u[g]) / np.mean(w[g])) if g.any() else float("nan"))
+    return rep
+
+
 def ceiling_windows(freqs_hz, inc_amp_rel, R_lat, T_lat, *, dt: float, n_steps: int,
                     rate_1_s: float, tau_s: float | None = None):
     """The same window computed with the DECLARED BARS (settling 1e-2 on both
@@ -298,7 +388,8 @@ def aux_echo_witness(arm_doc: dict) -> dict:
 
 
 def evaluate(arm_doc: dict, *, model: str | None = None, params: dict | None = None,
-             d_slab_m: float = G.D_SLAB_M, tag: str | None = None) -> dict:
+             d_slab_m: float = G.D_SLAB_M, tag: str | None = None,
+             unmodelled_term: dict | None = None) -> dict:
     """The lattice-witness gate for one arm at one dx rung.
 
     ``arm_doc`` is the per-arm block of a cv22 / cv23 ``rfx*.json`` (or the
@@ -308,7 +399,20 @@ def evaluate(arm_doc: dict, *, model: str | None = None, params: dict | None = N
 
     Returns the same gate-record shape the other cv gates use: per-bin arrays,
     gated scalars, and a ``gates`` dict whose values are all booleans.
+
+    ``unmodelled_term`` is the #1015 validity domain, and its DEFAULT is the
+    slab family's: ``None`` means the term is ZERO BY CONSTRUCTION, GL1 is
+    defined on every gated bin, and this function's output is exactly what it
+    was before the domain existed -- same keys, same values. Pass
+    ``{"R": array, "T": array, "A": array}`` (any subset; a missing observable
+    is zero by construction) only for a rig that carries an absorber echo
+    INSIDE its record and measures it; then GL1 is judged on
+    ``witness_domain`` and the split is reported per observable under
+    ``domain``. See ``witness_domain``.
     """
+    if unmodelled_term is not None and not isinstance(unmodelled_term, dict):
+        raise TypeError("unmodelled_term is a mapping of observable ('R'/'T'/'A') to a per-bin "
+                        "magnitude; the observables have different windows and cannot share one array")
     model = model or arm_doc["model"]
     params = params if params is not None else arm_doc["params"]
     f = np.asarray(arm_doc["freqs_hz"], dtype=float)
@@ -343,6 +447,14 @@ def evaluate(arm_doc: dict, *, model: str | None = None, params: dict | None = N
     tail_ok = bool(tail.get("ok", False))
     echo = aux_echo_witness(arm_doc)
 
+    # #1015: the bins on which W_witness is a valid bound. With the family
+    # default (unmodelled_term=None) this is every gated bin, dom_* is g, and
+    # every number below is what it was before the domain existed.
+    u = unmodelled_term or {}
+    dom_R = witness_domain(wR, u.get("R")) & g
+    dom_T = witness_domain(wT, u.get("T")) & g
+    dom_A = witness_domain(wA, u.get("A")) & g
+
     gates = {
         "precond_cpml_gate": cpml_gate_ok,
         "precond_tail_witness": tail_ok,
@@ -350,9 +462,9 @@ def evaluate(arm_doc: dict, *, model: str | None = None, params: dict | None = N
         # record ends. Same shape as precond_cpml_gate, for the absorber the
         # record law never named.
         "precond_aux_echo_record": bool(echo["ok"]),
-        "GL1_R": bool(np.all(dR[g] <= wR[g])),
-        "GL1_T": bool(np.all(dT[g] <= wT[g])),
-        "GL1_A": bool(np.all(dA[g] <= wA[g])),
+        "GL1_R": bool(np.all(dR[dom_R] <= wR[dom_R])),
+        "GL1_T": bool(np.all(dT[dom_T] <= wT[dom_T])),
+        "GL1_A": bool(np.all(dA[dom_A] <= wA[dom_A])),
         "GL2_R": bool(np.mean(dR[g]) <= np.mean(wR[g])),
         "GL2_T": bool(np.mean(dT[g]) <= np.mean(wT[g])),
         "GL2_A": bool(np.mean(dA[g]) <= np.mean(wA[g])),
@@ -406,6 +518,18 @@ def evaluate(arm_doc: dict, *, model: str | None = None, params: dict | None = N
         "n_bins_A_over_window": int(np.sum(dA[g] > wA[g])),
         "gates": gates,
     }
+    # #1015. Emitted ONLY when the case supplies a term, so a family artifact
+    # built with the default is byte-identical to the ones already committed.
+    if unmodelled_term is not None:
+        out["domain"] = {
+            "R": domain_report(wR, dR, u.get("R"), gated=g),
+            "T": domain_report(wT, dT, u.get("T"), gated=g),
+            "A": domain_report(wA, dA, u.get("A"), gated=g),
+            "note": ("GL1 is judged on the bins where the term the section-3 budget does not "
+                     "model sits inside the window that omits it (#1015, note section 13). "
+                     "The predicate is necessary, not sufficient: it says where the bound is "
+                     "not valid, not that GL1 holds where it is."),
+        }
     out["witness_ok"] = bool(all(gates.values()))
     return out
 

@@ -106,9 +106,13 @@ def replay_one(doc: dict, arm: str) -> dict:
         "GL1_gated": lat["GL1_gated"], "GL1_not_gated_reason": lat["GL1_not_gated_reason"],
         # the term the budget does NOT model, carried beside it so the gap is visible
         "absorber_term_R_gated_max": lat["absorber_term_R_gated_max"],
+        "absorber_term_T_gated_max": lat["absorber_term_T_gated_max"],
         "aux_echo_term_R_gated_max": lat["aux_echo_term_R_gated_max"],
         "absorber_term_over_window_R": (lat["absorber_term_R_gated_max"]
                                         / lat["mean_W_witness_R_gated"]),
+        # #1015: where the window is a valid bound at all, and how the breaches
+        # split across that line. Per bin, from the standard's own primitive.
+        "domain_R": lat["domain_R"], "domain_T": lat["domain_T"],
     })
     return out
 
@@ -126,6 +130,10 @@ def build() -> dict:
         entries[key] = e
     judged = {k: v for k, v in entries.items() if v.get("W_witness_defined")}
     gl2_fail = sorted(k for k, v in judged.items() if not (v["GL2_R"] and v["GL2_T"]))
+    brch_in = sum(v[k]["n_bins_beyond_in_domain"] for v in judged.values()
+                  for k in ("domain_R", "domain_T"))
+    brch_out = sum(v[k]["n_bins_beyond_outside_domain"] for v in judged.values()
+                   for k in ("domain_R", "domain_T"))
     return {
         "schema": SCHEMA, "case_id": O.CASE_ID,
         "kind": "replay",
@@ -147,11 +155,21 @@ def build() -> dict:
         "replay_commit": _commit(),
         "date_utc": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
         "arms": entries,
+        "gl1_domain_note": (
+            "#1015. GL1's validity domain (standard section 13) is the bins where the term the "
+            "section-3 budget does not model -- the reference's own dependence on the absorbers "
+            "this rig carries INSIDE its record -- sits inside the window that omits it. The slab "
+            "family declares that term zero by ARRIVAL and is unaffected; cv26 admits its echo by "
+            "AMPLITUDE and so must report coverage. The predicate is necessary, not sufficient: "
+            "it says where the bound is invalid, not that GL1 holds where it is valid. GL1 stays "
+            "REPORTED and not gated here; GL2 is the gate. No window was widened for #1015."),
         "verdict": {
             "n_arms_with_defined_window": len(judged),
             "gl2_failing_arms": gl2_fail,
             "gl2_all_pass": not gl2_fail,
             "gl1_gated": False,
+            "gl1_breaches_in_domain": brch_in,
+            "gl1_breaches_outside_domain": brch_out,
         },
     }
 
@@ -170,8 +188,14 @@ def main(argv=None) -> int:
             continue
         print(f"  {k:18s} W_R {v['mean_W_witness_R_gated']:.4e} vs |dR| {v['mean_dR_lattice_gated']:.4e} "
               f"GL2_R {str(v['GL2_R']):5s} GL1_R {v['GL1_R_bins_beyond']:4d}  "
-              f"absorber/W {v['absorber_term_over_window_R']:6.2f}x")
+              f"absorber/W {v['absorber_term_over_window_R']:6.2f}x  "
+              f"domain {100 * v['domain_R']['domain_fraction']:5.1f}% "
+              f"(breaches in/out {v['domain_R']['n_bins_beyond_in_domain']:3d}/"
+              f"{v['domain_R']['n_bins_beyond_outside_domain']:3d})")
     print(f"\n  GL2 failing arms: {doc['verdict']['gl2_failing_arms'] or 'none'}")
+    print(f"  GL1 breaches (R+T) inside the validity domain "
+          f"{doc['verdict']['gl1_breaches_in_domain']}, outside "
+          f"{doc['verdict']['gl1_breaches_outside_domain']}")
     return 0
 
 

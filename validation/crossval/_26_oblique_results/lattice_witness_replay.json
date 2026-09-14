@@ -6,8 +6,8 @@
  "standard": "docs/design_notes/20260903_lattice_witness_standard.md",
  "standard_section": "3 (the window), 4 (GL1 per bin, GL2 band mean)",
  "source_tau_note": "Each arm's budget uses THAT ARM's src_tau_s, not the slab family's TAU_SRC_S. cv26 drives a bandwidth per arm, so its tau is 2.0x to 135x the family constant, and LAMBDA = sqrt(pi) tau / dt divides every budget term.",
- "replay_commit": "a29032b0e91188d83579b9b48cc1ad687a4400b3",
- "date_utc": "2026-09-14T14:47:05+00:00",
+ "replay_commit": "f6e3772611e874249510203ab90ac39cc32502e8",
+ "date_utc": "2026-09-14T16:21:40+00:00",
  "arms": {
   "te_00": {
    "arm": "te_00",
@@ -39,10 +39,31 @@
    "GL1_R_bins_beyond": 0,
    "GL1_T_bins_beyond": 0,
    "GL1_gated": false,
-   "GL1_not_gated_reason": "per-bin bound not established on this rig. The standard's section 3 window is first order in the scattered-amplitude error, and its budget covers record truncation, incident-reference truncation and float32 only -- NOT the absorber / auxiliary-echo term an oblique rig carries inside its record and measures separately. Five of the seven primary arms breach it, and the two that do not (te_00, tm_00) are exactly the two whose absorber term sits far inside their window (0.07x, 0.04x). The exact second-order term does not close it (58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches at R_lattice 0.318-0.448, three orders above any null. Reported with its breach count; GL2 is the gate. Issue #1015.",
+   "GL1_not_gated_reason": "per-bin bound not established on this rig. The standard's section 3 window bounds record truncation, incident-reference truncation and float32, and declares the absorber echo ZERO BY CONSTRUCTION by putting it outside the record by ARRIVAL. This rig admits it inside the record by AMPLITUDE instead (e_absorber / absorber_ok), so that construction does not hold here and the reference carries an absorber of its own. Note section 13 (#1015) defines GL1's validity domain as the bins where that unmodelled term sits inside the window that omits it; 'domain_R' / 'domain_T' report the coverage and the in-domain / out-of-domain split of the breaches. The domain is NECESSARY, not sufficient -- 89.5 % of this case's breaches fall outside it and the rest do not -- so GL1 stays REPORTED here and GL2 is the gate (PI decision 2026-09-14, close note section 10.4). The exact second-order term was tried and does not close it (58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches at R_lattice 0.318-0.448.",
    "absorber_term_R_gated_max": 0.0003718773117860341,
+   "absorber_term_T_gated_max": 0.0010227038307020209,
    "aux_echo_term_R_gated_max": 6.469638159450897e-06,
    "absorber_term_over_window_R": 0.06893783178629415,
+   "domain_R": {
+    "n_bins_gated": 290,
+    "n_bins_in_domain": 290,
+    "domain_fraction": 1.0,
+    "n_bins_beyond_in_domain": 0,
+    "n_bins_beyond_outside_domain": 0,
+    "worst_ratio_in_domain": 0.1926185569937054,
+    "max_unmodelled_over_window_gated": 0.057007361433427536,
+    "mean_unmodelled_over_mean_window_gated": 0.00820281372305867
+   },
+   "domain_T": {
+    "n_bins_gated": 290,
+    "n_bins_in_domain": 290,
+    "domain_fraction": 1.0,
+    "n_bins_beyond_in_domain": 0,
+    "n_bins_beyond_outside_domain": 0,
+    "worst_ratio_in_domain": 0.20666342547198205,
+    "max_unmodelled_over_window_gated": 0.06403975942140819,
+    "mean_unmodelled_over_mean_window_gated": 0.01318153150482454
+   },
    "source_record": "validation/crossval/_26_oblique_results/rfx.json"
   },
   "te_30": {
@@ -75,10 +96,31 @@
    "GL1_R_bins_beyond": 18,
    "GL1_T_bins_beyond": 38,
    "GL1_gated": false,
-   "GL1_not_gated_reason": "per-bin bound not established on this rig. The standard's section 3 window is first order in the scattered-amplitude error, and its budget covers record truncation, incident-reference truncation and float32 only -- NOT the absorber / auxiliary-echo term an oblique rig carries inside its record and measures separately. Five of the seven primary arms breach it, and the two that do not (te_00, tm_00) are exactly the two whose absorber term sits far inside their window (0.07x, 0.04x). The exact second-order term does not close it (58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches at R_lattice 0.318-0.448, three orders above any null. Reported with its breach count; GL2 is the gate. Issue #1015.",
+   "GL1_not_gated_reason": "per-bin bound not established on this rig. The standard's section 3 window bounds record truncation, incident-reference truncation and float32, and declares the absorber echo ZERO BY CONSTRUCTION by putting it outside the record by ARRIVAL. This rig admits it inside the record by AMPLITUDE instead (e_absorber / absorber_ok), so that construction does not hold here and the reference carries an absorber of its own. Note section 13 (#1015) defines GL1's validity domain as the bins where that unmodelled term sits inside the window that omits it; 'domain_R' / 'domain_T' report the coverage and the in-domain / out-of-domain split of the breaches. The domain is NECESSARY, not sufficient -- 89.5 % of this case's breaches fall outside it and the rest do not -- so GL1 stays REPORTED here and GL2 is the gate (PI decision 2026-09-14, close note section 10.4). The exact second-order term was tried and does not close it (58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches at R_lattice 0.318-0.448.",
    "absorber_term_R_gated_max": 0.0006139464713459664,
+   "absorber_term_T_gated_max": 0.0017155477614186898,
    "aux_echo_term_R_gated_max": 0.00022013943576026929,
    "absorber_term_over_window_R": 0.9473770375207268,
+   "domain_R": {
+    "n_bins_gated": 441,
+    "n_bins_in_domain": 441,
+    "domain_fraction": 1.0,
+    "n_bins_beyond_in_domain": 18,
+    "n_bins_beyond_outside_domain": 0,
+    "worst_ratio_in_domain": 1.2287452408645838,
+    "max_unmodelled_over_window_gated": 0.8746755538930372,
+    "mean_unmodelled_over_mean_window_gated": 0.10885195734850642
+   },
+   "domain_T": {
+    "n_bins_gated": 441,
+    "n_bins_in_domain": 419,
+    "domain_fraction": 0.9501133786848073,
+    "n_bins_beyond_in_domain": 25,
+    "n_bins_beyond_outside_domain": 13,
+    "worst_ratio_in_domain": 1.4115183237746511,
+    "max_unmodelled_over_window_gated": 1.215369771529236,
+    "mean_unmodelled_over_mean_window_gated": 0.2670145944649278
+   },
    "source_record": "validation/crossval/_26_oblique_results/rfx.json"
   },
   "te_45": {
@@ -111,10 +153,31 @@
    "GL1_R_bins_beyond": 75,
    "GL1_T_bins_beyond": 36,
    "GL1_gated": false,
-   "GL1_not_gated_reason": "per-bin bound not established on this rig. The standard's section 3 window is first order in the scattered-amplitude error, and its budget covers record truncation, incident-reference truncation and float32 only -- NOT the absorber / auxiliary-echo term an oblique rig carries inside its record and measures separately. Five of the seven primary arms breach it, and the two that do not (te_00, tm_00) are exactly the two whose absorber term sits far inside their window (0.07x, 0.04x). The exact second-order term does not close it (58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches at R_lattice 0.318-0.448, three orders above any null. Reported with its breach count; GL2 is the gate. Issue #1015.",
+   "GL1_not_gated_reason": "per-bin bound not established on this rig. The standard's section 3 window bounds record truncation, incident-reference truncation and float32, and declares the absorber echo ZERO BY CONSTRUCTION by putting it outside the record by ARRIVAL. This rig admits it inside the record by AMPLITUDE instead (e_absorber / absorber_ok), so that construction does not hold here and the reference carries an absorber of its own. Note section 13 (#1015) defines GL1's validity domain as the bins where that unmodelled term sits inside the window that omits it; 'domain_R' / 'domain_T' report the coverage and the in-domain / out-of-domain split of the breaches. The domain is NECESSARY, not sufficient -- 89.5 % of this case's breaches fall outside it and the rest do not -- so GL1 stays REPORTED here and GL2 is the gate (PI decision 2026-09-14, close note section 10.4). The exact second-order term was tried and does not close it (58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches at R_lattice 0.318-0.448.",
    "absorber_term_R_gated_max": 0.00041961415271574154,
+   "absorber_term_T_gated_max": 0.0028867804918638607,
    "aux_echo_term_R_gated_max": 0.00017210043439325196,
    "absorber_term_over_window_R": 0.8302585325239445,
+   "domain_R": {
+    "n_bins_gated": 517,
+    "n_bins_in_domain": 341,
+    "domain_fraction": 0.6595744680851063,
+    "n_bins_beyond_in_domain": 16,
+    "n_bins_beyond_outside_domain": 59,
+    "worst_ratio_in_domain": 1.7501511579823514,
+    "max_unmodelled_over_window_gated": 1.9106385190859112,
+    "mean_unmodelled_over_mean_window_gated": 0.3428188248376243
+   },
+   "domain_T": {
+    "n_bins_gated": 517,
+    "n_bins_in_domain": 303,
+    "domain_fraction": 0.586073500967118,
+    "n_bins_beyond_in_domain": 2,
+    "n_bins_beyond_outside_domain": 34,
+    "worst_ratio_in_domain": 1.076722930764402,
+    "max_unmodelled_over_window_gated": 2.700802710470221,
+    "mean_unmodelled_over_mean_window_gated": 0.672253867873473
+   },
    "source_record": "validation/crossval/_26_oblique_results/rfx.json"
   },
   "te_60": {
@@ -147,10 +210,31 @@
    "GL1_R_bins_beyond": 98,
    "GL1_T_bins_beyond": 73,
    "GL1_gated": false,
-   "GL1_not_gated_reason": "per-bin bound not established on this rig. The standard's section 3 window is first order in the scattered-amplitude error, and its budget covers record truncation, incident-reference truncation and float32 only -- NOT the absorber / auxiliary-echo term an oblique rig carries inside its record and measures separately. Five of the seven primary arms breach it, and the two that do not (te_00, tm_00) are exactly the two whose absorber term sits far inside their window (0.07x, 0.04x). The exact second-order term does not close it (58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches at R_lattice 0.318-0.448, three orders above any null. Reported with its breach count; GL2 is the gate. Issue #1015.",
+   "GL1_not_gated_reason": "per-bin bound not established on this rig. The standard's section 3 window bounds record truncation, incident-reference truncation and float32, and declares the absorber echo ZERO BY CONSTRUCTION by putting it outside the record by ARRIVAL. This rig admits it inside the record by AMPLITUDE instead (e_absorber / absorber_ok), so that construction does not hold here and the reference carries an absorber of its own. Note section 13 (#1015) defines GL1's validity domain as the bins where that unmodelled term sits inside the window that omits it; 'domain_R' / 'domain_T' report the coverage and the in-domain / out-of-domain split of the breaches. The domain is NECESSARY, not sufficient -- 89.5 % of this case's breaches fall outside it and the rest do not -- so GL1 stays REPORTED here and GL2 is the gate (PI decision 2026-09-14, close note section 10.4). The exact second-order term was tried and does not close it (58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches at R_lattice 0.318-0.448.",
    "absorber_term_R_gated_max": 0.004032849708158537,
+   "absorber_term_T_gated_max": 0.005691061437847256,
    "aux_echo_term_R_gated_max": 0.0024759090735266276,
    "absorber_term_over_window_R": 7.109359542082825,
+   "domain_R": {
+    "n_bins_gated": 473,
+    "n_bins_in_domain": 214,
+    "domain_fraction": 0.452431289640592,
+    "n_bins_beyond_in_domain": 8,
+    "n_bins_beyond_outside_domain": 90,
+    "worst_ratio_in_domain": 1.8336729954551685,
+    "max_unmodelled_over_window_gated": 8.10090606320664,
+    "mean_unmodelled_over_mean_window_gated": 1.5710336425758804
+   },
+   "domain_T": {
+    "n_bins_gated": 473,
+    "n_bins_in_domain": 235,
+    "domain_fraction": 0.49682875264270615,
+    "n_bins_beyond_in_domain": 6,
+    "n_bins_beyond_outside_domain": 67,
+    "worst_ratio_in_domain": 1.4307765480063088,
+    "max_unmodelled_over_window_gated": 5.22882236028486,
+    "mean_unmodelled_over_mean_window_gated": 1.3767915652018758
+   },
    "source_record": "validation/crossval/_26_oblique_results/rfx.json"
   },
   "tm_00": {
@@ -183,10 +267,31 @@
    "GL1_R_bins_beyond": 0,
    "GL1_T_bins_beyond": 0,
    "GL1_gated": false,
-   "GL1_not_gated_reason": "per-bin bound not established on this rig. The standard's section 3 window is first order in the scattered-amplitude error, and its budget covers record truncation, incident-reference truncation and float32 only -- NOT the absorber / auxiliary-echo term an oblique rig carries inside its record and measures separately. Five of the seven primary arms breach it, and the two that do not (te_00, tm_00) are exactly the two whose absorber term sits far inside their window (0.07x, 0.04x). The exact second-order term does not close it (58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches at R_lattice 0.318-0.448, three orders above any null. Reported with its breach count; GL2 is the gate. Issue #1015.",
+   "GL1_not_gated_reason": "per-bin bound not established on this rig. The standard's section 3 window bounds record truncation, incident-reference truncation and float32, and declares the absorber echo ZERO BY CONSTRUCTION by putting it outside the record by ARRIVAL. This rig admits it inside the record by AMPLITUDE instead (e_absorber / absorber_ok), so that construction does not hold here and the reference carries an absorber of its own. Note section 13 (#1015) defines GL1's validity domain as the bins where that unmodelled term sits inside the window that omits it; 'domain_R' / 'domain_T' report the coverage and the in-domain / out-of-domain split of the breaches. The domain is NECESSARY, not sufficient -- 89.5 % of this case's breaches fall outside it and the rest do not -- so GL1 stays REPORTED here and GL2 is the gate (PI decision 2026-09-14, close note section 10.4). The exact second-order term was tried and does not close it (58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches at R_lattice 0.318-0.448.",
    "absorber_term_R_gated_max": 0.00020796344118451104,
+   "absorber_term_T_gated_max": 0.0006184995129239201,
    "aux_echo_term_R_gated_max": 4.112696645630631e-06,
    "absorber_term_over_window_R": 0.03803864759501584,
+   "domain_R": {
+    "n_bins_gated": 290,
+    "n_bins_in_domain": 290,
+    "domain_fraction": 1.0,
+    "n_bins_beyond_in_domain": 0,
+    "n_bins_beyond_outside_domain": 0,
+    "worst_ratio_in_domain": 0.19267842505509308,
+    "max_unmodelled_over_window_gated": 0.04440250656785881,
+    "mean_unmodelled_over_mean_window_gated": 0.007504907679331482
+   },
+   "domain_T": {
+    "n_bins_gated": 290,
+    "n_bins_in_domain": 290,
+    "domain_fraction": 1.0,
+    "n_bins_beyond_in_domain": 0,
+    "n_bins_beyond_outside_domain": 0,
+    "worst_ratio_in_domain": 0.1941592785305969,
+    "max_unmodelled_over_window_gated": 0.048994479529902234,
+    "mean_unmodelled_over_mean_window_gated": 0.011783639684047208
+   },
    "source_record": "validation/crossval/_26_oblique_results/rfx.json"
   },
   "tm_45": {
@@ -219,10 +324,31 @@
    "GL1_R_bins_beyond": 190,
    "GL1_T_bins_beyond": 45,
    "GL1_gated": false,
-   "GL1_not_gated_reason": "per-bin bound not established on this rig. The standard's section 3 window is first order in the scattered-amplitude error, and its budget covers record truncation, incident-reference truncation and float32 only -- NOT the absorber / auxiliary-echo term an oblique rig carries inside its record and measures separately. Five of the seven primary arms breach it, and the two that do not (te_00, tm_00) are exactly the two whose absorber term sits far inside their window (0.07x, 0.04x). The exact second-order term does not close it (58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches at R_lattice 0.318-0.448, three orders above any null. Reported with its breach count; GL2 is the gate. Issue #1015.",
+   "GL1_not_gated_reason": "per-bin bound not established on this rig. The standard's section 3 window bounds record truncation, incident-reference truncation and float32, and declares the absorber echo ZERO BY CONSTRUCTION by putting it outside the record by ARRIVAL. This rig admits it inside the record by AMPLITUDE instead (e_absorber / absorber_ok), so that construction does not hold here and the reference carries an absorber of its own. Note section 13 (#1015) defines GL1's validity domain as the bins where that unmodelled term sits inside the window that omits it; 'domain_R' / 'domain_T' report the coverage and the in-domain / out-of-domain split of the breaches. The domain is NECESSARY, not sufficient -- 89.5 % of this case's breaches fall outside it and the rest do not -- so GL1 stays REPORTED here and GL2 is the gate (PI decision 2026-09-14, close note section 10.4). The exact second-order term was tried and does not close it (58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches at R_lattice 0.318-0.448.",
    "absorber_term_R_gated_max": 0.00015298895264051482,
+   "absorber_term_T_gated_max": 0.0028597646537864563,
    "aux_echo_term_R_gated_max": 7.006805174266523e-05,
    "absorber_term_over_window_R": 1.5151493198828585,
+   "domain_R": {
+    "n_bins_gated": 517,
+    "n_bins_in_domain": 211,
+    "domain_fraction": 0.4081237911025145,
+    "n_bins_beyond_in_domain": 13,
+    "n_bins_beyond_outside_domain": 177,
+    "worst_ratio_in_domain": 1.7472564904411187,
+    "max_unmodelled_over_window_gated": 11.432571508482534,
+    "mean_unmodelled_over_mean_window_gated": 0.6005943889795223
+   },
+   "domain_T": {
+    "n_bins_gated": 517,
+    "n_bins_in_domain": 315,
+    "domain_fraction": 0.6092843326885881,
+    "n_bins_beyond_in_domain": 7,
+    "n_bins_beyond_outside_domain": 38,
+    "worst_ratio_in_domain": 1.3043683458517654,
+    "max_unmodelled_over_window_gated": 2.4840934872528764,
+    "mean_unmodelled_over_mean_window_gated": 0.6540577125233457
+   },
    "source_record": "validation/crossval/_26_oblique_results/rfx.json"
   },
   "tm_60": {
@@ -255,10 +381,31 @@
    "GL1_R_bins_beyond": 357,
    "GL1_T_bins_beyond": 98,
    "GL1_gated": false,
-   "GL1_not_gated_reason": "per-bin bound not established on this rig. The standard's section 3 window is first order in the scattered-amplitude error, and its budget covers record truncation, incident-reference truncation and float32 only -- NOT the absorber / auxiliary-echo term an oblique rig carries inside its record and measures separately. Five of the seven primary arms breach it, and the two that do not (te_00, tm_00) are exactly the two whose absorber term sits far inside their window (0.07x, 0.04x). The exact second-order term does not close it (58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches at R_lattice 0.318-0.448, three orders above any null. Reported with its breach count; GL2 is the gate. Issue #1015.",
+   "GL1_not_gated_reason": "per-bin bound not established on this rig. The standard's section 3 window bounds record truncation, incident-reference truncation and float32, and declares the absorber echo ZERO BY CONSTRUCTION by putting it outside the record by ARRIVAL. This rig admits it inside the record by AMPLITUDE instead (e_absorber / absorber_ok), so that construction does not hold here and the reference carries an absorber of its own. Note section 13 (#1015) defines GL1's validity domain as the bins where that unmodelled term sits inside the window that omits it; 'domain_R' / 'domain_T' report the coverage and the in-domain / out-of-domain split of the breaches. The domain is NECESSARY, not sufficient -- 89.5 % of this case's breaches fall outside it and the rest do not -- so GL1 stays REPORTED here and GL2 is the gate (PI decision 2026-09-14, close note section 10.4). The exact second-order term was tried and does not close it (58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches at R_lattice 0.318-0.448.",
    "absorber_term_R_gated_max": 0.000504777682326615,
+   "absorber_term_T_gated_max": 0.005878295286243063,
    "aux_echo_term_R_gated_max": 0.00026388924760044515,
    "absorber_term_over_window_R": 24.379895240684508,
+   "domain_R": {
+    "n_bins_gated": 473,
+    "n_bins_in_domain": 42,
+    "domain_fraction": 0.08879492600422834,
+    "n_bins_beyond_in_domain": 14,
+    "n_bins_beyond_outside_domain": 343,
+    "worst_ratio_in_domain": 11.937768838972044,
+    "max_unmodelled_over_window_gated": 68.81418446616105,
+    "mean_unmodelled_over_mean_window_gated": 5.079684532742819
+   },
+   "domain_T": {
+    "n_bins_gated": 473,
+    "n_bins_in_domain": 136,
+    "domain_fraction": 0.28752642706131076,
+    "n_bins_beyond_in_domain": 7,
+    "n_bins_beyond_outside_domain": 91,
+    "worst_ratio_in_domain": 2.0595274770386283,
+    "max_unmodelled_over_window_gated": 8.025895598469292,
+    "mean_unmodelled_over_mean_window_gated": 2.09998116314272
+   },
    "source_record": "validation/crossval/_26_oblique_results/rfx.json"
   },
   "graze_vac": {
@@ -329,10 +476,31 @@
    "GL1_R_bins_beyond": 0,
    "GL1_T_bins_beyond": 17,
    "GL1_gated": false,
-   "GL1_not_gated_reason": "per-bin bound not established on this rig. The standard's section 3 window is first order in the scattered-amplitude error, and its budget covers record truncation, incident-reference truncation and float32 only -- NOT the absorber / auxiliary-echo term an oblique rig carries inside its record and measures separately. Five of the seven primary arms breach it, and the two that do not (te_00, tm_00) are exactly the two whose absorber term sits far inside their window (0.07x, 0.04x). The exact second-order term does not close it (58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches at R_lattice 0.318-0.448, three orders above any null. Reported with its breach count; GL2 is the gate. Issue #1015.",
+   "GL1_not_gated_reason": "per-bin bound not established on this rig. The standard's section 3 window bounds record truncation, incident-reference truncation and float32, and declares the absorber echo ZERO BY CONSTRUCTION by putting it outside the record by ARRIVAL. This rig admits it inside the record by AMPLITUDE instead (e_absorber / absorber_ok), so that construction does not hold here and the reference carries an absorber of its own. Note section 13 (#1015) defines GL1's validity domain as the bins where that unmodelled term sits inside the window that omits it; 'domain_R' / 'domain_T' report the coverage and the in-domain / out-of-domain split of the breaches. The domain is NECESSARY, not sufficient -- 89.5 % of this case's breaches fall outside it and the rest do not -- so GL1 stays REPORTED here and GL2 is the gate (PI decision 2026-09-14, close note section 10.4). The exact second-order term was tried and does not close it (58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches at R_lattice 0.318-0.448.",
    "absorber_term_R_gated_max": 0.10953042946265412,
+   "absorber_term_T_gated_max": 0.036175069482333316,
    "aux_echo_term_R_gated_max": 0.0022488668111557697,
    "absorber_term_over_window_R": 172.53881597876347,
+   "domain_R": {
+    "n_bins_gated": 69,
+    "n_bins_in_domain": 0,
+    "domain_fraction": 0.0,
+    "n_bins_beyond_in_domain": 0,
+    "n_bins_beyond_outside_domain": 0,
+    "worst_ratio_in_domain": NaN,
+    "max_unmodelled_over_window_gated": 462.85691176154364,
+    "mean_unmodelled_over_mean_window_gated": 151.1886699947494
+   },
+   "domain_T": {
+    "n_bins_gated": 69,
+    "n_bins_in_domain": 0,
+    "domain_fraction": 0.0,
+    "n_bins_beyond_in_domain": 0,
+    "n_bins_beyond_outside_domain": 17,
+    "worst_ratio_in_domain": NaN,
+    "max_unmodelled_over_window_gated": 2606.7124179320094,
+    "mean_unmodelled_over_mean_window_gated": 786.8690214311523
+   },
    "source_record": "validation/crossval/_26_oblique_results/rfx.json"
   },
   "te_00__settle60": {
@@ -365,10 +533,31 @@
    "GL1_R_bins_beyond": 70,
    "GL1_T_bins_beyond": 50,
    "GL1_gated": false,
-   "GL1_not_gated_reason": "per-bin bound not established on this rig. The standard's section 3 window is first order in the scattered-amplitude error, and its budget covers record truncation, incident-reference truncation and float32 only -- NOT the absorber / auxiliary-echo term an oblique rig carries inside its record and measures separately. Five of the seven primary arms breach it, and the two that do not (te_00, tm_00) are exactly the two whose absorber term sits far inside their window (0.07x, 0.04x). The exact second-order term does not close it (58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches at R_lattice 0.318-0.448, three orders above any null. Reported with its breach count; GL2 is the gate. Issue #1015.",
+   "GL1_not_gated_reason": "per-bin bound not established on this rig. The standard's section 3 window bounds record truncation, incident-reference truncation and float32, and declares the absorber echo ZERO BY CONSTRUCTION by putting it outside the record by ARRIVAL. This rig admits it inside the record by AMPLITUDE instead (e_absorber / absorber_ok), so that construction does not hold here and the reference carries an absorber of its own. Note section 13 (#1015) defines GL1's validity domain as the bins where that unmodelled term sits inside the window that omits it; 'domain_R' / 'domain_T' report the coverage and the in-domain / out-of-domain split of the breaches. The domain is NECESSARY, not sufficient -- 89.5 % of this case's breaches fall outside it and the rest do not -- so GL1 stays REPORTED here and GL2 is the gate (PI decision 2026-09-14, close note section 10.4). The exact second-order term was tried and does not close it (58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches at R_lattice 0.318-0.448.",
    "absorber_term_R_gated_max": 0.0003718773117860341,
+   "absorber_term_T_gated_max": 0.0010227038307020209,
    "aux_echo_term_R_gated_max": 6.469638159450897e-06,
    "absorber_term_over_window_R": 3.544826439223478,
+   "domain_R": {
+    "n_bins_gated": 290,
+    "n_bins_in_domain": 222,
+    "domain_fraction": 0.7655172413793103,
+    "n_bins_beyond_in_domain": 4,
+    "n_bins_beyond_outside_domain": 66,
+    "worst_ratio_in_domain": 1.0375580339982542,
+    "max_unmodelled_over_window_gated": 2.921101992946056,
+    "mean_unmodelled_over_mean_window_gated": 0.421793813470423
+   },
+   "domain_T": {
+    "n_bins_gated": 290,
+    "n_bins_in_domain": 241,
+    "domain_fraction": 0.8310344827586207,
+    "n_bins_beyond_in_domain": 4,
+    "n_bins_beyond_outside_domain": 46,
+    "worst_ratio_in_domain": 1.080096049728344,
+    "max_unmodelled_over_window_gated": 2.3515052480754814,
+    "mean_unmodelled_over_mean_window_gated": 0.4836021352964974
+   },
    "source_record": "validation/crossval/_26_oblique_results/rfx__te_00_settle60.json"
   },
   "tm_00__settle60": {
@@ -401,19 +590,43 @@
    "GL1_R_bins_beyond": 71,
    "GL1_T_bins_beyond": 55,
    "GL1_gated": false,
-   "GL1_not_gated_reason": "per-bin bound not established on this rig. The standard's section 3 window is first order in the scattered-amplitude error, and its budget covers record truncation, incident-reference truncation and float32 only -- NOT the absorber / auxiliary-echo term an oblique rig carries inside its record and measures separately. Five of the seven primary arms breach it, and the two that do not (te_00, tm_00) are exactly the two whose absorber term sits far inside their window (0.07x, 0.04x). The exact second-order term does not close it (58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches at R_lattice 0.318-0.448, three orders above any null. Reported with its breach count; GL2 is the gate. Issue #1015.",
+   "GL1_not_gated_reason": "per-bin bound not established on this rig. The standard's section 3 window bounds record truncation, incident-reference truncation and float32, and declares the absorber echo ZERO BY CONSTRUCTION by putting it outside the record by ARRIVAL. This rig admits it inside the record by AMPLITUDE instead (e_absorber / absorber_ok), so that construction does not hold here and the reference carries an absorber of its own. Note section 13 (#1015) defines GL1's validity domain as the bins where that unmodelled term sits inside the window that omits it; 'domain_R' / 'domain_T' report the coverage and the in-domain / out-of-domain split of the breaches. The domain is NECESSARY, not sufficient -- 89.5 % of this case's breaches fall outside it and the rest do not -- so GL1 stays REPORTED here and GL2 is the gate (PI decision 2026-09-14, close note section 10.4). The exact second-order term was tried and does not close it (58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches at R_lattice 0.318-0.448.",
    "absorber_term_R_gated_max": 0.00020796344118451104,
+   "absorber_term_T_gated_max": 0.0006184995129239201,
    "aux_echo_term_R_gated_max": 4.112696645630631e-06,
    "absorber_term_over_window_R": 1.9611966869112158,
+   "domain_R": {
+    "n_bins_gated": 290,
+    "n_bins_in_domain": 219,
+    "domain_fraction": 0.7551724137931034,
+    "n_bins_beyond_in_domain": 5,
+    "n_bins_beyond_outside_domain": 66,
+    "worst_ratio_in_domain": 1.1233951651591407,
+    "max_unmodelled_over_window_gated": 2.282440547291565,
+    "mean_unmodelled_over_mean_window_gated": 0.38693804871779947
+   },
+   "domain_T": {
+    "n_bins_gated": 290,
+    "n_bins_in_domain": 240,
+    "domain_fraction": 0.8275862068965517,
+    "n_bins_beyond_in_domain": 6,
+    "n_bins_beyond_outside_domain": 49,
+    "worst_ratio_in_domain": 1.08928272678008,
+    "max_unmodelled_over_window_gated": 1.7913229285359975,
+    "mean_unmodelled_over_mean_window_gated": 0.4303022545578131
+   },
    "source_record": "validation/crossval/_26_oblique_results/rfx__tm_00_settle60.json"
   }
  },
+ "gl1_domain_note": "#1015. GL1's validity domain (standard section 13) is the bins where the term the section-3 budget does not model -- the reference's own dependence on the absorbers this rig carries INSIDE its record -- sits inside the window that omits it. The slab family declares that term zero by ARRIVAL and is unaffected; cv26 admits its echo by AMPLITUDE and so must report coverage. The predicate is necessary, not sufficient: it says where the bound is invalid, not that GL1 holds where it is valid. GL1 stays REPORTED and not gated here; GL2 is the gate. No window was widened for #1015.",
  "verdict": {
   "n_arms_with_defined_window": 10,
   "gl2_failing_arms": [
    "tm_60"
   ],
   "gl2_all_pass": false,
-  "gl1_gated": false
+  "gl1_gated": false,
+  "gl1_breaches_in_domain": 135,
+  "gl1_breaches_outside_domain": 1156
  }
 }

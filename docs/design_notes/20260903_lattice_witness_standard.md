@@ -158,6 +158,13 @@ measured order in [1.7, 2.3] on each doubling for all four).
 
 ## 3. W_witness — the derivation
 
+> **SCOPED 2026-09-14 by §13 (#1015).** Every word below stands, and no number
+> in it moves. What §13 adds is where it is allowed to be applied: this
+> derivation bounds three terms and DECLARES three zero by construction, and on
+> a rig that cannot make one of those declarations the per-bin gate built on it
+> (GL1, §4) has no validity. §13 states that precondition and measures it. §3's
+> τ is also the CASE's source pulse width, not the family constant — §13.1.
+
 The lattice solution is the exact steady state of an INFINITE record on an
 INFINITE lattice. Five things separate it from what the rig measures. Three are
 zero by construction and are ASSERTED, not modelled; two are non-zero and are
@@ -267,6 +274,12 @@ looser purity, a slower ring-down or a longer record can only WIDEN
 `W_witness`. A run cannot buy a tighter window by being worse.
 
 ## 4. The gates
+
+> **SCOPED 2026-09-14 by §13 (#1015).** GL1 below reads "at every gated bin".
+> §13 narrows that to "at every gated bin IN THE VALIDITY DOMAIN", and the
+> domain is every gated bin for cv04, cv22 and cv23 — so nothing in this
+> section's verdicts, windows or numbers changes. It is not every gated bin on
+> a rig that admits an absorber echo inside its record by amplitude.
 
 Per arm, per rung, on the SAME gated bins the continuum gate uses
 (4.0–10.0 GHz):
@@ -1284,3 +1297,217 @@ untouched.
 **Not done, and why.** No window is widened or tightened anywhere in this lane —
 including the one §5.4 shows is discretisation-limited. That is a PI decision
 with a compute cost, and it is proposed in §5.4 rather than taken here.
+
+## 13. Revision 2026-09-14 — GL1's validity domain, and why the budget was not widened (#1015)
+
+**Append-only.** §3 and §4 are unchanged; each carries a pointer to this
+section. No window in this note moves, no committed gate value moves, and the
+slab family's three `lattice_witness.json` artifacts rebuild byte-identical.
+
+### 13.0 What #1015 asked
+
+cv26 is the first oblique consumer of this standard. With the corrected source
+tau (§13.1), GL1 breaches on five of its seven primary arms; `tm_60` fails GL2_R
+at 244 % of its window. The issue offered three options and investigated none:
+carry the absorber term in the budget (A), demote GL1 to reported (B), or
+declare GL1's validity domain (C). The rule for choosing was written and
+committed before any of the numbers below existed:
+`docs/design_notes/20260914_lattice_witness_gl1_predeclaration.md`.
+
+### 13.1 τ is the CASE's source, not the family's
+
+`lattice_witness.TAU_SRC_S` is `1/(π f0 bw)` at the slab family's FIXED
+bandwidth 0.5. §3 reads as though that constant were a property of the standard.
+It is not: `Λ = √π τ / dt` divides every budget term, the incident tail rate is
+`2a/τ`, and `inc_amp_rel` is max-normalised, so a case driving a different
+bandwidth gets a wrong window with nothing cancelling. #1011 gave the primitives
+an explicit `tau_s` (the family default is unchanged, so cv04, cv22 and cv23 are
+untouched) and cv26 passes the tau its own record carries. §3 should be read
+with that: **τ is the case's.**
+
+### 13.2 The measurement
+
+Replay only, on records already committed; no FDTD was run for this section.
+
+### T1 — the slab family (cv04, cv22, cv23): every committed rung
+
+| case | rung | mean `W_R` | mean `\|ΔR−lat\|` | GL1_R beyond | GL1_T beyond | GL2_R/T | unmodelled term | #888 echo arrival ÷ record |
+|---|---|---|---|---|---|---|---|---|
+| cv04 | `slab_eps4` | 6.3463e-04 | 2.012e-05 | 0 | 0 | pass/pass | 0 by construction | 1.64× |
+| cv22 | `debye` | 1.7129e-02 | 6.544e-04 | 0 | 0 | pass/pass | 0 by construction | 1.85× |
+| cv22 | `lorentz` | 2.5801e-03 | 2.535e-04 | 0 | 0 | pass/pass | 0 by construction | 1.67× |
+| cv22 | `drude` | 8.2457e-05 | 7.147e-06 | 0 | 0 | pass/pass | 0 by construction | 1.76× |
+| cv23 | `tand0p1` | 1.2800e-03 | 2.957e-05 | 0 | 0 | pass/pass | 0 by construction | 1.92× |
+| cv23 | `tand1` | 8.5611e-04 | 2.050e-05 | 0 | 0 | pass/pass | 0 by construction | 1.77× |
+| cv23 | `tand3` | 4.7118e-04 | 3.039e-05 | 0 | 0 | pass/pass | 0 by construction | 1.71× |
+| cv23 | `tand0p1_dx2` | 1.1293e-03 | 2.566e-05 | 0 | 0 | pass/pass | 0 by construction | 1.89× |
+| cv23 | `tand0p1_dx4` | 1.0835e-03 | 2.481e-05 | 0 | 0 | pass/pass | 0 by construction | 1.88× |
+| cv23 | `tand1_dx2` | 7.4952e-04 | 2.037e-05 | 0 | 0 | pass/pass | 0 by construction | 1.75× |
+| cv23 | `tand1_dx4` | 5.7528e-04 | 1.970e-05 | 0 | 0 | pass/pass | 0 by construction | 1.73× |
+| cv23 | `tand3_dx2` | 4.7118e-04 | 3.039e-05 | 0 | 0 | pass/pass | 0 by construction | 1.71× |
+| cv23 | `tand3_dx4` | 4.3393e-04 | 2.921e-05 | 0 | 0 | pass/pass | 0 by construction | 1.70× |
+
+### T2 — cv26: all twelve entries
+
+| arm | gated bins | mean `W_R` | mean `\|ΔR−lat\|` | GL1_R beyond | GL1_T beyond | GL2_R | GL2_T | absorber term (R, gated max) | ÷ `W_R` | domain (R) | breaches in / out of domain (R) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| te_00 | 290 | 5.3944e-03 | 3.336e-04 | 0 | 0 | pass | pass | 3.7188e-04 | 0.07× | 100.0 % | 0 / 0 |
+| te_30 | 441 | 6.4805e-04 | 1.413e-04 | 18 | 38 | pass | pass | 6.1395e-04 | 0.95× | 100.0 % | 18 / 0 |
+| te_45 | 517 | 5.0540e-04 | 1.671e-04 | 75 | 36 | pass | pass | 4.1961e-04 | 0.83× | 66.0 % | 16 / 59 |
+| te_60 | 473 | 5.6726e-04 | 4.052e-04 | 98 | 73 | pass | pass | 4.0328e-03 | 7.11× | 45.2 % | 8 / 90 |
+| tm_00 | 290 | 5.4672e-03 | 3.410e-04 | 0 | 0 | pass | pass | 2.0796e-04 | 0.04× | 100.0 % | 0 / 0 |
+| tm_45 | 517 | 1.0097e-04 | 4.351e-05 | 190 | 45 | pass | pass | 1.5299e-04 | 1.52× | 40.8 % | 13 / 177 |
+| tm_60 | 473 | 2.0705e-05 | 5.060e-05 | 357 | 98 | **FAIL** | pass | 5.0478e-04 | 24.38× | 8.9 % | 14 / 343 |
+| graze_vac | — | window undefined (no ring-down rate) | — | — | — | — | — | — | — | — | — |
+| graze_pec | — | window undefined (no ring-down rate) | — | — | — | — | — | — | — | — | — |
+| graze_te | 69 | 6.3482e-04 | 2.035e-04 | 0 | 17 | pass | pass | 1.0953e-01 | 172.54× | 0.0 % | 0 / 0 |
+| te_00__settle60 | 290 | 1.0491e-04 | 4.547e-05 | 70 | 50 | pass | pass | 3.7188e-04 | 3.54× | 76.6 % | 4 / 66 |
+| tm_00__settle60 | 290 | 1.0604e-04 | 4.168e-05 | 71 | 55 | pass | pass | 2.0796e-04 | 1.96× | 75.5 % | 5 / 66 |
+
+### T3 — option (A) measured: window before and after, per cv26 arm
+
+| arm | `W_R` now | `W_R` with the term | ×  | `W_T` × | GL1_R beyond now | after | GL1_T after | GL2_R now | after |
+|---|---|---|---|---|---|---|---|---|---|
+| te_00 | 5.3944e-03 | 5.4386e-03 | **1.01×** | 1.01× | 0 | 0 | 0 | pass | pass |
+| te_30 | 6.4805e-04 | 7.1859e-04 | **1.11×** | 1.27× | 18 | 0 | 0 | pass | pass |
+| te_45 | 5.0540e-04 | 6.7866e-04 | **1.34×** | 1.67× | 75 | 0 | 0 | pass | pass |
+| te_60 | 5.6726e-04 | 1.4584e-03 | **2.57×** | 2.38× | 98 | 6 | 6 | pass | pass |
+| tm_00 | 5.4672e-03 | 5.5082e-03 | **1.01×** | 1.01× | 0 | 0 | 0 | pass | pass |
+| tm_45 | 1.0097e-04 | 1.6162e-04 | **1.60×** | 1.65× | 190 | 2 | 0 | pass | pass |
+| tm_60 | 2.0705e-05 | 1.2588e-04 | **6.08×** | 3.10× | 357 | 41 | 6 | **FAIL** | pass |
+| graze_te | 6.3482e-04 | 9.6612e-02 | **152.19×** | 787.87× | 0 | 0 | 0 | pass | pass |
+| te_00__settle60 | 1.0491e-04 | 1.4916e-04 | **1.42×** | 1.48× | 70 | 0 | 0 | pass | pass |
+| tm_00__settle60 | 1.0604e-04 | 1.4707e-04 | **1.39×** | 1.43× | 71 | 0 | 0 | pass | pass |
+
+### 13.3 The three options, measured against the rule
+
+**(A) carry the absorber term in the budget — REJECTED, on three of its five
+pre-declared conditions.**
+
+- **A2 fails.** Adding the term per bin flips `tm_60`'s reported `GL2_R`
+  failure to a pass (T3). The pre-declaration named that as an outright
+  rejection: a budget change that erases a reported failure absorbs a finding
+  instead of reporting it.
+- **A4 fails.** Even with the term carried, GL1 still breaches — 41 R bins on
+  `tm_60`, 6 on `te_60`, 2 on `tm_45`, and 6 T bins on each of `te_60` and
+  `tm_60`. The widening does not close the per-bin bound; it only moves it.
+- **A5 fails.** The term has no a-priori bar. `SETTLING_BAR` and `PURITY_BAR`
+  let `ceiling_windows` bound a passing run's window before the run; the
+  absorber term's only available size is the measured one, and §3's claim 1 —
+  "none of them is the residual being gated" — does not survive adding a
+  quantity whose correlation with the residual is the very observation that
+  opened #1015.
+- The cost, for the record: the window widens 1.01× to **6.08×** in R on the
+  primary arms and **152×** in R / **788×** in T on `graze_te` (T3). That is a
+  gate loosening of up to three orders and it is tabled, not hidden.
+
+**(B) demote GL1 to reported — REJECTED, because GL1 catches what GL2 does
+not.** Over the 65 falsifier × rung entries of cv04, cv22 and cv23 (195 rows
+counting R, T and A separately; cv22's and cv23's replayed from their committed
+records, because their committed `lattice_witness.json` predates F4 and carries
+no `eps_continuum` block — where it does carry one the two agree on every row):
+
+- GL1 fires while GL2 passes on **38 of 195** rows;
+- GL2 never fires while GL1 passes — **0 of 195**;
+- **six falsifiers of 65 are caught by GL1 ALONE**, and demoting GL1 turns all
+  six silent: cv22 `lorentz` / `eps_x1p01` (F3, the 1 % ε′ defect, 12 of 229 R
+  bins), cv23 `tand0p1_dx2` / `continuum` (F2, the deliberately wrong model, 59
+  R and 68 T bins), and **every F4 that fires anywhere** — `eps_continuum` on
+  cv22 `drude` and on cv23 `tand1`, `tand3` and `tand3_dx2`. F4 is the
+  falsifier for the one ingredient this lane adds (carrying `ε_num` into the
+  lattice, §7); demoting GL1 retires it completely. All six are pre-declared to
+  FIRE in the `_F_FIRES` table of
+  `tests/crossval/test_lattice_witness_gates.py`, so six rows of that table
+  would have to be flipped to `False`. That is a measurable loss of the
+  standard's own detection power.
+
+**(C) declare GL1's validity domain — TAKEN.** §3 bounds three terms and
+DECLARES three zero by construction. Two of the three declared-zero terms are
+absorber echoes, and both are put outside the record by ARRIVAL —
+`precond_cpml_gate` for the 3-D CPML, `precond_aux_echo_record` for the
+auxiliary grid (#888). The family's reference, the infinite lattice of
+`dispersive_eps`, has no absorber in it at all, so there is nothing for that
+declaration to be wrong about: T1 shows both preconditions holding at all
+thirteen committed rungs with the echo arriving at 1.64×–1.92× the record.
+
+A rig that admits its echo INSIDE the record by AMPLITUDE instead has no such
+declaration to stand on. cv26 is exactly that: `e_absorber` / `absorber_ok`
+replaced the arrival cap, and its reference carries the realized absorbers. The
+size of what §3 then omits is the reference's OWN dependence on them,
+
+    U(f) = | X_ref(f; the realized absorbers) − X_ref(f; outgoing-wave
+             termination) |,        X ∈ {R, T}
+
+and GL1 is defined on the bins where
+
+    U(f) ≤ W_witness(f)
+
+— the omitted term must sit inside the window that omits it. Threshold 1, fixed
+in the pre-declaration and not moved afterwards.
+
+### 13.4 What the domain does and does not do — stated with the residue
+
+Across cv26's ten entries with a defined window, **1156 of 1291 breaches
+(89.5 %) fall outside the domain** and **135 (1.85 % of the 7300 gated R+T
+bins) fall inside it** (T2). The two arms with zero breaches, `te_00` and
+`tm_00`, have a total domain; `tm_60`, whose GL2 fails, has 8.9 % of its R bins
+inside it.
+
+**The predicate is NECESSARY and not SUFFICIENT, and this note says so rather
+than rounding it off.** It states where the window is not a valid bound; it does
+not promise GL1 holds where it is. The pre-declaration's condition C2 asked the
+domain to put every breaching arm outside itself, and the data does not give
+that: `te_30`'s 18 R and 25 T breaches lie entirely inside its domain
+(`U/W ≤ 0.875` at every bin), as do 16 of `te_45`'s and 13 of `tm_45`'s. That
+is the pre-declaration disagreeing with the measurement, reported as such. The
+threshold was NOT moved to 0.87 to swallow `te_30`; moving it would be fitting
+the predicate to the breach counts, which is what §3's claim 1 forbids.
+
+`graze_te` — the compact box whose record is BUILT to contain the echo, at
+`U/W = 172×` with zero breaches — is not a counter-example to (C) and is one to
+any reading of the ratio as a prediction. Its domain is empty: the window says
+nothing there, and the arm is judged on G7.
+
+### 13.5 What changed, and what did not
+
+- `lattice_witness.witness_domain(W, unmodelled_term=None)` and
+  `lattice_witness.domain_report(...)`: the predicate and its bookkeeping.
+  **The default is the family's**: `None` means zero by construction.
+- `lattice_witness.evaluate(..., unmodelled_term=None)`: GL1 is judged on the
+  domain. With the default the domain is every gated bin, the output keys are
+  unchanged, and the artifact is byte-identical — verified by rebuilding cv22's
+  and cv23's `lattice_witness.json` under this revision and under the commit
+  before it, in one process, and comparing the serialized text.
+- cv26 reports `domain_R` / `domain_T` per arm and an updated
+  `GL1_not_gated_reason`. **`GL1_gated` stays `false`** — the PI decision of
+  2026-09-14 (cv26 close note §10.4) is unchanged, and the 135 in-domain
+  breaches are why: declaring the domain does not make cv26's GL1 green.
+- **Nothing numeric moved anywhere.** Every number the cv26 replay artifact
+  already carried is bit-identical after regeneration; the diff is 33 added
+  keys and one rewritten reason string.
+
+### 13.6 What would refute this revision
+
+- A slab-family rung whose `precond_cpml_gate` or `precond_aux_echo_record`
+  fails: the "zero by construction" that makes the family's domain total would
+  then be a measurement, not a construction, and T1's last column would have to
+  be replaced by an amplitude.
+- A case with `U(f) ≤ W(f)` everywhere whose GL1 still breaches broadly: the
+  domain would be necessary, sufficient for nothing, and too weak to be worth
+  stating. `te_30` is one arm's worth of that evidence already; a second
+  independent one would close the argument against this section.
+- A derivation that bounds `U` a priori, from the absorber's declared
+  reflectivity and the record length, the way `SETTLING_BAR` bounds the
+  truncation term. That would make option (A) available on A5 and this section
+  would be superseded by it — but not by a measured term alone.
+
+### 13.7 R2 / R3
+
+R2: attempt 1 on "what does GL1's window omit". The adjacent attempt — carrying
+the exact second-order term `(δ_scat + δ_round)²` — is recorded FALSIFIED in the
+cv26 close note §10.4 (58 → 54, 110 → 109) and was not retried.
+
+R3: `memory=rfx-known-issues.md comparator-bug case ledger (13/13) + cv26 close
+note §10.4–§10.5 | R2-attempts=1 | falsifier=cv22's and cv23's
+lattice_witness.json rebuilt byte-identical between origin/main's comparator and
+this one (PASS, 260748 and 784777 bytes)`.

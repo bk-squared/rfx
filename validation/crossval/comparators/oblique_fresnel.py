@@ -1418,6 +1418,8 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, spec: dict, dt: float, *, tail: dict, or
     }
     # exact-lattice witness (reported, never gated): the declared arm's OWN lattice
     if cells is not None:
+        import lattice_witness as LW          # the standard's own primitives (#1015 domain)
+
         lat = yee_lattice_full(f, spec["ky"], cells, eps_slab=spec["eps_slab_rfx"], mu_slab=spec["mu_slab_rfx"],
                                dx=dx, dt=dt, n_cpml=n_cpml, pec=spec.get("pec", False))
         lat_ideal = yee_lattice_full(f, spec["ky"], cells, eps_slab=spec["eps_slab_rfx"], mu_slab=spec["mu_slab_rfx"],
@@ -1425,6 +1427,11 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, spec: dict, dt: float, *, tail: dict, or
         lat_cpml_only = yee_lattice_full(f, spec["ky"], cells, eps_slab=spec["eps_slab_rfx"], mu_slab=spec["mu_slab_rfx"],
                                          dx=dx, dt=dt, n_cpml=n_cpml, pec=spec.get("pec", False), aux="plane")
         dRl = np.abs(R_rfx - lat["R"]); dTl = np.abs(T_rfx - lat["T"])
+        # The term the section-3 budget does NOT model, per bin: the reference's
+        # own dependence on the two absorbers this rig carries inside its record
+        # (#1015).  It is a property of the REFERENCE -- no rfx number enters it.
+        absorber_R = np.abs(lat["R"] - lat_ideal["R"])
+        absorber_T = np.abs(lat["T"] - lat_ideal["T"])
         out["lattice"] = {
             "R_lattice": lat["R"].tolist(), "T_lattice": lat["T"].tolist(),
             "R_lattice_ideal_absorber": lat_ideal["R"].tolist(), "T_lattice_ideal_absorber": lat_ideal["T"].tolist(),
@@ -1433,8 +1440,8 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, spec: dict, dt: float, *, tail: dict, or
             "mean_W_lat_T_gated": float(np.nanmean(np.abs(lat["T"] - T_an)[g])),
             "mean_dR_lattice_gated": float(dRl[g].mean()), "mean_dT_lattice_gated": float(dTl[g].mean()),
             "max_dR_lattice_gated": float(dRl[g].max()), "max_dT_lattice_gated": float(dTl[g].max()),
-            "absorber_term_R_gated_max": float(np.abs(lat["R"] - lat_ideal["R"])[g].max()),
-            "absorber_term_T_gated_max": float(np.abs(lat["T"] - lat_ideal["T"])[g].max()),
+            "absorber_term_R_gated_max": float(absorber_R[g].max()),
+            "absorber_term_T_gated_max": float(absorber_T[g].max()),
             "cpml3d_term_R_gated_max": float(np.abs(lat_cpml_only["R"] - lat_ideal["R"])[g].max()),
             "aux_echo_term_R_gated_max": float(np.abs(lat["R"] - lat_cpml_only["R"])[g].max()),
         }
@@ -1452,6 +1459,13 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, spec: dict, dt: float, *, tail: dict, or
         # here rather than quietly widened. An earlier revision blamed a reflection
         # null; that reading is WITHDRAWN (close note section 10.5) -- it fits tm_45
         # alone, while te_60 breaches at R_lattice 0.318-0.448.
+        # #1015 CLOSED THE STANDARD SIDE OF THIS, and closed it by SCOPE, not by
+        # widening: note section 13 defines GL1's validity domain as the bins where
+        # the unmodelled term sits inside the window that omits it, and cv26 reports
+        # its coverage per observable ('domain_R' / 'domain_T'). Adding the term to
+        # the window was measured and REJECTED -- it flips tm_60's reported GL2_R
+        # failure to a pass, still leaves 41 R breaches on that arm, and widens
+        # graze_te's window 152x in R and 788x in T. No window here moved.
         # The budget needs SOME decay assumption for the truncation sum (the
         # standard names this as its one non-rigorous input). The two grazing
         # arms with no slab etalon have no ring-down rate at all -- graze_vac is
@@ -1483,20 +1497,30 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, spec: dict, dt: float, *, tail: dict, or
                 "GL2_T": bool(dTl[g].mean() <= wT[g].mean()),
                 "GL1_R_bins_beyond": int((dRl[g] > wR[g]).sum()),
                 "GL1_T_bins_beyond": int((dTl[g] > wT[g]).sum()),
+                # #1015: where the window is even a valid bound on this rig, and
+                # how the breaches split across that line. The domain is the
+                # standard's own precondition (note section 13), evaluated with
+                # its primitive, not a second implementation of it.
+                "domain_R": LW.domain_report(wR, dRl, absorber_R, gated=g),
+                "domain_T": LW.domain_report(wT, dTl, absorber_T, gated=g),
                 "GL1_gated": False,
                 "W_witness_defined": True,
                 "GL1_not_gated_reason": (
-                    "per-bin bound not established on this rig. The standard's section 3 window is "
-                    "first order in the scattered-amplitude error, and its budget covers record "
-                    "truncation, incident-reference truncation and float32 only -- NOT the absorber "
-                    "/ auxiliary-echo term an oblique rig carries inside its record and measures "
-                    "separately. Five of the seven primary arms breach it, and the two that do not "
-                    "(te_00, tm_00) are exactly the two whose absorber term sits far inside their "
-                    "window (0.07x, 0.04x). The exact second-order term does not close it "
-                    "(58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a "
-                    "reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while "
-                    "te_60 breaches at R_lattice 0.318-0.448, three orders above any null. "
-                    "Reported with its breach count; GL2 is the gate. Issue #1015."),
+                    "per-bin bound not established on this rig. The standard's section 3 window "
+                    "bounds record truncation, incident-reference truncation and float32, and "
+                    "declares the absorber echo ZERO BY CONSTRUCTION by putting it outside the "
+                    "record by ARRIVAL. This rig admits it inside the record by AMPLITUDE instead "
+                    "(e_absorber / absorber_ok), so that construction does not hold here and the "
+                    "reference carries an absorber of its own. Note section 13 (#1015) defines "
+                    "GL1's validity domain as the bins where that unmodelled term sits inside the "
+                    "window that omits it; 'domain_R' / 'domain_T' report the coverage and the "
+                    "in-domain / out-of-domain split of the breaches. The domain is NECESSARY, "
+                    "not sufficient -- 89.5 % of this case's breaches fall outside it and the rest "
+                    "do not -- so GL1 stays REPORTED here and GL2 is the gate (PI decision "
+                    "2026-09-14, close note section 10.4). The exact second-order term was tried "
+                    "and does not close it (58 -> 54, 110 -> 109). An earlier revision attributed "
+                    "the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 "
+                    "alone, while te_60 breaches at R_lattice 0.318-0.448."),
             })
     return out
 
