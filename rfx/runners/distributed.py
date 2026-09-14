@@ -675,11 +675,21 @@ def _init_cpml_distributed(grid, nx_local, n_devices):
         Per-device CPML state arrays stacked along axis 0,
         shape ``(n_devices, ...)``.
     """
-    from rfx.boundaries.cpml import _cpml_profile, CPMLState
+    from rfx.boundaries.cpml import _cpml_profile, _flip_profile, CPMLAxisParams, CPMLState
 
     kappa_max = getattr(grid, "kappa_max", None) or 1.0
     n = grid.cpml_layers
-    params = _cpml_profile(n, grid.dt, grid.dx, kappa_max=kappa_max)
+    electric = _cpml_profile(n, grid.dt, grid.dx, kappa_max=kappa_max)
+    magnetic_lo = _cpml_profile(n, grid.dt, grid.dx, kappa_max=kappa_max, sample_offset=.5)
+    magnetic_hi = _flip_profile(
+        _cpml_profile(n, grid.dt, grid.dx, kappa_max=kappa_max, sample_offset=-.5))
+    sizes = dict(dx_x_lo=grid.dx, dx_x_hi=grid.dx, dx_y_lo=grid.dx,
+                 dx_y_hi=grid.dx, dz_lo=grid.dx, dz_hi=grid.dx)
+    params = CPMLAxisParams(
+        electric, _flip_profile(electric), electric, _flip_profile(electric),
+        electric, _flip_profile(electric), **sizes,
+        magnetic=CPMLAxisParams(magnetic_lo, magnetic_hi, magnetic_lo, magnetic_hi,
+                                magnetic_lo, magnetic_hi, **sizes))
 
     ny, nz = grid.ny, grid.nz
 
@@ -787,6 +797,9 @@ def _apply_cpml_e_distributed(
     else:
         ce_xlo = ce_xhi = ce_ylo = ce_yhi = ce_zlo = ce_zhi = cpml_coeff_e_vacuum(dt)
 
+    from rfx.boundaries.cpml import CPMLAxisParams
+    if isinstance(cpml_params, CPMLAxisParams):
+        cpml_params = cpml_params.x_lo
     b = cpml_params.b
     c = cpml_params.c
     kappa = cpml_params.kappa
@@ -1060,12 +1073,14 @@ def _apply_cpml_h_distributed(
     else:
         ch_xlo = ch_xhi = ch_ylo = ch_yhi = ch_zlo = ch_zhi = cpml_coeff_h_vacuum(dt)
 
-    b = cpml_params.b
-    c = cpml_params.c
-    kappa = cpml_params.kappa
-    b_r = jnp.flip(b)
-    c_r = jnp.flip(c)
-    kappa_r = jnp.flip(kappa)
+    from rfx.boundaries.cpml import CPMLAxisParams
+    if isinstance(cpml_params, CPMLAxisParams):
+        profiles = cpml_params.magnetic if cpml_params.magnetic is not None else cpml_params
+        b, c, kappa = profiles.x_lo.b, profiles.x_lo.c, profiles.x_lo.kappa
+        b_r, c_r, kappa_r = profiles.x_hi.b, profiles.x_hi.c, profiles.x_hi.kappa
+    else:
+        b, c, kappa = cpml_params.b, cpml_params.c, cpml_params.kappa
+        b_r, c_r, kappa_r = jnp.flip(b), jnp.flip(c), jnp.flip(kappa)
 
     hx = state.hx
     hy = state.hy

@@ -1700,33 +1700,36 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
         material-aware NU path, #208).  ``None`` falls back to the vacuum
         scalar ``dt / mu_0`` (bit-identical to the pre-#205 behaviour).
     """
-    from rfx.boundaries.cpml import CPMLAxisParams
+    from rfx.boundaries.cpml import CPMLAxisParams, _flip_profile
 
     if isinstance(cpml_params, CPMLAxisParams):
-        # T7 PR1: read lo-face; scan body jnp.flip(px.b) preserves bit-identity.
+        if cpml_params.magnetic is not None:
+            cpml_params = cpml_params.magnetic
         px, py, pz_lo, pz_hi = (
             cpml_params.x_lo, cpml_params.y_lo,
             cpml_params.z_lo, cpml_params.z_hi)
+        px_hi, py_hi = cpml_params.x_hi, cpml_params.y_hi
         dx_x = float(cpml_params.dx_x_lo)
         dx_y = float(cpml_params.dx_y_lo)
         dz_lo = float(cpml_params.dz_lo)
         dz_hi = float(cpml_params.dz_hi)
     else:
         px = py = pz_lo = pz_hi = cpml_params
+        px_hi, py_hi = _flip_profile(px), _flip_profile(py)
         dx_x = dx_y = dz_lo = dz_hi = 1.0
 
     b_x = px.b[:, None, None]
     c_x = px.c[:, None, None]
     k_x = px.kappa[:, None, None]
-    b_xr = jnp.flip(px.b)[:, None, None]
-    c_xr = jnp.flip(px.c)[:, None, None]
-    k_xr = jnp.flip(px.kappa)[:, None, None]
+    b_xr = px_hi.b[:, None, None]
+    c_xr = px_hi.c[:, None, None]
+    k_xr = px_hi.kappa[:, None, None]
     b_y = py.b[:, None, None]
     c_y = py.c[:, None, None]
     k_y = py.kappa[:, None, None]
-    b_yr = jnp.flip(py.b)[:, None, None]
-    c_yr = jnp.flip(py.c)[:, None, None]
-    k_yr = jnp.flip(py.kappa)[:, None, None]
+    b_yr = py_hi.b[:, None, None]
+    c_yr = py_hi.c[:, None, None]
+    k_yr = py_hi.kappa[:, None, None]
     b_zl = pz_lo.b[:, None, None]
     c_zl = pz_lo.c[:, None, None]
     k_zl = pz_lo.kappa[:, None, None]

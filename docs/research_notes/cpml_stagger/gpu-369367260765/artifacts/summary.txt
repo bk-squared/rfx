@@ -1,0 +1,77 @@
+red=fa3929136159e0a644783b56012b21c1bce21340
+green=47a586b136c7a2cf68595f6058bd3e456354d013
+red_witness_rc=1 expected=1
+green_witness_rc=0 expected=0
+green_lane_tests_rc=0 expected=0
+
+--- red verdict ---
+  [PREFLIGHT] All checks passed (NTFF advisory tier; the PEC-overlap error check runs on forward()/preflight()).
+{
+  "label": "red",
+  "passed": false,
+  "source_pass": true,
+  "full_tolerance": 0.05,
+  "late_tolerance": 0.01,
+  "channels": {
+    "middle_ez": {
+      "full_relative_max": 0.03917538565106822,
+      "late_relative_max": 0.0002699891243620377,
+      "full_pass": true,
+      "late_pass": true
+    },
+    "middle_hy": {
+      "full_relative_max": 0.03732677627500162,
+      "late_relative_max": 0.0005142887244341588,
+      "full_pass": true,
+      "late_pass": true
+    },
+    "far_ez": {
+      "full_relative_max": 0.040408215401410125,
+      "late_relative_max": 0.001419392869012653,
+      "full_pass": true,
+      "late_pass": true
+    },
+    "far_hy": {
+      "full_relative_max": 0.13937570731810509,
+      "late_relative_max": 0.0012491969654890248,
+      "full_pass": false,
+      "late_pass": true
+    }
+  }
+}
+
+--- green verdict ---
+  [PREFLIGHT] All checks passed (NTFF advisory tier; the PEC-overlap error check runs on forward()/preflight()).
+{
+  "label": "green",
+  "passed": true,
+  "source_pass": true,
+  "full_tolerance": 0.05,
+  "late_tolerance": 0.01,
+  "channels": {
+    "middle_ez": {
+      "full_relative_max": 0.004306818791454897,
+      "late_relative_max": 3.6869210110449874e-05,
+      "full_pass": true,
+      "late_pass": true
+    },
+    "middle_hy": {
+      "full_relative_max": 0.0014839422669070356,
+      "late_relative_max": 5.4104167607714074e-05,
+      "full_pass": true,
+      "late_pass": true
+    },
+    "far_ez": {
+      "full_relative_max": 0.00044227548742210144,
+      "late_relative_max": 0.0001738278620396941,
+      "full_pass": true,
+      "late_pass": true
+    },
+    "far_hy": {
+      "full_relative_max": 0.0003881940106090643,
+      "late_relative_max": 0.0001160693688845472,
+      "full_pass": true,
+      "late_pass": true
+    }
+  }
+}

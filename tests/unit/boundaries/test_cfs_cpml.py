@@ -155,13 +155,26 @@ def test_cfs_cpml_evanescent_absorption():
 
     improvement = energy_std / energy_cfs
     print(f"CFS improvement factor: {improvement:.1f}x")
-    # Threshold 1.4 matches the m=3 polynomial grading (~1.48x typical).
-    # m=2 previously produced ~1.5-1.8x; the higher polynomial concentrates
-    # absorption at the outer boundary, slightly reducing the CFS/standard
-    # contrast in this evanescent-regime test. Physics claim (CFS >
-    # standard) holds; threshold matches the retuned polynomial order.
-    assert improvement > 1.4, (
-        f"CFS-CPML improvement {improvement:.1f}x is below 1.4x threshold"
+    # Threshold retuned 1.4 -> 1.3 on 2026-09-14 for the Yee half-cell
+    # magnetic-profile fix (docs/design_notes/2026-09-13_cpml_yee_stagger_correction.md).
+    # Measured here: improvement 1.4789 before the fix, 1.3917 after. Both
+    # arms moved up, the standard arm less than the CFS arm:
+    #   standard residual PML energy 5.2187e-12 -> 5.3829e-12 (+3.15 %)
+    #   CFS      residual PML energy 3.5287e-12 -> 3.8679e-12 (+9.61 %)
+    # Why: the half-cell shift samples the outer low-face H sigma at 0.87x
+    # its previous value, so more energy is *stored* in the low-side PML.
+    # This is a single-time energy sum over a continuously driven fixture,
+    # so that stored energy is counted as residual — it is NOT reflected
+    # energy and it is not an absorption regression. The physics claim the
+    # test exists to defend (CFS-CPML stores less evanescent energy in the
+    # PML than standard CPML) still holds, by 1.39x.
+    # Honest status of the number: 1.3 is a fitted margin below the
+    # measured 1.3917, exactly like the 1.4 it replaces (itself retuned at
+    # the m=2 -> m=3 polynomial-grading change). Neither is a derived bound
+    # from PML theory; both are pins under a measured value on this one
+    # fixture. Treat a future drift as something to measure, not to re-fit.
+    assert improvement > 1.3, (
+        f"CFS-CPML improvement {improvement:.1f}x is below 1.3x threshold"
     )
 
 
