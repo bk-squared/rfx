@@ -439,3 +439,39 @@ vacuous. (`identity2.json`, `id2flag.log`, `id2plain.log`.) With
 reassociation and contraction both suppressed, the localized kernel and
 the current kernel produce the same bits on every fixture the review could
 construct — including the one that separated them under the r2 flags.
+
+### G5-S — matched graded-mesh complex S-parameter (run once on 1824c956; three processes)
+
+WR-90 dz-graded arm A of `scripts/diagnostics/wr90_dz_dispatch_falsifier.py`
+(19-cell graded z, CPML x / PEC y,z, 20 layers, eps 2.2 slab, TE10 ports,
+9 bins 8.2-12.4 GHz, flux-normalized), frozen baseline swapped into
+`rfx.boundaries.cpml` before the NU lane binds it, vs the localized kernel,
+vs the baseline under the G5-2b flags (reroll comparator):
+
+`max|S_live − S_base| = 0.0` (bit-identical S over all receivers, drivers
+and bins), `max|S_flag − S_base| = 4.77e-6`, all finite → **HELD**.
+|S11(left,left)| per bin, both kernels: 0.92762 0.53275 0.31749 0.21094
+0.14586 0.08804 0.04766 0.15397 0.29608. The #811 note's common-mode
+passivity self-check warning applies to all three arms alike; these S
+values are dispatch/identity evidence, not validated physics.
+(`sparam.json`, `sparam_{base,live,baseflag}.log`, `sparam_*_rec.json`)
+
+### Where the correctness claim now rests
+
+- G5-1 expression identity (r2), G5-2 (r2, 7 fixtures, contraction off)
+  and **G5-2b (fusion + algsimp off, 10 fixtures incl. the reviewer's
+  counterexample)**: same bits.
+- G5-3′ reroll-bounded distance to float64 (42/42), G5-4 physics
+  invariants, G5-AD (declared loss and the reviewer's alternative loss),
+  G5-S (S-matrix bit-identical on the graded WR-90 arm), and the committed
+  CPML reflectivity / pad-extension / face-notch / periodic / UPML oracles
+  (41 passed).
+- The G5-5 family (per-step, count/ratio, trajectory RMS) is recorded
+  FIRED three times and shown by D1/D2 to reject harmless recompilations
+  of the baseline itself; it is documented as non-discriminating and is
+  not part of the claim.
+- Performance: the lane falsifier FIRES for the uniform lane (20-30 %
+  slower) while the NU lane gains 2.1-2.6x. **This branch does not
+  propose the localized kernel as the production default for both lanes.**
+  The PI decision it asks for is lane-conditional dispatch (localized on
+  the NU lane only) or a fusion-preserving slab update — a new declaration.
