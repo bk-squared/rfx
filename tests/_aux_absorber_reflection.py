@@ -36,8 +36,33 @@ must check it against ``FIT_RESID_LIMIT``: outside the instrument's own validity
 domain the answer is NOT-APPLICABLE, never a pass and never a fail. The same
 discipline the gates themselves are held to (#812), applied to the instrument.
 
-Sources: ``docs/design_notes/20260904_aux_absorber_depth_derivation.md``,
-``docs/design_notes/20260903_cv26_oblique_defect_diagnosis.md`` (#888).
+THE DOMAIN HAS A SECOND AXIS, AND IT IS NOT SWEPT (added 2026-09-13, review of
+PR #1005). Every rig built on this module -- ``FAST_RIG`` and ``FULL_RIG``
+here, ``GRAZE_RIG`` in ``tests/unit/sources/test_tfsf_aux_absorber_reflection.py``
+-- runs at ONE resolution: ``DX_M = 1e-3`` at ``F0_HZ = 10 GHz``, i.e.
+**29.98 cells per free-space wavelength** (``lambda_0 = 29.979 mm``; prose
+elsewhere rounds it to 30). Every ``|B/A|`` this module reports -- and
+therefore the 80-degree validity domain declared in the note's section 12.5 --
+is measured only there. A CFS-CPML's reflection is a function of
+cells-per-wavelength as well as of angle, so the domain statement reads: *the
+derived absorber meets ``LEAK_BAR`` through 80 degrees AT 29.98 CELLS PER
+WAVELENGTH*. Nothing here measures a coarser or finer mesh, and nothing here
+should be read as covering one.
+
+The resolution sweep that would widen the domain to a range is NOT run in this
+lane and is NOT filed as an issue -- the declaration above is what ships, and
+saying so beats a tracking number nobody opened. What makes it hold is
+``test_the_declared_domain_names_the_resolution_it_was_measured_at``: it
+asserts ``CELLS_PER_WAVELENGTH`` against the exact ``c0 / f0 / dx`` and that
+every rig here carries only extent and record length, so a rig added at a
+different mesh fails rather than quietly widening the claim.
+
+Sources: ``docs/design_notes/20260904_aux_absorber_depth_derivation.md``
+(sections 2, 3, 12 and 14). The oblique diagnosis it grew out of is NOT in this
+repository: its note is ``20260903_cv26_oblique_defect_diagnosis.md`` on the
+unmerged branch ``agent/issue-888-oblique-diagnosis`` (831ea3c). The citable
+copy is #888 comment 5525810073, which carries the measurement and names that
+branch and sha; cited as history, not as something a reader can open here.
 """
 
 from __future__ import annotations
@@ -65,12 +90,21 @@ CUTOFF_ARG = math.sqrt(math.log(1000.0))     # cv26's bandwidth_for
 # angles the rig resolves and the one it does not.
 FIT_RESID_LIMIT = 1.0e-2
 
+# Both rigs here -- and GRAZE_RIG in the test file -- run at DX_M / F0_HZ above,
+# 29.98 cells per free-space wavelength. They differ in grid EXTENT and record
+# LENGTH, never in resolution, so none of them says anything about a coarser or
+# finer mesh (module docstring; asserted, not asserted-in-prose, by
+# test_the_declared_domain_names_the_resolution_it_was_measured_at).
+#
 # The fast rig: small grid, short record, 48 sample positions. Separates the
 # shipped absorber (5e-02) from the derived one (3e-06) by three decades in
 # about 7 s per angle.
 FAST_RIG = {"nx": 150, "n_steps": 2500, "n_samp": 48}
 # The full rig, for the angles the fast one cannot resolve.
 FULL_RIG = {"nx": 400, "n_steps": 12000, "n_samp": 96}
+# Cells per free-space wavelength, stated once so the domain claim names the
+# resolution it was measured at rather than only the angle.
+CELLS_PER_WAVELENGTH = C0 / F0_HZ / DX_M
 
 
 def bandwidth_for(theta0_deg: float, bw_max: float = 0.25) -> float:

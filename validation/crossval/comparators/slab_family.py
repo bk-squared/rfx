@@ -260,10 +260,15 @@ def rig_cells(nx_interior: int, dx_div: int = 1):
 # reflects. Measured on THIS rig's 1-D auxiliary grid
 # (``rfx/sources/tfsf.py``) AS IT SHIPPED BEFORE #888: |B/A| = 4.40e-02 in
 # steady state, from a reflector 6.88 cells inside its own 20-cell CPML
-# (docs/design_notes/20260903_cv04_envelope_decomposition.md sections 2, 4.1).
+# (docs/design_notes/20260903_cv04_envelope_decomposition.md sections 2, 4.1 --
+# that note is NOT in this repository; it is on branch
+# agent/cv04-aux-echo-measurement (fa2727c), summarised in #888 comment
+# 5529673679, which is the copy a reader can open).
 # The 2-D Bloch path (``rfx/sources/tfsf_2d.py``) reflected the same 4-6 %
 # class from 8 cells inside its 30-cell absorber
-# (docs/design_notes/20260903_cv26_oblique_defect_diagnosis.md section 3).
+# (docs/design_notes/20260903_cv26_oblique_defect_diagnosis.md section 3 -- also not
+# in this repository; branch agent/issue-888-oblique-diagnosis (831ea3c),
+# summarised in #888 comment 5525810073).
 # Both absorbers are now derived from a reflection target
 # (docs/design_notes/20260904_aux_absorber_depth_derivation.md): 9.43e-06 on
 # the 1-D path, and 2.3e-06 (0 deg) to 2.9e-05 (70 deg) in the gated-band mean

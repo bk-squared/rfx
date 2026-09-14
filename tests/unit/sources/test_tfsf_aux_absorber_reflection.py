@@ -13,7 +13,21 @@ the shared ``gate_from_envelope`` policy -- never a number chosen to pass. They
 are per angle because the reflection is per angle: the optimum reflection
 target inverts between normal and near-grazing incidence, so no single absorber
 setting minimises every angle and the derivation is taken at the WORST DECLARED
-ANGLE (70 degrees, cv26's gate cap).
+ANGLE. That angle is **82 degrees**, cv26's three grazing arms
+(``GRAZE_THETA0_DEG``), not the 70 degrees of its primary-rig cap
+``THETA_GATE_MAX_DEG`` -- this paragraph said 70 until the 2026-09-13 review of
+PR #1005, which is the value section 3 of the note derived at and section 12
+corrected. ``test_the_target_was_rederived_at_grazing_not_at_seventy`` below is
+the assertion, and ``test_the_domain_edge_is_where_the_note_says`` is where the
+82-degree row is required to sit OVER the bar.
+
+The declared domain is an ANGLE and a RESOLUTION: every rig here and in
+``tests/_aux_absorber_reflection.py`` runs at 29.98 cells per free-space
+wavelength (``dx = 1 mm``, ``lambda_0 = 29.979 mm`` at 10 GHz; rounded to 30
+below and in the note), so "meets the bar through 80 degrees" means "at that
+mesh". A cells-per-wavelength sweep is not run in this lane and is not filed as
+an issue; ``test_the_declared_domain_names_the_resolution_it_was_measured_at``
+is what keeps the claim from widening by accident.
 
 The fast rig cannot resolve 70 degrees -- four bins and a fit residual of 0.24.
 That is asserted as a property of the instrument
@@ -39,8 +53,8 @@ from rfx.sources.tfsf_2d import (
     AUX_N_MARGIN_X, AUX_SRC_OFFSET, init_tfsf_2d,
 )
 from tests._aux_absorber_reflection import (
-    FAST_RIG, FIT_RESID_LIMIT, FULL_RIG, measure_aux_echo_1d,
-    measure_aux_reflection_2d, sigma_max_of,
+    CELLS_PER_WAVELENGTH, FAST_RIG, FIT_RESID_LIMIT, FULL_RIG,
+    measure_aux_echo_1d, measure_aux_reflection_2d, sigma_max_of,
 )
 from tests._gate_policy import gate_from_envelope
 
@@ -313,6 +327,28 @@ def test_the_domain_edge_is_where_the_note_says(theta_deg):
         assert r["max"] > LEAK_BAR, (
             f"{theta_deg} deg is declared OUTSIDE the domain but reads {r['max']:.3e} <= LEAK_BAR: "
             "either the absorber improved (re-derive the domain) or the instrument lost resolution")
+
+
+def test_the_declared_domain_names_the_resolution_it_was_measured_at():
+    """The domain is an angle AND a resolution, and only the angle is swept.
+
+    Every |B/A| in this lane is measured at DX_M = 1e-3 with F0_HZ = 10 GHz --
+    lambda_0 = 29.979 mm, so 29.98 cells per free-space wavelength, which the
+    prose rounds to 30. "Meets LEAK_BAR through 80 deg" means "at that mesh"
+    and says nothing about a coarser or finer one. The three rigs differ in
+    grid EXTENT and record LENGTH only. Asserting that here is what stops a rig
+    added at another resolution from widening the domain claim silently: it
+    would have to carry its own dx or f0, and that is exactly what this
+    rejects.
+
+    The value asserted is the exact c0 / f0 / dx, not the rounded 30 -- the
+    first version of this test pinned 30.0 and reddened, which is the whole
+    point of pinning a number instead of restating it in prose.
+    """
+    assert CELLS_PER_WAVELENGTH == pytest.approx(29.9792458, rel=1e-9)
+    for name, rig in (("FAST_RIG", FAST_RIG), ("FULL_RIG", FULL_RIG),
+                      ("GRAZE_RIG", GRAZE_RIG)):
+        assert set(rig) == {"nx", "n_steps", "n_samp"}, (name, sorted(rig))
 
 
 def test_the_target_was_rederived_at_grazing_not_at_seventy():
