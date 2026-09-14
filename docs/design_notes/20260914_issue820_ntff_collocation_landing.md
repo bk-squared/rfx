@@ -161,8 +161,60 @@ C2 on the issue).
 
 ---
 
-## 5. Results
+## 5. Results (measured 2026-09-14, scratch copy, CPU)
 
-Filled in below from the scratch-copy arms once they land; see
-`scripts/diagnostics/issue820_results/*_collocation_*.json` and
-`*_transverse_*.json`.
+Artifacts: `scripts/diagnostics/issue820_results/*_collocation_*.json` and
+`*_transverse_*.json`. Baseline reproduces the probe bit-for-bit
+(`0.000e+00` dB) at both rungs; the vacuum control keeps 58.4-59.2 dB of
+target-to-empty separation on every arm; no warnings were emitted anywhere
+(verified with `warnings.simplefilter("always")`, not assumed).
+
+### 5.1 The transverse null, before any correction
+
+The continuum value is exactly 0.000 dB, so every number here is error.
+
+| rung | grid, steps | ring-down | axis | p-p (dB) | odd | even | odd/even |
+|---|---|---|---|---|---|---|---|
+| r1_ka1 | 91³, 700 | −63.07 dB | y | **0.7020** | 0.6883 | 0.1139 | 6.044 |
+| r1_ka1 | 91³, 700 | −63.07 dB | z | 0.1933 | 0.1553 | 0.0807 | **1.924** |
+| r1_box45 | 91³, 700 | −63.07 dB | y | 0.7422 | 0.7309 | 0.1054 | 6.934 |
+| r2_ka2 | 104³, 700 | −48.61 dB | y | 0.5561 | 0.5561 | 0.0887 | 6.270 |
+| r3_fine | 163³, 1400 | −66.22 dB | y | 0.2135 | 0.2130 | 0.0274 | 7.782 |
+
+| gate | reading | verdict |
+|---|---|---|
+| (t1) odd/even ≥ 3 on **both** axes | y 6.044, z 1.924 | **CARRIER-INCONSISTENT** |
+| (t2) dx halved at fixed physical geometry | 0.2135/0.7020 = **0.304** (0.322 sampling-matched), band 0.30–0.70 | **CARRIER-CONSISTENT, first order in dx** |
+| (t3) box re-centred 45.5 → 45.0 | odd span 0.6883 → 0.7309, **+6.2 %** | **box offset is NOT the carrier** |
+
+### 5.2 The two corrections
+
+| arm | null p-p (ka=1) | shrink | T | `r` (x sweep) | R | σ(0) dBsm | from Mie | move |
+|---|---|---|---|---|---|---|---|---|
+| baseline | 0.7020 | 1.000× | FALSE | 0.1189 | FALSE | −24.7679 | +0.7342 | — |
+| **arm (i)** H averaged | 0.4716 | 1.488× | INCONCLUSIVE | **0.0798** | INCONCLUSIVE | −25.1377 | **+0.3644** | −0.3698 |
+| **arm (ii)** per-component phase | 0.6609 | 1.062× | **FALSE** | **0.1602** | **FALSE** | −24.3796 | **+1.1225** | +0.3883 |
+| **arm (iii)** both | 0.4813 | 1.458× | INCONCLUSIVE | **0.0767** | INCONCLUSIVE | −25.2362 | **+0.2659** | −0.4683 |
+
+Same at ka = 2.0: arm (i) null 0.4407 (1.262×), Mie +1.0065 → +0.5191; arm (ii)
+null 0.4888 (1.138×), Mie → +1.5211; arm (iii) null 0.4367 (1.273×), Mie → +0.5042.
+
+Mie is evaluated at the realized `a_eff` (the #725 convention, `ka_eff` 0.9893 /
+1.9966). The control bar 0.622 dB is the committed fixture's own `delta_db`, which
+is the **pre-a_eff** number — stated because the two conventions differ by 0.11 dB
+and mixing them silently is exactly the provenance mistake this lane is about.
+
+### 5.3 What this says about landing
+
+- **Arm (ii) alone must not land.** It makes all three observables worse, at both
+  rungs, and the pre-declaration said in advance that a correction moving the
+  answer away from Mie is a finding rather than something to absorb.
+- **Arm (i) / (iii) are a real but partial correction** — about a third of the
+  effect, repeatable at two electrical sizes, improving Mie agreement by 0.37 to
+  0.50 dB — and both are INCONCLUSIVE against their own 3× bar. That is not
+  nothing, and it is not a fix.
+- **Something else carries the rest**: first order in dx, odd in y, four times
+  weaker in z, untouched by re-centring, and still present after both corrections.
+- So `L1`–`L5` are not yet worth spending: there is no candidate landing whose
+  gate this lane can predict it would pass. Naming the remaining carrier comes
+  first.
