@@ -184,6 +184,34 @@ ARM C (``--sweep offset2_cpml{8,16,24}``) -- arm (i) with EVERY adjacent plane
       otherwise INCONCLUSIVE.
     The shrink RATIO is reported alongside but is not the gate.
 
+CORRECTIONS 4 / ARM D (2026-09-14), after the fourth verification (ACCEPT).
+
+U1. Arm A's gloss was stronger than its numbers. "No interface anomaly in the
+    averaged plane" oversells a jump that is 16.9 % ELEVATED at CPML 8 and
+    clears the 1.2 refutation bar by only 2.6 % (ratio 1.1687; the x_lo
+    comparison clears by 10.5 %, ratio 1.0742). The correct wording is "both
+    below the refutation bar, the depth ratio by 2.6 %".
+    What actually refutes N2 is STRUCTURAL and should lead: the arm's own
+    artifact records adjacent_plane_clearance_cells = 0 for y_lo and z_lo at
+    ALL THREE depths (and 1 for x_lo at all three). The contamination geometry
+    is therefore DEPTH-INVARIANT by construction, so it cannot produce a
+    depth-DEPENDENT effect whatever its size. N2 is refuted three ways --
+    structurally, by arm A's measurement, and by arm C's FALSE.
+
+U2. Free result from arm A's artifact, offered as a CANDIDATE and explicitly
+    not an attribution (two three-point series sharing a shape is a shape, not
+    a cause): the lo/hi H-jump CONTRAST flips and saturates exactly where
+    arm (i)'s effect does.
+        depth |  x_lo/x_hi  y_lo/y_hi  z_lo/z_hi | arm (i) absolute
+            8 |   1.1839     1.3165     1.2353   |  0.2124 dB
+           16 |   0.9114     0.9345     1.0412   |  0.2577 dB
+           24 |   0.9051     0.8939     1.0065   |  0.2574 dB
+    At CPML 8 every axis has the lo face jumping MORE than the hi face; by 16
+    the x and y contrasts have crossed below 1 and by 24 all three have
+    settled. Also coherent with N6 and with the z null being ~4x smaller: the
+    z-face jump is ~0.0148 against ~0.1200 on y, 8.1x smaller, because the
+    z faces do not store ez and the backscattered field is z-polarized.
+
 Usage
 -----
   PYTHONPATH=<worktree> python3 scripts/diagnostics/issue820_ntff_collocation.py --sweep ynull_ka1
@@ -446,6 +474,31 @@ def _apply_arm_ii(nd, k, dx, skip_h_normal=False):
                 delta[ax] = 0.0
             arr[..., ci] *= np.exp(1j * k * float(_RHAT @ delta) * dx)
         new[f] = jnp.asarray(arr, dtype=getattr(nd, f).dtype)
+    return nd._replace(**new)
+
+
+FACE_GROUPS = {
+    "all6": FACES,
+    "lo": ("x_lo", "y_lo", "z_lo"),
+    "hi": ("x_hi", "y_hi", "z_hi"),
+    "x": ("x_lo", "x_hi"),
+    "y": ("y_lo", "y_hi"),
+    "z": ("z_lo", "z_hi"),
+}
+GATE_D_STABLE = 0.05      # (max-min)/mean of the absolute reduction across depths
+
+
+def _apply_arm_i_group(nd, adj, faces):
+    """Arm (i)'s H averaging applied to ONE group of faces only."""
+    new = {}
+    for f in faces:
+        ax = FACE_AXIS[f]
+        on = np.asarray(getattr(nd, f), dtype=np.complex128)
+        near = np.asarray(getattr(adj[ax], f), dtype=np.complex128)
+        out = on.copy()
+        out[..., 2] = 0.5 * (near[..., 2] + on[..., 2])
+        out[..., 3] = 0.5 * (near[..., 3] + on[..., 3])
+        new[f] = jnp.asarray(out, dtype=getattr(nd, f).dtype)
     return nd._replace(**new)
 
 
@@ -765,15 +818,88 @@ def run_hjump():
     return _emit("hjump", out)
 
 
+def run_groupsplit(cpml):
+    """ARM D -- which face group carries arm (i)'s depth dependence?
+
+    Pre-declared. Arm (i) averages H on all six faces at once, and its ABSOLUTE
+    null reduction is 0.2124 / 0.2577 / 0.2574 dB at CPML 8 / 16 / 24 -- one
+    step then saturation, which L7 refuses to land around. This arm applies the
+    same averaging to ONE GROUP at a time (lo, hi, x, y, z) with `all6` as the
+    control that must reproduce the parent sweep's arm_i exactly.
+
+      GATE: if at least one group's absolute reduction is DEPTH-STABLE
+      ((max-min)/mean <= 0.05 across 8/16/24) while at least one other is not,
+      the depth dependence is LOCALIZED to the unstable group, L7 becomes
+      answerable, and the arm records which group. If every group moves
+      together, the dependence is GLOBAL to the transform and the collocation
+      line is to be CLOSED rather than continued.
+
+    NOT zero-simulation, and saying so plainly: the committed sweeps store only
+    far-field scalars (`rows[].arms[].E_theta`), not the face arrays, so the
+    adjacent-plane data has to be regenerated. No new physics configuration is
+    introduced -- the box, the offsets and the record are the parent sweep's --
+    and the `all6` control reproducing the parent's arm_i is what proves the
+    regenerated runs are the same runs.
+    """
+    cfg = dict(SWEEPS["ynull_ka1"])
+    cfg["cpml_layers"] = cpml
+    cfg["offsets"] = [-10, -6, -2, 0, 2, 6, 10]
+    guard = _vacuum_guard(cfg, f"groupsplit_cpml{cpml}")
+    caught, rows = [], []
+    with warnings.catch_warnings(record=True) as wlist:
+        warnings.simplefilter("always")
+        for n in cfg["offsets"]:
+            grid, mats, n_steps, _, meta = probe.build_case(
+                (0, n, 0), ka=cfg["ka"], cpr=cfg["cpr"],
+                clear_cells=cfg["clear_cells"], steps_mult=cfg["steps_mult"],
+                cpml_layers=cpml)
+            box, nd, adj = _simulate(grid, mats, n_steps, cpml_layers=cpml)
+            vals = {}
+            e_th, e_ph = _backscatter(nd, box, grid)
+            vals["baseline"] = _sigma_dbsm(e_th, e_ph, grid, n_steps)
+            for g, faces in FACE_GROUPS.items():
+                nd_g = _apply_arm_i_group(nd, adj, faces)
+                e_th, e_ph = _backscatter(nd_g, box, grid)
+                vals[g] = _sigma_dbsm(e_th, e_ph, grid, n_steps)
+            rows.append({"offset": n, "sigma": vals, "meta": meta})
+            print(f"  cpml {cpml} y{n:+3d}  " + "  ".join(
+                f"{g}:{vals[g]:8.4f}" for g in ("baseline",) + tuple(FACE_GROUPS)))
+        caught = [f"{w.category.__name__}: {w.message}" for w in wlist]
+    out = {"cpml_layers": cpml, "rows": rows, "guard": guard,
+           "offsets": cfg["offsets"], "groups": {k: list(v) for k, v in
+                                                 FACE_GROUPS.items()},
+           "gate_stable": GATE_D_STABLE, "warnings": caught,
+           "preflight": ("none emitted -- verified with "
+                         "warnings.simplefilter('always')")}
+    base_pp = (max(r["sigma"]["baseline"] for r in rows)
+               - min(r["sigma"]["baseline"] for r in rows))
+    out["baseline_pp_db"] = base_pp
+    out["per_group"] = {}
+    for g in FACE_GROUPS:
+        v = [r["sigma"][g] for r in rows]
+        pp = max(v) - min(v)
+        out["per_group"][g] = {"pp_db": pp, "absolute_reduction_db": base_pp - pp,
+                               "shrink": base_pp / pp if pp else float("inf")}
+        print(f"[groupsplit] cpml {cpml} {g:5s}: p-p {pp:.4f} dB, absolute "
+              f"-{base_pp - pp:.4f} dB, shrink {base_pp/pp:.4f}x")
+    print(f"[groupsplit] cpml {cpml} baseline p-p {base_pp:.4f} dB; warnings "
+          f"{len(caught)}{' (none emitted)' if not caught else caught}")
+    return _emit(f"groupsplit_cpml{cpml}", out)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="issue #820 NTFF collocation arms")
     p.add_argument("--sweep", required=True,
-                   choices=sorted(SWEEPS) + ["control", "hjump"])
+                   choices=sorted(SWEEPS) + ["control", "hjump", "groupsplit"])
+    p.add_argument("--cpml", type=int, default=8,
+                   help="groupsplit only: absorber depth in cells")
     args = p.parse_args(argv)
     if args.sweep == "control":
         run_control()
     elif args.sweep == "hjump":
         run_hjump()
+    elif args.sweep == "groupsplit":
+        run_groupsplit(args.cpml)
     else:
         run_sweep(args.sweep)
     return 0
