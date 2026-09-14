@@ -47,7 +47,7 @@ resulting ``tests/data/preflight_split_snapshot/*.json`` alongside the change.
 
 Determinism (measured 2026-09-14 on this pod before the baseline was written)
 ----------------------------------------------------------------------------
-The 36 fixtures below were generated in four separate processes and the JSON
+The fixtures below were generated in four separate processes and the JSON
 compared byte for byte across all four:
 
 * ``PYTHONHASHSEED=1`` vs ``PYTHONHASHSEED=987654`` -- identical. (Sets ARE
@@ -77,6 +77,30 @@ straight into the text. That is stable for a given numpy, and a numpy major
 upgrade that changes scalar repr will red those fixtures. That is a real
 report-text change and should be re-blessed as one, not normalised here.
 
+Coverage, measured -- and what it does NOT cover
+------------------------------------------------
+44 fixtures, witnessing 41 of the 74 literal ``code=`` slugs in
+``rfx/api/_preflight.py`` plus the dynamic ``uncoded`` and
+``sparam_routing_msl`` paths. Stated because the split-inventory that seeded
+this lock projected "~56 of 74" for its 12-fixture set; the measured figure
+for that set was 32, and eight targeted fixtures were added to reach 41.
+
+The 33 unwitnessed codes are the honest hole: ``conformal_nan``,
+``floating_port``, ``source_decoupled``, ``unresolved_pulse``, the four
+``precision_*``/``*_nonuniform_lane_unsupported`` guards, the three
+``thin_conductor_*`` ones, ``port_aperture_snap`` /
+``port_aperture_unrasterizable`` / ``waveguide_reference_plane`` /
+``port_index_mirror_asymmetry`` / ``record_far_boundary_band_below_cutoff`` /
+``layout_measured_from_band_low_edge`` / ``waveguide_setup_audit_skipped``
+(the waveguide leg), ``coaxial_port_junction_short`` (the coax leg),
+``refplane_near_field`` / ``refplane_partial_optin`` /
+``wire_port_end_gap_to_conductor`` (the lumped-port leg), and the rest. Each
+needs its own narrow fixture. A leg that moves one of those checks is NOT
+covered by this lock and should add the fixture in its own PR -- what still
+gates it there is
+``tests/unit/preflight/test_preflight_advisory_emission_contract.py``'s
+frozen site count, which is a surface freeze, not a behaviour witness.
+
 Fixtures
 --------
 The builders are IMPORTED from the behavioural test modules that own them
@@ -87,12 +111,18 @@ cost is that editing one of those fixtures reds this lock -- which is correct,
 because an edited fixture invalidates the committed baseline and the snapshot
 must be regenerated with that edit as its justification.
 
-Three builders are not importable as-is and are reproduced verbatim below,
-each naming its source line: ``_nu_grading_sim`` (body of
-``tests/unit/nonuniform/test_multiband_nu_envelope.py:186`` ``_grading_advisories``,
-which returns codes rather than a ``Simulation``), and the two composite
-builders ``_dispersive_pole_sim`` and ``_flux_region_sim``, which each stitch
-together two or three module-level pieces of their source file.
+Nine builders have no importable callable to reach and are reproduced
+verbatim below, each naming the source line it came from:
+
+* ``_nu_grading_sim`` -- body of ``_grading_advisories``,
+  ``tests/unit/nonuniform/test_multiband_nu_envelope.py:186``, which returns
+  advisory codes rather than a ``Simulation``.
+* ``_dispersive_pole_sim`` and ``_flux_region_sim`` -- each stitches together
+  two or three module-level pieces of its source file.
+* ``_pec_box_subcell_sim``, ``_pec_zero_cells_sim``,
+  ``_pec_realization_refused_sim``, ``_pec_boundary_open_sim`` and
+  ``_tfsf_lumped_rlc_sim`` -- their geometry is inline in the body of a test
+  function, not a named builder.
 
 No ``jax.config.update('jax_enable_x64', True)`` here: it is process-global
 and would red every same-process pytest-split shard.
@@ -112,6 +142,8 @@ LOCK_PROVENANCE = {
         "tests/unit/preflight/test_adi_preflight.py,"
         "tests/unit/preflight/test_flux_region_preflight.py,"
         "tests/unit/preflight/test_pec_face_short_of_domain_wall.py,"
+        "tests/unit/ports/test_msl_realized_port_contract.py,"
+        "tests/unit/farfield/test_ntff_small_gp_advisory.py,"
         "tests/data/preflight_split_snapshot"
     ),
     "generator": (
@@ -361,6 +393,111 @@ def _pec_face_short_sim():
     return mod._sim(mod.A_WG, mod.B_WG)
 
 
+def _msl_conductor_plane_mismatch_sim():
+    """A declared trace plane that does not meet a realized conductor plane.
+
+    ``tests/unit/ports/test_msl_realized_port_contract.py:193``
+    (``test_preflight_reports_a_blocking_plane_mismatch``) builds it as
+    ``_model(port_top=11.)``; that builder returns ``(sim, nonuniform)``.
+    This is the ONLY witness in the corpus for ``msl_port_conductor_planes``,
+    one of the two codes leg 1 takes out of the facade.
+    """
+    from tests.unit.ports.test_msl_realized_port_contract import _model
+
+    return _model(port_top=11.0)[0]
+
+
+def _pec_box_subcell_sim():
+    """A 0.2 mm PEC Box on a 0.5 mm cell.
+
+    Body of ``test_sub_cell_pec_box_advisory_documents_the_refusal``,
+    ``tests/unit/preflight/test_preflight_guards.py:123``, reproduced verbatim
+    (it is inline in the test, not a named builder).
+    """
+    from rfx import Box, Simulation
+
+    sim = Simulation(freq_max=10e9, domain=(0.01, 0.01, 0.01), dx=0.5e-3,
+                     cpml_layers=4)
+    sim.add_source((0.005, 0.005, 0.002), "ez")
+    sim.add(Box((0.003, 0.003, 0.005), (0.007, 0.007, 0.0052)), material="pec")
+    return sim
+
+
+def _pec_zero_cells_sim():
+    """A post between cell centres, so it rasterizes to no cell at all.
+
+    Body of ``TestRealizationFindings::test_zero_cell_volume_is_an_error``,
+    ``tests/unit/preflight/test_preflight_rasterization.py:803``, verbatim.
+    """
+    from rfx import Simulation
+    from rfx.geometry.csg import Cylinder
+
+    sim = Simulation(domain=(10 * _MM, 10 * _MM, 8 * _MM), dx=1 * _MM,
+                     freq_max=10e9, boundary="cpml")
+    sim.add(Cylinder(center=(5 * _MM, 5 * _MM, 4 * _MM), radius=0.55 * _MM,
+                     height=2 * _MM), material="pec")
+    return sim
+
+
+def _pec_realization_refused_sim():
+    """A Box with two zero-extent axes: a line is not a conductor.
+
+    Body of ``TestRealizationFindings::test_line_box_is_a_refusal``,
+    ``tests/unit/preflight/test_preflight_rasterization.py:817``, verbatim.
+    """
+    from rfx import Box, Simulation
+
+    sim = Simulation(domain=(10 * _MM, 10 * _MM, 8 * _MM), dx=1 * _MM,
+                     freq_max=10e9, boundary="cpml")
+    sim.add(Box((2 * _MM, 5 * _MM, 4 * _MM), (8 * _MM, 5 * _MM, 4 * _MM)),
+            material="pec")
+    return sim
+
+
+def _pec_boundary_open_sim():
+    """An NTFF-declared radiator inside a PEC box.
+
+    Body of ``test_pec_boundary_open_still_warns_when_ntff_declared``,
+    ``tests/unit/preflight/test_preflight_guards.py:628``, verbatim.
+    """
+    from rfx import Box, Simulation
+
+    sim = Simulation(freq_max=10e9, domain=(0.06, 0.06, 0.06), dx=2e-3,
+                     boundary="pec")
+    sim.add_source((0.03, 0.03, 0.03), "ez")
+    sim.add(Box((0.028, 0.028, 0.020), (0.032, 0.032, 0.024)), material="pec")
+    sim.add_ntff_box((0.01, 0.01, 0.01), (0.05, 0.05, 0.05))
+    return sim
+
+
+def _tfsf_lumped_rlc_sim():
+    """TFSF plane wave plus a lumped RLC: the unstable pairing.
+
+    Body of ``test_tfsf_plus_lumped_rlc_warns``,
+    ``tests/unit/preflight/test_preflight_guards.py:1079``, verbatim.
+    """
+    from rfx import Simulation
+
+    sim = Simulation(freq_max=16e9, domain=(0.02, 0.02, 0.02), dx=0.02 / 20,
+                     boundary="cpml", cpml_layers=8, mode="3d")
+    sim.add_tfsf_source(f0=8e9, bandwidth=0.6, polarization="ez",
+                        direction="+x", waveform="modulated_gaussian")
+    sim.add_lumped_rlc(position=(0.010, 0.010, 0.010), component="ez",
+                       R=50.0, C=0.20e-12, topology="series")
+    return sim
+
+
+def _ntff_small_ground_plane_sim():
+    """The cv05-class 60 x 55 mm ground plane under a patch.
+
+    ``tests/unit/farfield/test_ntff_small_gp_advisory.py:49`` ``_patch_sim``,
+    driven at the dimensions its first test uses (L86).
+    """
+    from tests.unit.farfield.test_ntff_small_gp_advisory import _patch_sim
+
+    return _patch_sim(60e-3, 55e-3)
+
+
 def _nu_grading_sim(dz, cpml=0, boundary="pec"):
     """Body of ``_grading_advisories``,
     ``tests/unit/nonuniform/test_multiband_nu_envelope.py:186``, reproduced
@@ -472,6 +609,23 @@ _FIXTURES = (
      {}, None),
     ("flux_region_graded", _flux_region_sim, {"check_ntff": False}, None),
     ("pec_face_short_of_wall", _pec_face_short_sim, {}, None),
+    # -- 29-36. gap closers: codes the inventory's §7 set does NOT reach -----
+    # Measured after building the 36 above: they witness 32 of the 74 literal
+    # codes, not the "~56" the inventory projected. These eight are the
+    # highest-value of the 42 misses -- each is the ONLY witness in the corpus
+    # for a code a planned leg takes out of the facade.
+    ("msl_conductor_plane_mismatch",       # leg 1 (MSL)
+     _msl_conductor_plane_mismatch_sim, {}, None),
+    ("pec_box_subcell", _pec_box_subcell_sim, {}, None),          # leg 2
+    ("pec_zero_cells", _pec_zero_cells_sim, {}, None),            # leg 2
+    ("pec_realization_refused",
+     _pec_realization_refused_sim, {}, None),                     # leg 2
+    ("pec_boundary_open", _pec_boundary_open_sim, {}, None),      # leg 2/6
+    ("tfsf_lumped_rlc", _tfsf_lumped_rlc_sim, {}, None),          # leg 6
+    ("wire_port_dead_extent",                                     # leg 6
+     lambda: _inverse_design("_microstrip_sim", 1.5e-3), {}, None),
+    ("ntff_small_ground_plane",                                   # ntff leg
+     _ntff_small_ground_plane_sim, {}, None),
 )
 
 _IDS = [fid for fid, _, _, _ in _FIXTURES]
