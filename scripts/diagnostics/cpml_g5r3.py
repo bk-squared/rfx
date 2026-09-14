@@ -28,13 +28,186 @@ SCRATCH = Path(os.environ.get('G5R3_SCRATCH', '/tmp/g5r3_scratch'))
 FIELDS = ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')
 FLAGS = '--xla_disable_hlo_passes=fusion --xla_cpu_enable_fast_math=false'
 LEGACY_FLAGS = '--xla_cpu_use_fusion_emitters=false --xla_cpu_enable_fast_math=false'
+FLAGS2 = '--xla_disable_hlo_passes=fusion,algsimp --xla_cpu_enable_fast_math=false'   # r3b: algsimp reassociates whole-array vs slab adds
+EXTRA_FIXTURES = ['thin232', 'overlap', 'kappa5_pmc']
 ULP = float(np.nextafter(np.float32(1), np.float32(np.inf)))
 STEPS = 200
 FIXTURES = ['uniform8', 'graded8', 'mixed8', 'uniform4', 'uniform16', 'periodic8', 'kappa8']
 
 
+def _guard_tree():
+    import rfx
+    got = Path(rfx.__file__).resolve()
+    assert str(got).startswith(str(ROOT) + '/'), f'rfx imported from {got}, not from {ROOT} (fix PYTHONPATH, absolute)'
+
+
 def load_M():
+    _guard_tree()
     return runpy.run_path(str(ROOT / 'tests/unit/boundaries/test_cpml_localization.py'))
+
+
+def extra_fixture(M, name):
+    """r3b fixtures from the adversarial review (thin232 is the reviewer's, verbatim in shape/params)."""
+    import jax.numpy as jnp
+    Grid = M['Grid']
+    if name == 'thin232':
+        return Grid(freq_max=1e10, domain=(.001, .002, .001), dx=.001, cpml_layers=2, cpml_axes='', kappa_max=5.), 3, True
+    if name == 'overlap':
+        return Grid(freq_max=1e10, domain=(.006,) * 3, dx=.001, cpml_layers=2), 50, False
+    if name == 'kappa5_pmc':
+        return Grid(freq_max=1e10, domain=(.006,) * 3, dx=.001, cpml_layers=2, kappa_max=5., pmc_faces={'y_hi'}), 50, False
+    raise KeyError(name)
+
+
+def run_extra(M, name, impl):
+    """Random-field/psi/material seeded run (reviewer's thin232 protocol) for the extra fixtures; final state."""
+    import jax
+    import jax.numpy as jnp
+    grid, steps, randomize = extra_fixture(M, name)
+    sh = (grid.nx, grid.ny, grid.nz)
+    params, psi = M['old'].init_cpml(grid)   # baseline parameters for both, as in every gate
+    st = M['init_state'](sh); mat = M['init_materials'](sh)
+    axes = getattr(grid, 'cpml_axes', 'xyz'); pmc = getattr(grid, 'pmc_faces', set())
+    rng = np.random.default_rng(913)
+    if randomize:
+        st = st._replace(**{k: jnp.asarray(rng.normal(size=sh).astype('float32')) for k in FIELDS})
+        psi = psi._replace(**{k: jnp.asarray(rng.normal(size=getattr(psi, k).shape).astype('float32')) for k in psi._fields})
+        mat = mat._replace(eps_r=jnp.asarray(rng.uniform(1, 5, sh).astype('float32')), mu_r=jnp.asarray(rng.uniform(1, 3, sh).astype('float32')))
+    else:
+        st = st._replace(ez=st.ez.at[tuple(n // 2 for n in sh)].set(1.0))
+    periodic = tuple(ax not in axes for ax in 'xyz')
+
+    def step(c, i):
+        s_, p_ = c
+        if not randomize:
+            s_ = M['update_h'](s_, mat, grid.dt, grid.dx, periodic=periodic)
+        s_, p_ = impl.apply_cpml_h(s_, params, p_, grid, axes, mat)
+        s_ = M['apply_pmc_faces'](s_, pmc)
+        if not randomize:
+            s_ = M['update_e'](s_, mat, grid.dt, grid.dx, periodic=periodic)
+        s_, p_ = impl.apply_cpml_e(s_, params, p_, grid, axes, mat)
+        if not randomize:
+            s_ = M['apply_pec'](s_, axes=axes)
+        return (s_, p_), None
+    (fs, fp), _ = jax.jit(lambda: jax.lax.scan(step, (st, psi), jnp.arange(steps)))()
+    out = {k: np.asarray(getattr(fs, k)) for k in FIELDS}
+    out.update({'psi_' + k: np.asarray(getattr(fp, k)) for k in fp._fields})
+    return out
+
+
+def identity2_worker(label):
+    """Subprocess under FLAGS2 (or none for the effectiveness control): saves final fields+psi of the
+    frozen baseline and, when RFX_G4_REJECTED_CANDIDATE=1, of the candidate too, on all fixtures."""
+    M = load_M()
+    want = os.environ.get('G5R3_EXPECT_FLAGS', '')
+    assert os.environ.get('XLA_FLAGS', '') == want, (os.environ.get('XLA_FLAGS'), want)
+    SCRATCH.mkdir(parents=True, exist_ok=True)
+    impls = {'base': M['old']}
+    if os.environ.get('RFX_G4_REJECTED_CANDIDATE') == '1':
+        impls['cand'] = M['cpml']
+    for name in FIXTURES + EXTRA_FIXTURES:
+        for tag, impl in impls.items():
+            if name in EXTRA_FIXTURES:
+                arrs = run_extra(M, name, impl)
+            else:
+                (fs, fp), _ = M['runner'](name, impl)
+                arrs = {k: np.asarray(getattr(fs, k)) for k in FIELDS}
+                arrs.update({'psi_' + k: np.asarray(getattr(fp, k)) for k in fp._fields})
+            np.savez(SCRATCH / f'id2_{label}_{tag}_{name}.npz', **arrs)
+        print(label, name, 'saved', flush=True)
+
+
+def identity2():
+    """G5-2b: bit-identity under FLAGS2 on 7 + 3 fixtures, with an effectiveness control."""
+    M = load_M()
+    out = {'stage': 'identity2', 'provenance': provenance(M), 'flags': FLAGS2, 'fixtures': {}, 'fired': []}
+    for label, flags, cand in (('id2flag', FLAGS2, True), ('id2plain', '', False)):
+        env = dict(os.environ, XLA_FLAGS=flags, PYTHONDONTWRITEBYTECODE='1', G5R3_EXPECT_FLAGS=flags)
+        if cand:
+            env['RFX_G4_REJECTED_CANDIDATE'] = '1'
+        else:
+            env.pop('RFX_G4_REJECTED_CANDIDATE', None)
+        with (OUT / f'{label}.log').open('w') as stream:
+            p = subprocess.run([sys.executable, __file__, 'identity2_worker', label], env=env, stdout=stream, stderr=subprocess.STDOUT)
+        assert p.returncode == 0, f'{label} failed, see {OUT / (label + ".log")}'
+    eff_changed = 0
+    for name in FIXTURES + EXTRA_FIXTURES:
+        b = np.load(SCRATCH / f'id2_id2flag_base_{name}.npz'); c = np.load(SCRATCH / f'id2_id2flag_cand_{name}.npz'); u = np.load(SCRATCH / f'id2_id2plain_base_{name}.npz')
+        rows = {}
+        for k in b.files:
+            eq = bool(np.array_equal(b[k], c[k])); nd = int(np.count_nonzero(b[k] != c[k]))
+            eff = int(np.count_nonzero(b[k] != u[k])); eff_changed += eff
+            rows[k] = {'equal': eq, 'differing': nd, 'max_abs': float(np.max(np.abs(b[k].astype(np.float64) - c[k]))) if nd else 0.0, 'flag_vs_plain_differing': eff}
+            if not eq:
+                out['fired'].append(f'{name}/{k}')
+        out['fixtures'][name] = rows
+        print('identity2', name, 'ALL EQUAL' if all(r['equal'] for r in rows.values()) else 'DIFF ' + str([k for k, r in rows.items() if not r['equal']]), flush=True)
+    out['effectiveness_flag_vs_plain_changed_elements'] = eff_changed
+    out['verdict'] = 'INCONCLUSIVE' if eff_changed == 0 else ('FIRED' if out['fired'] else 'HELD')
+    (OUT / 'identity2.json').write_text(json.dumps(out, indent=1, allow_nan=False) + '\n')
+    print('G5-2b', out['verdict'], 'fired:', out['fired'], '| effectiveness changed elements:', eff_changed, flush=True)
+
+
+def s_stat():
+    """G5-5''' (reviewer's trajectory statistic) on the STORED curves; no FDTD."""
+    ctl = json.loads((OUT / 'controls.json').read_text()); c = json.loads((OUT / 'candidate.json').read_text())
+    rows = {}; S = 0.0; fired = []
+    for name in FIXTURES:
+        rows[name] = {}
+        for k in FIELDS:
+            dc = np.asarray(c['fixtures'][name][k]['d_cand_curve']); df = np.asarray(ctl['fixtures'][name][k]['d_flag_curve'])
+            rc, rf = float(np.sqrt(np.mean(dc ** 2))), float(np.sqrt(np.mean(df ** 2)))
+            ratio = (rc / rf) if rf > 0 else (0.0 if rc == 0 else float('inf'))
+            rows[name][k] = {'rms_t_cand': rc, 'rms_t_flag': rf, 'ratio': ratio}
+            S = max(S, ratio)
+            if ratio > 1.0:
+                fired.append(f'{name}/{k}')
+    out = {'stage': 's_stat', 'definition': 'S = max_(fixture,field) RMS_t(d_cand)/RMS_t(d_flag); gate S <= 1; zero denominator requires d_cand == 0',
+           'S': S, 'verdict': 'FIRED' if fired else 'HELD', 'fired': fired, 'rows': rows}
+    (OUT / 's_stat.json').write_text(json.dumps(out, indent=1, allow_nan=False) + '\n')
+    print("G5-5''' S =", S, out['verdict'], fired, flush=True)
+
+
+def sparam_worker(label):
+    """Arm A of the WR-90 dz-graded falsifier with the CPML implementation selected by label:
+    base = frozen baseline swapped into rfx.boundaries.cpml (production binds these names at call time);
+    live = the localized kernel in rfx/. Runs under whatever XLA_FLAGS the parent set."""
+    _guard_tree()
+    import importlib.util
+    import rfx.boundaries.cpml as live
+    if label.startswith('base'):
+        spec = importlib.util.spec_from_file_location('cpml_frozen', ROOT / 'validation/research/nu_cost/g4/cpml_baseline.py')
+        frozen = importlib.util.module_from_spec(spec); spec.loader.exec_module(frozen)
+        frozen.CPMLAxisParams = live.CPMLAxisParams; frozen.CPMLState = live.CPMLState
+        for fn in ('init_cpml', 'apply_cpml_h', 'apply_cpml_e'):
+            setattr(live, fn, getattr(frozen, fn))
+    sys.path.insert(0, str(ROOT / 'scripts/diagnostics'))
+    import wr90_dz_dispatch_falsifier as W
+    rec, s_ = W._run_arm('A')
+    SCRATCH.mkdir(parents=True, exist_ok=True)
+    np.savez(SCRATCH / f'sparam_{label}.npz', S=np.asarray(s_), freqs=np.asarray(rec.get('freqs_hz', [])))
+    (OUT / f'sparam_{label}_rec.json').write_text(json.dumps({k: v for k, v in rec.items() if isinstance(v, (int, float, str, list, bool)) or v is None}, indent=1, default=str) + '\n')
+    print(label, 'S shape', np.asarray(s_).shape, 'wall', rec.get('wallclock_s'), flush=True)
+
+
+def sparam():
+    """G5-S: matched graded-mesh complex S-parameter, reroll-bounded."""
+    M = load_M()
+    for label, flags in (('base', ''), ('live', ''), ('baseflag', FLAGS2)):
+        env = dict(os.environ, XLA_FLAGS=flags, PYTHONDONTWRITEBYTECODE='1'); env.pop('RFX_G4_REJECTED_CANDIDATE', None)
+        with (OUT / f'sparam_{label}.log').open('w') as stream:
+            p = subprocess.run([sys.executable, __file__, 'sparam_worker', label], env=env, stdout=stream, stderr=subprocess.STDOUT)
+        assert p.returncode == 0, f'sparam {label} failed, see {OUT / ("sparam_" + label + ".log")}'
+    Sb = np.load(SCRATCH / 'sparam_base.npz')['S']; Sl = np.load(SCRATCH / 'sparam_live.npz')['S']; Sf = np.load(SCRATCH / 'sparam_baseflag.npz')['S']
+    d_live, d_flag = float(np.max(np.abs(Sl - Sb))), float(np.max(np.abs(Sf - Sb)))
+    out = {'stage': 'sparam', 'provenance': provenance(M), 'arm': 'A (WR-90 dz-graded, flux-normalized, 9 bins)',
+           'max_abs_dS_live_vs_base': d_live, 'max_abs_dS_flag_vs_base': d_flag,
+           'all_finite': bool(np.isfinite(Sl).all() and np.isfinite(Sb).all() and np.isfinite(Sf).all()),
+           'S11_left_abs_base': np.abs(Sb[0, 0, :]).tolist(), 'S11_left_abs_live': np.abs(Sl[0, 0, :]).tolist(),
+           'verdict': 'HELD' if (d_live <= d_flag and np.isfinite(Sl).all()) else 'FIRED'}
+    (OUT / 'sparam.json').write_text(json.dumps(out, indent=1, allow_nan=False) + '\n')
+    print('G5-S', out['verdict'], 'max|dS| live', d_live, '<= flag', d_flag, flush=True)
+
 
 
 def trajectory(M, name, impl, seed, history):
@@ -281,12 +454,16 @@ def ad():
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser()
-    p.add_argument('stage', choices=('controls', 'candidate', 'ad', 'reroll', 'worker', 'ad_worker'))
+    p.add_argument('stage', choices=('controls', 'candidate', 'ad', 'reroll', 'identity2', 'identity2_worker', 's_stat', 'sparam', 'sparam_worker', 'worker', 'ad_worker'))
     p.add_argument('rest', nargs='*')
     a = p.parse_args()
     if a.stage == 'worker':
         worker(a.rest[0], a.rest[1], a.rest[2].split(','))
     elif a.stage == 'ad_worker':
         ad_worker(a.rest[0])
+    elif a.stage == 'identity2_worker':
+        identity2_worker(a.rest[0])
+    elif a.stage == 'sparam_worker':
+        sparam_worker(a.rest[0])
     else:
         globals()[a.stage]()

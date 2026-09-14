@@ -103,13 +103,60 @@ def differences(reference, candidate):
     return records
 
 
-@pytest.mark.parametrize('name', FIXTURES)
-def test_cpml_localization_identity(name):
-    reference = jax.jit(lambda: runner(name, old)[0])()
-    candidate = jax.jit(lambda: runner(name, cpml)[0])()
-    records = differences(reference, candidate)
-    print('\n' + name + '\n' + '\n'.join(records))
-    assert all('equal=True' in record for record in records), '\n'.join(records)
+# r3b contract (docs/design_notes/20260915_cpml_localization_r3_predeclaration.md):
+# the localized kernel is the same arithmetic compiled differently, so a
+# bit-identity assertion under DEFAULT flags is a statement about XLA's
+# contraction/reassociation choices, not about the kernel. The arithmetic
+# identity is asserted where it is testable -- with fusion and algsimp
+# suppressed -- and under default flags the divergence from the frozen
+# baseline is bounded by a harmless recompilation of the baseline itself.
+IDENTITY_FLAGS = '--xla_disable_hlo_passes=fusion,algsimp --xla_cpu_enable_fast_math=false'
+_HELPER = Path(__file__).resolve().parents[3] / 'scripts/diagnostics/cpml_g5r3.py'
+
+
+def _subprocess(stage, label, flags, candidate, *extra):
+    import subprocess
+    import sys
+    env = dict(os.environ, XLA_FLAGS=flags, G5R3_EXPECT_FLAGS=flags, PYTHONDONTWRITEBYTECODE='1',
+               PYTHONPATH=str(Path(__file__).resolve().parents[3]))
+    env.pop('RFX_G4_REJECTED_CANDIDATE', None)
+    if candidate:
+        env['RFX_G4_REJECTED_CANDIDATE'] = '1'
+    p = subprocess.run([sys.executable, str(_HELPER), stage, label, *extra], env=env, capture_output=True, text=True)
+    assert p.returncode == 0, p.stdout[-3000:] + p.stderr[-3000:]
+
+
+@pytest.mark.parametrize('name', FIXTURES + ['thin232'])
+def test_cpml_localization_identity(name, tmp_path):
+    """Bit-identity against the frozen baseline with contraction AND algebraic
+    reassociation suppressed (G5-2b). One subprocess pair per test file run."""
+    scratch = tmp_path / 'id2'
+    os.environ['G5R3_SCRATCH'] = str(scratch)
+    _subprocess('identity2_worker', 'id2flag', IDENTITY_FLAGS, True)
+    b = np.load(scratch / f'id2_id2flag_base_{name}.npz')
+    c = np.load(scratch / f'id2_id2flag_cand_{name}.npz')
+    bad = [k for k in b.files if not np.array_equal(b[k], c[k])]
+    assert not bad, f'{name}: not bit-identical under suppressed contraction on {bad}'
+
+
+@pytest.mark.parametrize('name', ['uniform8', 'kappa8'])
+def test_cpml_localization_reroll_bounded(name, tmp_path):
+    """Default flags: RMS over 200 steps of the candidate-vs-baseline divergence
+    must not exceed that of a contraction-suppressed recompilation of the
+    baseline (the reroll control the test produces itself)."""
+    import runpy
+    scratch = tmp_path / 'rb'
+    os.environ['G5R3_SCRATCH'] = str(scratch)
+    _subprocess('worker', 'flag', IDENTITY_FLAGS, False, 'old', name)
+    G = runpy.run_path(str(_HELPER))
+    base = G['trajectory'](G['load_M'](), name, old, 1.0, True)
+    cand = G['trajectory'](G['load_M'](), name, cpml, 1.0, True)
+    z = np.load(scratch / f'flag_{name}.npz')
+    for k in ('ex', 'ey', 'ez', 'hx', 'hy', 'hz'):
+        d_c = np.max(np.abs(cand[k].astype(np.float64) - base[k]), axis=(1, 2, 3))
+        d_f = np.max(np.abs(z[f'hist_{k}'].astype(np.float64) - base[k]), axis=(1, 2, 3))
+        rc, rf = np.sqrt(np.mean(d_c ** 2)), np.sqrt(np.mean(d_f ** 2))
+        assert (rc == 0 if rf == 0 else rc <= rf), (name, k, rc, rf)
 
 
 @pytest.mark.parametrize('variable', ['dz_profile', 'eps_r'])

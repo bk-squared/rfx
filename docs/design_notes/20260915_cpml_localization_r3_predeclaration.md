@@ -251,3 +251,121 @@ The other four fixtures: candidate 0 crossings (bit-identical), legacy 16-181.
 proposal; the lane proceeds to the GPU falsifier with the candidate re-applied
 to `rfx/` (the file every passed gate judged), and the PR carries both the
 G5-5′ FIRED record and this re-judgment for the PI to accept or refuse.
+
+
+## Adversarial review (codex, gpt-6-astra, read-only on 05a1a109) — findings accepted, corrections, and re-declaration r3b
+
+Findings, verbatim in substance, with what the lead does about each:
+
+1. **The r2/r3 suppression flags do not lock arithmetic order.** On a thin
+   public `Grid` (2 x 3 x 2, `cpml_layers=2`, `kappa_max=5`, heterogeneous
+   materials, random non-zero fields and psi) the baseline and the localized
+   code differ under `--xla_disable_hlo_passes=fusion --xla_cpu_enable_fast_math=false`
+   (ex: 6 elements, 3.05e-5) with **0 FMA in the generated code**. Cause,
+   isolated by the reviewer in a 2 x 3 x 2 reproducer: XLA's algebraic
+   simplifier reassociates a whole-array add against partial slab adds
+   (`(1e8 − 1e8) + 1` evaluated in two orders). Adding `algsimp` to the
+   disabled passes restores bit-identity on both reproducers and on the
+   thin fixture (`steps 1 BAD []`, `steps 3 BAD []`). The reviewer's extended
+   sweep (layers 1/2, kappa 5, graded x/y/z, unequal face spacings, PMC on
+   the third axis, non-zero psi, legacy parameters, traced dz): 14/16
+   fixtures bit-identical under the r3 flags, the two overlap cases were
+   this reassociation. **Consequence:** G5-2's sentence "any inequality
+   under these flags proves a different expression" is withdrawn; G5-2 is
+   re-run below with `fusion,algsimp` disabled and the reviewer's fixtures
+   added. The 7-fixture PASS on record stands as measured.
+2. **The committed identity test fails on production.**
+   `tests/unit/boundaries/test_cpml_localization.py::test_cpml_localization_identity`
+   asserts bit-identity against the frozen baseline under DEFAULT flags;
+   with the localized kernel in `rfx/` it fails on uniform8, periodic8,
+   kappa8 — consistent with a recompilation, but a test contract is a
+   contract. Re-declared below as an explicit contract change with its
+   reason; no test is deleted.
+3. **My D1 prose was wrong in two numbers and over-reached in one
+   sentence.** Corrected here (the stored JSONs were right; the reviewer
+   re-derived every table): the candidate crosses the no-fusion control on
+   up to **121** steps per field (uniform8/ez 62, periodic8/hx 107; the "7 of
+   200 at most" quoted uniform8/ex only); uniform8/ex is *at or below* the
+   control on 193 steps (163 below, 30 equal). D1 establishes that the
+   per-step predicate rejects harmless recompilations (3688/3689 of 8400
+   field-steps) and is therefore unusable as a gate — not that it "cannot
+   distinguish anything"; the 8400 field-steps are correlated, not
+   independent coin flips; and D1's declared expectation (1-10 crossings,
+   ≲2-4x) was off against the observed 16-181 and up to 6x. **G5-5″ is
+   withdrawn as a proposal**: it fails on both its count and its ratio
+   sub-criteria on uniform8/ez (62 vs 20; 2.67 vs 2.0) and on count on
+   periodic8/hx (107 vs 92), it was chosen after the data, and its
+   max-ratio term is the same extreme-value statistic this note criticises.
+   Both FIRED records (G5-5′, G5-5″) stay verbatim.
+4. **Protocol.** Stages 2 and 3 were run back-to-back without a commit
+   between them (both carry sha dd1502a3; the AD JSON shows a dirty tree),
+   against the r3 rule "each stage committed before the next". The r2
+   `cpml_g5_gates.py` was first committed alongside its results. The record
+   said STOP after G5-5′ and the candidate was re-applied to `rfx/` for the
+   GPU falsifier without a documented waiver: the waiver is the lead's
+   decision, taken under the PI's standing instruction to proceed with
+   this lane, on the D1 evidence — recorded here, dated 2026-09-15.
+5. **Provenance.** `controls.json` and `reroll_diagnostic.json` recorded
+   `rfx_file` under the PRIMARY checkout: the lead's shell did not expand
+   `~` inside `PYTHONPATH=~/…`, and `python script.py` puts the script's
+   directory, not the cwd, first on `sys.path`. Every stored number
+   reproduces on a pinned re-run under the correct tree (reviewer: "all
+   fixture numbers and curves exactly equal"), and the baseline module is
+   the frozen file in both cases, so no number changes — but the record is
+   defective and the instrument now refuses to run unless `rfx.__file__`
+   is under this tree.
+
+What the reviewer found no defect in: the line-by-line diff of the
+localized kernel (profiles, signs, permutations, recurrence operands,
+sequential face updates unchanged; overlapping slabs read the accumulated
+field); AD parity with a different loss (`sum(hy^2)`): dz distance 6.6e-13
+vs reroll bound 4.3e-12, eps 2.6e-17 vs 7.2e-15, and live == frozen
+candidate bit for bit; the committed CPML reflectivity, pad-material
+extension, face-notch, periodic-CPML and UPML oracles: 41 passed, 2 skipped.
+
+Reviewer's verdict: the evidence supports "same real-valued arithmetic,
+compiled differently", not the narrower "only FMA contraction changed";
+replace G5-5″ by a trajectory statistic; before shipping, add the
+thin-domain case to the evidence, make the ordinary regression contract
+pass, and measure a matched graded-mesh complex S-parameter.
+
+### r3b re-declaration (frozen now; instrument changes committed before any run)
+
+- **G5-2b bit-identity with fusion AND algsimp suppressed.** Flags
+  `--xla_disable_hlo_passes=fusion,algsimp --xla_cpu_enable_fast_math=false`.
+  Fixtures: the seven r2 fixtures plus `thin232` (the reviewer's 2 x 3 x 2,
+  layers 2, kappa 5, heterogeneous eps/mu, random fields and psi, 3
+  steps), `overlap` (a 6 x 6 x 6 box with layers 2 on all faces, so every
+  corner belongs to three slabs, 50 steps) and `kappa5_pmc` (kappa 5,
+  PMC on y_hi, layers 2). Live `rfx.boundaries.cpml` (== candidate) vs the
+  frozen baseline. Gate: `np.array_equal` on all fields and psi. The
+  effectiveness control is re-established under the new flags: the flagged
+  baseline must still differ from the unflagged baseline (count reported);
+  if it does not, the flags are vacuous and G5-2b is INCONCLUSIVE.
+- **G5-5‴ trajectory statistic (reviewer's proposal, adopted verbatim),
+  on the STORED curves, no new FDTD:**
+  `S = max over (fixture, field) of RMS_t(d_cand(t)) / RMS_t(d_flag(t))`,
+  gate `S <= 1`; a zero denominator requires `d_cand ≡ 0`. Declared
+  before it is computed. It replaces G5-5″; it is a supporting gate.
+- **G5-S matched graded-mesh S-parameter (reviewer's missing measurement).**
+  `scripts/diagnostics/wr90_dz_dispatch_falsifier.py`, arm A (WR-90,
+  dz-graded 19 cells, CPML x / PEC y,z, 20 layers, eps 2.2 slab, TE10
+  ports, 9 bins 8.2-12.4 GHz, `normalize="flux"`), run three ways in
+  separate processes: frozen baseline (module attributes swapped in before
+  the NU lane binds them), live localized kernel, and frozen baseline with
+  the G5-2b flags (the reroll comparator). Gate:
+  `max|S_live − S_base| <= max|S_flag − S_base|` over all (receiver,
+  driver, bin), all finite; the absolute values reported. The #811 note's
+  own passivity self-check warning applies to all three arms alike and is
+  common-mode.
+- **Test-contract change (declared):** `test_cpml_localization_identity`
+  becomes a subprocess test under the G5-2b flags (bit-identity vs the
+  frozen baseline, seven fixtures + `thin232`), and a new default-flags
+  test `test_cpml_localization_reroll_bounded` computes `S` for uniform8
+  and kappa8 against a control the test itself produces in a flagged
+  subprocess (self-contained; no stored curves). Reason: a bit-identity
+  assertion under default flags is a statement about the compiler's
+  contraction choices, which the localized kernel changes by construction;
+  the arithmetic identity is asserted where it is testable.
+- **Provenance:** every stage asserts `rfx.__file__` under this tree;
+  invocations use absolute paths. Stages are committed one at a time.
