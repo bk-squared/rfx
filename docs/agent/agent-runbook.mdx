@@ -24,6 +24,24 @@ rather than trusting the figure beside it.
 Lint is gated in CI by `.github/workflows/lint.yml` on every push/PR. Note CI lints
 `rfx/ tests/ validation/`; `scripts/` is out of scope.
 
+### Adding a preflight check
+
+The configuration checks are data, not a call list: `rfx/preflight/_registry.py` holds
+`CORE_CONFIG_CHECKS`, and `_PreflightMixin._validate_simulation_config` builds the
+shared context once and iterates it. So a new check is three steps in its own family
+module and NO edit to `rfx/api/_preflight.py`: write the function with `self` first,
+bind it on `_PreflightMixin` the way the other families do, then call
+`register_config_check(ConfigCheck(name, adapter, family))` at module import. The
+registry docstring carries the worked example.
+
+Registration appends, and extras run after the whole core sequence — which is the
+point, because `PreflightReport` preserves emission order and 65 committed reports in
+`tests/locks/test_preflight_split_snapshot.py` pin it. A check that genuinely has to
+speak earlier is a change to `CORE_CONFIG_CHECKS`, and reds both that lock and
+`tests/locks/test_preflight_registry_sequence.py`, which pins the sequence and the
+arguments each check receives. Neither red is one to regenerate past: it means
+preflight output moved.
+
 ## GPU validation
 
 `scripts/vessl_gpu_suite.yaml` is THE maintained harness — runs `pytest -m gpu -q -ra`

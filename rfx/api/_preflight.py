@@ -20,8 +20,9 @@ FACADE and holds three things:
    and ``preflight_sparameters`` (the entry points), the run / forward
    S-parameter request validators and the three per-calculator
    ``_validate_*_sparameter_request_for_preflight`` routers,
-   ``_validate_simulation_config`` — whose body is an ordered sequence of
-   check calls, and that ORDER is the observable
+   ``_validate_simulation_config`` — which builds the shared context and
+   then iterates ``rfx/preflight/_registry.py``'s ``CORE_CONFIG_CHECKS``,
+   whose ORDER is the observable
    ``tests/locks/test_preflight_split_snapshot.py`` pins —
    ``_collect_flux_regions``, and the x64 / ADI / settling-witness
    configuration checks.
@@ -37,8 +38,10 @@ FACADE and holds three things:
    ``__qualname__`` restored at the leg module's foot and any
    ``@staticmethod`` re-applied here.
 
-Every check family, and the conductor-realization layer they all read, lives
-in ``rfx/preflight/`` — see that package's docstring for the eight modules.
+Every check family, the conductor-realization layer they all read, and the
+check REGISTRY that composes them live in ``rfx/preflight/`` — see that
+package's docstring for the nine modules. A new configuration check is added
+there and registered; it needs no edit to this file.
 """
 
 from __future__ import annotations

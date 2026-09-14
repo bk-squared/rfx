@@ -12,7 +12,9 @@ Eight modules, and the motion is complete: every check family and the
 realization layer they all read now live here, and the facade keeps the
 EXECUTION family (``preflight``, ``preflight_sparameters``, the request
 validators and routers, the ADI/x64/settling-witness configuration checks)
-plus the re-export blocks and the class-body rebinds.
+plus the re-export blocks and the class-body rebinds. Leg 8 then added a
+ninth module that moves nothing: ``_registry``, which turns the composition
+point itself into data.
 
 Modules:
 
@@ -101,12 +103,33 @@ Modules:
   ``_common`` leaves, ``_sorted_box_corners`` and ``_component_is_dead``,
   stay there because each still has a reader in ``pec_geometry`` / ``ports``.
 
+* :mod:`rfx.preflight._registry` — the composition point as DATA, and the one
+  module here that moves no check body.
+  :class:`~rfx.preflight._registry.ConfigCheckContext` carries the seven
+  shared values ``_validate_simulation_config`` computes once per
+  ``preflight()``; :class:`~rfx.preflight._registry.ConfigCheck` is one entry
+  (method name, adapter, family); and
+  :data:`~rfx.preflight._registry.CORE_CONFIG_CHECKS` holds the 37 of them in
+  the exact order the hub used to call them, transcribed by an AST walk of
+  that body rather than by hand.
+  :func:`~rfx.preflight._registry.register_config_check` appends to
+  :data:`~rfx.preflight._registry.EXTRA_CONFIG_CHECKS`, which is how a family
+  module adds a check without the facade being edited at all. Extras run
+  AFTER the core sequence, so registering one cannot move an existing
+  advisory. It imports nothing from ``rfx.api`` and nothing from the family
+  modules -- its adapters reach the bodies through the composed
+  ``Simulation`` -- so it adds no edge to the import graph.
+
 ``_PreflightMixin`` itself STAYS in ``rfx/api/_preflight.py``: its
-``_validate_simulation_config`` body is an ordered sequence of 38 calls and
-that order IS the observable the snapshot lock pins, so the composition point
-does not move. ``rfx.api._preflight`` also re-exports every name moved here,
-so the existing ``from rfx.api._preflight import <name>`` sites and the
-module-object monkeypatches keep resolving.
+``_validate_simulation_config`` body was an ordered sequence of 37 calls, that
+order IS the observable the snapshot lock pins, and leg 8 moved the sequence
+into ``_registry`` without moving the composition point out of the facade or
+changing the order. (Earlier revisions of this docstring said 38; the
+thirty-eighth statement is ``_validate_cfg_compute_cpml_thickness``, which is
+not a check -- it emits nothing and produces the context -- and it stays in
+the hub.) ``rfx.api._preflight`` also re-exports every name moved here, so the
+existing ``from rfx.api._preflight import <name>`` sites and the module-object
+monkeypatches keep resolving.
 
 This package deliberately imports nothing at package-import time: the leg
 modules are leaves, and ``rfx/api/__init__.py`` stays the sole composition
