@@ -347,7 +347,7 @@ def test_the_forced_exit_knob_refuses_before_it_writes_anything(
     results = CROSSVAL_DIR / "_01_waveguide_bend_results"
     committed = results / "crossval.json"
     committed_before = committed.read_bytes()
-    probe = results / "_946_selftest_guard_probe.json"
+    probe = results / "_exit_evidence_selftest_guard_probe.json"
     assert not probe.exists(), f"stale probe left behind: {probe}"
     fixture = tmp_path / "writer.py"
     fixture.write_text(FORCED_WRITE_FIXTURE.format(
@@ -393,7 +393,7 @@ def test_a_replay_refuses_an_out_dir_inside_the_evidence_tree(
     """
     script, source = REPLAY_CASES[case]
     before = source.read_bytes()
-    probe = CROSSVAL_DIR / f"_946_replay_guard_probe_{case}"
+    probe = CROSSVAL_DIR / f"_exit_evidence_replay_guard_probe_{case}"
     assert not probe.exists(), f"stale probe left behind: {probe}"
 
     try:
