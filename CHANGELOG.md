@@ -9,6 +9,28 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
+### BREAKING — `PreflightReport` refuses boolean evaluation (#980)
+
+- `bool(report)` now raises `TypeError`. `PreflightReport` is a `list` of
+  findings, so inherited truthiness is inverted for what the report means: a
+  clean report is EMPTY and therefore falsy, while a report carrying nothing
+  but advisories is truthy. `if not sim.preflight(): raise ...` and
+  `assert sim.preflight()` both read as "stop unless this passed" and did the
+  reverse — the assert passed exactly when preflight found problems and failed
+  on a clean run, so a gate could be skipped without a trace.
+- The raised message names the replacements: `report.ok` (no error-severity
+  finding), `report.errors`, `report.raise_for_failure()` for a gate, and
+  `len(report)` / `report.issues` when the item count is what you want. Note
+  the two are different predicates — `len(report)` also rejects advisories,
+  `.ok` does not.
+- Every other list operation is unchanged: `len`, iteration, indexing,
+  slicing, membership, `==` against a report or a plain list, `"\n".join`,
+  `append` / `extend`. `any(report)` / `all(report)` consume the report's
+  string items, never the report, so they keep working too.
+- Migration is mechanical. A call site that meant "did preflight find
+  anything" becomes `len(report)`; one that meant "is this safe to run"
+  becomes `report.ok` or `report.raise_for_failure()`.
+
 ### Fixed — the TF/SF auxiliary grid's own absorber reflected 4–6 % (#888)
 
 - Both auxiliary grids now build their absorber through the same
