@@ -124,6 +124,11 @@ def merge(shard_paths: list, run_ids: dict | None = None) -> dict:
                           "and E4 (Meep) (exit 0)")
 
     merged = {k: ref.get(k) for k in ("schema", "case_id", "commit", "rig", "arm_dx_div")}
+    # The sha every shard agreed on, named as what it is: the staged code state the
+    # whole lane ran at. ``commit`` already carries it, but a reader of the merged
+    # document has no way to tell that it was CHECKED across the shards rather than
+    # copied from the first one -- _MUST_AGREE is what makes it a lane property.
+    merged["staged_commit"] = ref.get("commit")
     merged.update({
         "date_utc": max(d.get("date_utc", "") for _, d in docs),
         "falsifier": None, "smoke": False, "tag": None,

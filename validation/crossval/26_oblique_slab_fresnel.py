@@ -444,7 +444,8 @@ def main(argv=None) -> int:
         run = run_rfx_arm(spec, smoke=a.smoke, nx_interior=spec["nx_interior"], dx_div=dx_div, **run_kw)
         cells = run["cells"]
         e2 = O.evaluate_e2(run["freqs_hz"], run["R_rfx"], run["T_rfx"], spec, run["dt_s"], tail=run["tail"],
-                           cells=cells, n_cpml=run["n_cpml"], **or_kw)
+                           cells=cells, n_cpml=run["n_cpml"], inc_amp_rel=run["inc_amp_rel"],
+                           record=run["record"], **or_kw)
         e2["run"] = {k: run[k] for k in ("dt_s", "n_steps", "nfft", "nx_interior", "n_cpml", "n_cpml_run", "dx_m", "dx_div",
                                          "cpml_kwargs", "grid_shape", "elapsed_s", "record", "theta0_run_deg",
                                          "ky_run_rad_m", "eps_slab_run", "mu_slab_run", "pec")}
@@ -568,6 +569,19 @@ def main(argv=None) -> int:
             unavailable = O.meep_unavailable_reason(mdoc, meep_path, SCRIPT_DIR)
             if unavailable is None:
                 e4 = O.evaluate_e4(e2, mdoc)
+                # The Meep records were the only artifacts of this case carrying no
+                # code state, so the merge's commit guard had nothing to check them
+                # against and a reference from another sha could be read as this
+                # lane's. The leg records ``commit`` now; when it is there it is
+                # reported beside the run's own and flagged when they disagree.
+                # Records written before the leg recorded it read as None, which is
+                # reported as such and never silently treated as agreement.
+                e4["leg_commit"] = mdoc.get("commit")
+                e4["leg_commit_matches_run"] = (None if mdoc.get("commit") is None
+                                                else bool(mdoc["commit"] == doc["commit"]))
+                if e4["leg_commit_matches_run"] is False:
+                    print(f"  E4 WARNING: the Meep leg records commit {mdoc['commit'][:12]} but this run is "
+                          f"{doc['commit'][:12]} -- the reference is from a different code state")
                 print(f"  E4 ({meep_name}, {e4['resolution']} px/cm, k_point {e4['k_point']}): Meep-vs-Fresnel mean R/T "
                       f"{e4['mean_dR_meep_tmm_gated']:.4f}/{e4['mean_dT_meep_tmm_gated']:.4f} (max {e4['max_dR_meep_tmm_gated']:.4f}/"
                       f"{e4['max_dT_meep_tmm_gated']:.4f}); rfx-vs-Meep mean {e4['mean_dR_rfx_meep_gated']:.4f}/"

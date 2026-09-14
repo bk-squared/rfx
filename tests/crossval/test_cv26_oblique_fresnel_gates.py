@@ -74,7 +74,8 @@ def _replay_arm(arm: str, ad: dict, *, oracle_pol=None, oracle_ky=None):
     run = ad["run"]
     cells = O.rig_cells(run["nx_interior"], run["n_cpml"], dx_div=run["dx_div"])
     e2 = O.evaluate_e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], spec, run["dt_s"], tail=ad["tail"], cells=cells,
-                       n_cpml=run["n_cpml"], oracle_pol=oracle_pol, oracle_ky=oracle_ky)
+                       n_cpml=run["n_cpml"], oracle_pol=oracle_pol, oracle_ky=oracle_ky,
+                       inc_amp_rel=ad["inc_amp_rel"], record=run["record"])
     return spec, run, cells, e2
 
 
@@ -101,27 +102,36 @@ def test_baseline_replays_and_passes_on_every_arm():
         assert e2["gates"] == ad["gates"] and e2["e2_ok"] and all(e2["gates"].values()), arm
         for k in ("mean_dR_gated", "mean_dT_gated", "max_dR_gated", "mean_window_R"):
             assert e2[k] == pytest.approx(ad[k], rel=1e-9), (arm, k)
-        # The lattice witness (reported): rfx equals its own exact discrete model.
+        # The lattice witness: rfx equals its own exact discrete model, inside a
+        # window DERIVED from this arm's own committed witnesses.
         #
-        # The bar is a tenth of the arm's DECLARED band-mean window, which resolves
-        # through cv04's adoption record (``O.W_MEAN_R`` / ``O.W_MEAN_T``), not a
-        # literal.  The ``3e-4`` that stood here is cv23's rig-specific number -- 10x
-        # THAT case's round-1 residual, ``test_cv23_lossy_slab_gates.py``'s
-        # ``_R2_LATTICE_RESIDUAL_BAR`` -- and it was never re-derived for this rig.
-        # It was also never exercised: this file skips until the artifacts land, so
-        # the literal survived from the authoring commit to the first real lane.
-        # On the 80-cell primary rig three arms sit above it with nothing wrong --
-        # the two dx controls (3.34e-04 te_00, 3.41e-04 tm_00) and te_60 at dx/2
-        # (4.05e-04).  Close note section 10 already records that the inherited
-        # reading rule misreads this case.
+        # What stood here was ``<= 3e-4``, which is cv23's rig-specific number --
+        # 10x THAT case's round-1 residual, ``test_cv23_lossy_slab_gates.py``'s
+        # ``_R2_LATTICE_RESIDUAL_BAR`` -- never re-derived for this rig, and never
+        # exercised, because this file skips until the artifacts land.  Lane
+        # 20260913b refutes it on both sides: three of seven arms above it in R,
+        # FIVE of seven in T.  The full table is in pre-declaration section 19,
+        # which also records that section 12 of that same note already carried
+        # 3.9e-4 / 4.8e-4 / 6.8e-4 for its own recipes.
         #
-        # Against the window the arm is actually judged on, every arm is far inside:
-        # 0.44-4.05 % (R) and 1.53-4.94 % (T), so the E2 gates judge the solver
-        # against Fresnel and not against a solver-vs-own-model gap.  The window is
-        # declared a priori, so this is not the run certifying its own bar.
+        # The replacement is not another literal and is not a multiple of the
+        # continuum window.  ``docs/design_notes/20260903_lattice_witness_standard.md``
+        # section 3 derives ``W_witness`` for exactly this witness out of the arm's
+        # own tail (record truncation, incident-reference truncation, float32), and
+        # section 4 gates it as GL1 per bin and GL2 per band mean.  The comparator
+        # computes it with that standard's own primitives.
+        #
+        # GL2 is the gate here, because the band mean is what the retired literal
+        # also bounded.  GL1 is reported with its breach count and NOT gated; the
+        # artifact carries the reason, and section 19 records the one attempt that
+        # was made to close it and failed.
         lat = e2["lattice"]
-        assert lat["mean_dR_lattice_gated"] <= 0.1 * O.W_MEAN_R, (arm, lat["mean_dR_lattice_gated"])
-        assert lat["mean_dT_lattice_gated"] <= 0.1 * O.W_MEAN_T, (arm, lat["mean_dT_lattice_gated"])
+        assert lat["GL2_R"] and lat["GL2_T"], (
+            arm, lat["mean_dR_lattice_gated"], lat["mean_W_witness_R_gated"],
+            lat["mean_dT_lattice_gated"], lat["mean_W_witness_T_gated"])
+        # the window is built from witnesses, never from the residual it bounds
+        assert lat["witness_rate_source"] == "derived", (arm, lat["witness_rate_source"])
+        assert lat["GL1_gated"] is False and lat["GL1_not_gated_reason"]
         if arm == O.BREWSTER_ARM:
             bw = O.evaluate_brewster(e2)
             assert bw["ok"] and ad["brewster"]["ok"] and abs(bw["theta_bin_deg"] - bw["theta_brewster_deg"]) < 0.1

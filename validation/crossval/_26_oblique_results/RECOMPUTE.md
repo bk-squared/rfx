@@ -87,3 +87,36 @@ rather than through `Simulation.run()`, so `sim.preflight()` never runs on this 
 The rig checks it does run are in-script assertions on the cell bookkeeping (`cfg.x_lo`
 / `cfg.x_hi`, the slab and probe clearances, `dt` against the declared value) plus the
 per-arm settling witness `G3_tail`, which every arm carries in its `tail` block.
+
+## Lane 20260914a — the settling re-run of pre-declaration section 19 (append-only)
+
+Two arms only, at sha **`708d7eef960d510b252679cc7195221a60a94f3b`**, staged checkout
+`/root/workspace/claude-workspace/rfx/checkouts/cv26-rerun-20260914a`, shared results
+`/root/workspace/claude-workspace/rfx/runs/cv26r3res-20260914a`. Nothing from lane
+20260913b is touched: these are `--tag` diagnostic rungs, so they write
+`rfx__<tag>.json`, and `--settling-bar` REQUIRES `--tag` precisely so a tightened-bar
+run can never land in `rfx.json`.
+
+| shard | run id | status | artifact |
+|---|---|---|---|
+| `rerun-te00-s60` | 369367260941 | completed | `rfx__te_00_settle60.json` |
+| `rerun-tm00-s60` | 369367260942 | completed | `rfx__tm_00_settle60.json` |
+
+Emit and submit:
+
+    python3 scripts/vessl_cv26_shards.py --rerun --lane <label> \
+        --checkout <NFS checkout> --out-dir <dir>
+    scripts/vessl_submit.sh <dir>/cv26r3_rerun-te00-s60.yaml cv26r3-rerun-te00-s60-
+
+These two arms carry a DIFFERENT sha from the rest of the directory, and that is the
+point: they were run after the `--settling-bar` knob existed. They are not merged into
+`rfx.json` and never can be — `merge_cv26_arm_shards.py` reads only `rfx__shard_*.json`
+and refuses shards whose `commit` disagrees.
+
+## Why `meep_te_00.json`'s run id sits outside lane 20260913b's block
+
+`meep_te_00.json` was written by run **369367260792** at 2026-09-13T19:12:43Z, while the
+other six Meep legs are 369367260885-890 from 2026-09-14T06:10Z. All seven ran at the
+SAME sha `a4a0fea1`: te00 was submitted first, on its own, as the check that the Meep
+import fix worked before the remaining six were committed to. Its output was kept rather
+than re-run at no benefit. The sha is what the lane pins, and it agrees.

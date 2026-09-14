@@ -817,3 +817,133 @@ The consistent fix is to mark `G3_passivity` and `G3_closure` N/A on the compact
 declared in the artifact, and judge them on G6 / G7 and the tail witness. It changes what
 two arms gate, so it is put to the PI here and not applied.
 
+
+## 10. This lane refutes the pre-declaration's ≤3e-4 lattice-witness prediction (2026-09-14, append-only)
+
+Same form as §4.3 and §4.4: nothing above is edited, and the refutation is recorded
+against the section that made the prediction.
+
+**What was predicted.** Pre-declaration §4.2 and §10 put `|rfx − lattice|` at or under
+**3e-4** on every recipe, and §10 gave the reading rule "much greater than 3e-4 says the
+solver differs from its own discrete model".
+
+**What lane 20260913b measured**, band mean over each arm's gated bins, read from
+`validation/crossval/_26_oblique_results/rfx.json`:
+
+| arm | dx | `mean_dR_lattice_gated` | ×3e-4 | `mean_dT_lattice_gated` | ×3e-4 |
+|---|---|---|---|---|---|
+| te_00 | dx | 3.336e-04 | **1.11** | 8.392e-04 | **2.80** |
+| te_30 | dx/2 | 1.413e-04 | 0.47 | 3.351e-04 | **1.12** |
+| te_45 | dx/2 | 1.671e-04 | 0.56 | 2.597e-04 | 0.87 |
+| te_60 | dx/2 | 4.052e-04 | **1.35** | 4.931e-04 | **1.64** |
+| tm_00 | dx | 3.410e-04 | **1.14** | 8.091e-04 | **2.70** |
+| tm_45 | dx/2 | 4.351e-05 | 0.15 | 2.894e-04 | 0.96 |
+| tm_60 | dx/2 | 5.060e-05 | 0.17 | 5.186e-04 | **1.73** |
+
+Three of seven arms exceed it in R, **five of seven in T**. The prediction is refuted on
+both sides and by more on T.
+
+**Where the 3e-4 came from.** It is cv23's round-1 residual × 10, used in that case as a
+reading label (`tests/crossval/test_cv23_lossy_slab_gates.py`,
+`_R2_LATTICE_RESIDUAL_BAR`), and it was carried into cv26 without being re-derived for
+this rig. §12 of the pre-declaration already carried 3.9e-4, 4.8e-4 and 6.8e-4 for its
+own recipes, which contradicts "≤3e-4 at every recipe" before any lane ran. The gate
+replay asserted it as `<= 3e-4`, dropping the "much greater than" the rule was written
+with, and never ran: the file skips until the artifacts land.
+
+**What replaces it.** The derived `W_witness` of
+`docs/design_notes/20260903_lattice_witness_standard.md` §3, computed with that
+standard's own primitives and cv26's 2-D-at-fixed-k_y lattice as the reference. GL2 (band
+mean) is the gate and passes on all seven arms. GL1 (per bin) is computed and REPORTED
+with its breach count, not gated — see §10.2.
+
+### 10.1 te_00 and tm_00 were record-truncated, and one pre-declared re-run says so
+
+Pre-declaration §19 declared, before the run, that the two dx controls are limited by
+record truncation: they are the only arms stopping AT the −40 dB bar (−40.32, −40.20 dB
+against −61 dB or better elsewhere) and they stop with the envelope still falling
+(last-quarter over previous-quarter maximum of `tail.envelope_scat_refl_rel` 0.071 and
+0.072, against 0.92–0.99 on the five settled arms).
+
+Lane 20260914a re-ran those two arms at `--settling-bar 1e-3` and changed nothing else.
+
+| | te_00 −40 dB | te_00 −60 dB | tm_00 −40 dB | tm_00 −60 dB |
+|---|---|---|---|---|
+| `n_steps` | 1511 | 1611 | 1512 | 1612 |
+| `tail.scat_refl_rel` | 9.633e-03 | 1.860e-04 | 9.773e-03 | 1.881e-04 |
+| `mean_dR_lattice_gated` | 3.336e-04 | **4.547e-05** | 3.410e-04 | **4.168e-05** |
+| `mean_dT_lattice_gated` | 8.392e-04 | **1.675e-04** | 8.091e-04 | **1.425e-04** |
+| `mean_W_witness_R_gated` | 1.074e-02 | 2.096e-04 | 1.089e-02 | 2.118e-04 |
+| GL2_R / GL2_T | pass / pass | pass / pass | pass / pass | pass / pass |
+
+**The mechanism is attributed.** One extension of 100 steps took the tail from −40 dB to
+−74.6 dB and the residual fell **7.3×** in R and **5.0×** in T on te_00, **8.2×** and
+**5.7×** on tm_00. Nothing else changed: same sha, rig, recipe and oracle.
+
+**The prediction is refuted as written, and that is recorded rather than re-chosen.**
+§19 predicted `mean_dT_lattice_gated` would fall INTO the settled arms' band
+2.597e-04 – 5.186e-04. It fell **through** it, to 1.675e-04 and 1.425e-04 — below every
+settled arm. §19's own rule makes that **non-closing**, and it is logged as such: the
+prediction assumed the settled arms' level was a floor, when the dx controls at −74.6 dB
+settle further than the dx/2 arms, which sit at −61 to −68 dB. The `≤ 3e-04` half of the
+prediction (R) holds. Prediction 3 (the window shrinks and GL2 still holds) holds in
+direction; its numbers were derived assuming the tail would stop at the 1e-3 bar, and the
+100-step extension granularity overshot it to 1.86e-4, so the window shrank further than
+predicted too.
+
+§19's non-closing clause also says to name the residual "unidentified". That clause was
+written for the case where the residual did NOT fall, and it does not fit what happened:
+the residual fell hard, in the predicted direction, from the declared intervention. It is
+not claimed as unidentified. What is carried forward is the consequence that matters —
+the arms stay gated on the derived `W_witness`, not on any number this re-run produced —
+and **no second attempt is made on this mechanism**.
+
+The re-run arms are `rfx__te_00_settle60.json` and `rfx__tm_00_settle60.json`, tagged
+diagnostic rungs at a different sha, append-only beside lane 20260913b's records, which
+are byte-identical to what they were.
+
+### 10.2 GL1, the per-bin bound, is reported and not gated on this rig
+
+GL2 passes on all seven arms. GL1 does not: `tm_45` has 58 of 517 gated bins beyond the
+window and `tm_60` has 110 of 473 in R and 19 in T. The breaches are not spread — they
+sit at each TM arm's lowest gated frequencies, which are its HIGHEST realized angles
+(tm_45's worst bin 58.22°, tm_60's 69.06°), and at its smallest `R_lattice`
+(down to 1.27e-06 on tm_45).
+
+That is the reflection null. The standard's §3 window is first order in the
+scattered-amplitude error and closes like `√R_lat`, which the TM arms drive toward zero
+through Brewster while the residual does not follow.
+
+**One attempt was made to close it and failed.** Carrying the exact second-order term
+`(δ_scat + δ_round)²` — the term §3 drops by writing "to first order" — moves the breach
+count 58 → 54 on tm_45 and 110 → 109 on tm_60. Falsified. The term is not carried, no
+further modification of the window is attempted, and GL1 is recorded in every artifact as
+`GL1_gated: false` with the reason beside it. The per-bin bound is **not established for a
+rig with a reflection null**; cv26 claims GL2 and says so.
+
+### 10.3 The falsifiers now separate against a green baseline, and F1 under-runs its declared margin
+
+§4.3 recorded that on the round-2 rig the exit code attributed nothing for F1/F2/F3/F4,
+because the clean te_60, tm_60, graze_pec and te_45 arms **already exited 1**. On the
+80-cell rig the baseline passes on all ten arms, so every falsifier now separates against
+green. Band-mean `|ΔR|` on the gated bins, falsifier over the clean arm:
+
+| falsifier | arm | clean | falsifier | × clean | × the gate's own window |
+|---|---|---|---|---|---|
+| `te_60_angle_m5` (F1) | te_60 | 5.5769e-03 | 4.0123e-02 | **7.19×** | 2.61× |
+| `te_45_swap_tm` (F2) | te_45 | 4.3394e-03 | 2.3987e-01 | **55.28×** | 17.31× |
+| `tm_60_swap_te` (F2) | tm_60 | 1.9294e-03 | 4.6330e-01 | **240.13×** | 45.30× |
+| `te_45_eps_x1p2` (F3) | te_45 | 4.3394e-03 | 2.1175e-01 | **48.80×** | 15.28× |
+
+F4 (`meep_te_45_k_2pi`) also stopped being hollow. §4.3 called it "a silent falsifier
+wearing an exit 1": with no Meep JSON the run took the E4 SKIP path and the rfx side ran
+the UNDEFECTED arm. The Meep leg runs now, and the defect fires —
+`precheck.ky_from_k_point_rad_m = 931.159` against `ky_declared_rad_m = 148.199`,
+`rel_err_ky = 5.283`, `passed = false`, `e4_ok = false`.
+
+**F1 still under-runs its own declared margin, and that is not fixed by the above.**
+§8 pre-declared 3.0× the band-mean window for `te_60_angle_m5`; it measures **2.61×**
+against `mean_window_R = 1.5386e-02`. Better than round 2's 2.76× against a red baseline,
+because the separation is now against a green one, but still **0.39× short of the
+declared bar**. Recorded, not re-declared: F1's margin is the weakest of the four and the
+5° angle offset is the smallest defect in the set.

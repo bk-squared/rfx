@@ -67,6 +67,7 @@ import datetime as _dt
 import json
 import math
 import os
+import subprocess
 import sys
 import time
 
@@ -74,6 +75,30 @@ import numpy as np
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.abspath(os.path.join(_HERE, "..", ".."))
+
+
+def staged_commit() -> str:
+    """The sha this leg ran at.  Without it the Meep records are the only
+    artifacts of this case that carry no code state, so
+    ``merge_cv26_arm_shards.py``'s ``_MUST_AGREE`` guard -- which refuses rfx
+    shards that disagree on ``commit`` -- had nothing to compare them against
+    and a reference from another sha could be read as this lane's.  Same
+    source and same precedence as the case's own: ``.staged_commit`` written by
+    the orchestrator (a staged copy on a pod has no .git), then git, then
+    "unknown".  Never a placeholder that looks like a real sha.
+    """
+    p = os.path.join(_REPO, ".staged_commit")
+    if os.path.isfile(p):
+        with open(p) as fh:
+            v = fh.read().strip()
+        if v:
+            return v
+    try:
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=_HERE, text=True,
+                                       stderr=subprocess.DEVNULL).strip()
+    except Exception:
+        return "unknown"
+
 sys.path.insert(0, os.path.join(_REPO, "validation", "crossval", "comparators"))
 import oblique_fresnel as O  # noqa: E402
 
@@ -242,7 +267,7 @@ def main(argv=None) -> int:
           f"min|inc|/max|inc| on gated bins {inc_rel_min:.3e} (floor {acc['flux_floor']:g})")
 
     doc = {
-        "schema": "cv26-meep-leg/v2", "case_id": O.CASE_ID, "arm": a.arm, "pol": spec["pol"],
+        "schema": "cv26-meep-leg/v2", "case_id": O.CASE_ID, "commit": staged_commit(), "arm": a.arm, "pol": spec["pol"],
         "accepted": bool(acc["accepted"]), "rejection_reasons": list(acc["reasons"]), "acceptance": acc,
         "falsifier": a.falsifier, "tag": a.tag, "meep_version": getattr(mp, "__version__", "unknown"),
         "date_utc": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),

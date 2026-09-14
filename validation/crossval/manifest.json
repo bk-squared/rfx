@@ -796,6 +796,8 @@
         "validation/crossval/_26_oblique_results/rfx__te_60_dx1.json",
         "validation/crossval/_26_oblique_results/rfx__tm_45_dx1.json",
         "validation/crossval/_26_oblique_results/rfx__tm_60_dx1.json",
+        "validation/crossval/_26_oblique_results/rfx__te_00_settle60.json",
+        "validation/crossval/_26_oblique_results/rfx__tm_00_settle60.json",
         "validation/crossval/_26_oblique_results/lane_20260913b_run_ids.json",
         "validation/crossval/_26_oblique_results/RECOMPUTE.md"
       ],

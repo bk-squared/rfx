@@ -71,6 +71,21 @@ SHARDS = [
         for a in ("te_30", "te_45", "te_60", "tm_45", "tm_60")]),
 ]
 
+# The settling re-run of pre-declaration section 19, emitted only with --rerun so the
+# 22-shard lane above is untouched. te_00 and tm_00 are the only arms that stop AT the
+# -40 dB bar with the envelope still falling; this re-runs them at -60 dB and nothing
+# else. --settling-bar requires --tag, so these write rfx__<tag>.json and cannot
+# overwrite any lane's rfx.json. rc 0/1/2 are all admissible: the question the run asks
+# is what the residual does, not whether the arm passes a gate.
+RERUN_SHARDS = [
+    ("rerun-te00-s60", 1, "rfx-e", 8, 16, [
+        ["rfx", "te_00_settle60", "--arm", "te_00", "--settling-bar", "1e-3",
+         "--tag", "te_00_settle60"]]),
+    ("rerun-tm00-s60", 1, "rfx-e", 8, 16, [
+        ["rfx", "tm_00_settle60", "--arm", "tm_00", "--settling-bar", "1e-3",
+         "--tag", "tm_00_settle60"]]),
+]
+
 HEADER = """name: {name}
 description: "cv26 round 3 (r2 rebase), shard {shard} of the sharded oblique-Fresnel lane. {what} Lane {lane}: every shard writes into the ONE shared results directory {res}, and scripts/crossval/merge_cv26_arm_shards.py assembles the baseline arms into rfx.json. Round 1 ran this case as a single serial job and took 21 h; the wall clock here is the largest shard. Pre-declaration docs/design_notes/20260902_cv26_oblique_fresnel_predeclaration.md (section 18 carries the PI decision of 2026-09-13 on issue #905: G3_passivity and G3_closure are N/A on the two compact grazing arms, which are judged on G6/G7 and the tail witness). Submit: scripts/vessl_submit.sh <this yaml> {prefix}"
 tags: [rfx, crossval, cv26, oblique, fresnel, cpml, round-3, shard-{shard}]
@@ -203,11 +218,14 @@ def main(argv=None) -> int:
     ap.add_argument("--checkout", required=True, help="NFS path of the staged checkout")
     ap.add_argument("--out-dir", required=True, help="where to write the YAMLs")
     ap.add_argument("--runs-root", default="/root/workspace/claude-workspace/rfx/runs")
+    ap.add_argument("--rerun", action="store_true",
+                    help="emit the section-19 settling re-run shards (te_00, tm_00 at -60 dB) "
+                         "INSTEAD of the 22-shard lane")
     a = ap.parse_args(argv)
     res = f"{a.runs_root}/cv26r3res-{a.lane}"
     os.makedirs(a.out_dir, exist_ok=True)
     plan = []
-    for shard, wave, kind, cpu, mem, cmds in SHARDS:
+    for shard, wave, kind, cpu, mem, cmds in (RERUN_SHARDS if a.rerun else SHARDS):
         prefix, body = emit(shard, wave, kind, cpu, mem, cmds, lane=a.lane, checkout=a.checkout, res=res)
         path = os.path.join(a.out_dir, f"cv26r3_{shard}.yaml")
         with open(path, "w") as fh:

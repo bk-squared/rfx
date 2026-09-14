@@ -1306,9 +1306,52 @@ def derive_record(spec: dict, dt: float | None = None, *, n_cpml: int | None = N
 # Evaluation (E2 / lattice witness / grazing gates / E4)
 # ---------------------------------------------------------------------------
 
+def lattice_witness_windows(freqs_hz, inc_amp_rel, R_lat, T_lat, *, dt: float, n_steps: int,
+                            tail: dict, record: dict) -> dict:
+    """W_witness,R/T per bin for the lattice witness, DERIVED -- never chosen.
+
+    This is ``docs/design_notes/20260903_lattice_witness_standard.md`` section 3
+    applied to this case, through that standard's OWN primitives
+    (``comparators/lattice_witness.py``: ``budget_terms`` for the four
+    relative-amplitude terms, ``windows_from_terms`` for the window, and
+    ``ringdown_rate`` for the decay the truncation bound needs). Only the
+    reference changes: the slab family's lattice is 1-D at normal incidence,
+    cv26's is the 2-D Yee lattice at this arm's fixed k_y with rfx's own CPML
+    recursion (``yee_lattice_full``), which is what ``R_lat`` / ``T_lat`` carry.
+
+    What the budget is made of, and why none of it is tuned: record truncation
+    (T1) out of the arm's OWN committed tail levels, incident-reference
+    truncation (T2) out of its tail purity, and float32 round-off (T3) out of
+    the record length. Every input is either a pre-declared constant or a
+    witness the arm already gates for its own reasons, and NONE of them is the
+    residual being gated. Section 19 of the pre-declaration records why the
+    literal 3e-4 this replaces was never this rig's number.
+
+    Section 3's preconditions, and cv26's standing on each. (Z1) the CPML round
+    trip is outside the record -- ``record['t_safe_cpml_steps']`` is reported
+    per arm and the echo is additionally gated by AMPLITUDE over the record
+    (``record['e_absorber']``, ``absorber_ok``), which is the stronger statement
+    round 2 moved this case to. (Z3) the probe standoff is lossless: the gated
+    band is exactly the band where the realized angle keeps k_x real. (Z2) does
+    NOT apply here and is not claimed -- cv26 is oblique, so the rig is not a
+    1-D lattice; that is why the reference is the 2-D lattice at fixed k_y
+    rather than the family's 1-D one.
+    """
+    import lattice_witness as LW
+
+    rate, rate_src = LW.ringdown_rate(record, tail)
+    terms = LW.budget_terms(freqs_hz, inc_amp_rel, dt=float(dt), n_steps=int(n_steps),
+                            scat_tail_rel=float(tail["scat_refl_rel"]),
+                            trans_tail_rel=float(tail["total_trans_rel"]),
+                            purity_rel=float(tail["purity_inc_rel"]), rate_1_s=rate)
+    wR, wT, _ = LW.windows_from_terms(R_lat, T_lat, terms)
+    return {"W_witness_R": wR, "W_witness_T": wT, "rate_1_s": rate, "rate_source": rate_src,
+            "terms": {k: (v if np.isscalar(v) else None) for k, v in terms.items()}}
+
+
 def evaluate_e2(freqs_hz, R_rfx, T_rfx, spec: dict, dt: float, *, tail: dict, oracle_pol: str | None = None,
                 oracle_ky: float | None = None, oracle_eps: float = EPS_R_SLAB, cells: dict | None = None,
-                n_cpml: int | None = None) -> dict:
+                n_cpml: int | None = None, inc_amp_rel=None, record: dict | None = None) -> dict:
     """The E2 gates of one arm against the DECLARED oracle (the arm's pol and
     k_y unless a falsifier judges against another declared value)."""
     n_cpml = declared_n_cpml(spec) if n_cpml is None else int(n_cpml)
@@ -1378,6 +1421,52 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, spec: dict, dt: float, *, tail: dict, or
             "cpml3d_term_R_gated_max": float(np.abs(lat_cpml_only["R"] - lat_ideal["R"])[g].max()),
             "aux_echo_term_R_gated_max": float(np.abs(lat["R"] - lat_cpml_only["R"])[g].max()),
         }
+        # The DERIVED bound on that witness (pre-declaration section 19). GL2, the
+        # band mean, is the gate -- it is what the retired 3e-4 literal was also a
+        # bound on. GL1, per bin, is COMPUTED AND REPORTED with its breach count,
+        # not gated: cv26 goes through a reflection null (TM below and through
+        # Brewster) where the standard's section 3 window, which is first order in
+        # the scattered-amplitude error, closes like sqrt(R_lat) while the residual
+        # does not. Carrying the exact second-order term was tried and FALSIFIED
+        # (section 19: 58 -> 54 and 110 -> 109 breaches), so the per-bin bound is
+        # reported as not established on this rig rather than quietly widened.
+        # The budget needs SOME decay assumption for the truncation sum (the
+        # standard names this as its one non-rigorous input). The two grazing
+        # arms with no slab etalon have no ring-down rate at all -- graze_vac is
+        # vacuum and graze_pec is a bare PEC -- so W_witness is UNDEFINED there
+        # and is not invented. Those two are judged on G6 / G7 against the same
+        # lattice anyway; the witness bound was never their gate.
+        if inc_amp_rel is not None and record is not None and record.get("rate_ring_1_s") is None:
+            out["lattice"].update({
+                "W_witness_defined": False,
+                "W_witness_undefined_reason": (
+                    "no slab etalon on this arm, so record['rate_ring_1_s'] is None and the "
+                    "truncation sum of the lattice-witness standard section 3 has no decay rate "
+                    "to bound it. The arm is judged on its own G6 / G7 witness."),
+            })
+        elif inc_amp_rel is not None and record is not None:
+            lw = lattice_witness_windows(f, inc_amp_rel, lat["R"], lat["T"],
+                                         dt=dt, n_steps=int(record["n_steps"]),
+                                         tail=tail, record=record)
+            wR, wT = lw["W_witness_R"], lw["W_witness_T"]
+            out["lattice"].update({
+                "W_witness_R": wR.tolist(), "W_witness_T": wT.tolist(),
+                "mean_W_witness_R_gated": float(wR[g].mean()),
+                "mean_W_witness_T_gated": float(wT[g].mean()),
+                "witness_rate_1_s": lw["rate_1_s"], "witness_rate_source": lw["rate_source"],
+                "GL2_R": bool(dRl[g].mean() <= wR[g].mean()),
+                "GL2_T": bool(dTl[g].mean() <= wT[g].mean()),
+                "GL1_R_bins_beyond": int((dRl[g] > wR[g]).sum()),
+                "GL1_T_bins_beyond": int((dTl[g] > wT[g]).sum()),
+                "GL1_gated": False,
+                "W_witness_defined": True,
+                "GL1_not_gated_reason": (
+                    "per-bin bound not established on this rig: the standard's section 3 window is "
+                    "first order in the scattered-amplitude error and closes like sqrt(R_lat), which "
+                    "the TM arms drive to ~1e-06 through the Brewster null while the residual does "
+                    "not follow. The exact second-order term does not close it (pre-declaration "
+                    "section 19). Reported with its breach count; GL2 is the gate."),
+            })
     return out
 
 
