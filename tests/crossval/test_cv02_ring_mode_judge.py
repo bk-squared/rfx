@@ -41,6 +41,8 @@ LADDER_JSON = REPO_ROOT / "tests/fixtures/cv02_ring_judge/harminv_decimation_lad
 #: withdrawn claim asserted is 2.4e-3.
 LIVE_ERROR_CEILING = 1e-8
 SCRIPT_PATH = REPO_ROOT / "validation/crossval/02_ring_resonator.py"
+PREDECLARATION_PATH = (
+    REPO_ROOT / "docs/design_notes/20260831_cv02_ring_judge_predeclaration.md")
 
 
 def _load(name: str, path: Path):
@@ -826,25 +828,33 @@ def _flatten_prose(text: str, *, python_source: bool = False) -> str:
     """The prose of ``text``, on one line.
 
     ``python_source=True`` keeps only the prose of the file, in source order:
-    comments and triple-quoted strings. Identifiers are dropped, so a test's
-    own name is not read as an assertion, and short string literals are
-    dropped, so the fragments this module assembles its markers from
-    (``"a " + "b"``) cannot be glued back into a marker by the flattening.
-    Line wrapping, comment hashes, quotes and rst/markdown emphasis are
-    removed: a sentence split across three wrapped comment lines has to read
-    as one sentence, or a per-line check can be walked past by re-wrapping.
+    comments and triple-quoted strings. Every other token is dropped --
+    identifiers, so a test's own name is not read as an assertion, and
+    ordinary string literals, so the sentences pinned below (ordinary
+    literals, every one of them) are not part of any surface they judge.
+
+    Each comment token loses its OWN leading ``#`` before the join, so a claim
+    re-wrapped across three comment lines reads as one sentence. Joining first
+    and stripping afterwards left every hash but the first inline, which let a
+    revert walk past this guard by moving one line break (review of
+    2026-09-14). Quotes and rst/markdown emphasis go the same way, and
+    whitespace collapses, so re-wrapping a surface is free and rewording it is
+    not.
     """
     if python_source:
-        def _is_prose(tok: tokenize.TokenInfo) -> bool:
+        def _prose(tok: tokenize.TokenInfo) -> str | None:
             if tok.type == tokenize.COMMENT:
-                return True
-            return (tok.type == tokenize.STRING
-                    and tok.string.lstrip("rbuRBUf").startswith(('"""', "'''")))
+                return tok.string.lstrip("#")
+            if (tok.type == tokenize.STRING
+                    and tok.string.lstrip("rbuRBUf").startswith(('"""', "'''"))):
+                return tok.string
+            return None
 
         text = " ".join(
-            tok.string
-            for tok in tokenize.generate_tokens(io.StringIO(text).readline)
-            if _is_prose(tok))
+            prose
+            for prose in (_prose(tok) for tok
+                          in tokenize.generate_tokens(io.StringIO(text).readline))
+            if prose is not None)
     lines = [line.strip().lstrip("#").strip() for line in text.splitlines()]
     flat = " ".join(lines)
     for markup in ('"', "'", "`", "*"):
@@ -857,62 +867,91 @@ def _flatten_prose(text: str, *, python_source: bool = False) -> str:
 #: makes the check below stricter.
 _SENTENCE = re.compile(r"(?<=[.;:])\s+")
 
+#: Key phrases of the mechanism #907 retracted. Spelled out rather than
+#: assembled from fragments: ordinary string literals are not part of any
+#: surface ``_flatten_prose`` produces, so this cannot match itself. If that
+#: ever stopped being true these literals would appear as unpinned sentences
+#: and the test would go red, which is the safe direction.
+_RETRACTED_MECHANISM = ("staircas", "discretization offset", "subpixel")
+
+
+def _mechanism_sentences(flat: str) -> tuple[str, ...]:
+    """The sentences of ``flat`` that name the retracted mechanism."""
+    return tuple(sentence for sentence in _SENTENCE.split(flat)
+                 if any(key in sentence for key in _RETRACTED_MECHANISM))
+
+
+#: Every sentence, on every cv02 surface, that is allowed to name the
+#: mechanism #907 retracted -- flattened by ``_flatten_prose``. Adding a
+#: sentence, deleting one, or changing the words of one reds the test below.
+_MECHANISM_SENTENCES = {
+    "ring_mode_judge.py": (
+        "This paragraph used to assert a staircased ring boundary and"
+        " subpixel treatment as the cause;",
+    ),
+    "02_ring_resonator.py": (
+        "An earlier version of this comment called it a discretization"
+        " offset ;",
+    ),
+    "predeclaration note": (
+        "a staircased dielectric ring s radiation loss is precisely the"
+        " quantity a curved boundary gets wrong, and no gate looks at it.",
+    ),
+    # the ingredient strings are persisted into every future crossval.json,
+    # so the mechanism may not enter them at all.
+    "persisted gate ingredients": (),
+    "this test file": (
+        "#907 (2026-09-10) retracted the attribution of the rfx-vs-Meep Q gap"
+        " to the ring s staircased curved boundary and its subpixel"
+        " treatment, as an overclaim:",
+        "(Why it does not is UNRESOLVED -- #907 retracted the discretization"
+        " offset attribution this docstring used to state;",
+    ),
+}
+
 
 def test_the_staircasing_attribution_is_withdrawn_everywhere() -> None:
     """#907 (2026-09-10) retracted the attribution of the rfx-vs-Meep Q gap to
     the ring's staircased curved boundary and its subpixel treatment, as an
     overclaim: a counterexample moves Q while every frequency stays inside the
-    two solvers' mutual agreement, so the frequency agreement cannot pin the
-    geometry, and the log decomposition cannot settle it either.
+    two solvers' observed mutual agreement, so the frequency agreement cannot
+    pin the geometry, and the log decomposition cannot settle it either.
 
-    The retraction has to hold on all three surfaces that carried it, not only
-    in the docstring that was being rewritten at the time.
+    ONE rule, after three rounds in which a cleverer reading of the prose was
+    each time walked past by a cleverer re-assertion (an exact-phrase check, a
+    +/-6-line proximity window, then a sentence-order rule paired with a
+    copula check): on each surface below, the sentences naming the retracted
+    mechanism must be EXACTLY the ones pinned in ``_MECHANISM_SENTENCES``.
+    Nothing is read for meaning.
 
-    TWO checks, because the two weaker forms of this guard were each measured
-    to pass a re-assertion. An exact-phrase check went first: a rephrasing --
-    same claim, parenthesised, different verb -- walked straight past it. A
-    +/-6-line proximity window replaced it, and review of 2026-09-13
-    reproduced a re-assertion parked INSIDE the retraction paragraph, which
-    supplies every history word a window looks for, on both prose surfaces.
-    So the rule is no longer proximity:
-
-    1. every sentence that names the retracted mechanism must mark it as
-       history BEFORE naming it. A retraction verb that only follows the
-       mention does not govern it;
-    2. no copula may attach the mechanism to anything anywhere in the
-       flattened prose.
-
-    The markers are not spelled out in this docstring: ``markers`` below builds
-    them at runtime, so the check cannot match its own source and pass for the
-    wrong reason.
+    So this is a revert tripwire, not a proof that the prose is honest: it
+    cannot judge a new sentence, only notice that one appeared. Editing a
+    pinned sentence -- including editing it for the better -- reds this test
+    on purpose, so the retraction is re-read before it moves. Re-wrapping is
+    free, because each surface is flattened to one line first.
     """
     surfaces = {
-        "q_window docstring": _flatten_prose(rmj.q_window.__doc__),
-        "script comment": _flatten_prose(
+        "ring_mode_judge.py": _flatten_prose(
+            JUDGE_PATH.read_text(encoding="utf-8"), python_source=True),
+        "02_ring_resonator.py": _flatten_prose(
             SCRIPT_PATH.read_text(encoding="utf-8"), python_source=True),
-        "characterization test": _flatten_prose(
+        "predeclaration note": _flatten_prose(
+            PREDECLARATION_PATH.read_text(encoding="utf-8")),
+        "persisted gate ingredients": _flatten_prose(
+            " ".join([rmj.Q_GATE_CHARACTER]
+                     + [str(value) for item in rmj.Q_GATE_INGREDIENTS
+                        for value in dataclasses.asdict(item).values()])),
+        "this test file": _flatten_prose(
             Path(__file__).read_text(encoding="utf-8"), python_source=True),
     }
-    # Markers are assembled from fragments on purpose: one of the surfaces
-    # checked is this file, so a spelled-out literal would match its own
-    # assertion.
-    markers = ("discretization " + "offset", "stairc" + "as")
-    history = ("retract", "withdraw", "UNRESOLVED", "used to", "overclaim",
-               "unresolved", "earlier version")
-    copular = re.compile(
-        r"\b(?:is|are|was|were|remain|remains)\s+(?:an?|the)?\s*(?:%s)"
-        % "|".join(markers))
+    assert set(surfaces) == set(_MECHANISM_SENTENCES)
     for name, flat in surfaces.items():
-        assert "UNRESOLVED" in flat or "unresolved" in flat, name
-        attached = copular.search(flat)
-        assert attached is None, (name, attached.group() if attached else "")
-        for sentence in _SENTENCE.split(flat):
-            for marker in markers:
-                at = sentence.find(marker)
-                if at < 0:
-                    continue
-                assert any(h in sentence[:at] for h in history), (
-                    name, marker, sentence)
+        found = _mechanism_sentences(flat)
+        pinned = _MECHANISM_SENTENCES[name]
+        assert found == pinned, (
+            name,
+            "unpinned: %r" % ([s for s in found if s not in pinned],),
+            "gone: %r" % ([s for s in pinned if s not in found],))
     # and the judge no longer prescribes the floor that was refused
     assert "encoding the expected" not in rmj.q_window.__doc__
     assert "certify the agreement" in rmj.q_window.__doc__
