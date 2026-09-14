@@ -341,6 +341,45 @@ def split_1d_with_ghost(arr: "np.ndarray", n_devices: int, nx_per: int,
     return slabs
 
 
+def nu_ghost_width(exchange_interval: int) -> int:
+    """Ghost-cell width of the sharded x-decomposition: ``g = K``.
+
+    The SINGLE source of truth for that number (2026-09-14, B0). A halo of
+    ``g`` cells keeps a rank's owned slab correct for ``K`` steps between
+    exchanges, so ``g = K``; :func:`build_sharded_nu_grid` shards with this
+    value and the ``run(devices=...)`` / NU-forward preflights admit with
+    it.
+
+    ``exchange_interval`` must be an integral number of steps: a
+    fractional K is refused rather than truncated (see the body).
+
+    It used to be computed twice. ``rfx/api/_execute.py``'s NU-forward
+    preflight (check 3) had ``ghost_width = floor(exchange_interval / 2) +
+    1``, which agrees at ``K = 1, 2`` and is SHORT by one cell from ``K =
+    3`` up (K=3: 2 vs 3; K=4: 3 vs 4) -- so the preflight would clear a
+    configuration the builder then cannot shard. The survey note
+    (``decomposition-survey.md``, S2 "교환 간격 K>1") reaches the same
+    ``g = K`` from the stencil side.
+    """
+    # Refuse a non-integral K rather than truncating it. The old body did
+    # ``int(exchange_interval)`` FIRST, so nu_ghost_width(2.5) silently
+    # returned 2 -- a ghost halo half a cell short of the exchange it is
+    # sized for. It was consistent across both call sites, so it produced
+    # no disagreement, which is exactly why it needed finding by reading
+    # rather than by a failing test.
+    k = int(exchange_interval)
+    if k != exchange_interval:
+        raise ValueError(
+            f"exchange_interval must be an integer number of steps, got "
+            f"{exchange_interval!r}: the ghost width IS the interval "
+            f"(g = K), so a fractional K has no halo that realizes it. "
+            f"Use {k} or {k + 1}.")
+    if k < 1:
+        raise ValueError(
+            f"exchange_interval must be >= 1, got {exchange_interval!r}")
+    return k
+
+
 def build_sharded_nu_grid(
     grid,
     n_devices: int,
@@ -393,7 +432,7 @@ def build_sharded_nu_grid(
             "only exchange_interval=1 is supported in Phase 2A."
         )
 
-    ghost = exchange_interval  # ghost_width = exchange_interval cells
+    ghost = nu_ghost_width(exchange_interval)  # g = K, one source of truth
 
     nx, ny, nz = grid.nx, grid.ny, grid.nz
 

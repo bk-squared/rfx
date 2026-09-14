@@ -2432,7 +2432,14 @@ class _ExecuteMixin:
                 pad_x = n_devices - (nx % n_devices)
             nx_padded = nx + pad_x
             nx_per_rank = nx_padded // n_devices
-            ghost_width = math.floor(exchange_interval / 2) + 1
+            # One ghost-width formula (B0, 2026-09-14). This line used to
+            # compute floor(K/2) + 1 locally, which agrees with the
+            # builder at K=1,2 and is SHORT by one cell from K=3 up (K=3:
+            # 2 vs 3) -- so this check cleared configurations
+            # ``build_sharded_nu_grid`` (below, same call) then cannot
+            # shard. Both now read the same helper.
+            from rfx.runners.distributed_nu import nu_ghost_width
+            ghost_width = nu_ghost_width(exchange_interval)
             for rank in range(n_devices):
                 if ghost_width > nx_per_rank:
                     raise ValueError(
@@ -2442,6 +2449,23 @@ class _ExecuteMixin:
                     )
 
             # Check 4 — CPML vs local slab on outer boundary ranks.
+            #
+            # SCOPE NOTE (B0 round 2, 2026-09-14): this is a DIFFERENT
+            # condition from the uniform lane's
+            # ``rfx.runners.distributed_v2.check_x_absorber_fits_ranks``
+            # (``cpml_layers <= nx_per + 1`` / ``<= nx_per - pad_x + 1``,
+            # narrowed by one cell per face in round 3 because a one-cell
+            # window overflow is a measured no-op -- derived
+            # from the literal window slices) and from
+            # ``check_absorber_faces_are_absorbing``. ``cpml_layers*2 >=
+            # nx_local_real`` is stricter for a rank that owns both outer
+            # faces and says nothing about a face that declares no
+            # absorber at all. It is left untouched on purpose: this is
+            # the NU-forward lane, B0 is the uniform lane, and rewriting a
+            # guard that is not silently wrong to match one that is newer
+            # would be a change with no measurement behind it. The two
+            # lanes therefore state the x-absorber fit differently, which
+            # is recorded in the B0 design note's open items.
             cpml_layers = int(getattr(self, "_cpml_layers", 0) or 0)
             if self._boundary == "cpml" and cpml_layers > 0:
                 for rank in (0, n_devices - 1):
@@ -3676,6 +3700,48 @@ class _ExecuteMixin:
                     "DFT plane probes or omit devices=... (use a "
                     "single-device run() instead)."
                 )
+            # ---- Distributed admission gate (B0, 2026-09-14) ----
+            # The first layer of the distributed preflight described in
+            # rfx-research-notes/accel-import-20260913/
+            # DIRECTION-distributed-preflight.md S3-S4: four features that
+            # reached this lane with no refusal and no warning and came
+            # back wrong (periodic/Bloch boundaries, extended lumped
+            # ports, excite=False ports, flux/NTFF monitors). Refused, not
+            # warned-and-dropped, in the same style as the #579 DFT-plane
+            # refusal above. The runner repeats the call so a direct
+            # rfx.runners.distributed_v2.run_distributed() is gated too,
+            # and carries the fifth, position-dependent class (the x
+            # absorber vs the per-rank slab).
+            #
+            # Gated on the runner ACTUALLY SHARDING, because
+            # run_distributed() falls back to a whole-model single-device
+            # sim.run() for TFSF sources and waveguide ports BEFORE it
+            # reaches its own copy of this call
+            # (rfx/runners/distributed_v2.py, the two fallbacks and then
+            # the gate).  A TFSF or waveguide model that also carries a
+            # flux monitor or an NTFF box -- the standard RCS /
+            # transmission setup -- therefore runs on one device and
+            # returns the RIGHT answer with the monitor populated, and
+            # refusing it here would refuse a working call.  MEASURED
+            # (2 virtual CPU devices, 0.13x0.04x0.04 m CPML box,
+            # add_tfsf_source(f0=2.5e9, bandwidth=0.5), one Ez probe,
+            # add_flux_monitor(axis='x', coordinate=0.09, n_freqs=3),
+            # n_steps=30): with this condition run(devices=...) falls back
+            # (1 warning) and returns flux_monitors == ['flux_x_0'] with
+            # peak 1.401931e-12, bit-identical to the native run and to
+            # run_distributed() called directly; without it the same call
+            # raised NotImplementedError while run_distributed() ran.
+            # The two entry points must agree -- pinned by
+            # tests/unit/runners/test_distributed_admission_refusals.py
+            # ::test_the_tfsf_and_waveguide_fallbacks_are_deliberately_unchanged
+            # and its monitor-carrying siblings.
+            _will_shard = self._tfsf is None and not self._waveguide_ports
+            if _will_shard:
+                from rfx.runners.distributed_v2 import (
+                    refuse_unsupported_distributed_features,
+                )
+                refuse_unsupported_distributed_features(
+                    self, lane="distributed multi-device run()")
             self._warn_unsupported_run_kwargs("distributed multi-device", {
                 "subpixel_smoothing": subpixel_smoothing,
                 "checkpoint": checkpoint,
