@@ -27,7 +27,7 @@ combines asymmetric per-face pad depths with geometry standing in that pad.
 Names, order AND the argument each check receives are therefore all pinned
 here, against a tuple derived from the PRE-registry hub.
 
-Derivation of ``_CALL_SEQUENCE_AT_B5387C46``
+Derivation of ``_CALL_SEQUENCE_AT_LEG7_TIP``
 --------------------------------------------
 Not hand-transcribed. Taken by an AST walk of the hub body at the leg-7 tip::
 
@@ -65,14 +65,23 @@ from __future__ import annotations
 LOCK_PROVENANCE = {
     # No committed data artifact: this lock reads the live registry and the
     # live source tree. Its baseline is the git object named under
-    # "generator", which is reachable from the commit below.
+    # "generator".
+    #
+    # The SHA below is the leg-7 tip as it stood when this lock was written,
+    # and it is the weak half of this provenance: the #980 leg stack is
+    # rebased before it merges, so the sha gets rewritten. It already did
+    # once during this leg (b5387c46 -> f59d7c97), and `git diff --quiet`
+    # between the two returned 0 -- identical trees, hashes only. The durable
+    # reference is therefore the BRANCH in "generator", or after the stack
+    # lands, the parent of this leg's first commit. Re-deriving from any of
+    # them gives the same 37 rows.
     "fixture": "none",
     "generator": (
         "ast walk of _PreflightMixin._validate_simulation_config in "
         "`git show refactor/980-preflight-realization:rfx/api/_preflight.py` "
         "(see this module's docstring for the argument map)"
     ),
-    "commit": "b5387c46",
+    "commit": "f59d7c97",
     "date": "2026-09-14",
     "run_id": "local",
     "host": "remilab pod linux x86_64, CPU, python 3.11.16, jax 0.10.2",
@@ -93,7 +102,7 @@ _REPO = _HERE.parents[2]
 #: the CONTEXT FIELD each positional argument became, at the leg-7 tip. See
 #: the module docstring for how this was derived and for why the argument
 #: lists are pinned here rather than left to the report snapshots.
-_CALL_SEQUENCE_AT_B5387C46 = (
+_CALL_SEQUENCE_AT_LEG7_TIP = (
     ("_validate_cfg_precision_x64", ("warn",)),
     ("_validate_cfg_pec_faces_with_finite_pec", ("warn",)),
     ("_validate_cfg_upml_refinement", ()),
@@ -139,7 +148,7 @@ _CALL_SEQUENCE_AT_B5387C46 = (
 )
 
 #: Just the names, in order -- the runtime view of the tuple above.
-_CALL_NAMES_AT_B5387C46 = tuple(n for n, _ in _CALL_SEQUENCE_AT_B5387C46)
+_CALL_NAMES_AT_LEG7_TIP = tuple(n for n, _ in _CALL_SEQUENCE_AT_LEG7_TIP)
 
 #: The family the four facade-resident checks declare. They are not in
 #: ``rfx/preflight/``: the execution family stays in ``rfx/api/_preflight.py``
@@ -157,13 +166,13 @@ def test_core_config_checks_are_the_pre_registry_call_sequence():
     from rfx.preflight._registry import CORE_CONFIG_CHECKS
 
     got = tuple(c.name for c in CORE_CONFIG_CHECKS)
-    assert got == _CALL_NAMES_AT_B5387C46, (
+    assert got == _CALL_NAMES_AT_LEG7_TIP, (
         "CORE_CONFIG_CHECKS no longer reproduces the pre-registry call "
         "sequence.\n"
-        f"  added:   {sorted(set(got) - set(_CALL_NAMES_AT_B5387C46))}\n"
-        f"  dropped: {sorted(set(_CALL_NAMES_AT_B5387C46) - set(got))}\n"
+        f"  added:   {sorted(set(got) - set(_CALL_NAMES_AT_LEG7_TIP))}\n"
+        f"  dropped: {sorted(set(_CALL_NAMES_AT_LEG7_TIP) - set(got))}\n"
         f"  first positional difference at index "
-        f"{next((i for i, (a, b) in enumerate(zip(got, _CALL_NAMES_AT_B5387C46)) if a != b), len(got))}"
+        f"{next((i for i, (a, b) in enumerate(zip(got, _CALL_NAMES_AT_LEG7_TIP)) if a != b), len(got))}"
     )
 
 
@@ -242,7 +251,7 @@ def test_each_adapter_passes_the_arguments_the_hub_passed():
     from rfx.preflight._registry import ConfigCheckContext
 
     got = _registry_adapter_calls()
-    want = list(_CALL_SEQUENCE_AT_B5387C46)
+    want = list(_CALL_SEQUENCE_AT_LEG7_TIP)
     diffs = [f"{i}: {g} != {w}"
              for i, (g, w) in enumerate(zip(got, want)) if g != w]
     if len(got) != len(want):
