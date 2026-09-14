@@ -1,0 +1,1837 @@
+{
+ "stage": "identity2",
+ "provenance": {
+  "rfx_file": "/Users/byungkwankim/Documents/rfx-cpml/rfx/__init__.py",
+  "jax": "0.10.2",
+  "git_sha": "22e7290aadb32aeeb5fe1444c6bd61cc68e55856",
+  "git_dirty": true,
+  "candidate_env": "",
+  "baseline_is_live_cpml": false
+ },
+ "flags": "--xla_disable_hlo_passes=fusion,algsimp --xla_cpu_enable_fast_math=false",
+ "fixtures": {
+  "uniform8": {
+   "ex": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 20384
+   },
+   "ey": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 20385
+   },
+   "ez": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 20394
+   },
+   "hx": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 21168
+   },
+   "hy": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 21168
+   },
+   "hz": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 21168
+   },
+   "psi_psi_ex_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ex_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ex_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ex_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ey_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ey_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ey_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ey_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ez_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ez_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ez_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ez_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_hx_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5282
+   },
+   "psi_psi_hx_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 4527
+   },
+   "psi_psi_hx_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5282
+   },
+   "psi_psi_hx_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 4527
+   },
+   "psi_psi_hy_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5283
+   },
+   "psi_psi_hy_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 4529
+   },
+   "psi_psi_hy_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5282
+   },
+   "psi_psi_hy_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 4528
+   },
+   "psi_psi_hz_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5284
+   },
+   "psi_psi_hz_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 4529
+   },
+   "psi_psi_hz_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5285
+   },
+   "psi_psi_hz_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 4532
+   }
+  },
+  "graded8": {
+   "ex": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 20382
+   },
+   "ey": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 20376
+   },
+   "ez": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 20377
+   },
+   "hx": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 21168
+   },
+   "hy": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 21164
+   },
+   "hz": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 21168
+   },
+   "psi_psi_ex_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ex_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ex_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5291
+   },
+   "psi_psi_ex_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5289
+   },
+   "psi_psi_ey_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ey_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ey_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5291
+   },
+   "psi_psi_ey_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5289
+   },
+   "psi_psi_ez_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ez_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5290
+   },
+   "psi_psi_ez_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5290
+   },
+   "psi_psi_ez_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5289
+   },
+   "psi_psi_hx_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5283
+   },
+   "psi_psi_hx_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 4532
+   },
+   "psi_psi_hx_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5284
+   },
+   "psi_psi_hx_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 4530
+   },
+   "psi_psi_hy_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5288
+   },
+   "psi_psi_hy_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 4532
+   },
+   "psi_psi_hy_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5283
+   },
+   "psi_psi_hy_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 4525
+   },
+   "psi_psi_hz_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5287
+   },
+   "psi_psi_hz_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 4532
+   },
+   "psi_psi_hz_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5281
+   },
+   "psi_psi_hz_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 4530
+   }
+  },
+  "mixed8": {
+   "ex": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 6228
+   },
+   "ey": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5858
+   },
+   "ez": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 6103
+   },
+   "hx": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 6120
+   },
+   "hy": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 6528
+   },
+   "hz": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 6256
+   },
+   "psi_psi_ex_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1840
+   },
+   "psi_psi_ex_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_ex_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 816
+   },
+   "psi_psi_ex_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1904
+   },
+   "psi_psi_ey_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_ey_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1173
+   },
+   "psi_psi_ey_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 765
+   },
+   "psi_psi_ey_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1785
+   },
+   "psi_psi_ez_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_ez_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1224
+   },
+   "psi_psi_ez_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1800
+   },
+   "psi_psi_ez_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hx_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1796
+   },
+   "psi_psi_hx_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hx_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 765
+   },
+   "psi_psi_hx_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1525
+   },
+   "psi_psi_hy_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hy_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 816
+   },
+   "psi_psi_hy_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 815
+   },
+   "psi_psi_hy_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1623
+   },
+   "psi_psi_hz_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hz_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 782
+   },
+   "psi_psi_hz_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1833
+   },
+   "psi_psi_hz_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   }
+  },
+  "uniform4": {
+   "ex": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 7209
+   },
+   "ey": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 7207
+   },
+   "ez": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 7199
+   },
+   "hx": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 7600
+   },
+   "hy": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 7600
+   },
+   "hz": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 7600
+   },
+   "psi_psi_ex_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1140
+   },
+   "psi_psi_ex_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1140
+   },
+   "psi_psi_ex_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1140
+   },
+   "psi_psi_ex_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1140
+   },
+   "psi_psi_ey_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1140
+   },
+   "psi_psi_ey_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1140
+   },
+   "psi_psi_ey_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1140
+   },
+   "psi_psi_ey_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1140
+   },
+   "psi_psi_ez_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1140
+   },
+   "psi_psi_ez_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1140
+   },
+   "psi_psi_ez_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1140
+   },
+   "psi_psi_ez_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1140
+   },
+   "psi_psi_hx_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1136
+   },
+   "psi_psi_hx_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 760
+   },
+   "psi_psi_hx_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1134
+   },
+   "psi_psi_hx_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 760
+   },
+   "psi_psi_hy_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1137
+   },
+   "psi_psi_hy_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 760
+   },
+   "psi_psi_hy_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1136
+   },
+   "psi_psi_hy_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 758
+   },
+   "psi_psi_hz_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1137
+   },
+   "psi_psi_hz_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 760
+   },
+   "psi_psi_hz_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1140
+   },
+   "psi_psi_hz_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 760
+   }
+  },
+  "uniform16": {
+   "ex": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 81327
+   },
+   "ey": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 81324
+   },
+   "ez": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 81313
+   },
+   "hx": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 83248
+   },
+   "hy": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 83247
+   },
+   "hz": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 83248
+   },
+   "psi_psi_ex_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 28380
+   },
+   "psi_psi_ex_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 28380
+   },
+   "psi_psi_ex_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 28379
+   },
+   "psi_psi_ex_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 28380
+   },
+   "psi_psi_ey_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 28380
+   },
+   "psi_psi_ey_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 28380
+   },
+   "psi_psi_ey_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 28380
+   },
+   "psi_psi_ey_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 28378
+   },
+   "psi_psi_ez_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 28378
+   },
+   "psi_psi_ez_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 28378
+   },
+   "psi_psi_ez_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 28380
+   },
+   "psi_psi_ez_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 28378
+   },
+   "psi_psi_hx_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 28361
+   },
+   "psi_psi_hx_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 26465
+   },
+   "psi_psi_hx_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 28359
+   },
+   "psi_psi_hx_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 26456
+   },
+   "psi_psi_hy_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 28352
+   },
+   "psi_psi_hy_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 26470
+   },
+   "psi_psi_hy_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 28348
+   },
+   "psi_psi_hy_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 26457
+   },
+   "psi_psi_hz_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 28360
+   },
+   "psi_psi_hz_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 26471
+   },
+   "psi_psi_hz_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 28368
+   },
+   "psi_psi_hz_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 26475
+   }
+  },
+  "periodic8": {
+   "ex": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 8736
+   },
+   "ey": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 9814
+   },
+   "ez": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 9798
+   },
+   "hx": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 10192
+   },
+   "hy": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 9070
+   },
+   "hz": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 9072
+   },
+   "psi_psi_ex_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 2268
+   },
+   "psi_psi_ex_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 2268
+   },
+   "psi_psi_ex_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 2266
+   },
+   "psi_psi_ex_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 2266
+   },
+   "psi_psi_ey_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_ey_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_ey_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 2546
+   },
+   "psi_psi_ey_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 2546
+   },
+   "psi_psi_ez_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_ez_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_ez_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 2546
+   },
+   "psi_psi_ez_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 2548
+   },
+   "psi_psi_hx_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 2533
+   },
+   "psi_psi_hx_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 2173
+   },
+   "psi_psi_hx_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 2534
+   },
+   "psi_psi_hx_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 2171
+   },
+   "psi_psi_hy_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hy_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hy_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 2262
+   },
+   "psi_psi_hy_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1944
+   },
+   "psi_psi_hz_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hz_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hz_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 2264
+   },
+   "psi_psi_hz_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 1944
+   }
+  },
+  "kappa8": {
+   "ex": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 20392
+   },
+   "ey": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 20389
+   },
+   "ez": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 20397
+   },
+   "hx": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 21168
+   },
+   "hy": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 21168
+   },
+   "hz": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 21166
+   },
+   "psi_psi_ex_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5291
+   },
+   "psi_psi_ex_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5291
+   },
+   "psi_psi_ex_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ex_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ey_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5291
+   },
+   "psi_psi_ey_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5291
+   },
+   "psi_psi_ey_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ey_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ez_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ez_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ez_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_ez_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5292
+   },
+   "psi_psi_hx_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5289
+   },
+   "psi_psi_hx_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 4532
+   },
+   "psi_psi_hx_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5286
+   },
+   "psi_psi_hx_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 4532
+   },
+   "psi_psi_hy_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5288
+   },
+   "psi_psi_hy_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 4531
+   },
+   "psi_psi_hy_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5283
+   },
+   "psi_psi_hy_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 4529
+   },
+   "psi_psi_hz_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5282
+   },
+   "psi_psi_hz_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 4531
+   },
+   "psi_psi_hz_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 5286
+   },
+   "psi_psi_hz_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 4533
+   }
+  },
+  "thin232": {
+   "ex": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "ey": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "ez": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "hx": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "hy": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "hz": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_ex_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_ex_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_ex_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_ex_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_ey_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_ey_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_ey_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_ey_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_ez_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_ez_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_ez_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_ez_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hx_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hx_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hx_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hx_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hy_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hy_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hy_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hy_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hz_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hz_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hz_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hz_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   }
+  },
+  "overlap": {
+   "ex": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 796
+   },
+   "ey": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 806
+   },
+   "ez": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 799
+   },
+   "hx": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 892
+   },
+   "hy": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 895
+   },
+   "hz": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 900
+   },
+   "psi_psi_ex_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 90
+   },
+   "psi_psi_ex_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 90
+   },
+   "psi_psi_ex_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 90
+   },
+   "psi_psi_ex_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 90
+   },
+   "psi_psi_ey_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 90
+   },
+   "psi_psi_ey_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 90
+   },
+   "psi_psi_ey_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 90
+   },
+   "psi_psi_ey_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 87
+   },
+   "psi_psi_ez_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 90
+   },
+   "psi_psi_ez_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 89
+   },
+   "psi_psi_ez_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 90
+   },
+   "psi_psi_ez_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 88
+   },
+   "psi_psi_hx_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 90
+   },
+   "psi_psi_hx_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hx_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 90
+   },
+   "psi_psi_hx_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hy_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 90
+   },
+   "psi_psi_hy_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hy_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 87
+   },
+   "psi_psi_hy_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hz_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 90
+   },
+   "psi_psi_hz_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hz_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 90
+   },
+   "psi_psi_hz_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   }
+  },
+  "kappa5_pmc": {
+   "ex": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 623
+   },
+   "ey": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 556
+   },
+   "ez": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 621
+   },
+   "hx": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 624
+   },
+   "hy": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 694
+   },
+   "hz": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 630
+   },
+   "psi_psi_ex_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 90
+   },
+   "psi_psi_ex_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_ex_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 70
+   },
+   "psi_psi_ex_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 70
+   },
+   "psi_psi_ey_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 63
+   },
+   "psi_psi_ey_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 63
+   },
+   "psi_psi_ey_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 63
+   },
+   "psi_psi_ey_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 63
+   },
+   "psi_psi_ez_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 70
+   },
+   "psi_psi_ez_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 64
+   },
+   "psi_psi_ez_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 90
+   },
+   "psi_psi_ez_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hx_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 90
+   },
+   "psi_psi_hx_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hx_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 62
+   },
+   "psi_psi_hx_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hy_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 69
+   },
+   "psi_psi_hy_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hy_zlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 70
+   },
+   "psi_psi_hy_zhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hz_xlo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 63
+   },
+   "psi_psi_hz_xhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   },
+   "psi_psi_hz_ylo": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 89
+   },
+   "psi_psi_hz_yhi": {
+    "equal": true,
+    "differing": 0,
+    "max_abs": 0.0,
+    "flag_vs_plain_differing": 0
+   }
+  }
+ },
+ "fired": [],
+ "effectiveness_flag_vs_plain_changed_elements": 2137519,
+ "verdict": "HELD"
+}

@@ -426,3 +426,16 @@ adds) break that fusion and cost extra full-array passes, while the NU
 path — already unfused by its per-axis `inv_*` broadcasts — only loses
 work. That is a hypothesis for the next declaration (lane-conditional
 dispatch, or a slab update that keeps the fusion), not a result.
+
+### G5-2b — bit-identity with fusion AND algsimp suppressed (run once on 22e7290a)
+
+**HELD on all 10 fixtures** — the seven r2 fixtures plus the reviewer's
+`thin232` (2 x 3 x 2, layers 2, kappa 5, heterogeneous eps/mu, random
+fields and psi), `overlap` (6^3, layers 2 on every face) and `kappa5_pmc`:
+every field and every psi array `np.array_equal`, 0 differing elements.
+Effectiveness control under the same flags: the flagged baseline differs
+from the unflagged baseline in **2,137,519 elements**, so the flags are not
+vacuous. (`identity2.json`, `id2flag.log`, `id2plain.log`.) With
+reassociation and contraction both suppressed, the localized kernel and
+the current kernel produce the same bits on every fixture the review could
+construct — including the one that separated them under the r2 flags.
