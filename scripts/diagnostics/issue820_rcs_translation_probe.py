@@ -158,6 +158,34 @@ H5-bis  CORRECTION to H5, written before the sweep was read and before the
           H5-bis FALSE -> ``|arg(B_10/B_0)| <= 25 deg`` (the constant term
                           does not rotate).
 
+    THIRD ATTEMPT for H5-bis (``auxprofile``), pre-declared before it runs,
+    with the R2 reason in writing rather than as a tweak of the second.
+    Attempt 2 (``auxpad``) came back VOID on its OWN control: padding the
+    auxiliary grid by one wavelength should have been a phase-only change and
+    instead moved sigma by 0.2976 dB against a 0.20 dB control gate, because
+    moving the absorber also delays the echo inside a FIXED record and changes
+    the pulse the absorber sees. Distance is therefore not a clean lever.
+    The reflection COEFFICIENT is a different lever and a different
+    intervention family: PR #1005 (branch ``fix/888-aux-absorber-r2``) derives
+    the auxiliary absorber from a declared reflection target and exposes
+    ``aux_n_cpml`` / ``aux_cpml_order`` / ``aux_cpml_kappa_max`` /
+    ``aux_cpml_r_asymptotic`` on ``init_tfsf``, measuring the 1-D path at
+    ``9.43e-06`` against the ``4.427e-02`` main ships. Run on THAT tree, with
+    the target, the 3-D grid, the boxes and the record identical:
+      (l) DEFAULT (deep) auxiliary absorber. H5-bis TRUE -> fitted ``r <=
+          0.02`` and 11-point translation ``p-p <= 0.20 dB``.
+          H5-bis FALSE -> ``r >= 0.08`` and ``p-p >= 1.5 dB``, i.e. the spread
+          does not notice a 4700x cleaner injection.
+      (m) WITHIN-BUILD control, same tree, ``aux_n_cpml=20``,
+          ``aux_cpml_order=3``, ``aux_cpml_kappa_max=1.0``,
+          ``aux_cpml_r_asymptotic=1e-6``: a deliberately shallow absorber must
+          RESTORE ``p-p >= 1.0 dB`` and ``r >= 0.05``. If it does not, this
+          build differs from main for some reason other than the absorber and
+          the whole comparison is recorded NON-CLOSING.
+      (n) ``|A|`` must stay within 5 % across main, (l) and (m). A moving
+          ``|A|`` means the target's own scattering changed and voids the
+          comparison.
+
 Record-length / ring-down witness (mandatory before any DFT number is quoted)
 ----------------------------------------------------------------------------
 Arm ``record``: re-run the two x offsets carrying sigma_max and sigma_min at
@@ -312,13 +340,19 @@ def build_case(offset_cells=(0, 0, 0), *, cpml_layers=CPML_LAYERS,
 
 
 def _tfsf_and_ntff(grid, *, cpml_layers, tfsf_margin=3, ntff_offset=1,
-                   freqs=(F0,)):
-    """Exactly rfx.rcs.compute_rcs steps 1-2, normal-incidence branch."""
+                   freqs=(F0,), aux_kwargs=None):
+    """Exactly rfx.rcs.compute_rcs steps 1-2, normal-incidence branch.
+
+    ``aux_kwargs`` is only accepted by builds that expose the PR #1005
+    auxiliary-absorber knobs; passing it on a build without them raises
+    rather than being silently dropped.
+    """
     tfsf_cfg, tfsf_st = init_tfsf(
         nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=cpml_layers,
         tfsf_margin=tfsf_margin, f0=F0, bandwidth=BANDWIDTH, amplitude=1.0,
         polarization="ez", direction="+x", angle_deg=0.0,
         ny=grid.ny, nz=grid.nz, method="bloch",
+        **(aux_kwargs or {}),
     )
     fl = getattr(grid, "face_layers", None) or {
         k: grid.cpml_layers
@@ -881,11 +915,84 @@ def arm_auxpad(_args):
     return _emit("auxpad", out)
 
 
+GATE_AUXPROFILE_R_CLEAN = 0.02
+GATE_AUXPROFILE_PP_CLEAN_DB = 0.20
+GATE_AUXPROFILE_R_UNCHANGED = 0.08
+GATE_AUXPROFILE_PP_UNCHANGED_DB = 1.5
+GATE_AUXPROFILE_PP_RESTORED_DB = 1.0
+GATE_AUXPROFILE_R_RESTORED = 0.05
+GATE_AUXPROFILE_A_REL = 0.05
+
+AUXPROFILE_SETTINGS = {
+    "deep_default": None,
+    "shallow_20cell": {"aux_n_cpml": 20, "aux_cpml_order": 3,
+                       "aux_cpml_kappa_max": 1.0,
+                       "aux_cpml_r_asymptotic": 1e-6},
+}
+
+
+def arm_auxprofile(_args):
+    """Same tree, same target: change ONLY the auxiliary absorber's profile.
+
+    Only meaningful on a build that exposes the PR #1005 auxiliary knobs.
+    """
+    out = {"settings": {k: v for k, v in AUXPROFILE_SETTINGS.items()},
+           "offsets": AUXPAD_OFFSETS,
+           "gates": {"r_clean": GATE_AUXPROFILE_R_CLEAN,
+                     "pp_clean_db": GATE_AUXPROFILE_PP_CLEAN_DB,
+                     "r_unchanged": GATE_AUXPROFILE_R_UNCHANGED,
+                     "pp_unchanged_db": GATE_AUXPROFILE_PP_UNCHANGED_DB,
+                     "pp_restored_db": GATE_AUXPROFILE_PP_RESTORED_DB,
+                     "r_restored": GATE_AUXPROFILE_R_RESTORED,
+                     "a_rel": GATE_AUXPROFILE_A_REL}}
+    for name, kw in AUXPROFILE_SETTINGS.items():
+        rows = []
+        for n in AUXPAD_OFFSETS:
+            grid, mats, n_steps, _, meta = build_case((n, 0, 0))
+            freqs_arr = np.array([F0], dtype=np.float64)
+            tfsf, box = _tfsf_and_ntff(grid, cpml_layers=CPML_LAYERS,
+                                       freqs=freqs_arr, aux_kwargs=kw)
+            res = run(grid, mats, n_steps, boundary="cpml", tfsf=tfsf,
+                      ntff=box)
+            ff = compute_far_field(res.ntff_data, box, grid,
+                                   np.array([np.pi / 2]), np.array([np.pi]))
+            e_th = np.asarray(ff.E_theta, dtype=np.complex128)[0, 0, 0]
+            e_ph = np.asarray(ff.E_phi, dtype=np.complex128)[0, 0, 0]
+            e_inc = _incident_spectrum_amplitude(F0, BANDWIDTH, freqs_arr,
+                                                 grid.dt, n_steps)
+            mono = float(10.0 * np.log10(
+                4.0 * np.pi * (abs(e_th) ** 2 + abs(e_ph) ** 2)
+                / abs(e_inc[0]) ** 2))
+            rows.append({"offset": n, "monostatic_dbsm": mono,
+                         "E_theta": [e_th.real, e_th.imag],
+                         "aux_n_1d": int(np.asarray(tfsf[1].e1d).shape[0]),
+                         "dx": meta["dx"], "n_steps": n_steps})
+            print(f"  {name:16s} x{n:+3d} sigma = {mono:9.4f} dBsm")
+        dx = rows[0]["dx"]
+        resid, k_fit, a_fit, b_fit = _fit_rotating_plus_constant(
+            [r["offset"] for r in rows],
+            [complex(*r["E_theta"]) for r in rows], dx)
+        vals = [r["monostatic_dbsm"] for r in rows]
+        out[name] = {"rows": rows, "resid": resid, "k_fit": k_fit,
+                     "A": [a_fit.real, a_fit.imag],
+                     "B": [b_fit.real, b_fit.imag],
+                     "abs_A": abs(a_fit), "abs_B": abs(b_fit),
+                     "r": abs(b_fit) / abs(a_fit),
+                     "pp_db": float(max(vals) - min(vals)),
+                     "aux_n_1d": rows[0]["aux_n_1d"]}
+        print(f"[auxprofile] {name}: aux n_1d = {rows[0]['aux_n_1d']}, "
+              f"resid {resid:.4f}, |A| {abs(a_fit):.4e}, "
+              f"|B| {abs(b_fit):.4e}, r {abs(b_fit) / abs(a_fit):.4f}, "
+              f"p-p {max(vals) - min(vals):.4f} dB")
+    return _emit("auxprofile", out)
+
+
 ARMS = {
     "raster": arm_raster, "equiv": arm_equiv, "origin": arm_origin,
     "xsweep": arm_xsweep, "ysweep": arm_ysweep, "vacuum": arm_vacuum,
     "record": arm_record, "energy": arm_energy, "cpmlladder": arm_cpmlladder,
     "fit": arm_fit, "auxecho": arm_auxecho, "auxpad": arm_auxpad,
+    "auxprofile": arm_auxprofile,
 }
 
 
