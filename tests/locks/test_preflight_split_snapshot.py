@@ -528,6 +528,21 @@ _REBOUND_ON_MIXIN = {
         "_validate_cfg_sheet_slot_vacuum",
         "_validate_cfg_thin_conductor_surface_impedance",
     ),
+    # Leg 3. None of these twelve was a @staticmethod, so the frozenset
+    # below stays a one-element set and every qualname here is restored to
+    # "Simulation.<name>".
+    "rfx.preflight.waveguide": (
+        "_check_waveguide_port_aperture_snap",
+        "_check_waveguide_port_evanescent",
+        "_check_waveguide_port_evanescent_declared_geometry",
+        "_emit_waveguide_port_cutoff_findings", "_port_transverse_spans",
+        "_preflight_waveguide_setup",
+        "_validate_cfg_layout_from_band_low_edge",
+        "_validate_cfg_port_index_mirror_covariance",
+        "_validate_cfg_record_vs_far_boundary",
+        "_validate_cfg_waveguide_reference_plane", "_waveguide_far_geometry",
+        "_waveguide_setup_planes",
+    ),
 }
 
 #: The moved bodies that were ``@staticmethod`` in the class and have to be
