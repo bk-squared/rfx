@@ -1,0 +1,66 @@
+{
+  "abs_pp_delta_db": 0.062025548425751253,
+  "arm": "record",
+  "gates": [
+    0.1,
+    0.2
+  ],
+  "git_head": "e5751ad25ea804fdc20e63b3baf883d65fb4058b",
+  "pp_2N_db": 2.376070296111287,
+  "pp_N_db": 2.3140447476855357,
+  "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-abfe63a122fb718db/rfx/__init__.py",
+  "rows": [
+    {
+      "abs_delta_db": 0.04819450999178798,
+      "meta": {
+        "cpml_layers": 8,
+        "domain_over_lam": 1.781724520330132,
+        "dx": 0.002437337056910569,
+        "grid_shape": [
+          91,
+          91,
+          91
+        ],
+        "mask_sha256": "8509e491de3c6f25",
+        "n_occupied": 1127,
+        "n_steps": 1400,
+        "offset_cells": [
+          1,
+          0,
+          0
+        ],
+        "res": 41
+      },
+      "n_steps_2N": 1400,
+      "offset": 1,
+      "sigma_2N": -24.658106650921944,
+      "sigma_N": -24.706301160913732
+    },
+    {
+      "abs_delta_db": 0.013831038433963272,
+      "meta": {
+        "cpml_layers": 8,
+        "domain_over_lam": 1.781724520330132,
+        "dx": 0.002437337056910569,
+        "grid_shape": [
+          91,
+          91,
+          91
+        ],
+        "mask_sha256": "d57d9ef7f568cb84",
+        "n_occupied": 1127,
+        "n_steps": 1400,
+        "offset_cells": [
+          -9,
+          0,
+          0
+        ],
+        "res": 41
+      },
+      "n_steps_2N": 1400,
+      "offset": -9,
+      "sigma_2N": -27.03417694703323,
+      "sigma_N": -27.020345908599268
+    }
+  ]
+}

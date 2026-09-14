@@ -1,0 +1,49 @@
+{
+  "abs_E_theta": 5.085002932707909e-16,
+  "arm": "vacuum",
+  "git_head": "19b3dd5c587b150ba540a68015ec8765ed11ead3",
+  "meta": {
+    "cpml_layers": 8,
+    "domain_over_lam": 1.781724520330132,
+    "dx": 0.002437337056910569,
+    "grid_shape": [
+      91,
+      91,
+      91
+    ],
+    "mask_sha256": "ff955c76fa82f778",
+    "n_occupied": 0,
+    "n_steps": 700,
+    "offset_cells": [
+      0,
+      0,
+      0
+    ],
+    "res": 41
+  },
+  "result": {
+    "E_inc_abs": 2.7554873512821364e-11,
+    "E_phi": [
+      1.827397908441785e-32,
+      -1.7123483465623984e-32
+    ],
+    "E_theta": [
+      -4.0762830153182104e-16,
+      -3.0399295394262533e-16
+    ],
+    "monostatic_dbsm": -83.68604564096901,
+    "ntff_box": [
+      10,
+      81,
+      9,
+      82,
+      9,
+      82
+    ],
+    "tfsf_x": [
+      11,
+      79
+    ]
+  },
+  "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-abfe63a122fb718db/rfx/__init__.py"
+}

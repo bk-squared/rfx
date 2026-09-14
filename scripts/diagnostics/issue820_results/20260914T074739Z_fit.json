@@ -1,0 +1,39 @@
+{
+  "A": [
+    2.546307256494988e-13,
+    -3.112685183991651e-13
+  ],
+  "B": [
+    9.533286405675628e-15,
+    -4.6978594162360726e-14
+  ],
+  "abs_A": 4.0215034127947935e-13,
+  "abs_B": 4.793612269640123e-14,
+  "abs_E_vacuum": 5.085002932707909e-16,
+  "arm": "fit",
+  "asym_db": 0.9449512391688373,
+  "gates": {
+    "asym_even_db": 0.3,
+    "fit_resid_false": 0.4,
+    "fit_resid_true": 0.15,
+    "period_rel": 0.15,
+    "pp_pred_db": 0.3,
+    "prox_ratio_false": 0.2,
+    "prox_ratio_true": 0.5,
+    "vac_witness_false": 3.0,
+    "vac_witness_true": 1.0
+  },
+  "git_head": "e5751ad25ea804fdc20e63b3baf883d65fb4058b",
+  "k0": 62.875350658550445,
+  "k_fit": 63.13942713131635,
+  "period_cells": 20.4142601075483,
+  "period_ref_cells": 20.5,
+  "pp_meas_db": 2.3140447476855357,
+  "pp_pred_db": 2.0805992347685724,
+  "pp_y_db": 0.701959061682544,
+  "pp_y_over_pp_x": 0.3033472288660927,
+  "r": 0.11919950768632429,
+  "r_vac": 93.26960678442299,
+  "resid": 0.01383285664799859,
+  "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-abfe63a122fb718db/rfx/__init__.py"
+}
