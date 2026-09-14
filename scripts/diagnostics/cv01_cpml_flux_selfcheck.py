@@ -61,7 +61,8 @@ count would move the source and both monitors along with the absorber and
 confound absorber thickness with plane position -- that is the naive sweep and
 it is NOT this measurement. ``pml`` therefore stays at cv01's ``10 * dx`` here
 while ``cpml_layers`` varies; rfx pads the grid OUTSIDE the declared 16 um
-domain, so the interior stays 161 cells per axis and only the absorber grows.
+domain, so the interior stays 161 NODES per axis (160 cells) and only the
+absorber grows.
 That single deviation from cv01 is recorded in the artifact as
 ``deviation_from_cv01`` rather than left implicit.
 
@@ -424,7 +425,12 @@ SWEEP_BASELINE_CPML_FULL_MEAN_SELF = 0.7488520140093946
 SWEEP_BASELINE_OUTSIDE_FRACTION_PCT = -26.041819705557895
 
 # rfx pads the grid OUTSIDE the declared 16 um x 16 um domain, so the interior
-# cell count must not move as cpml_layers does. 16 um / (a/10) + 1 = 161.
+# must not move as cpml_layers does. 16 um / (a/10) + 1 = 161 -- the `+ 1` is
+# the tell: this is a NODE count, 161 nodes spanning 160 cells. The name says
+# cells and is wrong; it is kept because the committed artifacts and the design
+# note's citations resolve through `interior_cells` / `interior_cells_expected`,
+# and renaming a key to fix a word breaks a record that is otherwise correct.
+# Comparisons against `grid.shape` are node-vs-node, so the check is right.
 INTERIOR_CELLS_PER_AXIS = 161
 
 # Physical positions held at cv01's values on every swept arm. The absorber
@@ -548,10 +554,11 @@ def run_residual_split(args, rig: dict, provenance_check: dict,
             " count grows with the absorber while the planes do not move."),
         "window_caveat": (
             "the `full` window is the whole padded plane, so its tangential"
-            " cell count grows with cpml_layers (181 at 10 layers, 241 at 40)"
-            " even though every plane POSITION is held fixed. The physical"
-            " interior and the aperture windows do not grow. That is what this"
-            " arm is here to size."),
+            " extent grows with cpml_layers (181 -> 241 NODES, i.e. 180 -> 240"
+            " cells) even though every plane POSITION is held fixed. The"
+            " physical interior (161 nodes = 160 cells) and the aperture (21"
+            " nodes = 20 cells) do not grow. That is what this arm is here to"
+            " size."),
         "n_steps": int(args.n_steps),
         "n_steps_is_cv01_value": bool(args.n_steps == n_steps),
         "cpml_layers": layers,
@@ -575,6 +582,22 @@ def run_residual_split(args, rig: dict, provenance_check: dict,
         "provenance": provenance,
         "interior_arm": interior,
         "interior_grid_shape": shape,
+        # NODE counts, not cell counts -- `grid.shape` counts Yee NODES. The
+        # 16 um interior at dx = 0.1 um is 160 CELLS and 161 nodes; the full
+        # padded plane at 40 layers is 240 cells and 241 nodes. Read these two
+        # as "cells" and you are off by one on each, the #868 class of error
+        # (a node slice read as cell widths). The key names say `cells` and are
+        # wrong; they are kept because the committed artifacts and the design
+        # note's citations resolve through them, and renaming a key to fix a
+        # word would break a record that is otherwise correct. The realized
+        # CELL extents are in preflight's own `cell_slices`, which this arm
+        # records verbatim: [40, 200] = 160 cells for the interior window,
+        # [110, 130] = 20 cells for the aperture.
+        #
+        # Nothing measured depends on the convention: the absorber-slot count
+        # is the DIFFERENCE of two node counts over the same interior (181 -
+        # 161 = 20 at 10 layers, 241 - 161 = 80 at 40), and a difference of
+        # node counts is a count of cells. The 4x ratio is exact either way.
         "full_plane_tangential_cells": (int(shape[1]) if len(shape) > 1 else None),
         "interior_window_cells": (
             int(shape[1]) - int(pad.get("y_lo", 0)) - int(pad.get("y_hi", 0))
@@ -633,6 +656,11 @@ def _sweep_witness(layers: int, full_arm: dict, ap_arm: dict) -> dict:
     grid.shape goes 181 -> 193 -> 201 -> 241 and grid.pad_* follows the swept
     value; and preflight's realized monitor coordinate must read 1.45e-05 m on
     every arm". An arm failing either is reported unreadable, not averaged in.
+
+    Quoted as written; "cells" there is wrong. Every count in that sentence is
+    a NODE count (161 nodes = 160 cells, 241 nodes = 240 cells), which is what
+    `grid.shape` holds, so the check compares node counts with node counts and
+    is correct. See the comment at INTERIOR_CELLS_PER_AXIS.
 
     The realized coordinate comes from the APERTURE companion: preflight writes
     a flux-region record only where a ``size=`` was requested, so the ``full``

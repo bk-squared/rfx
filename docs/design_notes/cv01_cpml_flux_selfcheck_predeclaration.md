@@ -588,13 +588,30 @@ The alternative — `full` − `interior` having grown — did not happen: that 
 sum to the −1.93523 the sweep already recorded.
 
 **So the window caveat is retired, measured rather than argued.** The full
-plane holds four times as many absorber-cell slots at 40 layers as at 10 (241
-tangential cells against 181, with the interior window fixed at 161 and the
-aperture at 21), and those slots nevertheless contribute twelve times *less*.
-The sweep's improvement is therefore not an artefact of the integration window
-growing with the absorber; it is the absorber. At 40 layers the slots term is
-no longer even consistently signed — 58 of 88 bins negative, against 88 of 88
-at 10 layers — which is what a term decaying into noise looks like.
+plane holds four times as many absorber-cell slots at 40 layers as at 10, and
+those slots nevertheless contribute twelve times *less*. The sweep's
+improvement is therefore not an artefact of the integration window growing with
+the absorber; it is the absorber. At 40 layers the slots term is no longer even
+consistently signed — 58 of 88 bins negative, against 88 of 88 at 10 layers —
+which is what a term decaying into noise looks like.
+
+Counting those slots, with the units named. `grid.shape` counts **nodes**, and
+this note called them cells everywhere above (the #868 class: a node count read
+as a cell count). That wording stands where it is — those sections are the
+pre-declaration and the run it declared, and they are not rewritten after the
+fact — and is corrected here, once, for all of them: every "161 cells per
+axis", every "181 cells … 241" and "the aperture at 21" earlier in this note is
+a **node** count. The full padded plane goes 181 → 241 nodes, i.e. 180 → 240
+cells; the physical interior is fixed at 161 nodes = **160 cells** (16 µm at
+dx = 0.1 µm); the aperture window is 21 nodes = **20 cells**, not 21. The
+realized cell extents are preflight's own, recorded per arm: `[40, 200]` = 160
+cells for the interior window, `[110, 130]` = 20 cells for the aperture.
+
+**The 4× is unaffected**, which is why none of the numbers above move. The
+absorber slots inside the full plane are the difference between the plane and
+the interior — 181 − 161 = 20 at 10 layers, 241 − 161 = 80 at 40 — and a
+difference of node counts over a fixed interior IS a count of cells. 80/20 = 4
+exactly, on either convention.
 
 **What it still does not say.** Where the last points live. Against the
 UPML controls the 40-layer arm is 4.18 points short on the full plane
@@ -610,8 +627,9 @@ its own pre-declaration and did not happen here.
 artifact rather than re-run: grid, `above` mask, frequency axis, `n_steps` and
 boundary all match between the new arm and both stored arms, asserted by the
 driver before it subtracted. Witnesses on the new arm: `grid.shape`
-241×241×1, interior 161 cells, realized planes 4e-06 m and 1.45e-05 m with
-normal indices 80 and 185, interior window cell slice [40, 200]. Preflight is
+241×241×1, interior 161 nodes = 160 cells, realized planes 4e-06 m and
+1.45e-05 m with normal indices 80 and 185, interior window cell slice
+[40, 200]. Preflight is
 identical to the 40-layer full arm's, verbatim, plus the same `amplitude_kind`
 deprecation.
 

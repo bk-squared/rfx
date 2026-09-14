@@ -470,7 +470,24 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # 2026-09-14 (#813 round-1 review, residual split): +23 references over +2
 # distinct artifacts (residual_split.json, and selfcheck.json cited for the
 # first time), 19 of them value-checked. Same note, its second provenance
-# section. Raised by the delta in the same commit that adds them.
+# section.
+#
+# What the three numbers below actually did, said plainly because the two
+# entries above say "raised by the delta" and this one is NOT that. The
+# minimums went 1175 -> 1270 (+95), 1121 -> 1207 (+86) and 61 -> 77 (+16),
+# while this pass adds only +23 references, +19 value-checked and +2
+# artifacts. The difference -- 72 references, 67 value-checked, 14 artifacts
+# -- is PRE-EXISTING SLACK that had accumulated between the old floors and the
+# real population, and it is absorbed here rather than left as headroom.
+#
+# So these floors now EQUAL the current actuals, with zero slack. That is
+# stricter than this file has been, deliberately, and it has a consequence
+# worth stating rather than discovering: the next legitimate removal of a
+# single cited number ANYWHERE in the opted-in surface reds this gate. That is
+# the intent -- a removal should be a decision someone writes down, which is
+# what the comment above each floor asks for -- but whoever hits it is not
+# looking at a bug. Lower the floor in the same commit as the removal and say
+# why, exactly as this block does.
 MIN_REFERENCES = 1270
 MIN_VALUE_CHECKED = 1207
 MIN_DISTINCT_ARTIFACTS = 77
