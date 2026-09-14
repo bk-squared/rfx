@@ -394,10 +394,12 @@ def test_a_bad_keyword_names_the_delegate_not_the_dispatcher():
     assert "num_periodz" in msg
 
 
-def test_lane_is_consumed_and_never_forwarded_to_the_delegate():
-    """No delegate has a ``lane`` parameter; forwarding it would TypeError.
+def test_lane_is_consumed_and_never_forwarded_to_the_delegate(monkeypatch):
+    """No delegate has a ``lane`` parameter; forwarding it would ``TypeError``.
 
-    Sentinel rather than a solve: the stub records what it was handed.
+    Sentinel rather than a solve: the stub records exactly what it was handed,
+    so this also pins that nothing ELSE is injected on the way through -- the
+    dispatcher adds no default of its own.
     """
     seen = {}
 
@@ -405,15 +407,10 @@ def test_lane_is_consumed_and_never_forwarded_to_the_delegate():
         seen.update(kwargs)
         return "ok"
 
-    sim = _waveguide_sim()
-    Simulation.compute_waveguide_s_matrix  # binding exists before patching
-    try:
-        original = Simulation.compute_waveguide_s_matrix
-        Simulation.compute_waveguide_s_matrix = spy
-        assert sim.compute_s_matrix(
-            lane="compute_waveguide_s_matrix", num_periods=1) == "ok"
-    finally:
-        Simulation.compute_waveguide_s_matrix = original
+    monkeypatch.setattr(Simulation, "compute_waveguide_s_matrix", spy)
+    result = _waveguide_sim().compute_s_matrix(
+        lane="compute_waveguide_s_matrix", num_periods=1)
+    assert result == "ok"
     assert seen == {"num_periods": 1}
 
 
