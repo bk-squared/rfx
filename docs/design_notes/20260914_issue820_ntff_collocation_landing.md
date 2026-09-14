@@ -352,3 +352,40 @@ neighbour plane. What survives is the extractor's internal treatment — and R3b
 `p = 1.236` still leaves a half-cell collocation term admissible as the leading error —
 plus whatever makes arm (i)'s effect depth-dependent at the shipped 8-cell absorber,
 which L7 now refuses to land around.
+
+### 5.7 Arm D — the depth dependence is in the HI faces
+
+Arm (i)'s H averaging applied one face group at a time, three absorber depths.
+The `all6` control reproduces the parent sweeps to the digit at every depth, which
+is what proves the regenerated runs are the parent runs (the face arrays are not
+persisted, so arm D is not zero-simulation and does not claim to be).
+
+Absolute null reduction, dB:
+
+| group | CPML 8 | CPML 16 | CPML 24 | spread | |
+|---|---|---|---|---|---|
+| `all6` (control) | 0.2124 | 0.2577 | 0.2574 | 18.7 % | reproduces the parent exactly |
+| **`lo`** | 0.1271 | 0.1274 | 0.1227 | **3.8 %** | **DEPTH-STABLE** |
+| **`hi`** | 0.0787 | 0.1255 | 0.1286 | **44.9 %** | carries the dependence |
+| `x` | −0.0261 | −0.0057 | −0.0226 | n/a | no effect; spread is a noise ratio |
+| `y` | 0.2262 | 0.2517 | 0.2500 | 10.5 % | carries the magnitude |
+| `z` | 0.0001 | 0.0000 | 0.0000 | n/a | no effect at all |
+
+Guards 58.9 / 86.3 / 95.0 dB; zero warnings at every depth.
+
+**Gate → LOCALIZED**, and it localizes to the end nobody was watching. N2 pointed
+at the **lo** faces because their adjacent planes sit on the first interior cell
+against the absorber — and the `lo` group is the **stable** one. What steps is the
+**hi** group, 0.0787 → 0.1255 → 0.1286 (+59 %, then +2.5 %): the same
+one-step-then-saturate shape as `all6`, on the faces whose averaged planes lie
+inward and never touch the absorber.
+
+**L7 is now answerable, and its question is narrow**: why does averaging H on the
+hi faces buy more as the absorber deepens, when those faces' averaged planes are
+nowhere near it? That is the pre-declared next step for whoever reopens this.
+
+The `y`-group row is also the quantitative form of N6: the y faces carry nearly the
+whole effect (0.2262 of 0.2124 at CPML 8 — more than the six-face total, so the
+other groups partly cancel it), the z faces carry none, and the z null is the small
+one because the z faces do not store `ez` while the backscattered field is
+z-polarized.
