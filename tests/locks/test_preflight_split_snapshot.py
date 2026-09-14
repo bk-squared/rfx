@@ -67,15 +67,23 @@ Also scanned for and found ABSENT in the whole snapshot corpus: repository
 absolute paths, ``<... object at 0x...>`` reprs, and timestamps. No field is
 dropped and no text is rewritten.
 
-ONE host-dependent input was found, and it is pinned at the fixture rather
-than normalised out of the report. ``preflight(check_ad_memory=True)`` with
-``available_memory_gb=None`` sizes its budget from
-``jax.local_devices()[..].memory_stats()["bytes_limit"]``, which decides
-whether the ``ad_memory`` advisory fires at all -- silent on this CPU pod,
-potentially firing on a GPU host. The ``ad_memory_sane`` fixture therefore
-passes an explicit 0.5 GB, which fires the advisory everywhere. Pinning the
-INPUT keeps the whole report observable; dropping the field would have hidden
-the check instead.
+TWO host/flag-dependent inputs have been found, and both are pinned at the
+fixture rather than normalised out of the report.
+``preflight(check_ad_memory=True)`` with ``available_memory_gb=None`` sizes
+its budget from ``jax.local_devices()[..].memory_stats()["bytes_limit"]``,
+which decides whether the ``ad_memory`` advisory fires at all -- silent on
+this CPU pod, potentially firing on a GPU host. The ``ad_memory_sane``
+fixture therefore passes an explicit 0.5 GB, which fires the advisory
+everywhere. Leg 3 found the second: a waveguide port's measurement band is
+stored as ``jnp.asarray`` gives it, so its dtype follows ``JAX_ENABLE_X64``,
+and three per cent above cutoff ``lambda_g = lambda_0 / sqrt(1 - (f_c/f)^2)``
+divides by 0.057 and amplifies float32 rounding into the 7th printed digit.
+``waveguide_layout_near_cutoff`` therefore injects its band as an explicit
+float64 numpy array -- the value three of the four (dtype x x64) combinations
+already agree on; ``waveguide_setup_thru``, an octave further from cutoff, is
+x64-invariant either way and is left alone. Pinning the INPUT keeps the whole
+report observable in both cases; dropping the field would have hidden the
+check instead.
 
 One honest caveat, not a normalisation: seven messages embed a numpy scalar
 repr (``np.float64(0.005)``) because a declared bbox tuple is interpolated
@@ -85,7 +93,7 @@ report-text change and should be re-blessed as one, not normalised here.
 
 Coverage, measured -- and what it does NOT cover
 ------------------------------------------------
-46 fixtures, witnessing 45 of the 74 literal ``code=`` slugs in
+48 fixtures, witnessing 46 of the 74 literal ``code=`` slugs in
 ``rfx/api/_preflight.py`` and ``rfx/preflight/`` plus the dynamic ``uncoded``
 and ``sparam_routing_msl`` paths. Stated because the split-inventory that
 seeded this lock projected "~56 of 74" for its 12-fixture set; the measured
@@ -93,27 +101,61 @@ figure for that set was 32, and eight targeted fixtures were added to reach
 41. Leg 2 added the last two of its own family (``conformal_fine_dx`` and
 ``leontovich_thin_film_offband``), which carry four more: ``conformal_nan``,
 the two ``thin_conductor_leontovich_*`` slugs, and ``port_aperture_snap`` as
-a side effect of the WR-90 geometry.
+a side effect of the WR-90 geometry. Leg 3 added two more and they carry one
+new code between them (``layout_measured_from_band_low_edge``) -- the count
+understates them, for the reason the next paragraph but one gives.
 
-The 29 unwitnessed codes are the honest hole: ``floating_port``,
+The 28 unwitnessed codes are the honest hole: ``floating_port``,
 ``source_decoupled``, ``unresolved_pulse``, the four
 ``precision_*``/``*_nonuniform_lane_unsupported`` guards,
 ``thin_conductor_graded_node`` / ``source_on_graded_node`` /
 ``wire_port_on_graded_node`` (the mesh leg),
 ``port_aperture_unrasterizable`` / ``waveguide_reference_plane`` /
 ``port_index_mirror_asymmetry`` / ``record_far_boundary_band_below_cutoff`` /
-``layout_measured_from_band_low_edge`` / ``waveguide_setup_audit_skipped``
-(the waveguide leg), ``coaxial_port_junction_short`` (the coax leg),
-``refplane_near_field`` / ``refplane_partial_optin`` /
-``wire_port_end_gap_to_conductor`` (the lumped-port leg), and the rest.
+``waveguide_setup_audit_skipped`` (the waveguide leg),
+``coaxial_port_junction_short`` (the coax leg), ``refplane_near_field`` /
+``refplane_partial_optin`` / ``wire_port_end_gap_to_conductor`` (the
+lumped-port leg), and the rest.
 
-Two of the 29 are unreachable from a plain builder rather than merely
-unwritten, and leg 2 hit one of them: ``campaign_statics_unavailable`` is
-emitted only when the production grid build or the production assembly
-RAISES, and its message interpolates the exception repr, so a fixture for it
-would have to both malform the config deliberately and pin an exception
-string. ``wire_port_dead_cell_classification_unavailable`` is the same shape.
-Both are named here rather than left to look like oversights.
+A witnessed CODE and an executed BODY are not the same coverage, and leg 3 is
+where that came apart. A call census -- each of the twelve ports_waveguide
+bodies wrapped in a counter, the whole 46-fixture corpus rendered -- found
+``_check_waveguide_port_evanescent_declared_geometry`` called ZERO times,
+because it is the non-uniform lane and every waveguide fixture was uniform.
+No code count showed that: the codes it emits are the ones the uniform lane
+emits too, through the same shared emitter.
+``_waveguide_nu_declared_geometry`` closes it, and pins the geometry LABEL
+that tells the two lanes apart. The same census found
+``_validate_cfg_layout_from_band_low_edge`` running on every waveguide render
+and emitting on none, which ``waveguide_layout_near_cutoff`` closes.
+
+Six of the 28 are unreachable from a plain builder rather than merely
+unwritten. ``campaign_statics_unavailable`` (leg 2) is emitted only when the
+production grid build or the production assembly RAISES, and its message
+interpolates the exception repr, so a fixture for it would have to both
+malform the config deliberately and pin an exception string;
+``wire_port_dead_cell_classification_unavailable`` and
+``waveguide_setup_audit_skipped`` are the same shape -- the last is what
+``test_waveguide_setup_audits.py`` reaches by monkeypatching a builder to
+throw. ``waveguide_reference_plane`` is the odd one: it has three emission
+sites and MEASURED, none of the three can fire through the public API.
+The first raises ``PreflightConfigError``, and ``add_waveguide_port`` already
+rejects an out-of-domain ``x_position``/``reference_plane`` with a
+``ValueError`` before preflight runs (and a raise could not be rendered into
+a report anyway). The second is the branch its own source comments call
+provably dead: ``_absorber_boundary_for_axis`` returns exactly
+``(0.0, domain_ext)`` for any nonzero CPML thickness, the same thresholds the
+hard check above it already raises on. The third walks ``self._geometry``
+reading ``g.bounds``, but that list holds ``_GeometryEntry(shape,
+material_name)`` wrappers with no ``bounds`` attribute -- every other reader
+in the file goes through ``entry.shape`` -- so the ``AttributeError`` is
+swallowed by the bare ``except Exception: continue`` on the line below and
+the device-overlap advisory never fires. That third one looks like a latent
+defect rather than a design choice, but diagnosing it is not a code-motion
+leg's business: it is recorded here, NOT fixed in #980 Phase 3, because
+fixing it would change preflight output inside a step whose whole warrant is
+that output does not change. The body itself is not unexercised -- 45 of the
+48 fixtures call it -- only its three outputs are unreachable.
 
 Each of the rest needs its own narrow fixture. A leg that moves one of those
 checks is NOT covered by this lock and should add the fixture in its own PR
@@ -863,6 +905,91 @@ def _nu_grading_sim(dz, cpml=0, boundary="pec"):
     return sim
 
 
+def _waveguide_nu_declared_geometry_sim():
+    """``tests/unit/sparams/test_waveguide_nu_sparam.py:58``'s WR-90 sim.
+
+    The only builder in this corpus that puts a waveguide port on the
+    NON-UNIFORM lane, which is the whole reason it is here.
+    ``_check_waveguide_port_evanescent`` dispatches on
+    ``_dx_profile``/``_dy_profile``/``_dz_profile`` and hands a profiled mesh
+    to ``_check_waveguide_port_evanescent_declared_geometry`` -- the pre-#738
+    declared-geometry lane -- instead of rasterizing it. Measured over the 46
+    fixtures that preceded this one, that method was called ZERO times: every
+    waveguide fixture in the corpus is uniform, so the split's one behaviour
+    witness never executed the body at all.
+
+    It emits through the shared ``_emit_waveguide_port_cutoff_findings``, and
+    the text it produces is distinguishable from the uniform lane's -- the
+    geometry label reads "declared geometry (non-uniform mesh)" rather than a
+    per-axis wall-source breakdown -- so the snapshot pins WHICH lane fed the
+    emitter, not merely that a cutoff finding appeared.
+
+    Built (not run) through the owning test's own module-level helper, so the
+    two cannot drift.
+    """
+    from tests.unit.sparams.test_waveguide_nu_sparam import _make_wr90_nu_sim
+
+    return _make_wr90_nu_sim()
+
+
+def _waveguide_layout_near_cutoff_sim():
+    """The battery ``thru`` DUT with its ports' band moved next to cutoff.
+
+    ``_validate_cfg_layout_from_band_low_edge`` is gated on ``f_min / f_c``,
+    and at the battery's own 8.4-11.6 GHz band that ratio is 1.28 -- far
+    enough from cutoff that the check is correctly silent, which is what
+    ``waveguide_setup_thru`` above snapshots. So the corpus called the method
+    and witnessed none of its output.
+
+    ``tests/unit/preflight/test_waveguide_layout_from_band_low_edge.py`` fires
+    it at ``NEAR_CUTOFF_FREQS`` (linspace(6.75, 8.0 GHz, 9), lowest bin 3 %
+    above this guide's discrete cutoff), but it passes that band as the
+    method's ``freqs=`` KWARG on a direct call. ``preflight_sparameters``
+    cannot: its hook resolves the band off the port ENTRY, through
+    ``resolve_waveguide_port_freqs`` -- one of the three module-level leaves
+    this leg moves. So the band is put on the entries with
+    ``dataclasses.replace``, which is the smallest change that makes the
+    rendered report exercise the same operating point the behavioural test
+    asserts on, and it drives ``resolve_waveguide_port_freqs``'s
+    ``entry.freqs is not None`` branch while it is there.
+
+    ``NEAR_CUTOFF_FREQS`` is imported from that test rather than retyped, so
+    an edit to the band reds this lock -- which is correct, because it
+    invalidates the committed baseline.
+
+    The band is injected as a float64 NUMPY array, and that dtype is PINNED
+    rather than inherited -- the second host/flag-dependent INPUT this corpus
+    has found, handled the way ``ad_memory_sane`` handles its memory budget.
+    ``add_waveguide_port`` stores whatever ``jnp.asarray`` yields, which is
+    float32 under ``JAX_ENABLE_X64=0`` and float64 under ``=1``. At the
+    battery's own band that is invisible, which is why ``waveguide_setup_thru``
+    is x64-invariant; three per cent above cutoff it is not, because
+    ``lambda_g = lambda_0 / sqrt(1 - (f_c/f)^2)`` divides by 0.057 there and
+    amplifies the float32 rounding of ``f_c`` into the 7th printed digit.
+    MEASURED, all four combinations, on the "guide wavelengths to the far
+    wall" figure: jnp/x64-off gives 0.8186974 and the other three -- jnp/x64-on,
+    numpy/x64-off, numpy/x64-on -- all give 0.8186971. So float64 is not a
+    normalisation of the report, it is the value under three of the four, and
+    pinning it at the input keeps every field of the report observable while
+    leaving the corpus x64-invariant as this module's "Determinism" section
+    claims. If a future change makes the check read the entry dtype rather
+    than the band VALUES, that claim is what should be re-measured.
+    """
+    import dataclasses
+
+    import tests._waveguide_chain_battery_fixture as F
+    from tests.unit.preflight.test_waveguide_layout_from_band_low_edge import (
+        NEAR_CUTOFF_FREQS,
+    )
+
+    sim = F.build_simulation("thru", F.DX_LADDER[2])
+    sim._waveguide_ports = [
+        dataclasses.replace(e, freqs=np.asarray(NEAR_CUTOFF_FREQS, dtype=np.float64))
+        for e in sim._waveguide_ports
+    ]
+    return sim
+
+
 # ---------------------------------------------------------------------------
 # (fixture id, builder, preflight kwargs, preflight_sparameters calculator).
 #
@@ -980,6 +1107,20 @@ _FIXTURES = (
     ("conformal_fine_dx", _conformal_fine_dx_sim, {}, None),      # leg 2
     ("leontovich_thin_film_offband",                              # leg 2
      _leontovich_thin_film_offband_sim, {}, None),
+    # -- 39-40. leg 3 gap closers -------------------------------------------
+    # #980 Phase 3 leg 3 moves the twelve ports_waveguide bodies. A call
+    # census over the 46 fixtures above (each of the twelve wrapped in a
+    # counter, the whole corpus rendered) found eleven of them executed and
+    # one -- _check_waveguide_port_evanescent_declared_geometry -- never
+    # reached, and found _validate_cfg_layout_from_band_low_edge running on
+    # every waveguide render while emitting on none of them. These two close
+    # exactly those holes. Added BEFORE the move, on the tree where all
+    # twelve bodies still sit in the facade, so the committed JSON is a
+    # pre-move baseline the motion has to reproduce byte for byte.
+    ("waveguide_nu_declared_geometry",                            # leg 3
+     _waveguide_nu_declared_geometry_sim, {}, None),
+    ("waveguide_layout_near_cutoff",                              # leg 3
+     _waveguide_layout_near_cutoff_sim, {}, "waveguide"),
 )
 
 _IDS = [fid for fid, _, _, _ in _FIXTURES]
