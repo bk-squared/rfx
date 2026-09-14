@@ -337,8 +337,21 @@ def test_preflight_advisories_make_no_stale_absolute_realized_bound():
     matters -- on the emitted message -- by
     ``test_substrate_resolution_warning_names_alignment_requirement`` in
     tests/unit/ports/test_msl_port_preflight.py, which asserts each is
-    absent from the runtime check-2 warning."""
-    src = (REPO / "rfx" / "api" / "_preflight.py").read_text(encoding="utf-8")
+    absent from the runtime check-2 warning.
+
+    SOURCE SET (#980 Phase 3): the advisory text this locks lives in
+    ``_check_msl_port_geometry``, and that body moved to
+    ``rfx/preflight/msl.py``. Both the facade and every module of
+    ``rfx/preflight/`` are read and concatenated, which keeps BOTH halves of
+    the lock honest: the retired phrasings must be absent from every file the
+    check could live in (repointing at one file would let a phrasing come back
+    in the other), and the replacement language is found wherever the leg put
+    it. Globbed, so a later leg that moves this text again needs no edit
+    here."""
+    paths = [REPO / "rfx" / "api" / "_preflight.py",
+             *sorted((REPO / "rfx" / "preflight").glob("*.py"))]
+    src = "\n".join(p.read_text(encoding="utf-8") for p in paths)
+    where = ", ".join(str(p.relative_to(REPO)) for p in paths)
     for retired in (
         "to within 0.4% at every",
         "within 0.4% at EVERY",
@@ -346,8 +359,8 @@ def test_preflight_advisories_make_no_stale_absolute_realized_bound():
         "Hammerstad-Jensen to within 0.4%",
     ):
         assert retired not in src, (
-            f"retired A1 overclaim phrasing {retired!r} is back in "
-            "rfx/api/_preflight.py -- the realized-board 0.4% figure is a "
+            f"retired A1 overclaim phrasing {retired!r} is back in one of "
+            f"{where} -- the realized-board 0.4% figure is a "
             "pre-#802 frozen record; a live extractor bound requires separate "
             "field data with matched geometry and model provenance"
         )
