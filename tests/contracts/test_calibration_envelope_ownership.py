@@ -505,7 +505,15 @@ FANOUT: dict[str, str] = {
     "tests/crossval/test_cv22_dispersive_slab_gates.py": DIFFERENT_QUANTITY,
     "tests/crossval/test_crossval_gate_logic.py": DIFFERENT_QUANTITY,
     "tests/studio/test_interop_design_document.py": DIFFERENT_QUANTITY,
-    "rfx/api/_preflight.py": DIFFERENT_QUANTITY,
+    # rfx/api/_preflight.py was classified here until #980 Phase 3 leg 0. Its
+    # only adopted-value appearance was a 0.011 m grid coordinate in
+    # _absorber_boundary_for_axis's docstring worked example, and that
+    # function moved verbatim to rfx/preflight/_common.py. The new file
+    # carries no family marker, so it is outside the slab family and the
+    # number there is a different quantity by construction -- which is what
+    # this scan's own scope note says about any such file. Nothing to
+    # reclassify; both the entry and its reason are gone rather than
+    # repointed, because a repointed entry would red the listed-not-found arm.
     "docs/public/gallery/assets/multilayer_fresnel/manifest.json": RECORDED_OUTPUT,
     "docs/public/gallery/multilayer_fresnel.mdx": DISPLAY_WITH_SOURCE,
     "docs/public/guide/benchmarks.mdx": RESOLVING_REFERENCE,
@@ -542,7 +550,6 @@ DIFFERENT_QUANTITY_REASON: dict[str, str] = {
     "tests/crossval/test_cv22_dispersive_slab_gates.py": "one docstring line naming the grep string that #928 deleted; every window in that file is re-derived from the artifact",
     "tests/crossval/test_crossval_gate_logic.py": "cv04's own per-bin closure ceiling test, 0.0487 against the 0.06 ceiling -- the producer's gate, not a consumer window",
     "tests/studio/test_interop_design_document.py": "a geometry centre coordinate that happens to read 0.011 m",
-    "rfx/api/_preflight.py": "a docstring worked example of the ceil(domain/dx) rounding rule, whose grid coordinate reads 0.011 m; the file enters this scan at all only because a preflight helper is named _waveguide_with_dispersive_slab",
     "docs/design_notes/20260903_test_reorg_tier3b_consolidation.md": "a pytest node id containing a parametrized 0.011",
     "validation/research/multiband_nu/results/e3_battery_after.json": "the runtime reciprocity warner's 0.011 bar (max|S_ij - S_ji| / max|S|) quoted in the e3 battery's captured warnings; the file names the slab family only because one battery board is the dispersive slab",
 }

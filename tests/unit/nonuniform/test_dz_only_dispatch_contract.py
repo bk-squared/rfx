@@ -306,6 +306,11 @@ _DISPATCH_FILES = (
     # package so the class stays covered there instead of passing vacuously.
     *sorted(str(p.relative_to(_REPO)) for p in (_REPO / "rfx/sparams").glob("*.py")),
     "rfx/api/_preflight.py",
+    # #980 Phase 3 does the same to rfx/api/_preflight.py, a leg at a time,
+    # into rfx/preflight/. Globbed NOW, while the package holds only leaf
+    # helpers, so no later leg has to remember to widen this scan -- the
+    # sparams rows above were added after the fact.
+    *sorted(str(p.relative_to(_REPO)) for p in (_REPO / "rfx/preflight").glob("*.py")),
     "rfx/api/_execute.py",
     "rfx/api/_compile.py",
     "rfx/optimize.py",
