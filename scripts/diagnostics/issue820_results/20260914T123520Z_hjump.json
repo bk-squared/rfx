@@ -1,0 +1,113 @@
+{
+  "16": {
+    "J": {
+      "x_hi": 0.12617188276497798,
+      "x_lo": 0.11498693930801315,
+      "y_hi": 0.12575338171926093,
+      "y_lo": 0.11751575480086404,
+      "z_hi": 0.014102585677814621,
+      "z_lo": 0.014683383111501346
+    },
+    "adjacent_plane_clearance_cells": {
+      "x_hi": null,
+      "x_lo": 1,
+      "y_hi": null,
+      "y_lo": 0,
+      "z_hi": null,
+      "z_lo": 0
+    },
+    "box": [
+      18,
+      89,
+      17,
+      90,
+      17,
+      90
+    ],
+    "grid": [
+      107,
+      107,
+      107
+    ]
+  },
+  "24": {
+    "J": {
+      "x_hi": 0.127998637048912,
+      "x_lo": 0.115851769077899,
+      "y_hi": 0.12973097572457323,
+      "y_lo": 0.11596770574975666,
+      "z_hi": 0.014258074244114603,
+      "z_lo": 0.014351003756224792
+    },
+    "adjacent_plane_clearance_cells": {
+      "x_hi": null,
+      "x_lo": 1,
+      "y_hi": null,
+      "y_lo": 0,
+      "z_hi": null,
+      "z_lo": 0
+    },
+    "box": [
+      26,
+      97,
+      25,
+      98,
+      25,
+      98
+    ],
+    "grid": [
+      123,
+      123,
+      123
+    ]
+  },
+  "8": {
+    "J": {
+      "x_hi": 0.10728369415014596,
+      "x_lo": 0.12701266974797792,
+      "y_hi": 0.1036308046280343,
+      "y_lo": 0.13643505422670885,
+      "z_hi": 0.01321244314906967,
+      "z_lo": 0.016320888346208103
+    },
+    "adjacent_plane_clearance_cells": {
+      "x_hi": null,
+      "x_lo": 1,
+      "y_hi": null,
+      "y_lo": 0,
+      "z_hi": null,
+      "z_lo": 0
+    },
+    "box": [
+      10,
+      81,
+      9,
+      82,
+      9,
+      82
+    ],
+    "grid": [
+      91,
+      91,
+      91
+    ]
+  },
+  "J_xlo_cpml8": 0.12701266974797792,
+  "J_ylo_by_depth": [
+    0.13643505422670885,
+    0.11751575480086404,
+    0.11596770574975666
+  ],
+  "gates": {
+    "anomaly": 1.5,
+    "flat": 1.2
+  },
+  "git_head": "715cf4f63fa77ee848218cd1d41342e96b259bfc",
+  "module": "issue820_ntff_collocation.py",
+  "preflight": "none emitted -- verified with warnings.simplefilter('always')",
+  "ratio_vs_depth": 1.168691383149419,
+  "ratio_vs_xlo": 1.0741846029803725,
+  "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-abfe63a122fb718db/rfx/__init__.py",
+  "verdict": "N2 REFUTED (no interface anomaly in the averaged plane)",
+  "warnings": []
+}

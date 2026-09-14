@@ -269,16 +269,30 @@ GATE_CTL_VACUUM_DB = 40.0
 #   GATE: shrink(arm_i) at 16 and at 24 must stay within +-15 % of its value at
 #   8, recomputed on the SAME seven offsets -> co-location is the carrier.
 #   Drift beyond +-15 % -> the absorber-interface plane was.
-# Arm C boxes. The production box is built from the CPML thickness, so the
-# "one clean cell off the absorber" box has to be written per depth: interior
-# starts at index `cpml`, so the lo faces go at cpml+2 and the adjacent planes
-# land at cpml+1, one cell clear. The hi faces mirror the production spacing.
-OFFSET2_BOX = {"i_lo": 11, "i_hi": 80, "j_lo": 10, "j_hi": 81,
-               "k_lo": 10, "k_hi": 81}
-OFFSET2_BOX_16 = {"i_lo": 19, "i_hi": 88, "j_lo": 18, "j_hi": 89,
-                  "k_lo": 18, "k_hi": 89}
-OFFSET2_BOX_24 = {"i_lo": 27, "i_hi": 96, "j_lo": 26, "j_hi": 97,
-                  "k_lo": 26, "k_hi": 97}
+# Arm C boxes, ATTEMPT 2. Attempt 1 is VOID on an identified implementation
+# defect, recorded here rather than quietly replaced:
+#
+#   Attempt 1 used i_lo = cpml+3 (11 at CPML 8) on the reasoning that every lo
+#   face should move in by one. But the x faces are NOT referenced to the
+#   absorber -- rfx/rcs.py sets i_lo = tfsf.x_lo - ntff_offset, and the TFSF
+#   total-field region starts at x_lo = 11. So i_lo = 11 put the x_lo face ON
+#   the first TOTAL-FIELD cell, where it integrates the incident wave. The
+#   empty-domain reading proves it: -19.2141 dBsm against production's
+#   -83.6860, i.e. the "scattered-field" surface was reading the illumination.
+#   The run's own Mie control had already blown by 7.5 dB on the baseline and
+#   2.5 dB on arm (i) against a 0.622 dB bar; the guard below now turns that
+#   class into an abort instead of a number.
+#
+#   Attempt 2 moves ONLY the transverse lo faces. Production already gives the
+#   x_lo face's adjacent plane one clean cell (i_lo = cpml+2, neighbour
+#   cpml+1), so x needs no change at all; it is j_lo and k_lo, at cpml+1 with
+#   neighbours ON the interior edge, that need to go to cpml+2. Everything
+#   else stays production. Empty-domain reading of the corrected box:
+#   -83.9146 dBsm, i.e. production.
+OFFSET2_BOX = {"j_lo": 10, "k_lo": 10}
+OFFSET2_BOX_16 = {"j_lo": 18, "k_lo": 18}
+OFFSET2_BOX_24 = {"j_lo": 26, "k_lo": 26}
+GATE_C_VACUUM_DB = 40.0      # empty-domain far field must sit this far down
 GATE_C_TRUE_REL = 0.005      # |abs8 / mean(abs16, abs24) - 1| <= this -> TRUE
 GATE_C_FALSE_REL = 0.15      # ... >= this -> FALSE (CPML 8 still ~20 % low)
 
@@ -492,8 +506,43 @@ def _odd_even(offsets, values):
     return probe._odd_even(offsets, values)
 
 
+def _vacuum_guard(cfg, name):
+    """Refuse to report a sweep whose NTFF box is not in the scattered field.
+
+    Added after arm C attempt 1 put a face on the first total-field cell and
+    produced numbers anyway. One extra run per sweep.
+    """
+    cp = cfg.get("cpml_layers", CPML_LAYERS)
+    ov = cfg.get("box_override")
+    gv, mv, ns, _, _ = probe.build_case(
+        (0, 0, 0), ka=cfg["ka"], cpr=cfg["cpr"],
+        clear_cells=cfg["clear_cells"], steps_mult=cfg["steps_mult"],
+        cpml_layers=cp, vacuum=True)
+    gt, mt, nt, _, _ = probe.build_case(
+        (0, 0, 0), ka=cfg["ka"], cpr=cfg["cpr"],
+        clear_cells=cfg["clear_cells"], steps_mult=cfg["steps_mult"],
+        cpml_layers=cp)
+    rv, _, _, _ = probe._rcs_complex(gv, mv, ns, cpml_layers=cp,
+                                     ntff_box_override=ov)
+    rt, _, _, _ = probe._rcs_complex(gt, mt, nt, cpml_layers=cp,
+                                     ntff_box_override=ov)
+    sep = rt["monostatic_dbsm"] - rv["monostatic_dbsm"]
+    print(f"[guard] {name}: empty domain {rv['monostatic_dbsm']:.4f} dBsm, "
+          f"target {rt['monostatic_dbsm']:.4f} dBsm, separation {sep:.3f} dB "
+          f"(bar {GATE_C_VACUUM_DB}) {'PASS' if sep >= GATE_C_VACUUM_DB else 'FAIL'}")
+    return {"vacuum_dbsm": rv["monostatic_dbsm"],
+            "target_dbsm": rt["monostatic_dbsm"], "separation_db": sep,
+            "pass": bool(sep >= GATE_C_VACUUM_DB), "box": rt["ntff_box"]}
+
+
 def run_sweep(name):
     cfg = SWEEPS[name]
+    guard = _vacuum_guard(cfg, name)
+    if not guard["pass"]:
+        print(f"[guard] {name}: ABORT -- the NTFF box is not in the scattered "
+              f"field; no numbers reported")
+        return _emit(f"collocation_{name}", {"sweep": name, "config": cfg,
+                                             "guard": guard, "aborted": True})
     ax = "xyz".index(cfg["axis"])
     k0 = 2 * np.pi * F0 / C0
     rows = []
@@ -520,7 +569,7 @@ def run_sweep(name):
                   + f"   ({rows[-1]['wall_s']}s)")
         caught = [f"{w.category.__name__}: {w.message}" for w in wlist]
 
-    out = {"sweep": name, "config": cfg, "rows": rows,
+    out = {"sweep": name, "config": cfg, "rows": rows, "guard": guard,
            "warnings": caught,
            "preflight": ("none emitted -- compute_rcs runs no preflight and "
                          "this module replays that path; verified with "
