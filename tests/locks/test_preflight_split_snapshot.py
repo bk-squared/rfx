@@ -27,6 +27,12 @@ writing it (see "Determinism", below), the snapshot text is invariant under
 ``PYTHONHASHSEED``, JAX device count and ``JAX_ENABLE_X64``, so NOTHING is
 normalised away: what the report said is what the file holds, byte for byte.
 
+The baseline was captured at ``8586f549`` (what ``LOCK_PROVENANCE`` records)
+and re-verified byte-unchanged at ``13fb003c``, i.e. across #1009 and #1010 --
+two real ``rfx/api/_sparams.py`` -> ``rfx/sparams/`` code-motion merges. So the
+lock is specific to preflight behaviour rather than sensitive to any nearby
+refactor, which is the property that makes a red here worth stopping for.
+
 What a red here means
 ---------------------
 A diff in this file is a BEHAVIOUR CHANGE -- different advisory text, a
