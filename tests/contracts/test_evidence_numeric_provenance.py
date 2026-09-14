@@ -561,11 +561,17 @@ CLASSIFICATION: dict[str, str] = {
     "docs/public/validation/index.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/validation/recommended-configuration.mdx": NO_ARTIFACT_REFERENCE,
     # 2026-09-14 (B0 distributed admission refusals): the note carries ~20
-    # measured numbers, but every one of them was measured by its own test
-    # file (tests/unit/runners/test_distributed_admission_refusals.py, whose
-    # module docstring repeats them) rather than read out of a committed
-    # JSON artifact, so there is no `<path>.json::<key>` span for this gate
-    # to resolve. Classified, not deleted.
+    # numbers measured on a pristine origin/main (d56f68eb) checkout, before
+    # the refusals existed. No test in the repository re-measures any of
+    # them -- they cannot be re-measured in-tree, because the refusals they
+    # justify now fire first -- and they are not read out of a committed
+    # JSON artifact either, so there is no `<path>.json::<key>` span for
+    # this gate to resolve. What IS committed is the measuring FIXTURE:
+    # tests/unit/runners/test_distributed_admission_refusals.py's `_build()`
+    # and `_asym()` carry the source position and the probe row explicitly,
+    # and its module docstring states the summation convention, so every
+    # number is re-derivable by running those fixtures against a d56f68eb
+    # tree. Classified, not deleted.
     "docs/design_notes/2026-09-14_distributed_admission_refusals.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260829_spec01_multiband_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260830_issue786_convergence_floor.md": NO_ARTIFACT_REFERENCE,

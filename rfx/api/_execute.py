@@ -3695,11 +3695,36 @@ class _ExecuteMixin:
             # rfx.runners.distributed_v2.run_distributed() is gated too,
             # and carries the fifth, position-dependent class (the x
             # absorber vs the per-rank slab).
-            from rfx.runners.distributed_v2 import (
-                refuse_unsupported_distributed_features,
-            )
-            refuse_unsupported_distributed_features(
-                self, lane="distributed multi-device run()")
+            #
+            # Gated on the runner ACTUALLY SHARDING, because
+            # run_distributed() falls back to a whole-model single-device
+            # sim.run() for TFSF sources and waveguide ports BEFORE it
+            # reaches its own copy of this call
+            # (rfx/runners/distributed_v2.py, the two fallbacks and then
+            # the gate).  A TFSF or waveguide model that also carries a
+            # flux monitor or an NTFF box -- the standard RCS /
+            # transmission setup -- therefore runs on one device and
+            # returns the RIGHT answer with the monitor populated, and
+            # refusing it here would refuse a working call.  MEASURED
+            # (2 virtual CPU devices, 0.13x0.04x0.04 m CPML box,
+            # add_tfsf_source(f0=2.5e9, bandwidth=0.5), one Ez probe,
+            # add_flux_monitor(axis='x', coordinate=0.09, n_freqs=3),
+            # n_steps=30): with this condition run(devices=...) falls back
+            # (1 warning) and returns flux_monitors == ['flux_x_0'] with
+            # peak 1.401931e-12, bit-identical to the native run and to
+            # run_distributed() called directly; without it the same call
+            # raised NotImplementedError while run_distributed() ran.
+            # The two entry points must agree -- pinned by
+            # tests/unit/runners/test_distributed_admission_refusals.py
+            # ::test_the_tfsf_and_waveguide_fallbacks_are_deliberately_unchanged
+            # and its monitor-carrying siblings.
+            _will_shard = self._tfsf is None and not self._waveguide_ports
+            if _will_shard:
+                from rfx.runners.distributed_v2 import (
+                    refuse_unsupported_distributed_features,
+                )
+                refuse_unsupported_distributed_features(
+                    self, lane="distributed multi-device run()")
             self._warn_unsupported_run_kwargs("distributed multi-device", {
                 "subpixel_smoothing": subpixel_smoothing,
                 "checkpoint": checkpoint,
