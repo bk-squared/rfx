@@ -442,8 +442,13 @@ frequency pair.
 Each gated row now records what was subtracted, so the artifact is readable
 without redoing the algebra: `q_log_freq_term = ln(f_rfx/f_ref)`,
 `q_log_rate_ratio_signed = ln(alpha_rfx/alpha_ref)`, and `q_log_lower` /
-`q_log_upper` — the **shifted** bounds that actually judged the row. Both keys
-are additions; nothing was renamed or removed.
+`q_log_upper` — the **shifted** bounds that actually judged the row. Those two
+keys are the same names carrying a new meaning: before this correction they
+held the fixed-frequency image, and they now hold it shifted by
+`q_log_freq_term`. Nothing was renamed or removed, and no committed artifact
+carries the old meaning — `q_log_lower` / `q_log_upper` were introduced by
+Correction 4(a), after the only retained cv02 record was written, so that
+record has no such field to reinterpret.
 
 **What did not change.** No gate constant, window or tolerance moved. Re-driving
 today's judge on the committed record's own stored inputs
@@ -451,7 +456,20 @@ today's judge on the committed record's own stored inputs
 2026-09-06T17:07:57Z) reproduces all five gates PASS and every row's `q_pass`,
 before and after: the two gated rows' frequency terms are `+0.000515` and
 `+0.000306` against windows `0.7982` and `2.8295`, three to four orders of
-magnitude of margin. That record is still pinned as-is by `CV02_RECORD_PIN`,
+magnitude of margin.
+
+**How large this correction can ever be, and where it would show.** It is
+bounded by the frequency gate itself: a pair that passes `max_err < 5 %` has
+`|ln(f_rfx/f_ref)| <= ln(1.05) = 0.0488` in log-Q. Against this board's
+admissible intervals (widths `2.187` and infinite, from `s = 0.7982` and
+`2.8295`) that ceiling is negligible and the realized terms are smaller again
+by three to four orders. Against the longer-record fixture #907 uses
+(`T = 3385`, `s = 0.0642`, interval `[-0.0623, +0.0664]`, width `0.1287`) the
+same ceiling is **37.9 % of the interval's width**. So "the committed board
+does not move" is a fact about this board's windows, not a general smallness
+claim: a board whose window is narrow enough — which is exactly what a longer,
+better-settled record produces — can be flipped by the term, in either
+direction. That record is still pinned as-is by `CV02_RECORD_PIN`,
 for the reason Correction 4(d) gives — it is the only copy predating the
 transform, so re-driving the judge on it is the falsifier for "the transform
 moved a committed verdict", and regenerating it would void the falsifier

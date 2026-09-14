@@ -448,11 +448,15 @@ def test_q_rate_interval_maps_to_asymmetric_q_bounds() -> None:
 
 # --- #945: the transform, as a pure function on synthetic intervals ---------
 #
-# ``rate_interval_to_log_q_bounds`` takes only the declared rate scale ``s``,
-# so it can be exercised without a mode list, a record, or a solver. These
-# tests are the whole of the #945 claim: the image of ``[1-s, 1+s]`` under
-# ``Q = pi f / alpha`` is ``[1/(1+s), 1/(1-s)]``, which is asymmetric for every
-# ``s > 0`` and unbounded above at ``s >= 1``.
+# ``rate_interval_to_log_q_bounds`` takes the declared rate scale ``s`` and
+# this pair's frequency shift ``log_freq_ratio = ln(f_rfx/f_ref)`` -- no mode
+# list, no record, no solver -- so both arguments can be exercised directly.
+# The tests below drive the shift at its default ``0.0``, i.e. the pure
+# fixed-frequency image, which is the whole of the FIRST #945 claim: that
+# image of ``[1-s, 1+s]`` under ``Q = pi f / alpha`` is ``[1/(1+s), 1/(1-s)]``,
+# asymmetric for every ``s > 0`` and unbounded above at ``s >= 1``. The
+# frequency shift -- the second #945 claim -- is driven by the
+# ``test_issue945_*`` block further down.
 
 
 @pytest.mark.parametrize("s", [1e-12, 1e-6, 0.01, 0.1, 0.25, 0.5, 0.798,
