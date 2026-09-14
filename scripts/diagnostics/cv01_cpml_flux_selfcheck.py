@@ -203,7 +203,10 @@ def _assert_rig_matches_cv01() -> dict:
 
 
 def add_line_source(sim, x, y_center, width):
-    """cv01:222-227, verbatim."""
+    """cv01's own ``add_line_source``, verbatim -- ten ez point sources across
+    the guide width. Grep the committed script for
+    ``y = y_center - width / 2 + (i + 0.5) * width / 10``; the whole body is in
+    RIG_LINES, so a change to it reds this driver."""
     from rfx import GaussianPulse
     for i in range(10):
         y = y_center - width / 2 + (i + 0.5) * width / 10
@@ -255,7 +258,9 @@ def run_arm(boundary: str, size, steps: int = n_steps) -> dict:
     flux_in = np.asarray(flux_spectrum(res.flux_monitors["input"]), dtype=float)
     flux_out = np.asarray(flux_spectrum(res.flux_monitors["output"]), dtype=float)
 
-    # cv01:277-293, verbatim arithmetic.
+    # cv01's transmittance block, verbatim arithmetic -- grep the committed
+    # script for `above = (f_meep > f_cutoff + 0.005) & (f_meep < 0.20)`
+    # through `mean_self = float(np.mean(T_self_smooth[above]))`.
     f_meep = freqs * a / C0
     above = (f_meep > f_cutoff + 0.005) & (f_meep < 0.20)
     safe_in = np.maximum(np.abs(flux_in), np.max(np.abs(flux_in)) * 1e-6)
@@ -346,10 +351,14 @@ def main() -> int:
     out = {
         "issue": 813,
         "predeclaration": "docs/design_notes/cv01_cpml_flux_selfcheck_predeclaration.md",
-        "measures": "cv01 straight-guide mean_self (01:293), Run 1 only",
+        "measures": ("cv01 straight-guide mean_self, Run 1 only -- the line "
+                     "`mean_self = float(np.mean(T_self_smooth[above]))` in "
+                     "validation/crossval/01_waveguide_bend.py"),
         "n_steps": int(args.n_steps),
         "n_steps_is_cv01_value": bool(args.n_steps == n_steps),
-        "gate": "pass = mean_self in [0.95, 1.05] (cv01 G2, 01:356)",
+        "gate": ("pass = mean_self in [0.95, 1.05] -- cv01's G2, the line "
+                 "`if 0.95 <= mean_self <= 1.05:` in "
+                 "validation/crossval/01_waveguide_bend.py"),
         "rig_fidelity_check": rig,
         "rfx_provenance_check": provenance_check,
         "arms_added_after_the_first_run": list(ARMS_ADDED_POST_HOC),

@@ -147,6 +147,12 @@ layers is ≤ 1/3 of its magnitude at 10 layers. Equivalently, `mean_self` at 40
 layers must have closed ≥ 2/3 of the gap from today's 0.748852 to the
 `upml_full` control 0.989162 — i.e. ≥ 0.90906.
 
+> **SUPERSEDED 2026-09-14** — the two halves joined by "Equivalently" above are
+> not equivalent, and an arm landing in `mean_self` ∈ [0.894243, 0.909059] would
+> pass one and fail the other. The binding gate is now `mean_self` ≥ 0.90906
+> alone. See "Correction 2026-09-14" at the end of this file for the measured
+> table and the reason.
+
 **Falsifier**: the fraction is flat within 3 points across all four layer
 counts and `mean_self` stays within 0.03 of 0.748852. That refutes "the CPML
 backplane returns the off-guide power" — #813's candidate (a) — and leaves the
@@ -180,3 +186,82 @@ that it shares neither the swept quantity nor the plane position.
 
 No gate, tolerance, window or committed crossval artifact is modified by any of
 these arms, and none of them is run in this PR.
+
+---
+
+## Correction 2026-09-14 — Arm 1's gate joined two criteria that are not equivalent
+
+Independent verification review of PR #1006 found a defect in the Arm 1 gate
+written above. This section **supersedes** the gate paragraph in "Arm 1 (first)
+— `cpml_layers` sweep on the straight guide". Nothing above is rewritten; the
+original wording stays visible so the correction is reviewable.
+
+### What was wrong
+
+The gate read: *"the fraction is monotone non-increasing across 10 → 16 → 20 →
+40 **and** its magnitude at 40 layers is ≤ 1/3 of its magnitude at 10 layers.
+**Equivalently**, `mean_self` at 40 layers must have closed ≥ 2/3 of the gap
+from today's 0.748852 to the `upml_full` control 0.989162 — i.e. ≥ 0.90906."*
+
+The two halves are **not** equivalent, so "Equivalently" was false and the gate
+was undecidable in a band of outcomes.
+
+Measured, not argued. Taking the committed artifact and scaling the
+outside-aperture per-bin term at **both** flux planes by a factor `s` — the
+right construction for a layer sweep, since the absorber acts on the whole
+domain and not only on the output plane — then rebuilding `mean_self` through
+cv01's own arithmetic (`flux_out / safe_in`, `uniform_filter1d(size=20)`, band
+mean over `above`):
+
+| `s` | `mean_self` | outside-aperture fraction | note |
+|---|---|---|---|
+| 1.000000 | 0.748852 | −26.0418 % | today, at `cpml_n = 10` |
+| 0.386557 | **0.894243** | **−8.6800 %** | the fraction half's threshold (−26.04/3) |
+| 0.333333 | 0.907331 | −7.3965 % | outside power literally ×1/3 |
+| 0.326332 | **0.909059** | **−7.2299 %** | the `mean_self` half's threshold |
+| 0.000000 | 0.991232 | 0 % | outside term removed entirely |
+
+The `s = 1` row reproduces the committed `cpml_full` `mean_self`
+0.7488520140093946 bit-identically, and the `s = 0` row reproduces the committed
+`cpml_aperture` 0.991232, so the reconstruction is cv01's arithmetic and not a
+second implementation of it.
+
+**A 40-layer arm landing anywhere in `mean_self` ∈ [0.894243, 0.909059] — a
+window 0.0148 wide — passes one half of the gate and fails the other.**
+
+Why they diverge: the fraction is normalized by the full-plane band sum, which
+itself moves as the outside term shrinks, while `mean_self` is a band mean of
+*smoothed per-bin ratios*, not a ratio of band sums. (At `s = 1` the
+ratio-of-band-sums is 0.758845 against `mean_self` 0.748852 — different
+quantities, and the gap between them is not constant in `s`.)
+
+### The corrected gate
+
+**Gate (the absorber is the source of the backward power) — one binding
+criterion**: `mean_self` on the 40-layer arm **≥ 0.90906**, i.e. it has closed
+≥ 2/3 of the gap from 0.748852 to the `upml_full` control 0.989162.
+
+`mean_self` is the binding quantity because it is what cv01's G2 actually gates
+and what the control arm anchors; the fraction is a derived diagnostic with no
+gate of its own anywhere in the repo.
+
+**Reported alongside, and NOT gating**: the outside-aperture backward power
+fraction at each layer count, and whether it is monotone non-increasing across
+10 → 16 → 20 → 40. These are observables. If the fraction's behaviour and the
+`mean_self` verdict disagree, **that disagreement is itself reported** — it is
+not resolved silently, and `mean_self` is the one that decides pass or fail.
+
+**Falsifier, unchanged in substance, with its logic made explicit**: the two
+conditions are a **conjunction** — both must hold — and were never claimed to be
+equivalent, so the defect above does not reach them. `mean_self` at 40 layers
+stays within 0.03 of 0.748852 **and** the fraction is flat within 3 points
+across all four layer counts. If only one holds, the attempt is non-closing and
+is reported as such. As with the gate, `mean_self` is the binding half.
+
+### Scope
+
+This corrects a pre-declared criterion **before** the measurement runs, which is
+what a pre-declaration is for. No gate, tolerance, committed crossval artifact or
+measured number changes: the sweep has not run, and every number in the table
+above is a recomputation from the already-committed artifact, not a new
+simulation.
