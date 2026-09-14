@@ -443,6 +443,86 @@ every rung, which is what makes the comparison meaningful in spite of that.
           anything else -> MIXED / UNDETERMINED, reported as such with the
             fitted value and the residual, not rounded to the nearest story.
 
+CORRECTIONS 3, after the third verification review (2026-09-14). Re-derived
+from this lane's own artifacts before being written.
+
+T1. R3b's exponent is OBSERVABLE-SENSITIVE, and the sensitivity is now stated
+    instead of buried. The fit was pre-declared on the p-p (this docstring, at
+    a5d5b752, committed before the artifacts were stamped) and gives
+    p = 1.2362, worst log residual 0.0093 -- FIRST ORDER, but only 1.1 % below
+    the 1.25 ceiling. Fitting the ODD component, which this lane's own
+    narrative treats as the signature of the effect, gives p = 1.3521 with a
+    TIGHTER worst residual of 0.0071 (two-point 1.3267 / 1.3919), i.e. OUTSIDE
+    the declared first-order band -> MIXED / UNDETERMINED. The even component
+    gives 1.5397. Honest statement: FIRST ORDER on the pre-declared observable,
+    MIXED on the one the story leans on, and the reading should not be quoted
+    without both.
+    Two facts that defuse the a_eff confound rather than dismiss it: the
+    rasterization step is concentrated in leg 1 (a_eff/a +0.9730 %) and
+    essentially absent in leg 2 (+0.0213 %), and leg 2 ALONE gives p = 1.1843
+    on the p-p; and a 1 % change in realized radius moves a RELATIVE spread by
+    order 1 %, not by the ~40 % the null actually moves per leg (labelled
+    order-of-magnitude, not a bound).
+    Two further confounds stated for completeness: the interior span drifts
+    -2.14 % across the ladder (1.8293 / 1.8197 / 1.7901 lambda) and the
+    realized clearance is NON-MONOTONE (0.7317 / 0.7377 / 0.7284 lambda) while
+    the null is a clean monotone power law -- so neither tracks the observable.
+
+T2. PROVENANCE. The a_eff/a values 0.98864 / 0.99826 / 0.99848 published in
+    the second issue comment were in no JSON and produced by no committed code:
+    a scratch script used C0 = 3e8 instead of rfx's 299792458, a 0.069 %
+    error. The lane's own formula gives 0.98933 / 0.99896 / 0.99917, matching
+    the ka_eff = 0.9893298525160947 already stored by the collocation arm.
+    ``build_case`` now EMITS a_eff, ka_eff and a_eff_over_a into every artifact
+    so the next quotation comes from committed code.
+
+T3. The CPML control's reading is corrected. The drift is real -- arm (i)'s
+    ABSOLUTE reduction is 0.2124 / 0.2577 / 0.2574 dB at 8 / 16 / 24, and
+    pinning it at its CPML-8 value would predict shrink 1.4964 / 1.5645
+    against 1.6733 / 1.7769 measured, so the baseline's own shrinkage explains
+    only a fifth to a third of it. But it is ONE STEP THEN SATURATION
+    (+21.3 % then -0.1 %), and arm (iii) shows the same shape independently
+    (0.2027 / 0.2571 / 0.2585). "Monotone drift, co-location not established"
+    is replaced by: ARM (i)'s EFFECT IS UNSTABLE AT CPML 8 AND STABLE AT 16
+    AND 24 (0.2577 against 0.2574 dB) -- and CPML 8 is the cv16 operating
+    point at which every headline arm-(i) number in this lane was measured.
+    The gate still fails as written; the reason is now localized.
+    Unreported before and reference-free: arm (ii)'s null improvement VANISHES
+    with depth -- shrink 1.0673 / 1.0093 / 0.9966 at 8 / 16 / 24 (nulls
+    0.6409 / 0.6345 / 0.5907 against baselines 0.6841 / 0.6404 / 0.5887).
+
+ARM B -- box-gap asymmetry. Pre-declared and committed before it ran. One
+attempt (R2). A geometric candidate the collocation story does not cover:
+``rfx/rcs.py:427-445`` builds the transverse faces from OPPOSITE ends of the
+array (``j_lo = fl["y_lo"] + offset`` counts UP from the first interior index;
+``j_hi = ny - fl["y_hi"] - offset`` counts DOWN from the array end), so at the
+cv16 point the LO face has one clean interior cell before the absorber and the
+HI face has none. That is structural, odd under y -> -y, first order, and
+survives every ``ntff_offset``.
+Four y-only box configurations at CPML 8, i and k left at production, measured
+by the odd statistic ``odd(n) = (sigma(-n) - sigma(+n)) / 2`` at n = 6 and 10
+(4 runs each, ~4.5 min total):
+    prod_1_0  j[9,82]   gaps 1/0, d=+1, centre 45.5, centre-centroid +0.9099
+    gap_1_1   j[9,81]   gaps 1/1, d= 0, centre 45.0, centre-centroid +0.4099
+    gap_2_0   j[10,82]  gaps 2/0, d=+2, centre 46.0, centre-centroid +1.4099
+    gap_0_1   j[8,81]   gaps 0/1, d=-1, centre 44.5, centre-centroid -0.0901
+The decisive cell is gap_0_1, where the two candidate drivers predict DIFFERENT
+things: it reverses the gap difference but sits almost exactly on the centroid.
+    GAP-DRIVEN    -> odd(gap_0_1)/odd(prod) ~ -1.0   (sign flip)
+    CENTRE-DRIVEN -> odd(gap_0_1)/odd(prod) ~ -0.10  (near-zero, no flip)
+  GATE: ratio <= -0.50 -> GAP-DRIVEN; |ratio| <= 0.25 -> CENTRE-DRIVEN;
+        otherwise MIXED / UNDETERMINED.
+  Secondary (reported, not decisive): gap_1_1 removes the asymmetry entirely,
+  so GAP predicts a collapse (ratio <= 0.30) while CENTRE predicts a
+  proportional fall (0.30 .. 0.70, since 0.4099/0.9099 = 0.45).
+  CAVEAT declared in advance: gap_0_1 puts the y_lo face ON the first interior
+  cell, with zero clearance to the absorber. If its sigma at a given offset
+  moves more than 1 dB from production, the configuration is recorded as
+  CONTAMINATED and only the SIGN of its odd statistic is read.
+If arm B comes back GAP-DRIVEN it matters more than the collocation work: the
+fix would be index arithmetic in rcs.py, not a change to compute_far_field that
+every NTFF consumer reads.
+
 Usage
 -----
   PYTHONPATH=<worktree> python3 scripts/diagnostics/issue820_rcs_translation_probe.py --arm raster
@@ -590,12 +670,26 @@ def build_case(offset_cells=(0, 0, 0), *, cpml_layers=CPML_LAYERS,
         "n_occupied": int(mask.sum()),
         "mask_sha256": hashlib.sha256(
             np.ascontiguousarray(mask)).hexdigest()[:16],
+        # Correction P3-2: a_eff / ka_eff / a_eff_over_a are EMITTED here so
+        # every quoted value comes from committed code and lands in the
+        # artifact. The first write-up quoted 0.98864/0.99826/0.99848, which
+        # no JSON held and no code produced -- a scratch script had used
+        # C0 = 3e8 instead of rfx's 299792458, a 0.069 % error. The lane
+        # formula gives 0.98933/0.99896/0.99917, matching the ka_eff already
+        # stored by the collocation arm.
+        "a_eff": float((3 * int(mask.sum()) * dx ** 3 / (4 * np.pi)) ** (1 / 3)),
+        "ka_eff": float(2 * np.pi
+                        * (3 * int(mask.sum()) * dx ** 3 / (4 * np.pi)) ** (1 / 3)
+                        / LAM),
+        "a_eff_over_a": float((3 * int(mask.sum()) * dx ** 3
+                               / (4 * np.pi)) ** (1 / 3) / radius),
     }
     return grid, mats, n_steps, mask, meta
 
 
 def _tfsf_and_ntff(grid, *, cpml_layers, tfsf_margin=3, ntff_offset=1,
-                   freqs=(F0,), aux_kwargs=None, ntff_hi_shift=0):
+                   freqs=(F0,), aux_kwargs=None, ntff_hi_shift=0,
+                   ntff_box_override=None):
     """Exactly rfx.rcs.compute_rcs steps 1-2, normal-incidence branch.
 
     ``aux_kwargs`` is only accepted by builds that expose the PR #1005
@@ -627,6 +721,16 @@ def _tfsf_and_ntff(grid, *, cpml_layers, tfsf_margin=3, ntff_offset=1,
         i_hi -= ntff_hi_shift
         j_hi -= ntff_hi_shift
         k_hi -= ntff_hi_shift
+    # Explicit per-face override (arms B and C). Keys not given keep the
+    # production value, so a single-axis change stays a single-axis change.
+    if ntff_box_override:
+        _o = ntff_box_override
+        i_lo = _o.get("i_lo", i_lo)
+        i_hi = _o.get("i_hi", i_hi)
+        j_lo = _o.get("j_lo", j_lo)
+        j_hi = _o.get("j_hi", j_hi)
+        k_lo = _o.get("k_lo", k_lo)
+        k_hi = _o.get("k_hi", k_hi)
     box = NTFFBox.from_grid(grid, i_lo=i_lo, i_hi=i_hi, j_lo=j_lo, j_hi=j_hi,
                             k_lo=k_lo, k_hi=k_hi,
                             freqs=jnp.array(np.asarray(freqs, dtype=np.float64),
@@ -635,13 +739,15 @@ def _tfsf_and_ntff(grid, *, cpml_layers, tfsf_margin=3, ntff_offset=1,
 
 
 def _rcs_complex(grid, mats, n_steps, *, cpml_layers=CPML_LAYERS,
-                 tfsf_margin=3, ntff_offset=1, ntff_hi_shift=0):
+                 tfsf_margin=3, ntff_offset=1, ntff_hi_shift=0,
+                 ntff_box_override=None):
     """Replay of compute_rcs's normal-incidence path, returning complex E_back."""
     freqs_arr = np.array([F0], dtype=np.float64)
     tfsf, box = _tfsf_and_ntff(grid, cpml_layers=cpml_layers,
                                tfsf_margin=tfsf_margin,
                                ntff_offset=ntff_offset, freqs=freqs_arr,
-                               ntff_hi_shift=ntff_hi_shift)
+                               ntff_hi_shift=ntff_hi_shift,
+                               ntff_box_override=ntff_box_override)
     res = run(grid, mats, n_steps, boundary="cpml", tfsf=tfsf, ntff=box)
     # backscatter direction for +x incidence: (theta, phi) = (pi/2, pi)
     ff = compute_far_field(res.ntff_data, box, grid,
@@ -1511,13 +1617,105 @@ def arm_transverse(args):
     return _emit(f"transverse_{name}", out)
 
 
+
+# --- ARM B: box-gap asymmetry (pre-declared; see the module docstring) ------
+# rfx/rcs.py:427-445 builds the transverse faces from OPPOSITE ends of the
+# array: j_lo = fl["y_lo"] + offset counts UP from the first interior index,
+# j_hi = ny - fl["y_hi"] - offset counts DOWN from the array END. At the cv16
+# point that leaves the LO face one clean interior cell before the absorber
+# and the HI face zero. That gap difference is structural, odd under y -> -y,
+# survives every ntff_offset, and is a candidate the collocation story does
+# not cover.
+BOXGAP_CONFIGS = {
+    # name: (j_lo, j_hi). i and k stay at production.
+    "prod_1_0": (9, 82),    # gaps lo 1 / hi 0, centre 45.5   (as shipped)
+    "gap_1_1": (9, 81),     # gaps 1 / 1  symmetric, centre 45.0
+    "gap_2_0": (10, 82),    # gaps 2 / 0  doubled, centre 46.0
+    "gap_0_1": (8, 81),     # gaps 0 / 1  REVERSED, centre 44.5
+}
+BOXGAP_OFFSETS = (6, 10)
+GATE_B_GAP_SIGN = -0.50      # odd(gap_0_1)/odd(prod) <= this -> GAP-DRIVEN
+GATE_B_CENTRE_SIGN = 0.25    # |ratio| <= this            -> CENTRE-DRIVEN
+GATE_B_GAP_COLLAPSE = 0.30   # odd(gap_1_1)/odd(prod) <= this -> GAP-DRIVEN
+GATE_B_CENTRE_LO = 0.30      # 0.30 .. 0.70               -> CENTRE-DRIVEN
+GATE_B_CENTRE_HI = 0.70
+CENTROID_INDEX = 44.5901     # occupied-cell centroid, cv16 ka=1.0 rung
+
+
+def arm_boxgap(_args):
+    caught = []
+    out = {"configs": {k: list(v) for k, v in BOXGAP_CONFIGS.items()},
+           "offsets": list(BOXGAP_OFFSETS), "centroid_index": CENTROID_INDEX,
+           "gates": {"gap_sign": GATE_B_GAP_SIGN,
+                     "centre_sign": GATE_B_CENTRE_SIGN,
+                     "gap_collapse": GATE_B_GAP_COLLAPSE,
+                     "centre_lo": GATE_B_CENTRE_LO,
+                     "centre_hi": GATE_B_CENTRE_HI}}
+    with warnings.catch_warnings(record=True) as wlist:
+        warnings.simplefilter("always")
+        for name, (jlo, jhi) in BOXGAP_CONFIGS.items():
+            rows, odd = {}, {}
+            for n in sorted({s * m for m in BOXGAP_OFFSETS for s in (-1, 1)}):
+                grid, mats, n_steps, _, meta = build_case((0, n, 0))
+                r, _, _, _ = _rcs_complex(
+                    grid, mats, n_steps,
+                    ntff_box_override={"j_lo": jlo, "j_hi": jhi})
+                rows[n] = r["monostatic_dbsm"]
+                print(f"  {name:9s} y{n:+3d} box j[{jlo},{jhi}] "
+                      f"sigma = {r['monostatic_dbsm']:9.4f} dBsm")
+            for m in BOXGAP_OFFSETS:
+                odd[m] = 0.5 * (rows[-m] - rows[m])
+            # gap = interior cells strictly between the face and the
+            # absorber. The LAST interior index is ny - pad_y_hi - 1, so a hi
+            # face sitting on it has gap 0 -- which is exactly the production
+            # asymmetry this arm is testing.
+            _lo_gap = jlo - grid.pad_y_lo
+            _hi_gap = (grid.ny - grid.pad_y_hi - 1) - jhi
+            gap_d = _lo_gap - _hi_gap
+            out[name] = {"j": [jlo, jhi], "sigma": rows,
+                         "odd": odd, "odd_mean": float(np.mean(list(odd.values()))),
+                         "gap_lo": int(_lo_gap),
+                         "gap_hi": int(_hi_gap),
+                         "gap_difference": int(gap_d),
+                         "centre": 0.5 * (jlo + jhi),
+                         "centre_minus_centroid": 0.5 * (jlo + jhi) - CENTROID_INDEX}
+            print(f"[boxgap] {name}: gaps {out[name]['gap_lo']}/"
+                  f"{out[name]['gap_hi']} (d={gap_d}), centre "
+                  f"{out[name]['centre']}, centre-centroid "
+                  f"{out[name]['centre_minus_centroid']:+.4f} | odd@6 "
+                  f"{odd[6]:+.4f} odd@10 {odd[10]:+.4f} mean "
+                  f"{out[name]['odd_mean']:+.4f} dB")
+        caught = [f"{w.category.__name__}: {w.message}" for w in wlist]
+    ref = out["prod_1_0"]["odd_mean"]
+    r01 = out["gap_0_1"]["odd_mean"] / ref
+    r11 = out["gap_1_1"]["odd_mean"] / ref
+    r20 = out["gap_2_0"]["odd_mean"] / ref
+    if r01 <= GATE_B_GAP_SIGN:
+        v = "GAP-DRIVEN (reversing the gap reversed the odd residue)"
+    elif abs(r01) <= GATE_B_CENTRE_SIGN:
+        v = "CENTRE-DRIVEN (odd collapses where the box centres on the centroid)"
+    else:
+        v = "MIXED / UNDETERMINED"
+    out.update({"ratio_gap_0_1": r01, "ratio_gap_1_1": r11,
+                "ratio_gap_2_0": r20, "verdict": v, "warnings": caught,
+                "preflight": ("none emitted -- verified with "
+                              "warnings.simplefilter('always')")})
+    print(f"[boxgap] odd ratios vs production: gap_1_1 {r11:+.4f}, "
+          f"gap_2_0 {r20:+.4f}, gap_0_1 {r01:+.4f}")
+    print(f"[boxgap] decisive cell gap_0_1 (GAP predicts ~-1.0, CENTRE ~-0.10) "
+          f"-> {v}")
+    print(f"[boxgap] warnings captured: {len(caught)}"
+          f"{' -> ' + '; '.join(caught) if caught else ' (none emitted)'}")
+    return _emit("boxgap", out)
+
+
 ARMS = {
     "raster": arm_raster, "equiv": arm_equiv, "origin": arm_origin,
     "xsweep": arm_xsweep, "ysweep": arm_ysweep, "vacuum": arm_vacuum,
     "record": arm_record, "energy": arm_energy, "cpmlladder": arm_cpmlladder,
     "fit": arm_fit, "auxecho": arm_auxecho, "auxpad": arm_auxpad,
     "auxprofile": arm_auxprofile, "faces": arm_faces,
-    "transverse": arm_transverse,
+    "transverse": arm_transverse, "boxgap": arm_boxgap,
 }
 
 

@@ -152,6 +152,38 @@ N6. Gate (t1) was MIS-SPECIFIED, and its "CARRIER-INCONSISTENT" verdict mostly
     on both. The z reading (1.924) stands as a measurement; it is not evidence
     against collocation.
 
+CORRECTIONS 3 / ARMS A and C (2026-09-14), pre-declared before running.
+
+T3 (mirrored from the probe). Arm (i)'s ABSOLUTE null reduction is
+    0.2124 / 0.2577 / 0.2574 dB at CPML 8 / 16 / 24: one step of +21.3 % then
+    saturation at -0.1 %, with arm (iii) showing the same shape independently
+    (0.2027 / 0.2571 / 0.2585). The reading is "unstable at CPML 8, stable at
+    16 and 24", not "monotone drift" -- and CPML 8 is the cv16 operating point
+    where every headline arm-(i) number was measured. Also reference-free and
+    previously unreported: arm (ii)'s null improvement VANISHES with depth,
+    shrink 1.0673 / 1.0093 / 0.9966.
+
+ARM A (``--sweep hjump``) -- measure the H jump across the plane arm (i)
+    averages, at three absorber depths. Gate and reasoning in ``run_hjump``.
+    Twelve short runs; offset 0 only.
+
+ARM C (``--sweep offset2_cpml{8,16,24}``) -- arm (i) with EVERY adjacent plane
+    one clean interior cell off the absorber, which the production box does not
+    give (its lo-side neighbours are the first interior cells). Box constants
+    and the reason an explicit override is required rather than
+    ``ntff_offset=2`` are at ``OFFSET2_BOX`` below.
+    GATE, on the ABSOLUTE dB reduction rather than the ratio, because the ratio
+    moves when the baseline moves:
+      TRUE  -- |abs(8) / mean(abs(16), abs(24)) - 1| <= 0.005. The CPML-8
+               anomaly is gone, the effect is absorber-independent, and
+               "co-location is what arm (i) buys" becomes a measurement rather
+               than a hope.
+      FALSE -- that quantity >= 0.15, i.e. CPML 8 stays about 20 % low even
+               with its neighbour planes off the interface. Then the anomaly is
+               not the interface plane and N2 is not the explanation.
+      otherwise INCONCLUSIVE.
+    The shrink RATIO is reported alongside but is not the gate.
+
 Usage
 -----
   PYTHONPATH=<worktree> python3 scripts/diagnostics/issue820_ntff_collocation.py --sweep ynull_ka1
@@ -237,6 +269,19 @@ GATE_CTL_VACUUM_DB = 40.0
 #   GATE: shrink(arm_i) at 16 and at 24 must stay within +-15 % of its value at
 #   8, recomputed on the SAME seven offsets -> co-location is the carrier.
 #   Drift beyond +-15 % -> the absorber-interface plane was.
+# Arm C boxes. The production box is built from the CPML thickness, so the
+# "one clean cell off the absorber" box has to be written per depth: interior
+# starts at index `cpml`, so the lo faces go at cpml+2 and the adjacent planes
+# land at cpml+1, one cell clear. The hi faces mirror the production spacing.
+OFFSET2_BOX = {"i_lo": 11, "i_hi": 80, "j_lo": 10, "j_hi": 81,
+               "k_lo": 10, "k_hi": 81}
+OFFSET2_BOX_16 = {"i_lo": 19, "i_hi": 88, "j_lo": 18, "j_hi": 89,
+                  "k_lo": 18, "k_hi": 89}
+OFFSET2_BOX_24 = {"i_lo": 27, "i_hi": 96, "j_lo": 26, "j_hi": 97,
+                  "k_lo": 26, "k_hi": 97}
+GATE_C_TRUE_REL = 0.005      # |abs8 / mean(abs16, abs24) - 1| <= this -> TRUE
+GATE_C_FALSE_REL = 0.15      # ... >= this -> FALSE (CPML 8 still ~20 % low)
+
 SWEEPS = {
     "ynull_ka1": dict(axis="y", offsets=list(range(-10, 11, 2)),
                       ka=1.0, cpr=probe.COARSE_CPR, clear_cells=30,
@@ -252,6 +297,28 @@ SWEEPS = {
                        steps_mult=1.0),
     "ynull_ka2": dict(axis="y", offsets=list(range(-10, 11, 2)),
                       ka=2.0, cpr=12.8, clear_cells=30, steps_mult=1.0),
+    # --- ARM C: arm (i) with every adjacent plane one CLEAN cell off the
+    # absorber. Production is i[10,81] j[9,82] k[9,82], whose lo-side adjacent
+    # planes land on j = 8 and k = 8, the first interior cells against the
+    # CPML (correction N2). This box is i[11,80] j[10,81] k[10,81], so the
+    # adjacent planes are i = 10, j = 9, k = 9 -- all at least one interior
+    # cell clear of the absorber. Nothing else changes.
+    # NOTE: this is NOT ntff_offset=2. That knob moves the x faces OUTWARD
+    # (i_lo = tfsf.x_lo - offset) while moving y/z INWARD, which would put the
+    # x adjacent plane ON the interface instead. An explicit box override is
+    # the only way to make all six clean at once.
+    "offset2_cpml8": dict(axis="y", offsets=[-10, -6, -2, 0, 2, 6, 10],
+                          ka=1.0, cpr=probe.COARSE_CPR, clear_cells=30,
+                          steps_mult=1.0, cpml_layers=8,
+                          box_override=OFFSET2_BOX),
+    "offset2_cpml16": dict(axis="y", offsets=[-10, -6, -2, 0, 2, 6, 10],
+                           ka=1.0, cpr=probe.COARSE_CPR, clear_cells=30,
+                           steps_mult=1.0, cpml_layers=16,
+                           box_override=OFFSET2_BOX_16),
+    "offset2_cpml24": dict(axis="y", offsets=[-10, -6, -2, 0, 2, 6, 10],
+                           ka=1.0, cpr=probe.COARSE_CPR, clear_cells=30,
+                           steps_mult=1.0, cpml_layers=24,
+                           box_override=OFFSET2_BOX_24),
 }
 
 _OUT = os.path.join(_SCRIPT_DIR, "issue820_results")
@@ -279,7 +346,7 @@ def _emit(name, payload):
     return path
 
 
-def _boxes(grid, cpml_layers=CPML_LAYERS):
+def _boxes(grid, cpml_layers=CPML_LAYERS, box_override=None):
     """Production box plus the three one-cell-shifted boxes for arm (i).
 
     Each shifted box moves ONE axis' pair of faces by one cell toward the LOWER
@@ -298,7 +365,8 @@ def _boxes(grid, cpml_layers=CPML_LAYERS):
     because of exactly that.
     """
     freqs = np.array([F0], dtype=np.float64)
-    _, b0 = probe._tfsf_and_ntff(grid, cpml_layers=cpml_layers, freqs=freqs)
+    _, b0 = probe._tfsf_and_ntff(grid, cpml_layers=cpml_layers, freqs=freqs,
+                                 ntff_box_override=box_override)
     idx = dict(i_lo=b0.i_lo, i_hi=b0.i_hi, j_lo=b0.j_lo, j_hi=b0.j_hi,
                k_lo=b0.k_lo, k_hi=b0.k_hi)
     shifted = {}
@@ -311,17 +379,20 @@ def _boxes(grid, cpml_layers=CPML_LAYERS):
     return b0, shifted
 
 
-def _simulate(grid, mats, n_steps, cpml_layers=CPML_LAYERS, need_adjacent=True):
+def _simulate(grid, mats, n_steps, cpml_layers=CPML_LAYERS, need_adjacent=True,
+              box_override=None):
     """Run the production box and (optionally) the three adjacent-plane boxes."""
     freqs = np.array([F0], dtype=np.float64)
-    tfsf, b0 = probe._tfsf_and_ntff(grid, cpml_layers=cpml_layers, freqs=freqs)
-    _, shifted = _boxes(grid, cpml_layers)
+    tfsf, b0 = probe._tfsf_and_ntff(grid, cpml_layers=cpml_layers, freqs=freqs,
+                                    ntff_box_override=box_override)
+    _, shifted = _boxes(grid, cpml_layers, box_override=box_override)
     res0 = run(grid, mats, n_steps, boundary="cpml", tfsf=tfsf, ntff=b0)
     adj = {}
     if need_adjacent:
         for ax, bx in shifted.items():
             tfsf_a, _ = probe._tfsf_and_ntff(grid, cpml_layers=cpml_layers,
-                                             freqs=freqs)
+                                             freqs=freqs,
+                                             ntff_box_override=box_override)
             r = run(grid, mats, n_steps, boundary="cpml", tfsf=tfsf_a, ntff=bx)
             adj[ax] = r.ntff_data
     return b0, res0.ntff_data, adj
@@ -438,7 +509,8 @@ def run_sweep(name):
                 clear_cells=cfg["clear_cells"], steps_mult=cfg["steps_mult"],
                 cpml_layers=cp)
             t0 = time.time()
-            box, nd, adj = _simulate(grid, mats, n_steps, cpml_layers=cp)
+            box, nd, adj = _simulate(grid, mats, n_steps, cpml_layers=cp,
+                                     box_override=cfg.get("box_override"))
             arms = _all_arms(nd, adj, box, grid, n_steps, k0, grid.dx)
             rows.append({"offset": n, "meta": meta, "arms": arms,
                          "wall_s": round(time.time() - t0, 1)})
@@ -467,8 +539,9 @@ def run_sweep(name):
             (0, 0, 0), ka=cfg["ka"], cpr=cfg["cpr"],
             clear_cells=cfg["clear_cells"], steps_mult=cfg["steps_mult"],
             cpml_layers=cp)
-        ref, _, _, _ = probe._rcs_complex(grid, mats, n_steps,
-                                          cpml_layers=cp)
+        ref, _, _, _ = probe._rcs_complex(
+            grid, mats, n_steps, cpml_layers=cp,
+            ntff_box_override=cfg.get("box_override"))
         base = zero[0]["arms"]["baseline"]["monostatic_dbsm"]
         d = abs(ref["monostatic_dbsm"] - base)
         out["s0"] = {"probe_dbsm": ref["monostatic_dbsm"],
@@ -562,13 +635,96 @@ def run_control():
     return _emit("collocation_control", out)
 
 
+GATE_A_ANOMALY = 1.5     # ratio >= this on BOTH comparisons -> N2 CONFIRMED
+GATE_A_FLAT = 1.2        # both < this -> N2 REFUTED
+
+
+def run_hjump():
+    """ARM A -- how big is the H jump across the plane arm (i) averages?
+
+    Pre-declared. arm (i) replaces H on a face by the mean of the face plane
+    and the plane one cell toward lower index. On the lo faces at the cv16
+    point that neighbour is the FIRST INTERIOR CELL against the absorber
+    (correction N2). If the absorber interface is what arm (i) is really
+    sampling, the jump
+        J_f = mean|H(idx-1) - H(idx)| / mean|H(idx)|
+    must be anomalous on y_lo at CPML 8 -- both against the SAME face at 16
+    and 24, and against x_lo at the same depth, whose neighbour is one cell
+    clear.
+      GATE: J_ylo(8)/median(J_ylo(16), J_ylo(24)) >= 1.5 AND
+            J_ylo(8)/J_xlo(8) >= 1.5           -> N2 CONFIRMED
+            both < 1.2                          -> N2 REFUTED
+            otherwise                           -> INCONCLUSIVE
+    Twelve short runs (offset 0 only, three depths); no new physics, but not
+    zero-simulation either -- the face arrays are not persisted by the other
+    arms, so they have to be regenerated.
+    """
+    caught = []
+    out = {"gates": {"anomaly": GATE_A_ANOMALY, "flat": GATE_A_FLAT}}
+    with warnings.catch_warnings(record=True) as wlist:
+        warnings.simplefilter("always")
+        for cp in (8, 16, 24):
+            grid, mats, n_steps, _, meta = probe.build_case(
+                (0, 0, 0), cpml_layers=cp)
+            box, nd, adj = _simulate(grid, mats, n_steps, cpml_layers=cp)
+            per_face = {}
+            for f in FACES:
+                ax = FACE_AXIS[f]
+                on = np.asarray(getattr(nd, f), dtype=np.complex128)
+                near = np.asarray(getattr(adj[ax], f), dtype=np.complex128)
+                h_on = np.abs(on[..., 2]) + np.abs(on[..., 3])
+                h_d = (np.abs(near[..., 2] - on[..., 2])
+                       + np.abs(near[..., 3] - on[..., 3]))
+                per_face[f] = float(h_d.mean() / max(h_on.mean(), 1e-300))
+            face_idx = {"x_lo": box.i_lo, "x_hi": box.i_hi,
+                        "y_lo": box.j_lo, "y_hi": box.j_hi,
+                        "z_lo": box.k_lo, "z_hi": box.k_hi}
+            clearance = {f: (face_idx[f] - 1 - cp) if f.endswith("_lo")
+                         else None for f in FACES}
+            out[str(cp)] = {"J": per_face, "box": list(box[:6]),
+                            "adjacent_plane_clearance_cells": clearance,
+                            "grid": meta["grid_shape"]}
+            print(f"  cpml {cp:2d}: " + "  ".join(
+                f"{f}:{per_face[f]:.4f}" for f in FACES))
+            print("          lo-face adjacent-plane clearance to the "
+                  "absorber (cells): "
+                  + ", ".join(f"{f}={clearance[f]}" for f in
+                              ("x_lo", "y_lo", "z_lo")))
+        caught = [f"{w.category.__name__}: {w.message}" for w in wlist]
+    jy = [out[str(c)]["J"]["y_lo"] for c in (8, 16, 24)]
+    jx8 = out["8"]["J"]["x_lo"]
+    r_depth = jy[0] / float(np.median(jy[1:]))
+    r_face = jy[0] / jx8
+    if r_depth >= GATE_A_ANOMALY and r_face >= GATE_A_ANOMALY:
+        v = "N2 CONFIRMED (y_lo at CPML 8 is anomalous both ways)"
+    elif r_depth < GATE_A_FLAT and r_face < GATE_A_FLAT:
+        v = "N2 REFUTED (no interface anomaly in the averaged plane)"
+    else:
+        v = "N2 INCONCLUSIVE"
+    out.update({"J_ylo_by_depth": jy, "J_xlo_cpml8": jx8,
+                "ratio_vs_depth": r_depth, "ratio_vs_xlo": r_face,
+                "verdict": v, "warnings": caught,
+                "preflight": ("none emitted -- verified with "
+                              "warnings.simplefilter('always')")})
+    print(f"[hjump] J(y_lo) by depth {jy[0]:.4f} / {jy[1]:.4f} / {jy[2]:.4f}; "
+          f"J(x_lo) at 8 = {jx8:.4f}")
+    print(f"[hjump] ratio vs deeper pair {r_depth:.3f}, ratio vs x_lo "
+          f"{r_face:.3f} (CONFIRMED >= {GATE_A_ANOMALY} both; REFUTED < "
+          f"{GATE_A_FLAT} both) -> {v}")
+    print(f"[hjump] warnings captured: {len(caught)}"
+          f"{' -> ' + '; '.join(caught) if caught else ' (none emitted)'}")
+    return _emit("hjump", out)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="issue #820 NTFF collocation arms")
     p.add_argument("--sweep", required=True,
-                   choices=sorted(SWEEPS) + ["control"])
+                   choices=sorted(SWEEPS) + ["control", "hjump"])
     args = p.parse_args(argv)
     if args.sweep == "control":
         run_control()
+    elif args.sweep == "hjump":
+        run_hjump()
     else:
         run_sweep(args.sweep)
     return 0
