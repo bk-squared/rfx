@@ -361,3 +361,71 @@ matches `887f8ff7:rfx/boundaries/cpml.py`.
 
 **G4 remains STOPPED by its frozen identity gate.** No GPU run, no candidate
 AD numbers, no speedup claim, no public API or production source change.
+
+## Baseline re-frozen 2026-09-14
+
+The frozen BIT-IDENTITY gate of this note fired again, this time **not**
+against a rejected performance candidate but against production: the Yee
+half-cell magnetic-profile correction changed `rfx/boundaries/cpml.py`
+on purpose. That change is a physics correction, documented in
+`docs/design_notes/2026-09-13_cpml_yee_stagger_correction.md` (E and
+transverse H had shared the same integer-indexed CPML profile despite
+their half-cell displacement; E reflection maps i to N-1-i, H maps i to
+N-2-i), with a two-arm GPU witness on remilab-c0, VESSL run
+**369367260765** (far-Hy full peak-relative residual 0.13937570731810509
+FAIL pre-fix vs 0.0003881940106090643 PASS post-fix). Before this
+re-freeze all nine localization tests were RED (7 identity + 2 AD);
+the identity failures were the intended operator change, not a
+regression.
+
+Per PI decision the baseline is therefore **re-frozen against the
+corrected operator**, not relaxed. `validation/research/nu_cost/g4/cpml_baseline.py`
+was regenerated the same way the original was produced at `887f8ff7`:
+a straight verbatim byte-for-byte copy of `rfx/boundaries/cpml.py`, with
+**no edits of any kind** — no module-name shim, no header rewrite. (The
+`CPMLAxisParams`/`CPMLState` rebinding that lets the frozen module accept
+production carry types lives in the test file, not in the copy, and is
+unchanged.) The copy now equals production at this commit; SHA256
+`fd4698ea0c473a5811b2ae4598f40d4b4be8a2abbf9283e51848c9a3e4a235b9`
+matches `rfx/boundaries/cpml.py` on `agent/cpml-magnetic-half-cell`.
+(Commit hashes on this branch are not quoted here because the lane was
+rebased onto `origin/main` before push; the content SHA256 above is the
+load-bearing identity and is rebase-invariant.) The previous baseline SHA256
+`4979e28793d9530dd362f42d5aac913dd07360ffd757fdb7c0d3a9d3c7c3c3fd`
+(`c30d3020:rfx/boundaries/cpml.py`) is superseded for gate purposes and
+retained only in git history.
+
+**The rejected G4 candidate stays rejected.** `cpml_candidate.py` was
+rejected *relative to the OLD baseline*; that verdict is recorded above
+and is not disturbed or re-opened by this re-freeze. It is also not
+transferred: the candidate has **not** been evaluated against the new
+baseline, and any future reuse of that localization work would require a
+fresh evaluation against the corrected operator, re-running the frozen
+gates from scratch. Nothing here promotes it.
+
+Consequently the `RFX_G4_REJECTED_CANDIDATE=1` opt-in path now compares
+the new baseline against a candidate that was built on the **old**
+operator, which lacks the magnetic half-cell profiles entirely. Stated
+plainly: **that path is stale evidence.** Its differences now mix the
+original codegen contraction finding with the intended physics change and
+cannot be read as the 2026-09-10 diagnosis any more; the ULP-level
+step-13 `curl_h` contraction analysis above remains valid only for the
+old baseline/candidate pair, which git history still holds. The candidate
+file is deliberately **not modified** — editing archived rejection
+evidence would destroy the record — and the opt-in is left in place for
+historical reproduction only, not as a live gate.
+
+After the re-freeze the focused localization gate is GREEN: **9 passed**
+(7 identity fixtures with zero differing elements in every field and all
+24 psi carries, plus both AD parity tests). Before/after on this branch:
+**9 failed -> 9 passed.** The AD values below are, as before, corrected
+production vs the re-frozen copy of the same source — they are a
+self-consistency check on the freeze, NOT candidate AD parity:
+
+```
+dz_profile: relative_max=0, ref_max=23999.046875, max_abs=0
+eps_r: relative_max=0, ref_max=30.75274658203125, max_abs=0
+```
+
+No gate threshold, fixture, predicate or frozen expectation in this note
+was weakened, and no text above this section was rewritten.
