@@ -1,0 +1,1574 @@
+{
+ "meta": {
+  "instrument": "w8_nu_kernel_ablation",
+  "suite": "g1b",
+  "git_sha": "4e3c7c9fec5cf68d546b2c816b314874396786b5",
+  "smoke": false,
+  "argv": [
+   "--suite",
+   "g1b",
+   "--out",
+   "/root/workspace/claude-workspace/rfx/runs/nu-cost-ablation-g1b/20260914T154524Z-4e3c7c9f/w8_nu_kernel_ablation_g1b_results.json"
+  ],
+  "jax_version": "0.4.33.dev20241023+e3c6d6430",
+  "device": "cuda:0",
+  "backend": "gpu",
+  "steps": "64->1088",
+  "windows": 3,
+  "identity": {
+   "n": 96,
+   "steps": 64
+  },
+  "run_kwargs": {
+   "skip_preflight": true
+  },
+  "epsilon_gate_ulp": 4,
+  "matrix": [
+   [
+    "cpml8",
+    300,
+    "nu-z"
+   ],
+   [
+    "cpml8",
+    300,
+    "nu-z-scalar-inv"
+   ],
+   [
+    "cpml8",
+    300,
+    "nu-z-combo"
+   ],
+   [
+    "cpml8",
+    300,
+    "nu-z-foldinv"
+   ],
+   [
+    "cpml8",
+    300,
+    "nu-z-inv3d"
+   ],
+   [
+    "cpml8",
+    400,
+    "nu-z"
+   ],
+   [
+    "cpml8",
+    400,
+    "nu-z-scalar-inv"
+   ],
+   [
+    "cpml8",
+    400,
+    "nu-z-combo"
+   ],
+   [
+    "cpml8",
+    400,
+    "nu-z-foldinv"
+   ],
+   [
+    "cpml8",
+    400,
+    "nu-z-inv3d"
+   ],
+   [
+    "cpml0",
+    300,
+    "bare-slow"
+   ],
+   [
+    "cpml0",
+    300,
+    "nu-uniform"
+   ],
+   [
+    "cpml4",
+    300,
+    "bare-slow"
+   ],
+   [
+    "cpml4",
+    300,
+    "nu-uniform"
+   ],
+   [
+    "cpml8",
+    300,
+    "bare-slow"
+   ],
+   [
+    "cpml8",
+    300,
+    "nu-uniform"
+   ],
+   [
+    "cpml16",
+    300,
+    "bare-slow"
+   ],
+   [
+    "cpml16",
+    300,
+    "nu-uniform"
+   ],
+   [
+    "cpml0",
+    300,
+    "bare"
+   ]
+  ],
+  "started": "2026-09-14T15:45:27Z"
+ },
+ "identity": [
+  {
+   "arm": "nu-z-scalar-inv",
+   "reference": "nu-uniform",
+   "fixture": "cpml8",
+   "n": 96,
+   "steps": 64,
+   "identical": true,
+   "expected_identical": true,
+   "as_expected": true,
+   "dtype": "float32",
+   "per_field": {
+    "ex": {
+     "identical": true,
+     "max_abs_diff": 0.0,
+     "max_abs_ref": 408562144.0,
+     "n_diff": 0
+    },
+    "ey": {
+     "identical": true,
+     "max_abs_diff": 0.0,
+     "max_abs_ref": 408562144.0,
+     "n_diff": 0
+    },
+    "ez": {
+     "identical": true,
+     "max_abs_diff": 0.0,
+     "max_abs_ref": 1005422336.0,
+     "n_diff": 0
+    },
+    "hx": {
+     "identical": true,
+     "max_abs_diff": 0.0,
+     "max_abs_ref": 134950.125,
+     "n_diff": 0
+    },
+    "hy": {
+     "identical": true,
+     "max_abs_diff": 0.0,
+     "max_abs_ref": 134950.125,
+     "n_diff": 0
+    },
+    "hz": {
+     "identical": true,
+     "max_abs_diff": 0.0,
+     "max_abs_ref": 0.007864427752792835,
+     "n_diff": 0
+    }
+   },
+   "patch_record": {
+    "scalar_inv_values": {
+     "inv_dx_h": 999.9999389648438,
+     "inv_dy_h": 999.9999389648438,
+     "inv_dz_h": 999.9999389648438,
+     "inv_dx": 999.9999389648438,
+     "inv_dy": 999.9999389648438,
+     "inv_dz": 999.9999389648438
+    }
+   },
+   "ref_fast_path_seen": false
+  },
+  {
+   "arm": "nu-z-combo",
+   "reference": "nu-uniform",
+   "fixture": "cpml8",
+   "n": 96,
+   "steps": 64,
+   "identical": true,
+   "expected_identical": true,
+   "as_expected": true,
+   "dtype": "float32",
+   "per_field": {
+    "ex": {
+     "identical": true,
+     "max_abs_diff": 0.0,
+     "max_abs_ref": 408562144.0,
+     "n_diff": 0
+    },
+    "ey": {
+     "identical": true,
+     "max_abs_diff": 0.0,
+     "max_abs_ref": 408562144.0,
+     "n_diff": 0
+    },
+    "ez": {
+     "identical": true,
+     "max_abs_diff": 0.0,
+     "max_abs_ref": 1005422336.0,
+     "n_diff": 0
+    },
+    "hx": {
+     "identical": true,
+     "max_abs_diff": 0.0,
+     "max_abs_ref": 134950.125,
+     "n_diff": 0
+    },
+    "hy": {
+     "identical": true,
+     "max_abs_diff": 0.0,
+     "max_abs_ref": 134950.125,
+     "n_diff": 0
+    },
+    "hz": {
+     "identical": true,
+     "max_abs_diff": 0.0,
+     "max_abs_ref": 0.007864427752792835,
+     "n_diff": 0
+    }
+   },
+   "patch_record": {
+    "scalar_inv_values": {
+     "inv_dx_h": 999.9999389648438,
+     "inv_dy_h": 999.9999389648438,
+     "inv_dz_h": 999.9999389648438,
+     "inv_dx": 999.9999389648438,
+     "inv_dy": 999.9999389648438,
+     "inv_dz": 999.9999389648438
+    },
+    "hoisted": [
+     true
+    ]
+   },
+   "ref_fast_path_seen": false
+  },
+  {
+   "arm": "nu-z-foldinv",
+   "reference": "nu-z",
+   "fixture": "cpml8",
+   "n": 96,
+   "steps": 64,
+   "identical": false,
+   "expected_identical": false,
+   "as_expected": true,
+   "dtype": "float32",
+   "per_field": {
+    "ex": {
+     "identical": false,
+     "max_abs_diff": 4.0,
+     "max_abs_ref": 37414144.0,
+     "n_diff": 321877,
+     "ulp_at_own_max": 4.0,
+     "ulp_at_family_max": 8.0,
+     "diff_in_own_ulp": 1.0,
+     "diff_in_ulp": 0.5,
+     "within_gate": true
+    },
+    "ey": {
+     "identical": false,
+     "max_abs_diff": 4.0,
+     "max_abs_ref": 37414144.0,
+     "n_diff": 321877,
+     "ulp_at_own_max": 4.0,
+     "ulp_at_family_max": 8.0,
+     "diff_in_own_ulp": 1.0,
+     "diff_in_ulp": 0.5,
+     "within_gate": true
+    },
+    "ez": {
+     "identical": false,
+     "max_abs_diff": 4.0,
+     "max_abs_ref": 83137904.0,
+     "n_diff": 324678,
+     "ulp_at_own_max": 8.0,
+     "ulp_at_family_max": 8.0,
+     "diff_in_own_ulp": 0.5,
+     "diff_in_ulp": 0.5,
+     "within_gate": true
+    },
+    "hx": {
+     "identical": false,
+     "max_abs_diff": 0.01318359375,
+     "max_abs_ref": 26784.357421875,
+     "n_diff": 313777,
+     "ulp_at_own_max": 0.001953125,
+     "ulp_at_family_max": 0.001953125,
+     "diff_in_own_ulp": 6.75,
+     "diff_in_ulp": 6.75,
+     "within_gate": false
+    },
+    "hy": {
+     "identical": false,
+     "max_abs_diff": 0.01318359375,
+     "max_abs_ref": 26784.357421875,
+     "n_diff": 313777,
+     "ulp_at_own_max": 0.001953125,
+     "ulp_at_family_max": 0.001953125,
+     "diff_in_own_ulp": 6.75,
+     "diff_in_ulp": 6.75,
+     "within_gate": false
+    },
+    "hz": {
+     "identical": false,
+     "max_abs_diff": 0.0006395946256816387,
+     "max_abs_ref": 0.0006302576512098312,
+     "n_diff": 298592,
+     "ulp_at_own_max": 5.820766091346741e-11,
+     "ulp_at_family_max": 0.001953125,
+     "diff_in_own_ulp": 10988152.0,
+     "diff_in_ulp": 0.327472448348999,
+     "within_gate": true
+    }
+   },
+   "patch_record": {
+    "folded_h": [
+     true
+    ],
+    "hoisted": [
+     true
+    ],
+    "folded_e": [
+     true
+    ]
+   },
+   "ref_fast_path_seen": false,
+   "epsilon_gate_ulp": 4,
+   "epsilon_gate_rule": "max|new-old| <= EPS_GATE_ULP * ulp(max|family field|), family = E (ex,ey,ez) or H (hx,hy,hz)",
+   "epsilon_ok": false,
+   "epsilon_worst_ulp": 6.75,
+   "epsilon_worst_own_ulp": 10988152.0
+  },
+  {
+   "arm": "nu-z-inv3d",
+   "reference": "nu-z",
+   "fixture": "cpml8",
+   "n": 96,
+   "steps": 64,
+   "identical": true,
+   "expected_identical": true,
+   "as_expected": true,
+   "dtype": "float32",
+   "per_field": {
+    "ex": {
+     "identical": true,
+     "max_abs_diff": 0.0,
+     "max_abs_ref": 37414144.0,
+     "n_diff": 0
+    },
+    "ey": {
+     "identical": true,
+     "max_abs_diff": 0.0,
+     "max_abs_ref": 37414144.0,
+     "n_diff": 0
+    },
+    "ez": {
+     "identical": true,
+     "max_abs_diff": 0.0,
+     "max_abs_ref": 83137904.0,
+     "n_diff": 0
+    },
+    "hx": {
+     "identical": true,
+     "max_abs_diff": 0.0,
+     "max_abs_ref": 26784.357421875,
+     "n_diff": 0
+    },
+    "hy": {
+     "identical": true,
+     "max_abs_diff": 0.0,
+     "max_abs_ref": 26784.357421875,
+     "n_diff": 0
+    },
+    "hz": {
+     "identical": true,
+     "max_abs_diff": 0.0,
+     "max_abs_ref": 0.0006302576512098312,
+     "n_diff": 0
+    }
+   },
+   "patch_record": {
+    "materialized": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "ref_fast_path_seen": false
+  },
+  {
+   "arm": "bare-slow",
+   "reference": "bare",
+   "fixture": "cpml0",
+   "n": 96,
+   "steps": 64,
+   "identical": false,
+   "expected_identical": null,
+   "as_expected": true,
+   "dtype": "float32",
+   "per_field": {
+    "ex": {
+     "identical": false,
+     "max_abs_diff": 32.0,
+     "max_abs_ref": 408562176.0,
+     "n_diff": 317446
+    },
+    "ey": {
+     "identical": false,
+     "max_abs_diff": 32.0,
+     "max_abs_ref": 408562176.0,
+     "n_diff": 317446
+    },
+    "ez": {
+     "identical": false,
+     "max_abs_diff": 96.0,
+     "max_abs_ref": 1005422528.0,
+     "n_diff": 316955
+    },
+    "hx": {
+     "identical": false,
+     "max_abs_diff": 0.0517578125,
+     "max_abs_ref": 134950.140625,
+     "n_diff": 311366
+    },
+    "hy": {
+     "identical": false,
+     "max_abs_diff": 0.0517578125,
+     "max_abs_ref": 134950.140625,
+     "n_diff": 311366
+    },
+    "hz": {
+     "identical": false,
+     "max_abs_diff": 0.004196183755993843,
+     "max_abs_ref": 0.0034937183372676373,
+     "n_diff": 298888
+    }
+   },
+   "patch_record": {
+    "slow_path_forced": true
+   },
+   "ref_fast_path_seen": true
+  }
+ ],
+ "rows": [
+  {
+   "arm": "nu-z",
+   "lane": "nu",
+   "mesh": "graded",
+   "fixture": "cpml8",
+   "n": 300,
+   "cells": 31855013,
+   "layers": 8,
+   "extra_full_arrays": 0,
+   "extra_const_bytes": 0,
+   "device_memory": {
+    "bytes_in_use": 805318144,
+    "peak_bytes_in_use": 3527850752
+   },
+   "steps": "64->1088",
+   "windows": 3,
+   "mc_per_s_median": 3741.423896530288,
+   "mc_per_s_spread": 18.39864916648321,
+   "mc_per_s_windows": [
+    3741.423896530288,
+    3736.984502738352,
+    3755.3831519048354
+   ],
+   "compile_s": 4.76,
+   "fast_path_seen": false,
+   "patch_record": {}
+  },
+  {
+   "arm": "nu-z-scalar-inv",
+   "lane": "nu",
+   "mesh": "uniform",
+   "fixture": "cpml8",
+   "n": 300,
+   "cells": 31855013,
+   "layers": 8,
+   "extra_full_arrays": 0,
+   "extra_const_bytes": 0,
+   "device_memory": {
+    "bytes_in_use": 805318144,
+    "peak_bytes_in_use": 3527850752
+   },
+   "steps": "64->1088",
+   "windows": 3,
+   "mc_per_s_median": 3691.2676809407862,
+   "mc_per_s_spread": 34.56833841688149,
+   "mc_per_s_windows": [
+    3691.2676809407862,
+    3718.9134561701458,
+    3684.3451177532643
+   ],
+   "compile_s": 3.38,
+   "fast_path_seen": false,
+   "patch_record": {
+    "scalar_inv_values": {
+     "inv_dx_h": 999.9999389648438,
+     "inv_dy_h": 999.9999389648438,
+     "inv_dz_h": 999.9999389648438,
+     "inv_dx": 999.9999389648438,
+     "inv_dy": 999.9999389648438,
+     "inv_dz": 999.9999389648438
+    }
+   }
+  },
+  {
+   "arm": "nu-z-combo",
+   "lane": "nu",
+   "mesh": "uniform",
+   "fixture": "cpml8",
+   "n": 300,
+   "cells": 31855013,
+   "layers": 8,
+   "extra_full_arrays": 2,
+   "extra_const_bytes": 254840104,
+   "device_memory": {
+    "bytes_in_use": 778127872,
+    "peak_bytes_in_use": 3655270912
+   },
+   "steps": "64->1088",
+   "windows": 3,
+   "mc_per_s_median": 4286.61189383621,
+   "mc_per_s_spread": 64.25026327338037,
+   "mc_per_s_windows": [
+    4286.61189383621,
+    4334.785297884961,
+    4270.535034611581
+   ],
+   "compile_s": 3.57,
+   "fast_path_seen": false,
+   "patch_record": {
+    "scalar_inv_values": {
+     "inv_dx_h": 999.9999389648438,
+     "inv_dy_h": 999.9999389648438,
+     "inv_dz_h": 999.9999389648438,
+     "inv_dx": 999.9999389648438,
+     "inv_dy": 999.9999389648438,
+     "inv_dz": 999.9999389648438
+    },
+    "hoisted": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   }
+  },
+  {
+   "arm": "nu-z-foldinv",
+   "lane": "nu",
+   "mesh": "graded",
+   "fixture": "cpml8",
+   "n": 300,
+   "cells": 31855013,
+   "layers": 8,
+   "extra_full_arrays": 7,
+   "extra_const_bytes": 891940364,
+   "device_memory": {
+    "bytes_in_use": 832508416,
+    "peak_bytes_in_use": 5024735232
+   },
+   "steps": "64->1088",
+   "windows": 3,
+   "mc_per_s_median": 3058.1737927357062,
+   "mc_per_s_spread": 38.36032850903712,
+   "mc_per_s_windows": [
+    3071.293468388593,
+    3058.1737927357062,
+    3032.9331398795557
+   ],
+   "compile_s": 3.09,
+   "fast_path_seen": false,
+   "patch_record": {
+    "folded_h": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "hoisted": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "folded_e": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   }
+  },
+  {
+   "arm": "nu-z-inv3d",
+   "lane": "nu",
+   "mesh": "graded",
+   "fixture": "cpml8",
+   "n": 300,
+   "cells": 31855013,
+   "layers": 8,
+   "extra_full_arrays": 6,
+   "extra_const_bytes": 764520312,
+   "device_memory": {
+    "bytes_in_use": 818913280,
+    "peak_bytes_in_use": 5056892928
+   },
+   "steps": "64->1088",
+   "windows": 3,
+   "mc_per_s_median": 2962.084078593304,
+   "mc_per_s_spread": 245.12437370920316,
+   "mc_per_s_windows": [
+    3138.896363965738,
+    2893.771990256535,
+    2962.084078593304
+   ],
+   "compile_s": 3.45,
+   "fast_path_seen": false,
+   "patch_record": {
+    "materialized": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   }
+  },
+  {
+   "arm": "nu-z",
+   "lane": "nu",
+   "mesh": "graded",
+   "fixture": "cpml8",
+   "n": 400,
+   "cells": 72511713,
+   "layers": 8,
+   "extra_full_arrays": 0,
+   "extra_const_bytes": 0,
+   "device_memory": {
+    "bytes_in_use": 1740298240,
+    "peak_bytes_in_use": 7876688896
+   },
+   "steps": "64->1088",
+   "windows": 3,
+   "mc_per_s_median": 3792.702678080764,
+   "mc_per_s_spread": 37.47977847289667,
+   "mc_per_s_windows": [
+    3755.7170288536986,
+    3793.1968073265953,
+    3792.702678080764
+   ],
+   "compile_s": 4.97,
+   "fast_path_seen": false,
+   "patch_record": {}
+  },
+  {
+   "arm": "nu-z-scalar-inv",
+   "lane": "nu",
+   "mesh": "uniform",
+   "fixture": "cpml8",
+   "n": 400,
+   "cells": 72511713,
+   "layers": 8,
+   "extra_full_arrays": 0,
+   "extra_const_bytes": 0,
+   "device_memory": {
+    "bytes_in_use": 1740298240,
+    "peak_bytes_in_use": 7876688896
+   },
+   "steps": "64->1088",
+   "windows": 3,
+   "mc_per_s_median": 3695.5316379233786,
+   "mc_per_s_spread": 46.3666535904531,
+   "mc_per_s_windows": [
+    3654.4530104998676,
+    3700.8196640903207,
+    3695.5316379233786
+   ],
+   "compile_s": 3.7,
+   "fast_path_seen": false,
+   "patch_record": {
+    "scalar_inv_values": {
+     "inv_dx_h": 999.9999389648438,
+     "inv_dy_h": 999.9999389648438,
+     "inv_dz_h": 999.9999389648438,
+     "inv_dx": 999.9999389648438,
+     "inv_dy": 999.9999389648438,
+     "inv_dz": 999.9999389648438
+    }
+   }
+  },
+  {
+   "arm": "nu-z-combo",
+   "lane": "nu",
+   "mesh": "uniform",
+   "fixture": "cpml8",
+   "n": 400,
+   "cells": 72511713,
+   "layers": 8,
+   "extra_full_arrays": 2,
+   "extra_const_bytes": 580093704,
+   "device_memory": {
+    "bytes_in_use": 1740298240,
+    "peak_bytes_in_use": 8060415744
+   },
+   "steps": "64->1088",
+   "windows": 3,
+   "mc_per_s_median": 4367.73136517265,
+   "mc_per_s_spread": 230.34116846730285,
+   "mc_per_s_windows": [
+    4304.244752684423,
+    4367.73136517265,
+    4534.585921151725
+   ],
+   "compile_s": 3.91,
+   "fast_path_seen": false,
+   "patch_record": {
+    "scalar_inv_values": {
+     "inv_dx_h": 999.9999389648438,
+     "inv_dy_h": 999.9999389648438,
+     "inv_dz_h": 999.9999389648438,
+     "inv_dx": 999.9999389648438,
+     "inv_dy": 999.9999389648438,
+     "inv_dz": 999.9999389648438
+    },
+    "hoisted": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   }
+  },
+  {
+   "arm": "nu-z-foldinv",
+   "lane": "nu",
+   "mesh": "graded",
+   "fixture": "cpml8",
+   "n": 400,
+   "cells": 72511713,
+   "layers": 8,
+   "extra_full_arrays": 7,
+   "extra_const_bytes": 2030327964,
+   "device_memory": {
+    "bytes_in_use": 1740298240,
+    "peak_bytes_in_use": 11016531456
+   },
+   "steps": "64->1088",
+   "windows": 3,
+   "mc_per_s_median": 3050.2647926258674,
+   "mc_per_s_spread": 93.21138996416221,
+   "mc_per_s_windows": [
+    3052.7108504709563,
+    2959.499460506794,
+    3050.2647926258674
+   ],
+   "compile_s": 3.75,
+   "fast_path_seen": false,
+   "patch_record": {
+    "folded_h": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "hoisted": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "folded_e": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   }
+  },
+  {
+   "arm": "nu-z-inv3d",
+   "lane": "nu",
+   "mesh": "graded",
+   "fixture": "cpml8",
+   "n": 400,
+   "cells": 72511713,
+   "layers": 8,
+   "extra_full_arrays": 6,
+   "extra_const_bytes": 1740281112,
+   "device_memory": {
+    "bytes_in_use": 1740298240,
+    "peak_bytes_in_use": 11228674304
+   },
+   "steps": "64->1088",
+   "windows": 3,
+   "mc_per_s_median": 2899.7905912109654,
+   "mc_per_s_spread": 7.015282242433841,
+   "mc_per_s_windows": [
+    2896.3764930424213,
+    2903.391775284855,
+    2899.7905912109654
+   ],
+   "compile_s": 4.14,
+   "fast_path_seen": false,
+   "patch_record": {
+    "materialized": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   }
+  },
+  {
+   "arm": "bare-slow",
+   "lane": "uniform",
+   "mesh": "uniform",
+   "fixture": "cpml0",
+   "n": 300,
+   "cells": 27270901,
+   "layers": 0,
+   "extra_full_arrays": 0,
+   "extra_const_bytes": 0,
+   "device_memory": {
+    "bytes_in_use": 755038464,
+    "peak_bytes_in_use": 11228674304
+   },
+   "steps": "64->1088",
+   "windows": 3,
+   "mc_per_s_median": 10042.453502796683,
+   "mc_per_s_spread": 27.141071540147095,
+   "mc_per_s_windows": [
+    10015.465471927726,
+    10042.606543467873,
+    10042.453502796683
+   ],
+   "compile_s": 1.05,
+   "fast_path_seen": false,
+   "patch_record": {
+    "slow_path_forced": true
+   }
+  },
+  {
+   "arm": "nu-uniform",
+   "lane": "nu",
+   "mesh": "uniform",
+   "fixture": "cpml0",
+   "n": 300,
+   "cells": 27270901,
+   "layers": 0,
+   "extra_full_arrays": 0,
+   "extra_const_bytes": 0,
+   "device_memory": {
+    "bytes_in_use": 755049984,
+    "peak_bytes_in_use": 11228674304
+   },
+   "steps": "64->1088",
+   "windows": 3,
+   "mc_per_s_median": 10063.23115135453,
+   "mc_per_s_spread": 65.91493585475473,
+   "mc_per_s_windows": [
+    10063.23115135453,
+    10079.037711913494,
+    10013.122776058739
+   ],
+   "compile_s": 0.75,
+   "fast_path_seen": false,
+   "patch_record": {}
+  },
+  {
+   "arm": "bare-slow",
+   "lane": "uniform",
+   "mesh": "uniform",
+   "fixture": "cpml4",
+   "n": 300,
+   "cells": 29503629,
+   "layers": 4,
+   "extra_full_arrays": 0,
+   "extra_const_bytes": 0,
+   "device_memory": {
+    "bytes_in_use": 756697600,
+    "peak_bytes_in_use": 11228674304
+   },
+   "steps": "64->1088",
+   "windows": 3,
+   "mc_per_s_median": 1637.45597247264,
+   "mc_per_s_spread": 55.24837965692677,
+   "mc_per_s_windows": [
+    1690.6610864231604,
+    1635.4127067662337,
+    1637.45597247264
+   ],
+   "compile_s": 4.35,
+   "fast_path_seen": false,
+   "patch_record": {
+    "slow_path_forced": true
+   }
+  },
+  {
+   "arm": "nu-uniform",
+   "lane": "nu",
+   "mesh": "uniform",
+   "fixture": "cpml4",
+   "n": 300,
+   "cells": 29503629,
+   "layers": 4,
+   "extra_full_arrays": 0,
+   "extra_const_bytes": 0,
+   "device_memory": {
+    "bytes_in_use": 805318144,
+    "peak_bytes_in_use": 11228674304
+   },
+   "steps": "64->1088",
+   "windows": 3,
+   "mc_per_s_median": 4584.060186537616,
+   "mc_per_s_spread": 428.9781398796722,
+   "mc_per_s_windows": [
+    4192.3620911133,
+    4584.060186537616,
+    4621.3402309929725
+   ],
+   "compile_s": 3.61,
+   "fast_path_seen": false,
+   "patch_record": {}
+  },
+  {
+   "arm": "bare-slow",
+   "lane": "uniform",
+   "mesh": "uniform",
+   "fixture": "cpml8",
+   "n": 300,
+   "cells": 31855013,
+   "layers": 8,
+   "extra_full_arrays": 0,
+   "extra_const_bytes": 0,
+   "device_memory": {
+    "bytes_in_use": 784913920,
+    "peak_bytes_in_use": 11228674304
+   },
+   "steps": "64->1088",
+   "windows": 3,
+   "mc_per_s_median": 1525.7222901119753,
+   "mc_per_s_spread": 30.086314345131996,
+   "mc_per_s_windows": [
+    1527.729459763215,
+    1525.7222901119753,
+    1497.643145418083
+   ],
+   "compile_s": 3.4,
+   "fast_path_seen": false,
+   "patch_record": {
+    "slow_path_forced": true
+   }
+  },
+  {
+   "arm": "nu-uniform",
+   "lane": "nu",
+   "mesh": "uniform",
+   "fixture": "cpml8",
+   "n": 300,
+   "cells": 31855013,
+   "layers": 8,
+   "extra_full_arrays": 0,
+   "extra_const_bytes": 0,
+   "device_memory": {
+    "bytes_in_use": 805318144,
+    "peak_bytes_in_use": 11228674304
+   },
+   "steps": "64->1088",
+   "windows": 3,
+   "mc_per_s_median": 3727.5918072872123,
+   "mc_per_s_spread": 13.58670697837988,
+   "mc_per_s_windows": [
+    3736.782587305512,
+    3723.1958803271323,
+    3727.5918072872123
+   ],
+   "compile_s": 3.45,
+   "fast_path_seen": false,
+   "patch_record": {}
+  },
+  {
+   "arm": "bare-slow",
+   "lane": "uniform",
+   "mesh": "uniform",
+   "fixture": "cpml16",
+   "n": 300,
+   "cells": 36926037,
+   "layers": 16,
+   "extra_full_arrays": 0,
+   "extra_const_bytes": 0,
+   "device_memory": {
+    "bytes_in_use": 979984128,
+    "peak_bytes_in_use": 11228674304
+   },
+   "steps": "64->1088",
+   "windows": 3,
+   "mc_per_s_median": 1433.6068457512754,
+   "mc_per_s_spread": 24.934029474975887,
+   "mc_per_s_windows": [
+    1433.6068457512754,
+    1409.1288448178589,
+    1434.0628742928347
+   ],
+   "compile_s": 4.79,
+   "fast_path_seen": false,
+   "patch_record": {
+    "slow_path_forced": true
+   }
+  },
+  {
+   "arm": "nu-uniform",
+   "lane": "nu",
+   "mesh": "uniform",
+   "fixture": "cpml16",
+   "n": 300,
+   "cells": 36926037,
+   "layers": 16,
+   "extra_full_arrays": 0,
+   "extra_const_bytes": 0,
+   "device_memory": {
+    "bytes_in_use": 1006971136,
+    "peak_bytes_in_use": 11228674304
+   },
+   "steps": "64->1088",
+   "windows": 3,
+   "mc_per_s_median": 3426.8276019280165,
+   "mc_per_s_spread": 10.325749645005544,
+   "mc_per_s_windows": [
+    3418.200577258854,
+    3426.8276019280165,
+    3428.5263269038596
+   ],
+   "compile_s": 3.82,
+   "fast_path_seen": false,
+   "patch_record": {}
+  },
+  {
+   "arm": "bare",
+   "lane": "uniform",
+   "mesh": "uniform",
+   "fixture": "cpml0",
+   "n": 300,
+   "cells": 27270901,
+   "layers": 0,
+   "extra_full_arrays": 0,
+   "extra_const_bytes": 0,
+   "device_memory": {
+    "bytes_in_use": 654502144,
+    "peak_bytes_in_use": 11228674304
+   },
+   "steps": "64->1088",
+   "windows": 3,
+   "mc_per_s_median": 8634.694983913862,
+   "mc_per_s_spread": 46.534347465587416,
+   "mc_per_s_windows": [
+    8673.98185592958,
+    8627.447508463993,
+    8634.694983913862
+   ],
+   "compile_s": 0.82,
+   "fast_path_seen": true,
+   "patch_record": {}
+  }
+ ],
+ "evaluation": {
+  "part_a": {
+   "nu-z-scalar-inv": {
+    "per_size": {
+     "cpml8/300": {
+      "measured": true,
+      "reference": "nu-z",
+      "gain": -0.01340564901935204,
+      "delta_mc_per_s": -50.1562155895017,
+      "larger_spread": 34.56833841688149,
+      "above_spread": false,
+      "passes": false
+     },
+     "cpml8/400": {
+      "measured": true,
+      "reference": "nu-z",
+      "gain": -0.025620526681136346,
+      "delta_mc_per_s": -97.1710401573855,
+      "larger_spread": 46.3666535904531,
+      "above_spread": true,
+      "passes": false
+     }
+    },
+    "identity_reference": "nu-uniform",
+    "bit_identical": true,
+    "epsilon_ok": null,
+    "gate_ok": true,
+    "passes_rule_all_sizes": false,
+    "implementable": false,
+    "implementation_candidate": false,
+    "rule": "vs nu-z: gain >= 3% AND delta > 2x larger spread at every n in [300, 400]; candidate additionally needs the identity/epsilon gate and to be implementable"
+   },
+   "nu-z-combo": {
+    "per_size": {
+     "cpml8/300": {
+      "measured": true,
+      "reference": "nu-z",
+      "gain": 0.14571671438019007,
+      "delta_mc_per_s": 545.1879973059217,
+      "larger_spread": 64.25026327338037,
+      "above_spread": true,
+      "passes": true
+     },
+     "cpml8/400": {
+      "measured": true,
+      "reference": "nu-z",
+      "gain": 0.1516144912742987,
+      "delta_mc_per_s": 575.0286870918858,
+      "larger_spread": 230.34116846730285,
+      "above_spread": true,
+      "passes": true
+     }
+    },
+    "identity_reference": "nu-uniform",
+    "bit_identical": true,
+    "epsilon_ok": null,
+    "gate_ok": true,
+    "passes_rule_all_sizes": true,
+    "implementable": false,
+    "implementation_candidate": false,
+    "rule": "vs nu-z: gain >= 3% AND delta > 2x larger spread at every n in [300, 400]; candidate additionally needs the identity/epsilon gate and to be implementable"
+   },
+   "nu-z-foldinv": {
+    "per_size": {
+     "cpml8/300": {
+      "measured": true,
+      "reference": "nu-z",
+      "gain": -0.1826176671475832,
+      "delta_mc_per_s": -683.2501037945817,
+      "larger_spread": 38.36032850903712,
+      "above_spread": true,
+      "passes": false
+     },
+     "cpml8/400": {
+      "measured": true,
+      "reference": "nu-z",
+      "gain": -0.1957543072768877,
+      "delta_mc_per_s": -742.4378854548968,
+      "larger_spread": 93.21138996416221,
+      "above_spread": true,
+      "passes": false
+     }
+    },
+    "identity_reference": "nu-z",
+    "bit_identical": false,
+    "epsilon_ok": false,
+    "gate_ok": false,
+    "passes_rule_all_sizes": false,
+    "implementable": true,
+    "implementation_candidate": false,
+    "rule": "vs nu-z: gain >= 3% AND delta > 2x larger spread at every n in [300, 400]; candidate additionally needs the identity/epsilon gate and to be implementable"
+   },
+   "nu-z-inv3d": {
+    "per_size": {
+     "cpml8/300": {
+      "measured": true,
+      "reference": "nu-z",
+      "gain": -0.2083003261565004,
+      "delta_mc_per_s": -779.3398179369838,
+      "larger_spread": 245.12437370920316,
+      "above_spread": true,
+      "passes": false
+     },
+     "cpml8/400": {
+      "measured": true,
+      "reference": "nu-z",
+      "gain": -0.2354289704885706,
+      "delta_mc_per_s": -892.9120868697987,
+      "larger_spread": 37.47977847289667,
+      "above_spread": true,
+      "passes": false
+     }
+    },
+    "identity_reference": "nu-z",
+    "bit_identical": true,
+    "epsilon_ok": null,
+    "gate_ok": true,
+    "passes_rule_all_sizes": false,
+    "implementable": false,
+    "implementation_candidate": false,
+    "rule": "vs nu-z: gain >= 3% AND delta > 2x larger spread at every n in [300, 400]; candidate additionally needs the identity/epsilon gate and to be implementable"
+   }
+  },
+  "readings": {
+   "cpml8/300": {
+    "combo_vs_scalar_inv": {
+     "measured": true,
+     "reference": "nu-z-scalar-inv",
+     "gain": 0.1612844866194285,
+     "delta_mc_per_s": 595.3442128954234,
+     "larger_spread": 64.25026327338037,
+     "above_spread": true,
+     "passes": true
+    },
+    "additivity": "additive (combo faster than scalar-inv by > 2x spread)",
+    "inv3d_vs_scalar_inv": {
+     "measured": true,
+     "reference": "nu-z-scalar-inv",
+     "gain": -0.19754286748492766,
+     "delta_mc_per_s": -729.1836023474821,
+     "larger_spread": 245.12437370920316,
+     "above_spread": true,
+     "passes": false
+    },
+    "inv3d_vs_nuz": {
+     "measured": true,
+     "reference": "nu-z",
+     "gain": -0.2083003261565004,
+     "delta_mc_per_s": -779.3398179369838,
+     "larger_spread": 245.12437370920316,
+     "above_spread": true,
+     "passes": false
+    },
+    "inv3d_reading": "inv3d slower than nu-z: full-array reads cost more than the broadcast; the broadcast op itself is cheap"
+   },
+   "cpml8/400": {
+    "combo_vs_scalar_inv": {
+     "measured": true,
+     "reference": "nu-z-scalar-inv",
+     "gain": 0.18189527058872623,
+     "delta_mc_per_s": 672.1997272492713,
+     "larger_spread": 230.34116846730285,
+     "above_spread": true,
+     "passes": true
+    },
+    "additivity": "additive (combo faster than scalar-inv by > 2x spread)",
+    "inv3d_vs_scalar_inv": {
+     "measured": true,
+     "reference": "nu-z-scalar-inv",
+     "gain": -0.21532518854568972,
+     "delta_mc_per_s": -795.7410467124132,
+     "larger_spread": 46.3666535904531,
+     "above_spread": true,
+     "passes": false
+    },
+    "inv3d_vs_nuz": {
+     "measured": true,
+     "reference": "nu-z",
+     "gain": -0.2354289704885706,
+     "delta_mc_per_s": -892.9120868697987,
+     "larger_spread": 37.47977847289667,
+     "above_spread": true,
+     "passes": false
+    },
+    "inv3d_reading": "inv3d slower than nu-z: full-array reads cost more than the broadcast; the broadcast op itself is cheap"
+   }
+  },
+  "ladder": {
+   "bare-slow": {
+    "points": {
+     "0": {
+      "mc_per_s": 10042.453502796683,
+      "spread": 27.141071540147095,
+      "cells": 27270901,
+      "cost_ns": 0.09957725965288403,
+      "fraction": 0.0
+     },
+     "4": {
+      "mc_per_s": 1637.45597247264,
+      "spread": 55.24837965692677,
+      "cells": 29503629,
+      "cost_ns": 0.6107034429084223,
+      "fraction": 0.0756763854371949
+     },
+     "8": {
+      "mc_per_s": 1525.7222901119753,
+      "spread": 30.086314345131996,
+      "cells": 31855013,
+      "cost_ns": 0.6554272730239842,
+      "fraction": 0.1439055133959607
+     },
+     "16": {
+      "mc_per_s": 1433.6068457512754,
+      "spread": 24.934029474975887,
+      "cells": 36926037,
+      "cost_ns": 0.6975413119459223,
+      "fraction": 0.26147230475883465
+     }
+    },
+    "fit_cost_vs_fraction": {
+     "a": 0.5815277560230412,
+     "b": 0.45543466447915587,
+     "resid": [
+      -0.005289962325203068,
+      0.008359957790752937,
+      -0.0030699954655503126
+     ]
+    },
+    "fit_cost_vs_layers": {
+     "a": 0.5896464234474534,
+     "b": 0.006954741340570338,
+     "resid": [
+      -0.006761945901312516,
+      0.010142918851968052,
+      -0.0033809729506565356
+     ]
+    },
+    "ratio_to_L0": {
+     "0": 1.0,
+     "4": 6.132960929405679,
+     "8": 6.582097913808187,
+     "16": 7.005026191496721
+    },
+    "rho_16_over_4": 1.1698951685167052,
+    "rho_proportional_expectation": 3.455137335752312,
+    "rho_8_over_4": 1.0875005655760002,
+    "intercept_excess": 4.839965450447085,
+    "reading": "whole-array work in the CPML op (fitted zero-fraction cost with the op present exceeds the no-op step by >= 1.0 plain steps, or rho_16/4 <= 1.5)"
+   },
+   "nu-uniform": {
+    "points": {
+     "0": {
+      "mc_per_s": 10063.23115135453,
+      "spread": 65.91493585475473,
+      "cells": 27270901,
+      "cost_ns": 0.09937166154286321,
+      "fraction": 0.0
+     },
+     "4": {
+      "mc_per_s": 4584.060186537616,
+      "spread": 428.9781398796722,
+      "cells": 29503629,
+      "cost_ns": 0.21814722305278228,
+      "fraction": 0.0756763854371949
+     },
+     "8": {
+      "mc_per_s": 3727.5918072872123,
+      "spread": 13.58670697837988,
+      "cells": 31855013,
+      "cost_ns": 0.26826971720590803,
+      "fraction": 0.1439055133959607
+     },
+     "16": {
+      "mc_per_s": 3426.8276019280165,
+      "spread": 10.325749645005544,
+      "cells": 36926037,
+      "cost_ns": 0.29181508852017407,
+      "fraction": 0.26147230475883465
+     }
+    },
+    "fit_cost_vs_fraction": {
+     "a": 0.1992753498307916,
+     "b": 0.37502214498784847,
+     "resid": [
+      -0.009508447169593315,
+      0.015026613065785677,
+      -0.005518165896192084
+     ]
+    },
+    "fit_cost_vs_layers": {
+     "a": 0.20637453739564926,
+     "b": 0.005682443449711314,
+     "resid": [
+      -0.010957088141712229,
+      0.016435632212568274,
+      -0.005478544070856184
+     ]
+    },
+    "ratio_to_L0": {
+     "0": 1.0,
+     "4": 2.1952659306062436,
+     "8": 2.699660175151564,
+     "16": 2.936602689231495
+    },
+    "rho_16_over_4": 1.6202274654053286,
+    "rho_proportional_expectation": 3.455137335752312,
+    "rho_8_over_4": 1.421993325192068,
+    "intercept_excess": 1.0053539081142935,
+    "reading": "whole-array work in the CPML op (fitted zero-fraction cost with the op present exceeds the no-op step by >= 1.0 plain steps, or rho_16/4 <= 1.5)"
+   }
+  },
+  "slow_path_forcing": {
+   "bare_slow_vs_bare_fused": {
+    "measured": true,
+    "reference": "bare",
+    "gain": 0.16303511838060603,
+    "delta_mc_per_s": 1407.7585188828216,
+    "larger_spread": 46.534347465587416,
+    "above_spread": true,
+    "passes": true
+   },
+   "identity_recorded": {
+    "identical": false,
+    "ref_fast_path_seen": true
+   }
+  },
+  "rules": {
+   "candidate_min_gain": 0.03,
+   "spread_mult": 2.0,
+   "epsilon_gate_ulp": 4,
+   "sizes_a": [
+    300,
+    400
+   ],
+   "ladder_n": 300,
+   "ladder_layers": [
+    0,
+    4,
+    8,
+    16
+   ],
+   "fit_layers": [
+    4,
+    8,
+    16
+   ],
+   "fraction_formula": "1 - ((n+1)/(n+1+2L))^3",
+   "model": "cost_ns = a + b*fraction (also a + b*L), fitted on the fit_layers rows",
+   "no_sum_check": true
+  }
+ },
+ "finished": "2026-09-14T16:13:33Z"
+}

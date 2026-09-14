@@ -369,3 +369,60 @@ pass, and measure a matched graded-mesh complex S-parameter.
   the arithmetic identity is asserted where it is testable.
 - **Provenance:** every stage asserts `rfx.__file__` under this tree;
   invocations use absolute paths. Stages are committed one at a time.
+
+
+### G5-5‴ trajectory statistic — computed on the stored curves (22e7290a)
+
+`S = 1.5479` → **FIRED** on 5 of 42: uniform8/ez 1.102, periodic8/hx 1.122,
+kappa8/hx 1.035, kappa8/hy 1.516, kappa8/hz 1.548 (all others 0.41-1.00;
+`s_stat.json`). Recorded as fired.
+
+**D2, declared before it was computed:** the statistic has ONE comparator;
+its own reroll-class value is `S_reroll = max RMS_t(d_legacy)/RMS_t(d_flag)`
+on the stored D1 curves. If `S_cand <= S_reroll` the candidate's trajectory
+divergence is inside what two harmless recompilations show against each
+other under the reviewer's statistic; if `S_cand > S_reroll` it is not, and
+that is a real finding. Result: **`S_reroll = 1.9156`**, largest
+reroll ratios kappa8/hy 1.92, kappa8/hz 1.66, uniform8/hx 1.57, uniform16/hy 1.38;
+`S_cand = 1.5479` → inside the reroll class. (`d2_reroll_S.json`)
+D2 is a calibration of the statistic, not a replacement gate; G5-5‴ stays
+FIRED as declared.
+
+### Lane falsifier — RTX 4090 CPML-layer ladder, localized kernel (VESSL run 369367261025, staged 4e3c7c9f, harvested and deleted; `results/w8c_cpml_localized_4090.json` vs `w8b_nu_kernel_ablation_4090.json`, same harness, same card)
+
+| arm | lane | n | L | before Mcells/s (spread) | after (spread) | after/before |
+|---|---|---|---|---|---|---|
+| nu-z | nu | 300 | 8 | 1787.9 (77.0) | 3741.4 (18.4) | 2.093 |
+| nu-z-scalar-inv | nu | 300 | 8 | 2125.6 (12.5) | 3691.3 (34.6) | 1.737 |
+| nu-z-combo | nu | 300 | 8 | 2157.2 (15.8) | 4286.6 (64.3) | 1.987 |
+| nu-z-foldinv | nu | 300 | 8 | 1937.2 (18.9) | 3058.2 (38.4) | 1.579 |
+| nu-z-inv3d | nu | 300 | 8 | 1355.7 (0.6) | 2962.1 (245.1) | 2.185 |
+| nu-z | nu | 400 | 8 | 1586.6 (0.3) | 3792.7 (37.5) | 2.390 |
+| nu-z-scalar-inv | nu | 400 | 8 | 1764.0 (2.6) | 3695.5 (46.4) | 2.095 |
+| nu-z-combo | nu | 400 | 8 | 1724.6 (14.1) | 4367.7 (230.3) | 2.533 |
+| nu-z-foldinv | nu | 400 | 8 | 1704.0 (2.7) | 3050.3 (93.2) | 1.790 |
+| nu-z-inv3d | nu | 400 | 8 | 764.9 (0.4) | 2899.8 (7.0) | 3.791 |
+| bare-slow | uniform | 300 | 0 | 10015.9 (82.3) | 10042.5 (27.1) | 1.003 |
+| nu-uniform | nu | 300 | 0 | 10037.9 (57.9) | 10063.2 (65.9) | 1.003 |
+| bare-slow | uniform | 300 | 4 | 2030.5 (124.8) | 1637.5 (55.2) | 0.806 |
+| nu-uniform | nu | 300 | 4 | 1795.3 (76.8) | 4584.1 (429.0) | 2.553 |
+| bare-slow | uniform | 300 | 8 | 2120.8 (0.0) | 1525.7 (30.1) | 0.719 |
+| nu-uniform | nu | 300 | 8 | 1780.7 (3.3) | 3727.6 (13.6) | 2.093 |
+| bare-slow | uniform | 300 | 16 | 2037.1 (81.4) | 1433.6 (24.9) | 0.704 |
+| nu-uniform | nu | 300 | 16 | 1549.2 (52.6) | 3426.8 (10.3) | 2.212 |
+| bare | uniform | 300 | 0 | 8669.9 (37.1) | 8634.7 (46.5) | 0.996 |
+
+**Controls hold**: the 0-layer rows move 1.003 / 1.003 / 0.996 — inside spread.
+**NU lane: 2.1-2.6x faster at every layer count** (300^3 L=4/8/16:
+1795→4584, 1781→3728, 1549→3427; 400^3 cpml8: 1587→3793), and every
+NU-kernel variant of the G1b matrix gains 1.6-3.8x on top of its own
+before value.
+**Uniform lane: 20-30 % SLOWER** (300^3 L=4/8/16: 2030→1638, 2121→1526,
+2037→1434). **The lane falsifier FIRES for the uniform lane, as declared**:
+the localized kernel is not faster on both lanes. Reading, not a
+measurement: on the uniform slow path the whole-array CPML corrections were
+fused into the Yee update as one pass; slab-scoped updates (dynamic-slice
+adds) break that fusion and cost extra full-array passes, while the NU
+path — already unfused by its per-axis `inv_*` broadcasts — only loses
+work. That is a hypothesis for the next declaration (lane-conditional
+dispatch, or a slab update that keeps the fusion), not a result.

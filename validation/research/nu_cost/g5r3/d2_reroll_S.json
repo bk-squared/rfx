@@ -1,0 +1,39 @@
+{
+ "stage": "d2_reroll_S",
+ "definition": "S_reroll = max_(fixture,field) RMS_t(d_legacy)/RMS_t(d_flag) on stored curves",
+ "S_reroll": 1.9156363843363367,
+ "S_cand": 1.5479012537888446,
+ "top": [
+  [
+   "kappa8",
+   "hy",
+   1.9156363843363367
+  ],
+  [
+   "kappa8",
+   "hz",
+   1.6568643166782884
+  ],
+  [
+   "uniform8",
+   "hx",
+   1.5690885390162284
+  ],
+  [
+   "uniform16",
+   "hy",
+   1.378075554576503
+  ],
+  [
+   "uniform16",
+   "ez",
+   1.3532452426940715
+  ],
+  [
+   "uniform16",
+   "ex",
+   1.3458100818290915
+  ]
+ ],
+ "per_field_cand_over_reroll_class": true
+}
