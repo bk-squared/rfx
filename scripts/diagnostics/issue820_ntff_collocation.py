@@ -113,6 +113,45 @@ NON-CLOSING. Preflight is quoted ("none emitted", verified with
 ``warnings.simplefilter('always')``) and the ring-down witness is quoted per
 rung.
 
+CORRECTIONS 2, after the verification review (2026-09-14). Re-derived from
+this lane's own artifacts before being written.
+
+N1. "arm (ii) is worse on all three observables" is FALSE for the transverse
+    null, and the claim is withdrawn. arm (ii) IMPROVES the null: 0.7020 ->
+    0.6609 dB (1.062x) at ka = 1.0 and 0.5561 -> 0.4888 dB (1.138x) at
+    ka = 2.0. It is FALSE against the 3x bar, not reversed.
+    What survives, and is the reportable reading: arm (ii) WORSENS the
+    LONGITUDINAL observables -- r 0.1189 -> 0.1602 and the x-sweep translation
+    spread 2.2772 -> 3.0344 dB -- while barely helping the null. Offered as
+    reasoning and NOT as attribution: a per-component phase leaves J at
+    i +- 1/2 and M at i, i.e. two equivalent-current surfaces half a cell
+    apart, whereas arm (i) brings both onto one surface.
+    THE "DISTANCE FROM MIE" COLUMN IS WITHDRAWN ENTIRELY. The review's sign
+    control (11-offset null; baseline / committed arm (ii) / sign-flipped /
+    x-face-H-only both signs) reads null p-p 0.7020 / 0.6609 / 0.7464 /
+    0.6519 / 0.7555 and Mie distance +0.7342 / +1.1225 / +0.3156 / +1.2167 /
+    +0.2200. The null prefers the CORRECT sign; the Mie distance prefers the
+    WRONG sign by 0.81 dB and awards its best score to the variant that
+    damages the null most. At 6.4 cells per radius the 0.73 dB baseline
+    distance is dominated by staircase error, so Mie distance is not a
+    discriminator at this rung. Every claim resting on it is withdrawn,
+    including arm (i)'s "0.37-0.50 dB closer to Mie".
+
+N2. Disclosed in ``_boxes`` above: arm (i)'s lo-side adjacent planes sit on
+    the first interior cells against the CPML.
+
+N5. The x-sweep TRANSLATION SPREAD per arm, which the first write-up omitted
+    in favour of r alone: baseline 2.2772 dB, arm (i) 1.6313 (1.396x),
+    arm (ii) 3.0344 (0.750x), arm (iii) 1.4908 (1.527x).
+
+N6. Gate (t1) was MIS-SPECIFIED, and its "CARRIER-INCONSISTENT" verdict mostly
+    refutes the gate rather than the hypothesis. With ``polarization="ez"`` the
+    y faces store ez and the z faces do not (``FACE_COMPONENTS``), so the two
+    transverse axes were never interchangeable for a z-polarized backscatter
+    and no axis-agnostic carrier was ever required to give the same odd ratio
+    on both. The z reading (1.924) stands as a measurement; it is not evidence
+    against collocation.
+
 Usage
 -----
   PYTHONPATH=<worktree> python3 scripts/diagnostics/issue820_ntff_collocation.py --sweep ynull_ka1
@@ -187,10 +226,27 @@ GATE_R_FALSE = 0.10
 GATE_CTL_MOVE_DB = 0.622   # committed cv16 ka=1.0 clearance-30 |rfx - Mie|
 GATE_CTL_VACUUM_DB = 40.0
 
+# CPML-DEPTH CONTROL for arm (i), pre-declared (correction N2). Arm (i) folds
+# in an adjacent plane that, on four of six faces, sits on the first interior
+# cell against the absorber. If its improvement is co-location, the shrink
+# factor must be insensitive to how deep that absorber is; if the improvement
+# came from the absorber-interface plane, it must drift. The cpmlladder arm
+# already showed the interior is byte-identical across 8/16/24 and the
+# longitudinal spread flat (2.3140 / 2.3084 / 2.3262 dB), so the absorber depth
+# is the ONLY variable here.
+#   GATE: shrink(arm_i) at 16 and at 24 must stay within +-15 % of its value at
+#   8, recomputed on the SAME seven offsets -> co-location is the carrier.
+#   Drift beyond +-15 % -> the absorber-interface plane was.
 SWEEPS = {
     "ynull_ka1": dict(axis="y", offsets=list(range(-10, 11, 2)),
                       ka=1.0, cpr=probe.COARSE_CPR, clear_cells=30,
                       steps_mult=1.0),
+    "ynull_ka1_cpml16": dict(axis="y", offsets=[-10, -6, -2, 0, 2, 6, 10],
+                             ka=1.0, cpr=probe.COARSE_CPR, clear_cells=30,
+                             steps_mult=1.0, cpml_layers=16),
+    "ynull_ka1_cpml24": dict(axis="y", offsets=[-10, -6, -2, 0, 2, 6, 10],
+                             ka=1.0, cpr=probe.COARSE_CPR, clear_cells=30,
+                             steps_mult=1.0, cpml_layers=24),
     "xsweep_ka1": dict(axis="x", offsets=list(range(-10, 11, 2)),
                        ka=1.0, cpr=probe.COARSE_CPR, clear_cells=30,
                        steps_mult=1.0),
@@ -226,9 +282,20 @@ def _emit(name, payload):
 def _boxes(grid, cpml_layers=CPML_LAYERS):
     """Production box plus the three one-cell-shifted boxes for arm (i).
 
-    Each shifted box moves ONE axis' pair of faces inward by one cell while
-    keeping that face's transverse extent, so its x/y/z face data is the plane
-    adjacent to the production face, cell for cell.
+    Each shifted box moves ONE axis' pair of faces by one cell toward the LOWER
+    index -- the lo face outward, the hi face inward (``d[lo] -= 1`` and
+    ``d[hi] -= 1``) -- while keeping that face's transverse extent, so its
+    x/y/z face data is the plane adjacent to the production face, cell for
+    cell. (The docstring said "inward" for both until correction N-P3.)
+
+    DISCLOSURE (correction N2). At the cv16 operating point the lo-side
+    adjacent planes land on j = 8 and k = 8, which are the FIRST INTERIOR CELLS
+    against the CPML (interior 8..82, box j/k_lo = 9). The x side is one cell
+    further in (i = 9). So arm (i) does not only co-locate H with E: on four of
+    the six faces it also folds in a plane that sits directly on the absorber
+    interface. Nothing in this lane separates "co-location helped" from "the
+    extra plane happened to help", and the CPML-depth control arm exists
+    because of exactly that.
     """
     freqs = np.array([F0], dtype=np.float64)
     _, b0 = probe._tfsf_and_ntff(grid, cpml_layers=cpml_layers, freqs=freqs)
@@ -311,7 +378,13 @@ def _sigma_dbsm(e_th, e_ph, grid, n_steps):
         4.0 * np.pi * (abs(e_th) ** 2 + abs(e_ph) ** 2) / abs(e_inc[0]) ** 2))
 
 
-ARM_NAMES = ("baseline", "arm_i", "arm_ii", "arm_iii")
+# arm_ii_flip is the SIGN CONTROL (correction N1). The transform's kernel is
+# exp(+1j k rhat.r'), so the correct per-component factor is
+# exp(+1j k rhat.delta); arm_ii_flip applies its conjugate, i.e. the
+# deliberately WRONG sign. It costs nothing -- same simulations, different
+# post-processing -- and it is what shows that "distance from Mie" at this rung
+# rewards the wrong sign and is therefore not a discriminator.
+ARM_NAMES = ("baseline", "arm_i", "arm_ii", "arm_iii", "arm_ii_flip")
 
 
 def _all_arms(nd, adj, box, grid, n_steps, k, dx):
@@ -321,6 +394,7 @@ def _all_arms(nd, adj, box, grid, n_steps, k, dx):
         "arm_i": nd_i,
         "arm_ii": _apply_arm_ii(nd, k, dx),
         "arm_iii": _apply_arm_ii(nd_i, k, dx, skip_h_normal=True),
+        "arm_ii_flip": _apply_arm_ii(nd, -k, dx),
     }
     res = {}
     for name, data in out.items():
@@ -358,11 +432,13 @@ def run_sweep(name):
         for n in cfg["offsets"]:
             off = [0, 0, 0]
             off[ax] = n
+            cp = cfg.get("cpml_layers", CPML_LAYERS)
             grid, mats, n_steps, mask, meta = probe.build_case(
                 tuple(off), ka=cfg["ka"], cpr=cfg["cpr"],
-                clear_cells=cfg["clear_cells"], steps_mult=cfg["steps_mult"])
+                clear_cells=cfg["clear_cells"], steps_mult=cfg["steps_mult"],
+                cpml_layers=cp)
             t0 = time.time()
-            box, nd, adj = _simulate(grid, mats, n_steps)
+            box, nd, adj = _simulate(grid, mats, n_steps, cpml_layers=cp)
             arms = _all_arms(nd, adj, box, grid, n_steps, k0, grid.dx)
             rows.append({"offset": n, "meta": meta, "arms": arms,
                          "wall_s": round(time.time() - t0, 1)})
@@ -386,10 +462,13 @@ def run_sweep(name):
     # --- S0: baseline must reproduce the probe's own path -------------------
     zero = [r for r in rows if r["offset"] == 0]
     if zero:
+        cp = cfg.get("cpml_layers", CPML_LAYERS)
         grid, mats, n_steps, _, meta = probe.build_case(
             (0, 0, 0), ka=cfg["ka"], cpr=cfg["cpr"],
-            clear_cells=cfg["clear_cells"], steps_mult=cfg["steps_mult"])
-        ref, _, _, _ = probe._rcs_complex(grid, mats, n_steps)
+            clear_cells=cfg["clear_cells"], steps_mult=cfg["steps_mult"],
+            cpml_layers=cp)
+        ref, _, _, _ = probe._rcs_complex(grid, mats, n_steps,
+                                          cpml_layers=cp)
         base = zero[0]["arms"]["baseline"]["monostatic_dbsm"]
         d = abs(ref["monostatic_dbsm"] - base)
         out["s0"] = {"probe_dbsm": ref["monostatic_dbsm"],

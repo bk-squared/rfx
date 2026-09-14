@@ -278,7 +278,12 @@ C5 (was P2). The auxprofile A/B moved TWO variables, not one. Changing the
    shown that auxiliary length is not inert (0.2976 dB against a 0.20 dB
    control bar). The direction of the result survives -- 1.83 dB of 2.28 dB
    remains under a 4700x cleaner injection -- but it is a two-variable
-   comparison and is labelled as one here and in the arm's output.
+   comparison and is labelled as one here. NOTE (correction N-P3): the
+   machine-readable label was added to ``arm_auxprofile`` AFTER that arm ran,
+   so the COMMITTED auxprofile JSON does not carry ``verdict`` /
+   ``two_variables_moved`` / ``control_restored``. The arm was deliberately
+   not re-run to produce them -- append-only evidence beats a prettier
+   record.
 
 C6 (was P3). The period reference is the NUMERICAL half wavelength, not the
    analytic one: ``k_num(axial) = 62.9169 /m`` against ``k0 = 62.8754 /m``
@@ -378,6 +383,65 @@ Pre-declared outcomes:
        carrier, the odd span must fall by >= 40 %. If the H staggering is the
        carrier -- re-centring does not touch it -- the odd span must change by
        < 20 %. In between is INCONCLUSIVE.
+
+CORRECTIONS 2 to the transverse arm, after the verification review
+(2026-09-14). Re-derived from this lane's own artifacts.
+
+N3. "first order in dx" is NOT established by a single halving, and the claim
+    is restated as "a discretisation error, ORDER NOT DETERMINED". The implied
+    exponent is p = log2(1/0.3041) = 1.717 raw and 1.635 on the sampling-
+    matched subset; the declared band 0.30-0.70 admits p = 0.51 .. 1.74, and
+    the measurement landed 1.4 % above the band floor, nearer second order
+    than first. The band was too wide to carry the word "first".
+    TWO CONFOUNDS in r3, disclosed rather than left implicit:
+      (a) CPML_LAYERS stayed at 8 CELLS, so the absorber's PHYSICAL thickness
+          halved with dx (0.0194987 m -> 0.0098697 m, ratio 0.506).
+      (b) the rasterized target changed: n_occupied 1127 -> 8952, so the
+          realized sphere is not the same body.
+    Arm R3b below fixes (a) by construction and discloses (b) per rung.
+
+N4. Gate (t3) moved TWO variables, not one. ``ntff_hi_shift=1`` subtracts one
+    from every hi index, which moves the box centre 45.5 -> 45.0 AND shrinks
+    the box by one cell per axis (spans 71/73/73 -> 70/72/72, i.e. 1.4 %).
+    The inference survives -- a 1.4 % size change against a 6.2 % RISE in the
+    odd span, where the gate wanted a 40 % fall -- but it is a two-variable
+    intervention and is labelled as one.
+
+ARM R3b -- the dx ladder done properly. Pre-declared and committed before it
+ran. One attempt (R2). It exists because (t2) could not carry the word "first
+order": a single halving implies p = 1.717 raw / 1.635 matched, and the band
+0.30-0.70 admits p = 0.51 .. 1.74. Three points can fit an exponent; two
+cannot.
+What is held FIXED across the rungs, in physical units rather than cells:
+  * sphere ka = 1.0;
+  * clearance 0.7317 lambda (30 cells at res 41 -> 45 at 61 -> 59 at 81;
+    realized 0.73171 / 0.73770 / 0.72840 lambda);
+  * CPML thickness 0.1951 lambda (8 -> 12 -> 16 cells; realized 0.19512 /
+    0.19672 / 0.19753 lambda) -- this is confound (a) of correction N3, fixed
+    by construction rather than disclosed;
+  * record length in physical time (steps_mult = res/41, so 700 -> 1041 ->
+    1382 steps against a transit-derived floor that never binds);
+  * the swept physical translation range, +-10 cells at res 41, rounded to the
+    integer lattice of each rung: {-10,-6,-2,0,2,6,10} -> {-15,-9,-3,0,3,9,15}
+    -> {-20,-12,-4,0,4,12,20}. Worst rounding mismatch 0.12 cells at res 61 and
+    0.24 at res 81, against a variation whose scale is ~20 cells. Seven points
+    per rung at matched relative density, so the p-p sampling bias is
+    comparable rung to rung even though it is not zero.
+What necessarily CHANGES and is therefore disclosed rather than controlled
+(confound (b) of N3): the rasterized target. n_occupied and a_eff/a are
+recorded per rung; a finer mesh realizes the sphere better, so the bodies are
+not identical. The observable is a NULL whose continuum value is 0.000 dB at
+every rung, which is what makes the comparison meaningful in spite of that.
+  (R3b) ORDER. Fit p by least squares on log(p-p) against log(dx) over the
+        three rungs, and report the two-point exponents as well.
+          p in [0.75, 1.25] -> FIRST ORDER. A half-cell collocation phase is
+            first order in k*dx/2, so this is the reading under which a
+            collocation term can be the LEADING error.
+          p in [1.75, 2.25] -> SECOND ORDER. Then the leading error is not a
+            half-cell offset, and collocation can at most be a subdominant
+            term.
+          anything else -> MIXED / UNDETERMINED, reported as such with the
+            fitted value and the residual, not rounded to the nearest story.
 
 Usage
 -----
@@ -489,14 +553,15 @@ def _load_latest(arm: str) -> dict:
 # ---------------------------------------------------------------------------
 def build_case(offset_cells=(0, 0, 0), *, cpml_layers=CPML_LAYERS,
                vacuum=False, steps_mult=1.0, ka=KA, cpr=COARSE_CPR,
-               clear_cells=CLEAR_CELLS):
+               clear_cells=CLEAR_CELLS, res_override=None):
     """cv16's ka=1.0 coarse point with the sphere translated by integer cells.
 
     ``ka`` / ``cpr`` / ``clear_cells`` default to the cv16 coarse operating
     point, so every call made before the transverse arm is unchanged.
     """
     radius = ka * LAM / (2 * np.pi)
-    res = max(15, int(np.ceil(2 * np.pi * cpr / ka)))
+    res = (int(res_override) if res_override
+           else max(15, int(np.ceil(2 * np.pi * cpr / ka))))
     dx = LAM / res
     domain = 2 * radius + 2 * clear_cells * dx
     grid = Grid(freq_max=F0 * 1.5, domain=(domain,) * 3, dx=dx,
@@ -1316,6 +1381,23 @@ T_RUNGS = {
     "r3_fine": dict(ka=1.0, cpr=12.8, clear_cells=60, steps_mult=2.0,
                     offsets=[-20, -10, -5, 0, 5, 10, 20], axes=("y",),
                     ntff_hi_shift=0),
+    # --- arm R3b: dx ladder with the CPML held at CONSTANT PHYSICAL thickness
+    # (correction N3 confound (a)). clear_cells and cpml_layers both scale with
+    # res, so the absorber, the clearance and the record are the same PHYSICAL
+    # rig at every rung; only dx changes. Offsets are the same physical
+    # translations, rounded to the integer lattice of each rung (max mismatch
+    # 0.12 cells at res 61, 0.24 at res 81).
+    "r3b_res41": dict(ka=1.0, cpr=COARSE_CPR, clear_cells=30, steps_mult=1.0,
+                      offsets=[-10, -6, -2, 0, 2, 6, 10], axes=("y",),
+                      ntff_hi_shift=0, cpml_layers=8, res_override=41),
+    "r3b_res61": dict(ka=1.0, cpr=COARSE_CPR, clear_cells=45,
+                      steps_mult=61 / 41,
+                      offsets=[-15, -9, -3, 0, 3, 9, 15], axes=("y",),
+                      ntff_hi_shift=0, cpml_layers=12, res_override=61),
+    "r3b_res81": dict(ka=1.0, cpr=COARSE_CPR, clear_cells=59,
+                      steps_mult=81 / 41,
+                      offsets=[-20, -12, -4, 0, 4, 12, 20], axes=("y",),
+                      ntff_hi_shift=0, cpml_layers=16, res_override=81),
 }
 
 
@@ -1345,15 +1427,18 @@ def _odd_even(offsets, values):
 
 def _ringdown(rung):
     """Interior-energy end/peak witness at offset 0 for one rung."""
+    cp = rung.get("cpml_layers", CPML_LAYERS)
+    ro = rung.get("res_override")
     grid, mats, n_steps, _, _ = build_case(
         (0, 0, 0), steps_mult=rung["steps_mult"], ka=rung["ka"],
-        cpr=rung["cpr"], clear_cells=rung["clear_cells"])
+        cpr=rung["cpr"], clear_cells=rung["clear_cells"],
+        cpml_layers=cp, res_override=ro)
     i0, i1 = grid.pad_x_lo, grid.nx - grid.pad_x_hi
     sl = (slice(i0, i1),) * 3
     rows = []
     for frac in (0.25, 0.5, 0.75, 1.0):
         n = max(int(round(n_steps * frac)), 1)
-        tfsf, box = _tfsf_and_ntff(grid, cpml_layers=CPML_LAYERS,
+        tfsf, box = _tfsf_and_ntff(grid, cpml_layers=cp,
                                    ntff_hi_shift=rung["ntff_hi_shift"])
         res = run(grid, mats, n, boundary="cpml", tfsf=tfsf, ntff=box)
         st = res.state
@@ -1390,10 +1475,13 @@ def arm_transverse(args):
                 off[ax] = n
                 grid, mats, n_steps, _, meta = build_case(
                     tuple(off), steps_mult=rung["steps_mult"], ka=rung["ka"],
-                    cpr=rung["cpr"], clear_cells=rung["clear_cells"])
+                    cpr=rung["cpr"], clear_cells=rung["clear_cells"],
+                    cpml_layers=rung.get("cpml_layers", CPML_LAYERS),
+                    res_override=rung.get("res_override"))
                 t0 = time.time()
                 r, _, _, _ = _rcs_complex(
                     grid, mats, n_steps,
+                    cpml_layers=rung.get("cpml_layers", CPML_LAYERS),
                     ntff_hi_shift=rung["ntff_hi_shift"])
                 r.update(meta)
                 r["wall_s"] = round(time.time() - t0, 1)
