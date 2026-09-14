@@ -1441,12 +1441,17 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, spec: dict, dt: float, *, tail: dict, or
         # The DERIVED bound on that witness (pre-declaration section 19). GL2, the
         # band mean, is the gate -- it is what the retired 3e-4 literal was also a
         # bound on. GL1, per bin, is COMPUTED AND REPORTED with its breach count,
-        # not gated: cv26 goes through a reflection null (TM below and through
-        # Brewster) where the standard's section 3 window, which is first order in
-        # the scattered-amplitude error, closes like sqrt(R_lat) while the residual
-        # does not. Carrying the exact second-order term was tried and FALSIFIED
-        # (section 19: 58 -> 54 and 110 -> 109 breaches), so the per-bin bound is
-        # reported as not established on this rig rather than quietly widened.
+        # not gated on this rig. The standard's section 3 window is FIRST ORDER in
+        # the scattered-amplitude error, and it is built from record truncation,
+        # incident truncation and float32 only -- it does NOT model the absorber /
+        # auxiliary-echo term an oblique rig carries inside its record and measures
+        # separately. Five of the seven primary arms breach it, and the two that do
+        # not are exactly the two whose absorber term sits far inside their window.
+        # Carrying the exact second-order term was tried and FALSIFIED (58 -> 54 and
+        # 110 -> 109 breaches), so the per-bin bound is reported as not established
+        # here rather than quietly widened. An earlier revision blamed a reflection
+        # null; that reading is WITHDRAWN (close note section 10.5) -- it fits tm_45
+        # alone, while te_60 breaches at R_lattice 0.318-0.448.
         # The budget needs SOME decay assumption for the truncation sum (the
         # standard names this as its one non-rigorous input). The two grazing
         # arms with no slab etalon have no ring-down rate at all -- graze_vac is
@@ -1481,11 +1486,17 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, spec: dict, dt: float, *, tail: dict, or
                 "GL1_gated": False,
                 "W_witness_defined": True,
                 "GL1_not_gated_reason": (
-                    "per-bin bound not established on this rig: the standard's section 3 window is "
-                    "first order in the scattered-amplitude error and closes like sqrt(R_lat), which "
-                    "the TM arms drive to ~1e-06 through the Brewster null while the residual does "
-                    "not follow. The exact second-order term does not close it (pre-declaration "
-                    "section 19). Reported with its breach count; GL2 is the gate."),
+                    "per-bin bound not established on this rig. The standard's section 3 window is "
+                    "first order in the scattered-amplitude error, and its budget covers record "
+                    "truncation, incident-reference truncation and float32 only -- NOT the absorber "
+                    "/ auxiliary-echo term an oblique rig carries inside its record and measures "
+                    "separately. Five of the seven primary arms breach it, and the two that do not "
+                    "(te_00, tm_00) are exactly the two whose absorber term sits far inside their "
+                    "window (0.07x, 0.04x). The exact second-order term does not close it "
+                    "(58 -> 54, 110 -> 109). An earlier revision attributed the breaches to a "
+                    "reflection null; that reading is WITHDRAWN -- it fits tm_45 alone, while "
+                    "te_60 breaches at R_lattice 0.318-0.448, three orders above any null. "
+                    "Reported with its breach count; GL2 is the gate. Issue #1015."),
             })
     return out
 

@@ -920,8 +920,9 @@ count 58 → 54 on tm_45 and 110 → 109 on tm_60. Falsified. The term is not ca
 further modification of the window is attempted. The case script records `GL1_gated: false`
 with the reason beside it on every FUTURE run; the committed records predate that plumbing,
 so today's derived numbers live in `validation/crossval/_26_oblique_results/lattice_witness_replay.json` — see §10.5, which also corrects the windows in
-this section. The per-bin bound is **not established for a
-rig with a reflection null**; cv26 claims GL2 and says so.
+this section. The per-bin bound is **not established on this rig**; cv26 claims GL2 and
+says so. §10.5 also supersedes the reading here: the breaches track the absorber term the
+standard's budget does not model, not a reflection null.
 
 ### 10.3 The falsifiers now separate against a green baseline, and F1 under-runs its declared margin
 
@@ -981,8 +982,10 @@ The case script records `GL1_gated: false` with this reason on every future run,
 the records already committed the same keys are in `validation/crossval/_26_oblique_results/lattice_witness_replay.json`, so a reader of the evidence
 cannot mistake "not gated" for "passed". **The windows quoted in this section are
 superseded by §10.5**, which corrects the source they were built from. Tracked against the standard as
-issue #1015 ("lattice_witness_standard GL1 per-bin window is undefined near reflection
-nulls"), which carries the same numbers; cv26 needs nothing further.
+issue #1015 ("lattice_witness_standard GL1 per-bin window: breaches track the unmodelled
+absorber term, not reflection nulls (cv26)"), which carries the corrected numbers; cv26
+needs nothing further. **The reading in this section is superseded by §10.5** — the null
+attribution below is withdrawn there.
 
 ### 10.5 Correction — the witness window was built from the wrong source, and tm_60 fails it (2026-09-14)
 
@@ -1025,8 +1028,9 @@ What fails is rfx against its own discrete model on this arm, not rfx against Fr
 **§10.2's "reflection null" diagnosis does not survive the correction, and is withdrawn.**
 It fitted `tm_45`, whose breaches do reach `R_lattice` 1.13e-06. It does not fit the
 corrected picture: `te_60`'s 98 breaches sit at `R_lattice` **0.318 – 0.448**, three
-orders above any null, and `tm_60`'s 357 sit at 9.27e-04 – 4.46e-02. Six of seven primary
-arms breach, including three TE arms that have no null anywhere in their band.
+orders above any null, and `tm_60`'s 357 sit at 9.27e-04 – 4.46e-02. **Five** of the seven
+primary arms breach (te_00 and tm_00 are 0/0 on both sides; R 5/7, T 5/7, either 5/7),
+including three TE arms that have no null anywhere in their band.
 
 **What the corrected data does show**, across the seven primary arms, with no exception:
 the two arms with **zero** GL1 breaches are exactly the two where the absorber term is far
@@ -1037,8 +1041,11 @@ does **not** model the absorber / auxiliary-echo term that cv26's oblique rig ca
 inside its record and measures separately. `tm_60`'s residual is 10.0 % of its own
 absorber term.
 
-This is a correlation on seven arms, not a law, and it is stated as such. `graze_te` is
-the counter-example that keeps it from being one: its absorber term is 172× its window by
+This is a correlation on seven arms, not a law, and it is stated as such. It separates the
+ends cleanly and is **loose in between**: `tm_45` at 1.52× breaches more than `te_60` at
+7.11× (190 against 98), and `te_45` at 0.83× more than `te_30` at 0.95× (75 against 18), so
+the ratio orders the extremes but does not rank the middle. `graze_te` is
+the counter-example that keeps it from being a law: its absorber term is 172× its window by
 design — it is the compact box whose record is built to contain the echo — and it has
 zero GL1 breaches. That arm is judged on G7, not on this witness.
 
