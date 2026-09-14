@@ -1333,6 +1333,12 @@ Replay only, on records already committed; no FDTD was run for this section.
 
 ### T1 — the slab family (cv04, cv22, cv23): every committed rung
 
+Thirteen committed rungs on **twelve distinct meshes**: `tand3` and `tand3_dx2`
+are the same mesh, as §5.1 already records (tand3's declared primary recipe IS
+dx/2, so it has no committed dx rung). Their rows below are identical because
+the measurement is — same `dx` 5e-4, same 2362 steps, `R_rfx` equal element for
+element. Counts that would double-count them are taken on the twelve.
+
 | case | rung | mean `W_R` | mean `\|ΔR−lat\|` | GL1_R beyond | GL1_T beyond | GL2_R/T | unmodelled term | #888 echo arrival ÷ record |
 |---|---|---|---|---|---|---|---|---|
 | cv04 | `slab_eps4` | 6.3463e-04 | 2.012e-05 | 0 | 0 | pass/pass | 0 by construction | 1.64× |
@@ -1404,24 +1410,33 @@ pre-declared conditions.**
   gate loosening of up to three orders and it is tabled, not hidden.
 
 **(B) demote GL1 to reported — REJECTED, because GL1 catches what GL2 does
-not.** Over the 65 falsifier × rung entries of cv04, cv22 and cv23 (195 rows
-counting R, T and A separately; cv22's and cv23's replayed from their committed
-records, because their committed `lattice_witness.json` predates F4 and carries
-no `eps_continuum` block — where it does carry one the two agree on every row):
+not.** Over the **60 falsifier × mesh** entries of cv04, cv22 and cv23 (**180
+rows** counting R, T and A separately; cv22's and cv23's replayed from their
+committed records, because their committed `lattice_witness.json` predates F4
+and carries no `eps_continuum` block — where it does carry one the two agree on
+every row). `tand3_dx2` is excluded throughout as the duplicate of `tand3`
+(T1); counting the thirteen committed rung NAMES instead gives 65 entries, 195
+rows, 38 GL1-only rows and six falsifiers, and double-counts one mesh:
 
-- GL1 fires while GL2 passes on **38 of 195** rows;
-- GL2 never fires while GL1 passes — **0 of 195**;
-- **six falsifiers of 65 are caught by GL1 ALONE**, and demoting GL1 turns all
-  six silent: cv22 `lorentz` / `eps_x1p01` (F3, the 1 % ε′ defect, 12 of 229 R
+- GL1 fires while GL2 passes on **32 of 180** rows;
+- GL2 never fires while GL1 passes — **0 of 180**. That zero is an IDENTITY
+  under the family default, not a measurement: GL1 and GL2 read the same mask
+  there, and `|Δ| ≤ W` at every bin implies `mean|Δ| ≤ mean W`, so GL2 cannot
+  fire alone. It is quoted to fix the direction of the containment — GL1 is the
+  strictly stronger gate — and it stops being an identity the moment a domain
+  restricts GL1 to a subset of the bins GL2 averages over, which is exactly
+  what (C) does on a rig that needs it;
+- **five falsifiers of 60 are caught by GL1 ALONE**, and demoting GL1 turns all
+  five silent: cv22 `lorentz` / `eps_x1p01` (F3, the 1 % ε′ defect, 12 of 229 R
   bins), cv23 `tand0p1_dx2` / `continuum` (F2, the deliberately wrong model, 59
   R and 68 T bins), and **every F4 that fires anywhere** — `eps_continuum` on
-  cv22 `drude` and on cv23 `tand1`, `tand3` and `tand3_dx2`. F4 is the
-  falsifier for the one ingredient this lane adds (carrying `ε_num` into the
-  lattice, §7); demoting GL1 retires it completely. All six are pre-declared to
-  FIRE in the `_F_FIRES` table of
-  `tests/crossval/test_lattice_witness_gates.py`, so six rows of that table
-  would have to be flipped to `False`. That is a measurable loss of the
-  standard's own detection power.
+  cv22 `drude` and on cv23 `tand1` and `tand3` (four firings on those three
+  meshes, since `tand3_dx2` repeats `tand3`). F4 is the falsifier for the one
+  ingredient this lane adds (carrying `ε_num` into the lattice, §7); demoting
+  GL1 retires it completely. All five are pre-declared to FIRE in the
+  `_F_FIRES` table of `tests/crossval/test_lattice_witness_gates.py`, so rows
+  of that table would have to be flipped to `False`. That is a measurable loss
+  of the standard's own detection power.
 
 **(C) declare GL1's validity domain — TAKEN.** §3 bounds three terms and
 DECLARES three zero by construction. Two of the three declared-zero terms are
@@ -1431,6 +1446,15 @@ auxiliary grid (#888). The family's reference, the infinite lattice of
 `dispersive_eps`, has no absorber in it at all, so there is nothing for that
 declaration to be wrong about: T1 shows both preconditions holding at all
 thirteen committed rungs with the echo arriving at 1.64×–1.92× the record.
+
+**Binding on every future consumer, not only cv26: a case whose record admits
+its absorber echo by AMPLITUDE rather than by arrival MUST supply `U(f)` to the
+gate (`evaluate(..., unmodelled_term=...)`, or `witness_domain` directly) and
+MUST report its coverage.** The parameter's default is zero-by-construction and
+it is SILENT — a consumer that forgets it gets a per-bin verdict on bins where
+the window is not a bound, which is the #1015 defect exactly, with nothing in
+the artifact to say so. The default is correct for the slab family and for
+nothing else.
 
 A rig that admits its echo INSIDE the record by AMPLITUDE instead has no such
 declaration to stand on. cv26 is exactly that: `e_absorber` / `absorber_ok`
@@ -1445,7 +1469,42 @@ and GL1 is defined on the bins where
     U(f) ≤ W_witness(f)
 
 — the omitted term must sit inside the window that omits it. Threshold 1, fixed
-in the pre-declaration and not moved afterwards.
+in the pre-declaration and not moved afterwards. **Why that is the line and not
+some other one:** where `U(f) > W(f)` the window omits a term larger than
+itself, and a per-bin verdict there measures the standard's own envelope rather
+than the solver.
+
+**The predicate is evaluated PER BIN, and the pre-declaration wrote it
+arm-level.** `witness_domain` compares `U(f)` against `W(f)` bin by bin
+(`lattice_witness.py`); the pre-declaration's §2 wrote the ratio against the
+arm's MEAN window with the gated-max term
+(`absorber_term_R_gated_max ÷ mean W ≤ 1`), which is one number per arm per
+observable. The per-bin form is the stricter of the two *in the direction that
+matters here*: it keeps more bins in the domain on arms whose term peaks
+narrowly, so it reports **more** in-domain breaches, **135 against the
+arm-level 93** (and 1156 outside against 1198). The implementation is the
+per-bin one and every number in §13.4 is per-bin. T2's `÷ W_R` column is the
+arm-level scalar the pre-declaration and #1015 quote — it is kept for
+continuity with the issue and is NOT what the domain column beside it is
+computed from, which is why `te_45` can read 0.83× there and 66.0 % coverage
+two columns later.
+
+**Departing from the pre-declaration's own tiebreak, named.** C2 has two
+clauses: leave every family rung inside the domain, and put cv26's breaching
+arms outside it. The first holds exactly; **the second fails** (§13.4). The
+pre-declaration's §2 tiebreak says that if none of (A), (B), (C) is satisfiable
+under its own rule then nothing is implemented and #1015 gets the table alone.
+That rule is overridden here, deliberately and on the record. The reason: what
+(A) and (B) failed on is that each MOVES something — (A) widens windows up to
+152× and converts a reported failure into a pass, (B) retires five falsifiers —
+while what (C) ships moves nothing. It adds a precondition, a per-arm coverage
+report and an opt-in parameter whose default is the family's existing
+behaviour; no verdict, window or gate value changes anywhere, and cv26's GL1
+stays exactly as ungated as it was. Shipping a scope statement that is
+*necessary but not sufficient* leaves the standard strictly more honest than
+shipping nothing, and the part C2 asked for and did not get is not hidden — it
+is §13.4, and it is what #1015 keeps tracking. A reader who disagrees with the
+override can read §13.4 and reject the section without re-deriving anything.
 
 ### 13.4 What the domain does and does not do — stated with the residue
 
@@ -1488,6 +1547,16 @@ nothing there, and the arm is judged on G7.
 - **Nothing numeric moved anywhere.** Every number the cv26 replay artifact
   already carried is bit-identical after regeneration; the diff is 33 added
   keys and one rewritten reason string.
+- **What exercises the domain-restricted GL1, and what does not.** The branch
+  in `evaluate` that judges GL1 on `witness_domain` is exercised only by the
+  synthetic tests (`test_lattice_witness_gates.py`, the two-direction test on
+  cv22's Lorentz rung under F3). cv26 does NOT go through it: its own
+  `GL1_R_bins_beyond` / `GL1_T_bins_beyond` are still the inline all-bins
+  counts in `oblique_fresnel.py`, with `domain_R` / `domain_T` reported beside
+  them. That is consistent with GL1 staying ungated there — cv26 reports a
+  breach count over every gated bin AND the split, and gates on neither — but
+  it means no committed case currently gates on the restricted form. The first
+  one that does will be the first real exercise of it.
 
 ### 13.6 What would refute this revision
 
@@ -1503,6 +1572,13 @@ nothing there, and the arm is judged on G7.
   reflectivity and the record length, the way `SETTLING_BAR` bounds the
   truncation term. That would make option (A) available on A5 and this section
   would be superseded by it — but not by a measured term alone.
+- **A consumer that admits its echo by amplitude and does not supply `U(f)`.**
+  The `unmodelled_term=None` default is silent, so such a case would report a
+  per-bin verdict on bins where the window is not a bound and nothing in its
+  artifact would say so — the #1015 defect, reintroduced. If that reaches a
+  committed case, the default is wrong and must become explicit (a required
+  argument, or a declared `unmodelled_term="zero-by-construction"` that a case
+  has to write down) rather than inferred from silence.
 
 ### 13.7 R2 / R3
 

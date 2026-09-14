@@ -692,17 +692,28 @@ def test_the_family_puts_its_absorber_echo_outside_the_record_by_arrival(case, c
         assert "domain" not in r, (case, name, "a family artifact carries no domain block")
 
 
-def test_gl1_catches_six_falsifiers_that_gl2_lets_through():
+def test_gl1_catches_falsifiers_that_gl2_lets_through():
     """The measurement that rejected option (B) of #1015, pinned so the reason
     GL1 was KEPT cannot quietly stop being true.
 
     Replayed over cv22's and cv23's committed rungs, GL2 never fires without
-    GL1, and six falsifiers are caught by GL1 ALONE -- cv22's Lorentz arm under
-    F3 (the 1 % eps' defect), cv23's tand0p1 at dx/2 under F2 (the continuum as
-    the witness model), and EVERY F4 that fires anywhere (``eps_continuum``,
-    the falsifier for the one ingredient this lane adds: carrying eps_num into
-    the lattice). Demoting GL1 to reported turns all six silent, F4 among them,
-    and six rows of ``_F_FIRES`` would have to be flipped to False."""
+    GL1, and a set of falsifiers is caught by GL1 ALONE -- cv22's Lorentz arm
+    under F3 (the 1 % eps' defect), cv23's tand0p1 at dx/2 under F2 (the
+    continuum as the witness model), and EVERY F4 that fires anywhere
+    (``eps_continuum``, the falsifier for the one ingredient this lane adds:
+    carrying eps_num into the lattice). Demoting GL1 to reported turns them all
+    silent, F4 among them, and those rows of ``_F_FIRES`` would have to be
+    flipped to False.
+
+    COUNTING, because the two counts differ and the note quotes the second.
+    This test iterates committed rung NAMES: 12 of them over cv22 and cv23,
+    60 entries, 180 rows, 38 GL1-only rows, 6 GL1-only falsifiers. But
+    ``tand3`` and ``tand3_dx2`` are the SAME MESH (note section 5.1; same dx,
+    same n_steps, R_rfx equal element for element), so on DISTINCT MESHES --
+    which is what note section 13.3 claims, cv04 included -- it is 60 entries,
+    180 rows, 32 GL1-only rows and 5 GL1-only falsifiers, with F4 firing four
+    times across three meshes. The assertions below are on rung names, because
+    that is what this replay enumerates; the note does the de-duplication."""
     expect_gl1_only = {
         ("cv22", "lorentz", "eps_x1p01"), ("cv22", "drude", "eps_continuum"),
         ("cv23", "tand1", "eps_continuum"), ("cv23", "tand3", "eps_continuum"),
@@ -727,6 +738,9 @@ def test_gl1_catches_six_falsifiers_that_gl2_lets_through():
     assert seen == expect_gl1_only, sorted(seen)
     assert (n_rows, n_gl1_only_rows) == (180, 38), (n_rows, n_gl1_only_rows)
     # every F4 that fires anywhere is in that set: demoting GL1 retires the
-    # falsifier this lane's one new ingredient is checked by.
+    # falsifier this lane's one new ingredient is checked by. Four firings, on
+    # three distinct meshes -- tand3_dx2 repeats tand3 (see the docstring).
     fires_f4 = {r for r in seen if r[2] == "eps_continuum"}
     assert len(fires_f4) == 4, sorted(fires_f4)
+    assert len({(c, "tand3" if n == "tand3_dx2" else n, k) for c, n, k in fires_f4}) == 3
+    assert len({(c, "tand3" if n == "tand3_dx2" else n, k) for c, n, k in seen}) == 5
