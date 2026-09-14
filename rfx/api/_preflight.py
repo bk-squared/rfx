@@ -156,35 +156,49 @@ from rfx.preflight.pec_geometry import (
 )
 
 
-def _waveguide_skipped_note(skipped: list) -> str:
-    """The trailing sentence naming ports whose launch direction was unreadable.
-
-    Shared by both audits that consume :meth:`_waveguide_far_geometry`, so the
-    two cannot describe the same skip differently.
-    """
-    if not skipped:
-        return ""
-    return (" Ports skipped because their launch direction could not "
-            f"be read: {', '.join(skipped)}.")
-
-
-# ``compute_waveguide_s_matrix``'s own ``num_periods`` default, mirrored here
-# so ``preflight_sparameters(calculator="waveguide")`` audits the record a user
-# gets when they pass nothing. Pinned to the live signature by
-# tests/unit/preflight/test_waveguide_setup_audits.py.
-WAVEGUIDE_DEFAULT_NUM_PERIODS = 20.0
-
-
-def resolve_waveguide_port_freqs(sim, entry):
-    """The measured frequency grid of one waveguide port entry.
-
-    ONE definition, two users: ``compute_waveguide_s_matrix`` resolves the
-    band with it and so does ``preflight_sparameters(calculator="waveguide")``,
-    so the setup audits can never be reading a different band than the run.
-    """
-    if entry.freqs is not None:
-        return entry.freqs
-    return jnp.linspace(sim._freq_max / 10, sim._freq_max, entry.n_freqs)
+# ---------------------------------------------------------------------------
+# #980 Phase 3 re-export surface (leg 3).
+#
+# The three module-level waveguide leaves -- ``_waveguide_skipped_note``,
+# ``WAVEGUIDE_DEFAULT_NUM_PERIODS`` and ``resolve_waveguide_port_freqs`` --
+# moved verbatim to ``rfx.preflight.waveguide``. They are re-bound as module
+# globals of THIS module for the reasons the leg-0 block above lists, and for
+# one that is specific to this family and does NOT go away when the check
+# bodies follow:
+#
+#   * ``preflight_sparameters`` STAYS on ``_PreflightMixin`` below --
+#     permanently, it is the per-calculator routing entry point rather than a
+#     family check -- and reads BOTH ``resolve_waveguide_port_freqs`` and
+#     ``WAVEGUIDE_DEFAULT_NUM_PERIODS`` by BARE NAME when it builds the
+#     waveguide setup-audit call. Drop either from this namespace and
+#     ``preflight_sparameters(calculator="waveguide")`` raises NameError.
+#
+# ``_waveguide_skipped_note``'s two readers are the layout and record audits,
+# which call it by bare name and are still on the mixin as this block lands;
+# they leave in the commit that moves the bodies, and resolve it in
+# ``rfx.preflight.waveguide``'s globals from then on. The re-export is what
+# keeps both arrangements working, and it is required either way:
+# ``tests/unit/preflight/test_waveguide_setup_audits.py`` imports
+# ``WAVEGUIDE_DEFAULT_NUM_PERIODS`` from HERE and ``rfx/sparams/waveguide.py``
+# imports ``resolve_waveguide_port_freqs`` from HERE.
+#
+# Unlike the leg-2 block, this one is also a legitimate patch point -- there
+# is simply nothing patching it. An AST sweep over ``tests/ rfx/ validation/
+# scripts/ examples/`` resolving aliases, ``importlib`` forms and string-form
+# targets finds no ``monkeypatch``/``setattr``/``mock.patch`` site on any of
+# the three names, which is why ``rfx/sparams/waveguide.py`` is left importing
+# the resolver from here rather than being repointed at the leg module the way
+# leg 1 had to repoint its own S-matrix readers.
+#
+# 3 names move out and 3 come back, so the module namespace
+# ``tests/locks/test_preflight_split_snapshot.py`` pins by set equality is
+# exactly as wide after this leg as before it -- still 55.
+# ---------------------------------------------------------------------------
+from rfx.preflight.waveguide import (
+    _waveguide_skipped_note,
+    WAVEGUIDE_DEFAULT_NUM_PERIODS,
+    resolve_waveguide_port_freqs,
+)
 
 
 def _shape_bounds(shape):

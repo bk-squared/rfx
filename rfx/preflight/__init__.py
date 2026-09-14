@@ -30,6 +30,14 @@ Modules:
   bodies that read them (the #703 campaign-statics umbrella and its four
   checks, the #931 per-declaration realization findings, the #669
   Leontovich advisories and the conformal-fine-dx guard).
+* :mod:`rfx.preflight.waveguide` — the waveguide-port family: the three
+  module-level leaves
+  (:func:`~rfx.preflight.waveguide._waveguide_skipped_note`,
+  :data:`~rfx.preflight.waveguide.WAVEGUIDE_DEFAULT_NUM_PERIODS`,
+  :func:`~rfx.preflight.waveguide.resolve_waveguide_port_freqs`) and the
+  twelve ``_PreflightMixin`` bodies that make up the realized-aperture and
+  cutoff checks (#150 / #737 / #738), the P2.8 reference-plane check, and
+  the three post-v1.8 S-parameter setup audits with their shared builder.
 
 ``_PreflightMixin`` itself STAYS in ``rfx/api/_preflight.py``: its
 ``_validate_simulation_config`` body is an ordered sequence of 38 calls and

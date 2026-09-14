@@ -391,6 +391,20 @@ _REEXPORTED_FROM_MSL = (
     "msl_source_near_field_standoff_cells",
 )
 
+#: Names #980 Phase 3 leg 3 moved to ``rfx.preflight.waveguide``. None of the
+#: three is monkeypatched anywhere (AST sweep over tests/ rfx/ validation/
+#: scripts/ examples/, resolving aliases, importlib forms and string targets),
+#: so unlike leg 1 this re-export is the ONLY lookup target that has to exist
+#: and ``rfx/sparams/waveguide.py`` keeps importing the resolver from the
+#: facade. Two of them, ``resolve_waveguide_port_freqs`` and
+#: ``WAVEGUIDE_DEFAULT_NUM_PERIODS``, are read by BARE NAME from
+#: ``preflight_sparameters``, which never leaves the facade -- so this block
+#: stays load-bearing after every remaining leg has landed.
+_REEXPORTED_FROM_WAVEGUIDE = (
+    "WAVEGUIDE_DEFAULT_NUM_PERIODS", "_waveguide_skipped_note",
+    "resolve_waveguide_port_freqs",
+)
+
 #: Every leg's re-export block, keyed by the module it pulls from. The
 #: identity and whole-block tests below walk this, so a new leg adds one row
 #: here instead of a second copy of either test.
@@ -398,6 +412,7 @@ _REEXPORT_BLOCKS = {
     "rfx.preflight._common": _REEXPORTED_FROM_COMMON,
     "rfx.preflight.msl": _REEXPORTED_FROM_MSL,
     "rfx.preflight.pec_geometry": _REEXPORTED_FROM_PEC_GEOMETRY,
+    "rfx.preflight.waveguide": _REEXPORTED_FROM_WAVEGUIDE,
 }
 
 def test_reexported_preflight_names_are_the_same_objects():
