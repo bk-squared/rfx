@@ -277,6 +277,85 @@ def test_preflight_mixin_keeps_its_class_body_constants():
 
 
 # ===========================================================================
+# Deliverable 2b: the re-export block binds OBJECTS, never copies.
+# ===========================================================================
+#
+# The namespace lock above proves a name is still bound in
+# rfx.api._preflight. It cannot tell a re-export from a REDEFINITION, and a
+# redefinition is the failure this split cannot survive quietly:
+# PreflightWarning reached by two names that are two different classes would
+# leave `pytest.warns(PreflightWarning)` and every `isinstance` check in the
+# suite silently testing the wrong class, with `rfx/sparams/_common.py`
+# importing one of them and rfx/api/_preflight.py raising the other. So the
+# identity is pinned per name, mirroring
+# tests/locks/test_sparams_split_bit_identity.py's `is` check.
+# ---------------------------------------------------------------------------
+#: Names #980 Phase 3 leg 0 moved to ``rfx.preflight._common`` and that
+#: ``rfx/api/_preflight.py`` re-exports. Extend this as later legs land.
+_REEXPORTED_FROM_COMMON = (
+    "PreflightConfigError", "PreflightErrorWarning", "PreflightIssue",
+    "PreflightReport", "PreflightWarning", "_ABSORBER_PROXIMITY_CELLS",
+    "_absorber_boundary_for_axis", "_axis_pad_thickness_m",
+    "_coord_in_absorber", "_coord_near_absorber", "_fmt_freq", "_fmt_len",
+    "_fmt_signed",
+)
+
+def test_reexported_preflight_names_are_the_same_objects():
+    """``rfx.api._preflight.<name> is rfx.preflight._common.<name>``.
+
+    Set equality on names is not enough. A leg that re-typed a class body into
+    the facade instead of importing it would keep this module's namespace lock
+    green while breaking every identity comparison in the suite.
+    """
+    import rfx.api._preflight as facade
+    import rfx.preflight._common as common
+
+    wrong = []
+    for name in _REEXPORTED_FROM_COMMON:
+        assert hasattr(common, name), f"rfx.preflight._common lost {name}"
+        assert hasattr(facade, name), (
+            f"rfx.api._preflight no longer binds {name}; the re-export block "
+            "is incomplete")
+        if getattr(facade, name) is not getattr(common, name):
+            wrong.append(name)
+    assert not wrong, (
+        f"rfx.api._preflight REDEFINES {wrong} instead of re-exporting "
+        "rfx.preflight._common's objects. Two classes reached by one name is "
+        "how pytest.warns and isinstance start testing the wrong one.")
+
+
+def test_the_declared_reexport_surface_is_the_whole_import_block():
+    """The tuple above must name exactly what the facade imports.
+
+    Read off the source, so a name added to the re-export block without being
+    pinned here (or removed from it while still pinned) is caught. The block
+    is written as one explicit ``from rfx.preflight._common import (...)`` --
+    never ``import *`` -- precisely so it can be read this way.
+    """
+    import ast
+
+    src = (_REPO / "rfx" / "api" / "_preflight.py").read_text(encoding="utf-8")
+    imported: list[str] = []
+    star = []
+    for node in ast.walk(ast.parse(src)):
+        if isinstance(node, ast.ImportFrom) and node.module == "rfx.preflight._common":
+            for alias in node.names:
+                if alias.name == "*":
+                    star.append(node.lineno)
+                assert alias.asname is None, (
+                    f"re-export line {node.lineno} renames {alias.name}; the "
+                    "surface is the contract, so it must keep its own name")
+                imported.append(alias.name)
+    assert not star, (
+        f"rfx/api/_preflight.py line(s) {star} re-export rfx.preflight._common "
+        "with `import *`. The surface is the contract; list the names.")
+    assert sorted(imported) == sorted(_REEXPORTED_FROM_COMMON), (
+        "the re-export block and _REEXPORTED_FROM_COMMON disagree: "
+        f"block-only={sorted(set(imported) - set(_REEXPORTED_FROM_COMMON))}, "
+        f"pinned-only={sorted(set(_REEXPORTED_FROM_COMMON) - set(imported))}")
+
+
+# ===========================================================================
 # Fixtures.
 # ===========================================================================
 #
