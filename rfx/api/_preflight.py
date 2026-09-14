@@ -1008,16 +1008,6 @@ class PreflightIssue(str):
         }
 
 
-_BOOL_TRAP_MESSAGE = (
-    "PreflightReport cannot be evaluated as a boolean: it is a list of "
-    "issues, so an EMPTY (clean) report is falsy and a report with only "
-    "advisories is truthy \u2014 the opposite of what `if not "
-    "sim.preflight()` intends. Check `report.ok` (no error-severity "
-    "issues), `report.errors`, or call `report.raise_for_failure()`; use "
-    "`len(report)` / `report.issues` for the item count."
-)
-
-
 class PreflightReport(list):
     """Structured result of :meth:`Simulation.preflight`.
 
@@ -1044,6 +1034,19 @@ class PreflightReport(list):
         super().__init__(issues)
         self.flux_regions = [] if flux_regions is None else list(flux_regions)
 
+    # Class attribute, not a module-level constant: the module namespace of
+    # ``rfx.api._preflight`` is pinned by set equality
+    # (``tests/locks/test_preflight_split_snapshot.py``) ahead of the #980
+    # split, and this message belongs to the class anyway.
+    _BOOL_TRAP_MESSAGE = (
+        "PreflightReport cannot be evaluated as a boolean: it is a list of "
+        "issues, so an EMPTY (clean) report is falsy and a report with only "
+        "advisories is truthy \u2014 the opposite of what `if not "
+        "sim.preflight()` intends. Check `report.ok` (no error-severity "
+        "issues), `report.errors`, or call `report.raise_for_failure()`; use "
+        "`len(report)` / `report.issues` for the item count."
+    )
+
     def __bool__(self) -> bool:
         """Always raise: list truthiness is inverted for a report (#980).
 
@@ -1054,7 +1057,7 @@ class PreflightReport(list):
         trap becomes a failure at the call site instead of a run that
         silently skipped its own gate.
         """
-        raise TypeError(_BOOL_TRAP_MESSAGE)
+        raise TypeError(type(self)._BOOL_TRAP_MESSAGE)
 
     @property
     def issues(self) -> list:
