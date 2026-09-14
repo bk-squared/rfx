@@ -51,7 +51,7 @@ command is verified to return at least one hit on the current tree.
 | Probes / measurements | `grep "def add_probe\|def add_vector_probe\|def add_dft_plane_probe\|def add_flux_monitor\|def add_ntff_box" rfx/api/__init__.py` | `rfx/probes/` |
 | Materials / dispersion | `grep "def add_material" rfx/api/__init__.py` | `rfx/materials/` |
 | Boundaries | `grep -rl "cpml\|upml\|pec\|floquet" rfx/boundaries/` | `rfx/boundaries/` |
-| Post-processing (flux, Harminv) | `grep "def flux_spectrum\|def harminv" rfx/probes/probes.py rfx/harminv.py` | `rfx/probes/probes.py`, `rfx/harminv.py` |
+| Post-processing (flux, Harminv) | `grep "def flux_spectrum\|def subtract_flux_monitors\|def harminv" rfx/probes/probes.py rfx/harminv.py` | `rfx/probes/probes.py`, `rfx/harminv.py` |
 | S-parameters and port-family calculators (high-level, use these first) | `grep -rn "def compute_.*_s_matrix\|def compute_coaxial_line_reflection\|def compute_coaxial_two_port\|def compute_coax_msl_transition" rfx/api/ rfx/sparams/` | `rfx/sparams/{coax,waveguide,mixed,msl}.py` (bodies), `rfx/api/_sparams.py` (class bindings), `rfx/sources/`, `rfx/probes/sparam_driver.py` |
 | S-parameter module-level helpers shared by those calculators (MSL modal voltage / wave solve, settling, passivity, reciprocity and geometry advisories, mixed and coaxial power-wave assemblers) | `grep -rn "^def " rfx/sparams/_common.py` | `rfx/sparams/` — re-exported from `rfx.api._sparams` for backward compatibility, so import either spelling |
 | S-parameter low-level helpers | `grep "extract_waveguide_s_matrix\|extract_s_matrix\|extract_s11" rfx/sources/waveguide_port.py rfx/probes/probes.py` | `rfx/sources/waveguide_port.py`, `rfx/probes/probes.py` |
@@ -100,8 +100,11 @@ unreliable.
 
 Use `add_flux_monitor` + two-run reference subtraction instead. The canonical
 demonstration is `validation/crossval/03_straight_waveguide_flux.py`, which shows
-the two-monitor flux pattern explicitly. For the reference-subtraction contract,
-see the `add_flux_monitor` docstring in `rfx/api/__init__.py`.
+the two-monitor flux pattern explicitly. Do the subtraction with
+`subtract_flux_monitors(sample, ref)`, not by differencing two `flux_spectrum`
+results: flux is bilinear in E and H, so the flux difference keeps the
+incident/scattered cross terms. That helper's docstring and
+`docs/agent/recipe-rt-measurement.mdx` carry the contract.
 
 Finite-region flux monitors (`add_flux_monitor(size=..., center=...)`) run on
 uniform and graded grids. The shared `rfx/probes/flux_region.py` resolver
