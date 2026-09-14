@@ -586,3 +586,141 @@ class _CampaignStaticsContext:
                 o = 0.0
             offs.append(o)
         return offs
+
+
+def _assemble_realized(self, grid, *, nonuniform: bool):
+    """The run's realized conductor set on ``grid`` (#931 §1.7).
+
+    Runs the PRODUCTION assembly with the sheet / wire collectors and
+    realizes the ``(Mx, My, Mz)`` edge masks through
+    ``rfx.boundaries.pec.realized_pec_edge_masks`` under the run's own
+    periodic flags — the same call the solver lanes make. Every
+    preflight consumer that needs "where is metal" reads the returned
+    :class:`_RealizedPEC` (wall planes, ``is_pec_edge``), never the
+    cell mask: a sheet owns no cell, and a volume's far face is a
+    wall the cell mask does not mark (the #868 class).
+    """
+    sheets: list = []
+    wires: list = []
+    sheet_specs: list = []
+    if nonuniform:
+        mats, _, _, pec_mask = self._assemble_materials_nu(
+            grid, sheet_specs=sheet_specs, pec_sheets=sheets,
+            pec_wires=wires)
+    else:
+        mats, _, _, pec_mask, _, _, _ = self._assemble_materials(
+            grid, sheet_specs=sheet_specs, pec_sheets=sheets,
+            pec_wires=wires)
+    return _RealizedPEC(
+        lane="nonuniform" if nonuniform else "uniform", grid=grid,
+        materials=mats, pec_mask=pec_mask, sheets=sheets, wires=wires,
+        periodic=self._periodic_flags(), sheet_specs=sheet_specs)
+
+def _port_realized_edges(self, grid):
+    """:class:`_RealizedPEC` for the uniform lane, or ``None``.
+
+    Issue #738 review: the guide a waveguide port sits in is defined
+    by its WALLS, and on the committed sub-aperture fixtures those
+    walls are interior PEC shapes, not the domain faces. Read from
+    the PRODUCTION assembly so preflight sees the same realized
+    conductors the solve does — no geometric re-derivation from the
+    shape list. Called once per preflight and threaded through, so
+    the assembly runs once. A simulation with no geometry entries at
+    all has no interior walls by construction, so the assembly is
+    skipped there rather than run to produce an all-False set.
+    """
+    if not self._geometry and not getattr(self, "_thin_conductors", None):
+        return None
+    try:
+        realized = self._assemble_realized(grid, nonuniform=False)
+    except (ValueError, TypeError, NotImplementedError, KeyError,
+            AttributeError, IndexError):
+        # Deliberately NOT ``except Exception`` (PR #555): an async
+        # worker timeout must propagate through this advisory. On a
+        # narrow failure the caller falls back to the aperture,
+        # which is always defined. Issue #482 also made the timeout/
+        # cancel exceptions themselves ``BaseException``-derived, so
+        # this tuple is belt-and-suspenders, not the only guard --
+        # see the longer comment at the other ``_assemble_materials``
+        # call site in this file.
+        return None
+    if realized.empty:
+        return None
+    return realized
+
+def _port_pec_mask(self, grid):
+    """Kept name for ``tests/_waveguide_chain_battery_fixture.py``
+    (``transverse_spans``), which reads the guide the way preflight
+    does. Returns :meth:`_port_realized_edges` — the run's realized
+    conductor set, NOT a cell mask (a cell mask cannot carry a
+    volume's far face or a sheet, #931 §1.9); the object is what
+    :meth:`_port_transverse_spans` takes. Callers should move to the
+    new name; delete this once the fixture does."""
+    return self._port_realized_edges(grid)
+
+
+def _campaign_ctx(self):
+    """The shared :class:`_CampaignStaticsContext` for THIS preflight.
+
+    Built once per configuration and reused by every check that reads
+    conductor geometry (thin metal on NU, port/probe liveness, NTFF
+    walls, the #703 campaign checks, the #931 realization findings):
+    the context runs the production assembly, which on a large model
+    is the most expensive thing preflight does, and five checks each
+    building their own would run it five times. The cache key is the
+    identity of every geometry / thin-conductor entry plus the mesh
+    parameters, so an ``add()`` after a preflight (a new entry object)
+    or a mesh change misses the cache and rebuilds — the staleness a
+    plain instance cache would have had.
+    """
+    sim = self
+    key = (
+        tuple(id(e) for e in sim._geometry),
+        tuple(id(tc) for tc in getattr(sim, "_thin_conductors", ())),
+        id(sim._dx), id(sim._dx_profile), id(sim._dy_profile),
+        id(sim._dz_profile), tuple(sim._domain),
+        getattr(sim, "_periodic_axes", None), sim._cpml_layers,
+        id(getattr(sim, "_refinement", None)),
+        tuple(sorted(sim._materials)),
+    )
+    cached = getattr(self, "_pf_campaign_ctx", None)
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    ctx = _CampaignStaticsContext(self)
+    self._pf_campaign_ctx = (key, ctx)
+    return ctx
+
+
+# ---------------------------------------------------------------------------
+# Pre-move ``__qualname__``, restored explicitly.
+#
+# Each of the four functions above was a ``def`` in the ``_PreflightMixin``
+# class body, so its ``__qualname__`` read ``_PreflightMixin.<name>``; a
+# module-level ``def`` gets the bare name instead. ``rfx/api/__init__.py``
+# rewrites exactly ``<mixin>.<name>`` -> ``Simulation.<name>`` at
+# class-composition time and SKIPS any function whose qualname does not match
+# that pattern, so leaving the bare name here would change what a TypeError
+# reports -- a user-visible behaviour change inside a pure code-motion step.
+# ``tests/unit/autodiff/test_design_mask_removed.py
+# ::test_no_public_simulation_method_leaks_a_mixin_class_name`` states the
+# rule but only walks PUBLIC members, and all four names here are private, so
+# ``tests/locks/test_preflight_split_snapshot.py`` pins these four directly.
+#
+# (``_CampaignStaticsContext.entry_realizations`` has no leading underscore
+# and so LOOKS like a public name the rewrite loop would walk. It is not a
+# ``Simulation`` member at all -- it is a method of the context class above,
+# reached as ``sim._campaign_ctx().entry_realizations()``, so neither the
+# rewrite loop nor the public-leak test ever sees it, and its qualname stays
+# ``_CampaignStaticsContext.entry_realizations`` because the class moved with
+# it.)
+#
+# None of the four was a ``@staticmethod`` -- the split's two are
+# ``_congruence_origin_shift`` in ``rfx/preflight/pec_geometry.py`` and
+# ``_validate_tfsf_vacuum_boundary`` in ``rfx/preflight/sources.py`` -- so
+# this module has no decorator the facade has to re-apply and every restored
+# qualname below becomes ``Simulation.<name>`` after composition.
+# ---------------------------------------------------------------------------
+_assemble_realized.__qualname__ = "_PreflightMixin._assemble_realized"
+_port_realized_edges.__qualname__ = "_PreflightMixin._port_realized_edges"
+_port_pec_mask.__qualname__ = "_PreflightMixin._port_pec_mask"
+_campaign_ctx.__qualname__ = "_PreflightMixin._campaign_ctx"

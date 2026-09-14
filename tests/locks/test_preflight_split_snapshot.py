@@ -753,6 +753,23 @@ _REBOUND_ON_MIXIN = {
         "_validate_cfg_unresolved_pulse",
         "_validate_tfsf_vacuum_boundary",
     ),
+    # Leg 7, the last motion leg. None of these four was a @staticmethod
+    # either, so _REBOUND_AS_STATICMETHOD stays at two names. These are the
+    # split's most-reached members and they emit NOTHING: they hand the
+    # realized conductor set to the families that do. _campaign_ctx is
+    # entered by 64 of the 65 fixtures below and _assemble_realized by 35,
+    # from four leg modules by self. (msl._msl_assemble_once,
+    # ports._check_coaxial_port_junction_aperture + _validate_cfg_port_
+    # inside_pec, waveguide._check_waveguide_port_evanescent,
+    # mesh._validate_thin_metal_on_nu_mesh, ntff._validate_ntff_inverse_
+    # design, pec_geometry._validate_cfg_campaign_statics) and from six test
+    # modules directly -- so a lost rebind here does not surface as one
+    # missing advisory, it reds most of the corpus. _port_pec_mask is the
+    # kept name tests/_waveguide_chain_battery_fixture.py:351 still uses.
+    "rfx.preflight.realization": (
+        "_assemble_realized", "_campaign_ctx", "_port_pec_mask",
+        "_port_realized_edges",
+    ),
     "rfx.preflight.ports": (
         "_check_coaxial_port_junction_aperture",
         "_validate_cfg_floating_single_cell_port",
