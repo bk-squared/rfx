@@ -12,7 +12,8 @@ Method: single-run input/output flux normalization.
 
 Boundary selection:
   - Default: `upml`
-  - Override with `RFX_BOUNDARY=cpml` for the material-aware CPML baseline
+  - Override with `RFX_BOUNDARY=cpml` for the material-aware CPML baseline,
+    which runs a 20-cell absorber (see `cpml_layers` below, issue #813)
 
 Run this script with JAX x64 enabled. The flux monitor accumulators need
 double precision for stable SI-unit spectra:
@@ -201,6 +202,28 @@ if boundary not in {"cpml", "upml"}:
         f"RFX_BOUNDARY must be 'cpml' or 'upml', got {boundary!r}"
     )
 
+# Absorber depth. `cpml_n` above is the PLANE-PLACEMENT constant: `pml`,
+# `src_x` and the output coordinates are all written off it, and it stays 10
+# so those planes do not move. What varies here is the absorber only, and only
+# on the RFX_BOUNDARY=cpml path.
+#
+# Measured, not chosen (issue #813,
+# scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json). On this rig
+# the straight-guide flux self-check `mean_self` reads 0.748852 at 10 CPML
+# layers, 0.884100 at 16, 0.919530 at 20 and 0.947345 at 40, against the UPML
+# run's 0.989162 -- so a 10-cell absorber returns ~25 points of the guided
+# power back through the off-guide part of the measurement plane. 20 is the
+# smallest swept depth that clears the pre-declared bar (>= 0.90906, two
+# thirds of the gap closed), and it is what
+# examples/crossval/11_waveguide_port_wr90.py uses for the same reason: a
+# guided mode running into the absorber needs more depth than a radiating one.
+#
+# This does NOT make the CPML variant pass G2 (0.95 <= mean_self <= 1.05):
+# 0.919530 is still short of it, and what remains is unattributed. #813 is
+# open. The default UPML path is untouched -- it keeps `cpml_n` -- so the
+# committed run and every number in its artifact are unaffected.
+cpml_layers = 20 if boundary == "cpml" else cpml_n
+
 sx = 16.0 * a
 sy = 16.0 * a
 wg_y = sy / 2
@@ -214,7 +237,8 @@ print("=" * 60)
 print("Cross-Validation 01: Waveguide Bend (Meep Basics equivalent)")
 print("=" * 60)
 print(f"eps={eps_wg}, w={w_wg/a:.0f}a, res=10, {n_steps} steps")
-print(f"Domain: {sx/a:.0f}a x {sy/a:.0f}a, boundary={boundary} ({cpml_n} layers)")
+print(f"Domain: {sx/a:.0f}a x {sy/a:.0f}a, boundary={boundary} "
+      f"({cpml_layers} layers)")
 print("Method: single-run input/output flux normalization")
 print()
 
@@ -234,7 +258,7 @@ print("Run 1: Straight waveguide (self-calibration)...", flush=True)
 t0 = time.time()
 sim_s = Simulation(freq_max=0.25 * C0 / a, domain=(sx, sy, dx), dx=dx,
                    boundary=BoundarySpec.uniform(boundary),
-                   cpml_layers=cpml_n, mode="2d_tmz")
+                   cpml_layers=cpml_layers, mode="2d_tmz")
 sim_s.add_material("wg", eps_r=eps_wg)
 sim_s.add(Box((0, wg_y - w_wg / 2, 0), (sx, wg_y + w_wg / 2, dx)),
           material="wg")
@@ -255,7 +279,7 @@ print("Run 2: 90-degree bend...", flush=True)
 t0 = time.time()
 sim_b = Simulation(freq_max=0.25 * C0 / a, domain=(sx, sy, dx), dx=dx,
                    boundary=BoundarySpec.uniform(boundary),
-                   cpml_layers=cpml_n, mode="2d_tmz")
+                   cpml_layers=cpml_layers, mode="2d_tmz")
 sim_b.add_material("wg", eps_r=eps_wg)
 sim_b.add(Box((0, wg_y - w_wg / 2, 0),
               (wg_x + w_wg / 2, wg_y + w_wg / 2, dx)), material="wg")
@@ -427,7 +451,7 @@ _doc = {
         "resolution_cells_per_a": int(round(a / dx)),
         "dx_m": float(dx),
         "boundary": boundary,
-        "boundary_layers": int(cpml_n),
+        "boundary_layers": int(cpml_layers),
         "pml_m": float(pml),
         "domain_over_a": [float(sx / a), float(sy / a)],
         "domain_m": [float(sx), float(sy), float(dx)],

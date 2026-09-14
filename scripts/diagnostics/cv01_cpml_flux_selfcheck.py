@@ -32,6 +32,14 @@ cpml_aperture    cpml      ``size=(2*w_wg, dx)`` about the guide centre
 upml_aperture    upml      ``size=(2*w_wg, dx)`` -- control for the row above
 ===============  ========  ===========================================
 
+The six arms run at ``cpml_n`` = 10 layers, which is the rig #813's number
+came from. cv01's ``RFX_BOUNDARY=cpml`` path moved to 20 layers afterwards, on
+the evidence of the sweep below, so these six arms are the HISTORICAL CPML rig
+and not today's CPML variant. They are left at 10 deliberately: the committed
+artifact's control is the committed number, and re-pointing the arms would
+silently restate #813's measurement as something else. ``--mode layer-sweep``
+is where 20 layers is measured.
+
 ``size=None`` is cv01's registration today and keeps the legacy full padded
 plane (``rfx/runners/uniform.py:74``). A finite ``size=`` clamps to the
 physical interior and excludes CPML and bounding-node slots (PR #990, issue
@@ -173,10 +181,15 @@ RIG_LINES = (
     "src_x = pml + dx",
     "f_cutoff = 1.0 / (2.0 * np.sqrt(eps_wg - 1.0))",
     "n_steps = 25000",
+    # cv01's absorber depth, split from its plane-placement constant in the
+    # same PR as the sweep below. `cpml_n = 10` above still has to be present
+    # verbatim -- it is what places `pml`, `src_x` and both monitors -- and
+    # this line is what sets the absorber.
+    "cpml_layers = 20 if boundary == \"cpml\" else cpml_n",
     # Geometry, material and source -- the structure itself, not just its numbers.
     'sim_s = Simulation(freq_max=0.25 * C0 / a, domain=(sx, sy, dx), dx=dx,',
     "                   boundary=BoundarySpec.uniform(boundary),",
-    '                   cpml_layers=cpml_n, mode="2d_tmz")',
+    '                   cpml_layers=cpml_layers, mode="2d_tmz")',
     'sim_s.add_material("wg", eps_r=eps_wg)',
     "sim_s.add(Box((0, wg_y - w_wg / 2, 0), (sx, wg_y + w_wg / 2, dx)),",
     '          material="wg")',
@@ -508,11 +521,14 @@ def run_layer_sweep(args, rig: dict, provenance_check: dict,
                      "validation/crossval/01_waveguide_bend.py -- at four "
                      "CPML absorber depths"),
         "deviation_from_cv01": (
-            "Simulation(cpml_layers=...) is swept over 10/16/20/40 while cv01 "
-            "pins `cpml_n = 10`. Nothing else differs: `pml = cpml_n * dx` "
-            "stays at 10 * dx, so `src_x = pml + dx` and the output plane at "
-            "`sx - pml - 5 * dx` do NOT move with the absorber. cv01 itself is "
-            "not modified or re-run by this mode."),
+            "Simulation(cpml_layers=...) is swept over 10/16/20/40. cv01's own "
+            "absorber depth is whatever its `cpml_layers` line selects for the "
+            "boundary in force (10 for upml, 20 for cpml since #813); this "
+            "mode ignores that line and sets the depth directly. Nothing else "
+            "differs: `pml = cpml_n * dx` stays at 10 * dx, so `src_x = pml + "
+            "dx` and the output plane at `sx - pml - 5 * dx` do NOT move with "
+            "the absorber. cv01 itself is not modified or re-run by this "
+            "mode."),
         "n_steps": int(args.n_steps),
         "n_steps_is_cv01_value": bool(args.n_steps == n_steps),
         "gate": ("SINGLE BINDING GATE: mean_self >= "
