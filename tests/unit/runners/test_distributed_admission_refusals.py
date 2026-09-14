@@ -161,13 +161,20 @@ Two conventions, stated rather than left implicit:
    nx_per=14, ny=nz=53) is the one that gives ``(20, 1, 1),
    (15, 53, 53)``.
 
-6. **Phantom x CPML window at a non-absorbing x face.** The lane applies
-   BOTH x-face CPML windows whenever ``boundary='cpml'`` and
+6. **Phantom CPML window at a non-absorbing face, on all six faces.** The
+   lane applies EVERY CPML face window whenever ``boundary='cpml'`` and
    ``cpml_layers>0``, never reads ``grid.face_pads``, and uses a non-zero
-   ``ce_xhi = dt/(eps_r*EPS_0)`` at the face -- so it ABSORBS at a face the
-   caller asked to reflect. Found in round 2 of the review, because the
-   class-5 arithmetic admits it. MEASURED on pristine d56f68eb, 2 devices,
-   0 warnings every time::
+   per-face ``dt/(eps_r*EPS_0)`` at the face -- so it ABSORBS at a face the
+   caller asked to reflect. Found in round 2 of the review on the two x
+   faces, because the class-5 arithmetic admits them; **round 4 found the
+   same defect ADMITTED on the y and z faces** and widened the check from
+   ``pad_x_lo``/``pad_x_hi`` to all six entries of ``grid.face_pads``.
+   ``_init_cpml_distributed`` (``rfx/runners/distributed.py``) builds ONE
+   scalar ``_cpml_profile`` and the kernel drives it at y-lo/y-hi/z-lo/z-hi
+   unconditionally too. The y/z rows are measured on ``origin/main``
+   883615c6 in the block comment above the y/z tests; the x rows are
+   MEASURED on pristine d56f68eb, 2 devices, 0 warnings every time, and
+   re-derived on 883615c6 to the printed digit::
 
        x_lo='cpml'/x_hi='pec', y/z cpml, cpml_layers=8, 24x8x8 mm,
        source (6,6,6) mm, probes x=12/22 mm, 60 steps:
@@ -183,28 +190,59 @@ Two conventions, stated rather than left implicit:
            broadcasting shapes (5,25,25)/(6,25,25) to this spec; those
            belong to x='pec'/'pec'. class 5 ADMITS this one (nx=17,
            pad_x=1, nx_per=9, n=8 <= 9)
-       x='pec'/'pec', y/z cpml, cpml_layers=8, with the fixture STATED
-       (an earlier draft gave 2.74%/3.06%/3.07% "at the source" with no
-       source position and no probe row, and it is not re-derivable that
-       way -- the source-probe figure decays as the domain grows while
-       the window stays 8 deep):
+       x='pec'/'pec', y/z cpml, cpml_layers=8, with the fixture STATED.
+       An earlier draft gave 2.74%/3.06%/3.07% "at the source" with no
+       source position and no probe row; round 4 measured the fixture the
+       branch itself states and got source-probe figures of 1.7610% /
+       0.0225% / 0.00002%, so that row was not re-derivable and is
+       replaced. The source-probe figure DECAYS as the domain grows (the
+       source moves away from a window that stays 8 cells deep), so the
+       figure that does not depend on where the source sits -- the one on
+       the FACE probes -- is what is shipped. Both are given here, with
+       which probe the row max sits on, so the labels cannot cross again:
            15 mm (nx=16), source x=7 mm, probes x=2/7/13 mm:
-               7.786655e-02 on a 4.421772e+00 row peak (1.760981e-02);
-               the x=2/13 mm probes 99.9986% / 99.9319% on their own peaks
+               source probe 7.786655e-02 of its own 4.421772e+00 peak
+               = 1.7610%; row max 1.760981e-02 of the row peak, ON THE
+               SOURCE PROBE; the x=2/13 mm face probes 99.9986% /
+               99.9319% on their own peaks
            19 mm (nx=20), source x=9 mm, probes 2/9/17 mm:
-               6.308181e-04 of the row peak; 99.9917% / 99.8366% on the
-               face probes
+               source probe 9.970665e-04 of 4.422243e+00 = 0.0225%;
+               row max 6.308181e-04, ON THE x=2 mm FACE PROBE;
+               99.9917% / 99.8366% on the face probes
            39 mm (nx=40), source x=19 mm, probes 2/19/37 mm:
-               3.307773e-05 of the row peak; 99.9424% / 99.4168% on the
-               face probes
+               source probe 9.536743e-07 of 4.422517e+00 = 0.00002%;
+               row max 3.307773e-05, ON THE x=2 mm FACE PROBE;
+               99.9424% / 99.4168% on the face probes
+           39 mm again, CENTRE PROBE ONLY, 200 steps (the shape of the
+               shipped test_distributed.py parity tests): 8.356664e-04 on
+               a 9.237972e+00 peak = 9.045994e-05 of peak -- INSIDE the
+               shipped 1e-3 CPML tolerance, while the face probes on the
+               same run are 99.4-99.9% wrong. That is why class 6 is a
+               refusal and not a warning: a caller who probes only far
+               from the faces cannot see it at any tolerance this suite
+               uses.
        x_lo='pmc'/x_hi='cpml', y/z cpml, dx=5 mm, 16x8x8 cells:
            54.1% of peak at 30 steps, 93.5% at 80 steps
 
-   Negative control (both x faces absorbing): ``boundary='cpml'``,
+       y/z faces (round 4, ADMITTED until then, 24x8x8 mm, dx=1 mm,
+       cpml_layers=8, field Ez source (6,4,4) mm, probes x=6/12/20 mm,
+       60 steps, identical digits on 883615c6 / HEAD 461cfe53 / base
+       7b511591):
+           z=(pec,cpml), x/y cpml: 90.5782% of the source probe's own
+               peak (4.003862e+00 on 4.420338e+00), 409.4824% / 281.3395%
+               at x=12/20 mm; bit-for-bit the same through the v1 pmap
+               runner at ONE device
+           z=(pec,pec):  max|dEz| 2.615769e+00 on a 5.171041e-03 probe
+               peak; 81.2831% at the source probe
+           y=(pmc,cpml): 521.9300% of the x=12 mm probe's own peak
+           y=(pec,pec):  373.3991% of the source probe's own peak
+
+   Negative control (all six faces absorbing): ``boundary='cpml'``,
    ``cpml_layers=8``, 24x8x8 mm, probes 12/22 mm, 60 steps ->
    5.820766e-09 on a 3.170117e-03 peak = 1.836e-06 of peak at 2 devices
-   (1.395e-06 at 1 device). Parity. The refusal costs the symmetric
-   absorber nothing.
+   (1.395e-06 at 1 device); on the round-4 y/z fixture 4.768372e-07 on
+   4.422548e+00 = 1.078195e-07. Parity. The refusal costs the fully
+   absorbing model nothing.
 
 7. **The exported v1 pmap runner was ungated for all of 1-6.**
    ``rfx/runners/__init__.py`` re-exports ``run_distributed`` from
@@ -631,7 +669,7 @@ def test_one_cell_of_overflow_is_admitted_by_class_5():
         nx=25, n_devices=3, nx_per=9, pad_x=2, ghost=1, cpml_layers=8,
         pad_x_lo=8, pad_x_hi=8) is None
     # and end to end: _asym(8, 6) is refused by class 6, not class 5
-    with pytest.raises(ValueError, match="declares no CPML absorber"):
+    with pytest.raises(ValueError, match="no CPML absorber"):
         _run_distributed(_asym(8, 6), n_steps=8)
 
 
@@ -653,7 +691,7 @@ def test_x_absorber_refusal_reports_the_slab_arithmetic():
     # so the overflow is not the dominant term and the message says so.
     assert "NECESSARY, NOT SUFFICIENT" in msg, msg
     assert "46.16%" in msg, msg
-    assert "check_x_absorber_faces_are_absorbing" in msg, msg
+    assert "check_absorber_faces_are_absorbing" in msg, msg
     # Round 3, BLOCKING 2: the "died inside XLA" claim is asserted only
     # when it is true of the caller's own configuration. It is here (the
     # window clips at ghost=1), and it was NOT for _asym(8, 6), which ran.
@@ -672,10 +710,12 @@ def test_the_x_absorber_condition_is_the_window_arithmetic():
 
     The x-hi window is ``[nx_per + ghost - pad_x - n, nx_per + ghost -
     pad_x)`` on a slab whose owned cells are ``[ghost, ghost + nx_per)``, so
-    ``n == nx_per - pad_x`` is the last depth this CHECK admits and
-    ``n + 1`` is the first it refuses.
+    ``n == nx_per - pad_x`` is the last depth that stays entirely INSIDE the
+    owned cells.  That is not where this check draws the line, and round 4
+    deleted the sentence that said it was: the paragraph below, and the body,
+    have pinned ``n + 1`` admitted / ``n + 2`` refused since round 3.
 
-    Round 3 narrowed that by one cell on each face, by measurement: the
+    Round 3 narrowed the bound by one cell on each face, by measurement: the
     innermost CPML layer has ``sigma=0``/``kappa=1`` so its correction is
     identically zero, and both windows are anchored, so ONE cell of
     overflow moves only that no-op layer into the halo -- byte-identical
@@ -692,7 +732,7 @@ def test_the_x_absorber_condition_is_the_window_arithmetic():
     x=6 mm probes 99.97% and 100.0% wrong on their own peaks and 0
     warnings -- the same order as the refused 6 mm case. What makes it
     wrong is the phantom x-hi window at the PEC face, which
-    :func:`check_x_absorber_faces_are_absorbing` refuses separately
+    :func:`check_absorber_faces_are_absorbing` refuses separately
     (class 6). This test pins the arithmetic; the class-6 tests below pin
     the sufficiency.
     """
@@ -763,7 +803,7 @@ def test_a_fitting_x_absorber_is_not_refused():
 
 
 # ---------------------------------------------------------------------------
-# 6. Phantom x CPML window at a non-absorbing x face
+# 6. Phantom CPML window at a non-absorbing face (all six faces)
 # ---------------------------------------------------------------------------
 
 def test_the_fitting_asymmetric_absorber_is_refused_by_class_6():
@@ -776,11 +816,13 @@ def test_the_fitting_asymmetric_absorber_is_refused_by_class_6():
     x=12/22 mm on the same 24x8x8 mm ASYM model: max|dEz| 1.610351e-04 on
     a 3.165971e-03 row peak = 5.086e-02 of peak, and the x=22 mm probe --
     2 mm inside the PEC face -- 99.46% wrong on its own 1.619078e-04 peak.
-    At 100 steps the row figure is 7.890e-02. At n_devices=1 it is the
-    identical 1.610351e-04 / 5.086e-02, which is how we know the window
-    and not the decomposition is the mechanism.
+    At 100 steps the row figure is 7.890e-02 (the x=22 mm probe 99.48%).
+    At n_devices=1 it is the identical 1.610351e-04 / 5.086e-02, which is
+    how we know the window and not the decomposition is the mechanism.
+    Round 4 re-derived every figure on ``origin/main`` 883615c6 to the
+    printed digit.
     """
-    with pytest.raises(ValueError, match="declares no CPML absorber"):
+    with pytest.raises(ValueError, match="no CPML absorber"):
         _run_distributed(_asym(8, 24), n_steps=8)
 
 
@@ -788,17 +830,36 @@ def test_the_phantom_window_refusal_names_the_face_and_the_way_out():
     with pytest.raises(ValueError) as excinfo:
         _run_distributed(_asym(8, 24), n_steps=8)
     msg = str(excinfo.value)
-    assert "x face x-hi declares no CPML absorber" in msg, msg
-    assert "grid.pad_x_lo=8" in msg and "grid.pad_x_hi=0" in msg, msg
+    assert "face x-hi declare(s) no CPML absorber" in msg, msg
+    # all six pads are reported, not only the two the caller broke
+    for token in ("grid.pad_x_lo=8", "grid.pad_x_hi=0", "grid.pad_y_lo=8",
+                  "grid.pad_y_hi=8", "grid.pad_z_lo=8", "grid.pad_z_hi=8"):
+        assert token in msg, f"{token!r} missing from: {msg}"
     assert "never reads grid.face_pads" in msg, msg
-    # the three ways out, each nameable
-    assert "BoundarySpec(x='cpml')" in msg, msg
+    # the ways out, each nameable
+    assert "make ALL SIX faces absorbing" in msg, msg
     assert "cpml_layers=0" in msg, msg
     assert "omit devices=" in msg, msg
 
 
+def test_the_remedy_never_points_at_the_x_only_composition():
+    """ROUND-4 (i): the round-3 remedy said 'make BOTH x faces absorbing
+    (BoundarySpec(x="cpml") ...)', and a caller with y/z reflectors who
+    followed it landed in the 90.58%-wrong y/z gap with 0 warnings.
+
+    The message must not offer an x-only remedy, and must say so in the
+    words a reader will act on.
+    """
+    with pytest.raises(ValueError) as excinfo:
+        _run_distributed(_asym(8, 24), n_steps=8)
+    msg = str(excinfo.value)
+    assert "BOTH x faces" not in msg, msg
+    assert "BoundarySpec(x='cpml')" not in msg, msg
+    assert "NOT just the x faces" in msg, msg
+
+
 def test_the_phantom_window_refusal_fires_through_the_public_dispatch():
-    with pytest.raises(ValueError, match="declares no CPML absorber"):
+    with pytest.raises(ValueError, match="no CPML absorber"):
         _run_api(_asym(8, 24), n_steps=8)
 
 
@@ -812,7 +873,9 @@ def test_a_pmc_x_face_is_refused_too():
     hi='cpml')`` with y/z CPML, it was 54.1% of peak wrong at that test's
     own 30 steps (1.350925e-01 on 2.498208e-01) and 93.5% at 80, with the
     probes 1 and 2 cells off the PMC face 100% wrong on their own peaks
-    and 0 warnings. That test now composes the PMC face with PEC.
+    and 0 warnings. Round 4 re-derived 54.08% / 93.48% on ``origin/main``
+    883615c6 with that test's own fixture (default ``cpml_layers``, i.e.
+    16, not 8). That test now composes the PMC face with PEC.
     """
     spec = BoundarySpec(x=Boundary(lo="pmc", hi="cpml"),
                         y=Boundary(lo="cpml", hi="cpml"),
@@ -820,24 +883,287 @@ def test_a_pmc_x_face_is_refused_too():
     sim = _build(boundary=spec, cpml_layers=8, domain=(24e-3, 8e-3, 8e-3))
     with pytest.raises(ValueError) as excinfo:
         _run_distributed(sim, n_steps=8)
-    assert "x face x-lo declares no CPML absorber" in str(excinfo.value)
+    assert "face x-lo declare(s) no CPML absorber" in str(excinfo.value)
 
 
-def test_the_phantom_window_check_is_a_no_op_when_both_faces_absorb():
-    """Unit boundary of class 6, simulation-free: it fires exactly when a
-    pad is 0, and never otherwise."""
+# --- round 4: the same class on the y and z faces --------------------------
+#
+# Measured on ``origin/main`` 883615c6 (identical digits on this branch's
+# base 7b511591 and on its HEAD before this widening), 24x8x8 mm at
+# dx=1 mm, ``cpml_layers=8``, ``amplitude_kind='field'`` Ez source at
+# (6, 4, 4) mm, Ez probes at x = 6/12/20 mm, 60 steps, 2 virtual CPU
+# devices, 0 warnings every time -- ADMITTED on HEAD until now:
+#
+#   z=(pec,cpml), x/y cpml   90.5782% at the source probe
+#                            (max|dEz| 4.003862e+00 on 4.420338e+00),
+#                            409.4824% / 281.3395% of their own peaks at
+#                            x=12/20 mm.  Through the v1 pmap runner at
+#                            ONE device: bit-for-bit the same three
+#                            figures.
+#   z=(pec,pec),  x/y cpml   max|dEz| 2.615769e+00 against a 5.171041e-03
+#                            probe peak at x=12 mm; 81.2831% at the source
+#   y=(pmc,cpml), x/z cpml   521.9300% of the x=12 mm probe's own peak
+#                            (3.988669e-02 on 7.642152e-03); 48.6214% at
+#                            the source
+#   y=(pec,pec),  x/z cpml   373.3991% of the source probe's own peak
+#                            (1.649596e+01 on 4.417783e+00)
+#   SYMMETRIC control        1.078195e-07 of peak (4.768372e-07 on
+#                            4.422548e+00)
+#
+# The z=(pec,cpml) row is the exact shape that
+# tests/unit/boundaries/test_boundary_pmc_composition.py's OQ9 test was
+# running at devices=devices[:2]: it asserted only a zero-pattern on the
+# PEC face and stayed green on the 90.58%-wrong run -- the same false green
+# the x face had in test_boundary_pmc_distributed.py. Round 4 split it into
+# test_oq9_uniform_cpml_path_enforces_pec_face_via_cpml_init (the
+# structural claim, on the lane that implements it, assertions unchanged)
+# and test_oq9_distributed_v2_refuses_the_pec_face_composition (what this
+# lane owes the fixture).
+
+_C = "cpml"
+
+YZ_RED_SPECS = {
+    "z_lo_pec": (BoundarySpec(x=_C, y=_C, z=Boundary(lo="pec", hi=_C)),
+                 "z-lo"),
+    "z_both_pec": (BoundarySpec(x=_C, y=_C, z=Boundary(lo="pec", hi="pec")),
+                   "z-lo and z-hi"),
+    "y_lo_pmc": (BoundarySpec(x=_C, y=Boundary(lo="pmc", hi=_C), z=_C),
+                 "y-lo"),
+    "y_both_pec": (BoundarySpec(x=_C, y=Boundary(lo="pec", hi="pec"), z=_C),
+                   "y-lo and y-hi"),
+}
+
+
+def _yz(spec):
+    """The round-4 y/z measuring fixture, spelled out.
+
+    Source at (6, 4, 4) mm and probes at x = 6/12/20 mm are part of the
+    measurement: the source probe carries the 90.58% figure and the two
+    downstream probes the 409% / 281% ones.
+    """
+    return _build(boundary=spec, cpml_layers=8, domain=(24e-3, 8e-3, 8e-3),
+                  source=(6e-3, 4e-3, 4e-3), probes=(6e-3, 12e-3, 20e-3))
+
+
+@pytest.mark.parametrize("key", sorted(YZ_RED_SPECS))
+def test_a_reflector_on_a_y_or_z_face_is_refused_too(key):
+    """RED: admitted on this branch's HEAD before round 4, 0 warnings, and
+    90.58% wrong at the source probe for ``z_lo_pec`` -- see the block
+    comment above for all four rows."""
+    spec, faces = YZ_RED_SPECS[key]
+    with pytest.raises(ValueError) as excinfo:
+        _run_distributed(_yz(spec), n_steps=8)
+    msg = str(excinfo.value)
+    _plural = "faces" if " and " in faces else "face"
+    assert f"{_plural} {faces} declare(s) no CPML absorber" in msg, msg
+    assert "90.58% wrong at the source probe" in msg, msg
+
+
+@pytest.mark.parametrize("key", sorted(YZ_RED_SPECS))
+def test_the_y_z_refusal_fires_through_the_public_dispatch_too(key):
+    spec, _faces = YZ_RED_SPECS[key]
+    with pytest.raises(ValueError, match="no CPML absorber"):
+        _run_api(_yz(spec), n_steps=8)
+
+
+@pytest.mark.parametrize("key", sorted(YZ_RED_SPECS))
+def test_the_y_z_refusal_fires_in_the_v1_pmap_runner_too(key):
+    """The exported ``rfx.runners.run_distributed`` is the v1 pmap runner,
+    and it is the runner that BUILDS the offending profile
+    (``_init_cpml_distributed``), so its copy of the check must be widened
+    with the other.
+
+    At 23 mm rather than the measurement's 24: this runner raises
+    ``Grid nx=... is not evenly divisible`` BEFORE the slab checks, and
+    the 24 mm fixture is nx=41. 23 mm gives nx=40. The refusal under test
+    does not depend on nx (the pads do not change with the domain).
+    """
+    from rfx.runners import run_distributed as exported
+    spec, _faces = YZ_RED_SPECS[key]
+    sim = _build(boundary=spec, cpml_layers=8, domain=(23e-3, 8e-3, 8e-3),
+                 source=(6e-3, 4e-3, 4e-3), probes=(6e-3, 12e-3, 20e-3))
+    assert sim._build_grid().nx % 2 == 0, "fixture no longer evenly divisible"
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(ValueError, match="no CPML absorber"):
+            exported(sim, n_steps=8, devices=_devices())
+
+
+def test_the_y_z_refusal_fires_at_one_device_too():
+    """The defect needs no decomposition: through the v1 pmap runner at ONE
+    device on 883615c6 the ``z=(pec,cpml)`` fixture is wrong by bit-for-bit
+    the 2-device figures (90.5782% / 409.4823% / 281.3395%), so the check
+    must fire there as well."""
+    from rfx.runners.distributed import run_distributed as run_v1
+    spec, _faces = YZ_RED_SPECS["z_lo_pec"]
+    # nx must be divisible by the device count; at one device any nx is.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(ValueError, match="no CPML absorber"):
+            run_v1(_yz(spec), n_steps=8, devices=_devices()[:1])
+
+
+def test_the_phantom_window_check_reads_all_six_pads():
+    """Unit boundary of class 6, simulation-free: it fires exactly when any
+    one of ``grid.face_pads``' six entries is 0, and never otherwise.
+
+    Round 4: before this, the check took ``pad_x_lo``/``pad_x_hi`` and the
+    four y/z entries were invisible to it -- which is precisely how the
+    90.58%-wrong ``z=(pec,cpml)`` model was admitted.
+    """
     from rfx.runners.distributed_v2 import (
-        check_x_absorber_faces_are_absorbing,
+        check_absorber_faces_are_absorbing,
     )
-    assert check_x_absorber_faces_are_absorbing(
-        cpml_layers=8, pad_x_lo=8, pad_x_hi=8, n_devices=2) is None
-    # per-face thicknesses differ but both absorb: still admitted
-    assert check_x_absorber_faces_are_absorbing(
-        cpml_layers=8, pad_x_lo=6, pad_x_hi=10, n_devices=2) is None
-    for lo, hi, face in ((0, 8, "x-lo"), (8, 0, "x-hi"), (0, 0, "x-lo")):
-        with pytest.raises(ValueError, match="declares no CPML absorber"):
-            check_x_absorber_faces_are_absorbing(
-                cpml_layers=8, pad_x_lo=lo, pad_x_hi=hi, n_devices=2)
+    assert check_absorber_faces_are_absorbing(
+        cpml_layers=8, face_pads=(8,) * 6, n_devices=2) is None
+    # per-face thicknesses differ but every face absorbs: still admitted
+    assert check_absorber_faces_are_absorbing(
+        cpml_layers=8, face_pads=(6, 10, 8, 8, 7, 9), n_devices=2) is None
+    faces = ("x-lo", "x-hi", "y-lo", "y-hi", "z-lo", "z-hi")
+    for i, face in enumerate(faces):
+        pads = [8] * 6
+        pads[i] = 0
+        with pytest.raises(ValueError) as excinfo:
+            check_absorber_faces_are_absorbing(
+                cpml_layers=8, face_pads=tuple(pads), n_devices=2)
+        assert f"face {face} declare(s) no CPML absorber" in str(
+            excinfo.value), (face, str(excinfo.value))
+    # every face off at once: all six named, joined as a list
+    with pytest.raises(ValueError) as excinfo:
+        check_absorber_faces_are_absorbing(
+            cpml_layers=8, face_pads=(0,) * 6, n_devices=2)
+    msg = str(excinfo.value)
+    assert "faces x-lo, x-hi, y-lo, y-hi, z-lo and z-hi" in msg, msg
+    # the six-tuple is required, not a two-tuple silently accepted
+    with pytest.raises(ValueError, match="six-tuple"):
+        check_absorber_faces_are_absorbing(
+            cpml_layers=8, face_pads=(8, 8), n_devices=2)
+
+
+def test_a_2d_cpml_model_gets_a_named_refusal_instead_of_an_xla_crash():
+    """``rfx/grid.py`` drops z from ``cpml_axes`` in 2-D, so a 2-D CPML
+    model has ``pad_z_lo == pad_z_hi == 0`` and class 6 now refuses it.
+
+    That takes nothing away. MEASURED on ``origin/main`` 883615c6,
+    ``mode='2d_tmz'`` and ``'2d_tez'``, 24x8x8 mm at dx=1 mm,
+    ``boundary='cpml'``, ``cpml_layers=8``, 2 devices: the run died inside
+    XLA with ``ValueError: Incompatible types for broadcasting: input
+    type=float32[23,25,8] and requested type=float32[23,25,1]``, an error
+    that names no feature, no face and no remedy. This refusal replaces
+    that with a named one -- and the message's only honest way forward for
+    a 2-D model is to omit ``devices=``, which it says.
+    """
+    for mode in ("2d_tmz", "2d_tez"):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            sim = Simulation(freq_max=15e9, domain=(24e-3, 8e-3, 8e-3),
+                             dx=DX, boundary="cpml", cpml_layers=8, mode=mode)
+            sim.add_source(position=(6e-3, 4e-3, 0.0), component="ez",
+                           amplitude_kind="field")
+            sim.add_probe(position=(12e-3, 4e-3, 0.0), component="ez")
+        assert sim._build_grid().face_pads[4:] == (0, 0), mode
+        with pytest.raises(ValueError) as excinfo:
+            _run_distributed(sim, n_steps=8)
+        msg = str(excinfo.value)
+        assert "faces z-lo and z-hi declare(s) no CPML absorber" in msg, msg
+        assert "every 2-D model" in msg, msg
+        assert "Incompatible types for broadcasting" in msg, msg
+
+
+def test_the_symmetric_absorber_is_still_admitted_on_all_six_faces():
+    """The negative control for the WIDENED check, at the shipped tolerance.
+
+    ``boundary='cpml'`` pads all six faces outside the requested domain by
+    construction, so the common case is untouched. Measured on 883615c6
+    with the round-4 y/z fixture (24x8x8 mm, source (6, 4, 4) mm, probes
+    x=6/12/20 mm, 60 steps, 2 devices): 4.768372e-07 on a 4.422548e+00
+    peak = 1.078195e-07 of peak. Asserted at the shipped 1e-3, unweakened.
+    """
+    sim_n = _yz("cpml")
+    sim_d = _yz("cpml")
+    assert sim_n._build_grid().face_pads == (8,) * 6
+    single = sim_n.run(n_steps=60, skip_preflight=True)
+    multi = _run_distributed(sim_d, n_steps=60)
+    ts_s = np.asarray(single.time_series)
+    ts_m = np.asarray(multi.time_series)
+    assert ts_s.shape == ts_m.shape
+    peak = np.max(np.abs(ts_s)) + 1e-30
+    rel = np.max(np.abs(ts_s - ts_m)) / peak
+    assert rel < 1e-3, f"symmetric six-face CPML distributed error {rel:.2e}"
+
+
+def test_the_runners_still_never_read_the_y_z_face_pads():
+    """The refusal's premise, checked instead of trusted.
+
+    Class 6 exists because ``_init_cpml_distributed`` builds ONE scalar
+    ``_cpml_profile`` and the kernel applies it at every face without
+    consulting the per-face pads. If a future change teaches either runner
+    about ``pad_y_*`` / ``pad_z_*`` / ``face_layers``, this fails and the
+    refusal must be re-derived rather than kept out of habit.
+    """
+    from pathlib import Path
+
+    import rfx.runners.distributed as d1
+    import rfx.runners.distributed_v2 as d2
+
+    for mod in (d1, d2):
+        src = Path(mod.__file__).read_text()
+        # ATTRIBUTE READS, not prose: the gate's own docstring and message
+        # must name the attributes the kernel ignores, and do.
+        for attr in ("grid.pad_y_lo", "grid.pad_y_hi",
+                     "grid.pad_z_lo", "grid.pad_z_hi",
+                     "grid.face_layers.get", "face_layers[("):
+            assert attr not in src, (
+                f"{mod.__name__} now reads {attr}; class 6's premise (one "
+                "scalar profile driven at every face regardless of the "
+                "per-face pads) must be re-derived, not kept out of habit")
+    # and the profile is still built ONCE, from the scalar depth: this is
+    # the other half of the premise (the depth ignores face_layers too).
+    d1_src = Path(d1.__file__).read_text()
+    assert "n = grid.cpml_layers" in d1_src, (
+        "the scalar-depth premise moved; re-derive class 6")
+    assert "_cpml_profile(n, grid.dt" in d1_src, (
+        "the one-scalar-profile premise moved; re-derive class 6")
+
+
+def test_the_nu_grid_answers_face_pads_so_the_check_can_read_it():
+    """Round 4: class 6 reads ``grid.face_pads``, and ``distributed_v2``
+    reaches the check with a NON-UNIFORM grid.
+
+    ``run_distributed`` builds the NU grid at ``is_nu`` and calls the slab
+    checks BEFORE the ``is_nu and use_cpml`` NotImplementedError below them
+    (that raise is a documented backstop, not a guard that runs first). The
+    NU grid dataclass carried the six per-face pads but not the name
+    ``Grid`` uses for them, so reading ``grid.face_pads`` would have turned
+    a named refusal into an ``AttributeError`` on that path -- strictly
+    worse than what it did before the widening, since the old check read
+    ``grid.pad_x_lo``, which the NU grid does have. A ``face_pads``
+    property now sits beside the existing ``axis_pads`` one.
+
+    Pinned both ways: the property's order matches ``Grid``'s, and the NU +
+    CPML + ``devices=`` path still ends at its own NotImplementedError.
+    """
+    from rfx.nonuniform import make_nonuniform_grid
+
+    nu = make_nonuniform_grid(domain_xy=(12e-3, 6e-3),
+                              dz_profile=np.full(7, 1e-3, dtype=np.float64),
+                              dx=1e-3)
+    assert nu.face_pads == (nu.pad_x_lo, nu.pad_x_hi,
+                            nu.pad_y_lo, nu.pad_y_hi,
+                            nu.pad_z_lo, nu.pad_z_hi)
+    # the same order Grid uses, checked against a real Grid rather than
+    # assumed from the attribute names
+    uni = _sym_cpml()._build_grid()
+    assert uni.face_pads == (uni.pad_x_lo, uni.pad_x_hi,
+                             uni.pad_y_lo, uni.pad_y_hi,
+                             uni.pad_z_lo, uni.pad_z_hi)
+
+    # and end to end: NU + CPML + devices= still gets the Phase-C refusal,
+    # not an AttributeError from inside the gate
+    sim = _sym_cpml()
+    sim._dz_profile = np.full(9, 1e-3, dtype=np.float64)
+    with pytest.raises(NotImplementedError, match="Phase B supports"):
+        _run_distributed(sim, n_steps=4)
 
 
 def test_a_pec_only_model_never_reaches_the_phantom_window_check():
@@ -846,7 +1172,6 @@ def test_a_pec_only_model_never_reaches_the_phantom_window_check():
     fixture still runs distributed (the parity control below)."""
     res = _run_distributed(_build())
     assert np.max(np.abs(np.asarray(res.time_series))) > 0
-
 
 # ---------------------------------------------------------------------------
 # 8. One ghost-width formula (docstring item 8; not an admission class)
@@ -1273,7 +1598,7 @@ def test_the_v1_pmap_runner_refuses_an_x_absorber_that_spans_ranks():
     with pytest.raises(ValueError) as excinfo:
         _run_v1(one_cell, n_steps=8)
     msg = str(excinfo.value)
-    assert "declares no CPML absorber" in msg, msg
+    assert "no CPML absorber" in msg, msg
     assert "distributed (v1) pmap runner" in msg, msg
 
     deep = _build(boundary=PEC_X_SPEC, cpml_layers=8,
@@ -1303,7 +1628,7 @@ def test_the_v1_pmap_runner_refuses_a_phantom_window_at_one_device():
     ``rfx.runners.run_distributed`` and as ``distributed_v2``'s
     ``n_devices == 1`` delegate.
     """
-    with pytest.raises(ValueError, match="declares no CPML absorber"):
+    with pytest.raises(ValueError, match="no CPML absorber"):
         _run_v1(_asym(8, 24), n_steps=8, n_devices=1)
 
 
@@ -1366,7 +1691,7 @@ def test_the_v1_pmap_runner_still_runs_a_symmetric_absorber_at_one_device():
      NotImplementedError, "add_ntff_box"),
     ("x absorber", lambda: _asym_deep(), ValueError, "x CPML absorber"),
     ("phantom window", lambda: _asym(8, 24), ValueError,
-     "declares no CPML absorber"),
+     "no CPML absorber"),
 ])
 def test_every_class_is_refused_on_the_default_preflight_path(name, make,
                                                               exc, match):

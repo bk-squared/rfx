@@ -116,6 +116,30 @@ class NonUniformGrid(NamedTuple):
         callers subtract from array indices to recover user coords."""
         return (self.pad_x_lo, self.pad_y_lo, self.pad_z_lo)
 
+    @property
+    def face_pads(self):
+        """Six-tuple of per-face pads — duck-typing compatible with ``Grid``.
+
+        ``(pad_x_lo, pad_x_hi, pad_y_lo, pad_y_hi, pad_z_lo, pad_z_hi)``, in
+        the same order and with the same meaning as ``rfx.grid.Grid``'s
+        attribute of that name: the absorber padding allocated OUTSIDE the
+        requested domain on each face, 0 exactly when that face is
+        ``pec``/``pmc``/``periodic`` or its axis carries no CPML.
+
+        Added 2026-09-15 (B0 round 4) because the distributed admission
+        gate's class-6 check reads ``grid.face_pads`` on all six faces, and
+        ``rfx/runners/distributed_v2.py`` reaches that check with an NU grid
+        (the ``is_nu and use_cpml`` NotImplementedError below it is a
+        backstop, not a guard that runs first). Without this property a
+        direct NU + CPML + ``devices=`` runner call would raise
+        ``AttributeError`` instead of a named refusal — strictly worse than
+        what it did before. The six fields are already here; this only
+        gives them the name ``Grid`` uses.
+        """
+        return (self.pad_x_lo, self.pad_x_hi,
+                self.pad_y_lo, self.pad_y_hi,
+                self.pad_z_lo, self.pad_z_hi)
+
 
 
 

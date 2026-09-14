@@ -704,11 +704,39 @@ CLASSIFICATION: dict[str, str] = {
     #       0.0033 % (it decays as the source moves away from the phantom
     #       window) while the face probes are 99.4-100 % wrong in all
     #       three. Replaced by three fully-stated rows.
+    #
+    # Round 4 (2026-09-15) caught a fifth, inside round 3's own replacement
+    # for (b): "the source-probe figure is 1.76 % / 0.063 % / 0.0033 %"
+    # mixed ONE source-probe figure with TWO ROW figures, and on those two
+    # domains the row max sits on the x=2 mm FACE probe, not on the source
+    # probe. Measured source-probe figures are 1.7610 % / 0.0225 % /
+    # 0.00002 %. The same round removed the "2.7-3.1 % wrong at the source"
+    # row from the SHIPPED ValueError text and docstring -- it had survived
+    # there after (b) replaced it in the note -- and put the face-probe
+    # figures (99.9986/99.9319 %, 99.9917/99.8366 %, 99.9424/99.4168 %) in
+    # its place, because those do not depend on where the source sits.
     # So the rule now reads: a quoted relative figure needs its source
-    # position and probe row, and a quoted ERROR STRING needs the spec that
-    # produced it. Round-3 numbers were re-measured on origin/main
-    # 7b511591, which is identical to d56f68eb in every runtime file this
-    # lane touches; the note names the commit beside each figure.
+    # position, its probe row AND which probe the max sits on; a quoted
+    # ERROR STRING needs the spec that produced it; and when a row figure
+    # and a per-probe figure are both interesting, print BOTH in a table
+    # with a column saying where the max sits (S2.6 now does). Round-3
+    # numbers were re-measured on origin/main 7b511591, which is identical
+    # to d56f68eb in every runtime file this lane touches; round 4
+    # re-derived EVERY red figure in the note on origin/main 883615c6, the
+    # tree the PR lands on, and the note names the commit beside each
+    # figure.
+    #
+    # Round 4 also widened class 6 from the two x faces to all six
+    # (grid.face_pads), after measuring a y/z phantom window the first
+    # three rounds had not looked for: x='cpml', y='cpml',
+    # z=Boundary(lo='pec', hi='cpml') at 24x8x8 mm, dx=1 mm,
+    # cpml_layers=8, field Ez source (6,4,4) mm, probes x=6/12/20 mm, 60
+    # steps, 2 CPU devices -- 90.5782 % of the source probe's own peak,
+    # 409.4824 % / 281.3395 % downstream, 0 warnings, and ADMITTED. Those
+    # numbers are in the same class as the rest of this entry: measured on
+    # a tree where the refusal does not exist (883615c6), re-derivable by
+    # running the committed `_yz()` fixture in
+    # tests/unit/runners/test_distributed_admission_refusals.py against it.
     "docs/design_notes/2026-09-14_distributed_admission_refusals.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260829_spec01_multiband_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260830_issue786_convergence_floor.md": NO_ARTIFACT_REFERENCE,

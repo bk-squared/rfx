@@ -1431,7 +1431,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # read from a variable that does not exist on this lane.
     if use_cpml:
         from rfx.runners.distributed_v2 import (
-            check_x_absorber_faces_are_absorbing,
+            check_absorber_faces_are_absorbing,
             check_x_absorber_fits_ranks,
         )
         check_x_absorber_fits_ranks(
@@ -1449,9 +1449,18 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # peak, 0 warnings, i.e. bit-for-bit the same wrongness as at two
         # devices. The phantom window does not need a slab to be wrong.
         # The symmetric control on the same fixture is 1.395e-06 of peak.
-        check_x_absorber_faces_are_absorbing(
-            cpml_layers=n_cpml,
-            pad_x_lo=grid.pad_x_lo, pad_x_hi=grid.pad_x_hi,
+        # Round 4: the same is true of the y and z faces, and it is THIS
+        # runner that builds the offending profile -- _init_cpml_distributed
+        # above makes ONE scalar _cpml_profile and the kernel applies it at
+        # y-lo/y-hi/z-lo/z-hi unconditionally. MEASURED through this runner
+        # at ONE device on origin/main 883615c6, 24x8x8 mm at dx=1 mm,
+        # cpml_layers=8, field Ez source (6, 4, 4) mm, probes x=6/12/20 mm,
+        # 60 steps, 0 warnings: z=Boundary(lo='pec', hi='cpml') with x/y
+        # CPML is 90.5782% wrong at the source probe and 409.4823% /
+        # 281.3395% of their own peaks at x=12/20 mm -- bit-for-bit the
+        # 2-device figures. So face_pads, all six, is what is checked.
+        check_absorber_faces_are_absorbing(
+            cpml_layers=n_cpml, face_pads=grid.face_pads,
             n_devices=n_devices, lane="distributed (v1) pmap runner",
         )
 
