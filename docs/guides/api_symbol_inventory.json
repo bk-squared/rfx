@@ -2631,6 +2631,10 @@
       "enforce_passivity",
       "report_every"
     ],
+    "compute_s_matrix": [
+      "lane",
+      "kwargs"
+    ],
     "compute_waveguide_s_matrix": [
       "n_steps",
       "num_periods",
@@ -2756,6 +2760,9 @@
       "skip_preflight",
       "report_every",
       "report_label"
+    ],
+    "s_matrix_lane": [
+      "lane"
     ],
     "set_periodic_axes": [
       "axes"

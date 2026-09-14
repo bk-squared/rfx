@@ -15,6 +15,42 @@ Status terms on this page are **supported**, **limited**, **experimental**,
 **not documented**, and **unsupported** as defined in
 `docs/guides/support_matrix.md`.
 
+## Which method should I call?
+
+If you are not sure which of the APIs below your simulation needs, do not
+guess from the table: ask the simulation.
+
+```python
+sim.s_matrix_lane()          # -> 'compute_waveguide_s_matrix'
+res = sim.compute_s_matrix() # routes to that method, forwarding kwargs
+```
+
+`Simulation.compute_s_matrix(**kwargs)` reads the registered ports, picks
+exactly one of the calculators below, and forwards every keyword argument to
+it unchanged — the delegate's own defaults, preconditions, warnings and
+result type are what you get, identical to calling it directly.
+`Simulation.s_matrix_lane()` returns the same choice as a string and runs no
+FDTD, so you can check the routing on a half-built simulation.
+
+| Registered | Routes to |
+|---|---|
+| waveguide ports only | `compute_waveguide_s_matrix(...)` |
+| MSL ports only | `compute_msl_s_matrix(...)` |
+| one coaxial port only | **ambiguous** — pass `lane="compute_coaxial_line_reflection"` or `lane="compute_coaxial_two_port"` |
+| one coaxial + one MSL port | `compute_coax_msl_transition(...)` |
+| lumped/wire `add_port(...)` + MSL | `compute_mixed_s_matrix(...)` |
+| lumped/wire only | raises, naming `run(compute_s_params=True)` — that lane returns a `Result`, not an S-matrix result type |
+| anything else | raises, naming the registered families and the method each one has on its own |
+
+Three deliberate refusals. It never guesses between
+`compute_coaxial_line_reflection` and `compute_coaxial_two_port`: both require
+exactly one `add_coaxial_port(...)` and reject every other family, so their
+registrations are identical and only you know which measurement you meant.
+It never calls `run()` for you, because that lane's `n_steps` has no default
+to supply. And it never routes to `compute_coaxial_s_matrix(...)`, the
+deprecated single-plane path, which `lane=` also cannot select — call it
+directly if you need it.
+
 ## Result and metric convention
 
 Full matrices use

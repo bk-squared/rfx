@@ -462,6 +462,24 @@ EMISSION_CLASSIFICATION = {
         DIAGNOSTIC_ONLY,
         "measured: no preflight()/_auto_preflight() call in this method; "
         "EXPERIMENTAL per its own docstring"),
+    "Simulation.compute_s_matrix": (
+        AUTO,
+        "issue #980 Phase 1 dispatcher (rfx/sparams/dispatch.py): calls no "
+        "preflight of its own, and its ACTUAL emission behaviour is whatever "
+        "the lane it selects does -- which this binary table cannot express. "
+        "AUTO is the MEASURED value and is recorded as such rather than "
+        "argued: the dispatcher reaches preflight through the "
+        "self.compute_msl_s_matrix()/self.compute_mixed_s_matrix() branches "
+        "of its own if-chain (both AUTO above), so _reaches_preflight is "
+        "True. READ IT AS: preflight runs on SOME lanes this method can "
+        "select, not on all of them. On the waveguide and the three coaxial "
+        "lanes -- each DIAGNOSTIC_ONLY in its own row above -- routing "
+        "through compute_s_matrix() adds no preflight, exactly as calling "
+        "them directly adds none. The dispatch is deliberately written as "
+        "explicit self.<method>(...) calls rather than a getattr lookup so "
+        "that this gate can measure it at all; a getattr indirection would "
+        "have hidden every branch and let the method sit here as "
+        "DIAGNOSTIC_ONLY on a technicality."),
 }
 
 _PREFLIGHT_CALL_NAMES = {"preflight", "_auto_preflight", "preflight_sparameters"}

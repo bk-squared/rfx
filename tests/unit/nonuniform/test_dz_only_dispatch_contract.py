@@ -59,8 +59,19 @@ _B_WG = 0.01016
 # ---------------------------------------------------------------------------
 # The contract. Keys must enumerate every public compute_* entry point on
 # Simulation; values state what a dz-ONLY graded mesh must do there.
-#   "nu-lane" — dispatches to that family's non-uniform lane
-#   "raises"  — refuses loudly, naming the profile restriction
+#   "nu-lane"   — dispatches to that family's non-uniform lane
+#   "raises"    — refuses loudly, naming the profile restriction
+#   "delegates" — has no mesh behaviour of its own; forwards to one of the
+#                 rows above, which then does its own thing. Only
+#                 compute_s_matrix, the #980 Phase 1 lane dispatcher, is in
+#                 this class. It is NOT a third mesh behaviour and must not
+#                 become a place to park a method whose dz-only answer nobody
+#                 worked out: a row here is only honest if the method reads no
+#                 profile, builds no grid, and adds no fence of its own, which
+#                 test_compute_s_matrix_dz_only_is_exactly_the_delegates_answer
+#                 checks in BOTH directions (an nu-lane delegate still reaches
+#                 the NU lane; a raising delegate still raises, with its own
+#                 message).
 # ---------------------------------------------------------------------------
 DZ_ONLY_CONTRACT = {
     "compute_waveguide_s_matrix": "nu-lane",   # THE #811 fix
@@ -70,6 +81,7 @@ DZ_ONLY_CONTRACT = {
     "compute_coaxial_line_reflection": "raises",
     "compute_coaxial_two_port": "raises",
     "compute_coax_msl_transition": "raises",
+    "compute_s_matrix": "delegates",           # #980 Phase 1 lane dispatcher
 }
 
 
@@ -263,6 +275,36 @@ def test_coaxial_two_port_dz_only_raises():
                              waveform=GaussianPulse(f0=8e9, bandwidth=1.2))
     with pytest.raises(ValueError, match="dz_profile"):
         sim.compute_coaxial_two_port(n_steps=1, n_freqs=1)
+
+
+def test_compute_s_matrix_dz_only_is_exactly_the_delegates_answer(monkeypatch):
+    """The #980 dispatcher must add no mesh behaviour of its own.
+
+    Both directions, because "delegates" is only an honest contract row if it
+    is unfalsifiable in neither:
+
+    * an "nu-lane" delegate must still REACH the NU lane through the
+      dispatcher (same sentinel as the direct waveguide test above), and
+    * a "raises" delegate must still raise ITS OWN fence, with its own
+      message naming dz_profile -- not a generic dispatcher-level refusal
+      that would hide which restriction was hit.
+    """
+    def boom(self, **kw):
+        raise RuntimeError("NU-LANE-ENTERED")
+
+    monkeypatch.setattr(Simulation, "_compute_waveguide_s_matrix_nu", boom)
+    sim = _dz_only_wg(_DZ_WR90_A)
+    with pytest.raises(RuntimeError, match="NU-LANE-ENTERED"):
+        with pytest.warns(Warning):
+            sim.compute_s_matrix(n_steps=1, normalize="flux")
+
+    coax = Simulation(domain=(0.008, 0.008, 0.040), freq_max=40e9,
+                      boundary="cpml", dz_profile=np.full(40, 1e-3))
+    coax.add_coaxial_port((0.004, 0.004, 0.020), face="top", pin_length=5e-3,
+                          waveform=GaussianPulse(f0=8e9, bandwidth=1.2))
+    with pytest.raises(ValueError, match="dz_profile"):
+        coax.compute_s_matrix(lane="compute_coaxial_two_port", n_steps=1,
+                              n_freqs=1)
 
 
 def test_coax_msl_transition_dz_only_raises():
