@@ -576,7 +576,13 @@ def _init_cpml_sharded(grid, nx_local, n_devices, mesh):
 #
 # The x-absorber class (#5) is position-DEPENDENT and lives in
 # :func:`check_x_absorber_fits_ranks`, called from inside
-# :func:`run_distributed` once the slab arithmetic is known.
+# :func:`run_distributed` once the slab arithmetic is known.  Round 3
+# narrowed its bound by one cell per face: ONE cell of window overflow is a
+# measured no-op (the innermost CPML layer has sigma=0/kappa=1, so its
+# correction is identically zero), and refusing it refused configurations
+# origin/main runs byte-identically to the fitting run.  The phantom x
+# window that the one-cell fixtures were really wrong about is class #6,
+# :func:`check_x_absorber_faces_are_absorbing`.
 DISTRIBUTED_UNSUPPORTED_CODE = "distributed_unsupported_feature"
 
 
@@ -598,14 +604,28 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
        ``test_the_runner_still_never_reads_periodic_axes``.  Do not trust
        a hand count here; that test compares the whole-file count against
        the gate count, so it stays correct as this docstring is edited.
-       A periodic axis therefore became an open ghost-coupled axis with
-       nothing said.
+       A periodic axis was therefore solved with the DECLARED
+       non-periodic boundary instead -- PEC here, CPML if
+       ``boundary='cpml'`` -- with nothing said.  Round 3 of the review
+       corrected the earlier "open ghost-coupled axis" wording by
+       measurement: y and z are not sharded at all, and on origin/main
+       (7b511591) the distributed ``periodic_axes='y'`` probe trace is
+       BYTE-IDENTICAL to the distributed PEC trace (``tobytes()`` equal,
+       max|d| 0.0, and the distributed PEC trace is 2.9e-10 from native
+       PEC), which is why the RED diff 1.963798e-04 equals
+       native-periodic-vs-native-PEC to every digit.
     2. **Extended lumped ports** (``impedance > 0`` with ``extent`` set).
        ``distributed_v2.py`` forks on ``impedance > 0.0 and extent is
        None`` then ``elif impedance == 0.0``; a wire port satisfies
        neither, so it got no source, no resistive termination and no
-       error.  ``rfx/runners/distributed.py:1414-1422`` (the pmap twin,
-       which is also the ``n_devices == 1`` delegate) has the same fork.
+       error.  The pmap twin in ``rfx/runners/distributed.py`` -- which
+       is also the ``n_devices == 1`` delegate -- has the same fork, at
+       the same two ``if pe.impedance > 0.0 and pe.extent is None:`` /
+       ``elif pe.impedance == 0.0:`` lines.  Cited by symbol and not by
+       line number on purpose: this branch inserts the two admission-gate
+       blocks ABOVE that fork, which moved it from :1414/:1422 on
+       origin/main to :1476/:1484 here, and an error message that points
+       62 lines off is worse than one that points at a name.
     3. **Passive ports** (``excite=False``).  No port branch in either
        distributed runner reads ``pe.excite`` -- on main (d56f68eb) the
        name ``excite`` did not occur in either file, and on this branch
@@ -666,11 +686,15 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
             "handle inter-device coupling)\", and again at :380/:415/:440) "
             "and no kernel in rfx/runners/distributed_v2.py reads "
             "sim._periodic_axes (outside this admission gate the attribute "
-            "does not appear in the file at all), so the axis is solved as "
-            "an OPEN ghost-coupled axis with nothing said (measured on main "
+            "does not appear in the file at all), so the axis is solved "
+            "with the DECLARED non-periodic boundary instead -- PEC here, "
+            "CPML if boundary='cpml' -- with nothing said (measured on main "
             "before this refusal: periodic_axes='y' gave a distributed "
             "trace 1.96e-04 away from the native periodic trace on a "
-            "1.09e-03 peak -- 18% of peak -- with no error and no warning). "
+            "1.09e-03 peak -- 18% of peak -- with no error and no warning, "
+            "and that trace was byte-identical to the distributed PEC run "
+            "of the same model, which is how we know the axis is reflected "
+            "and not left open). "
             "Drop the periodic axes (or the Bloch phase), or omit "
             "devices=... : the single-device run() lane honours both."
         )
@@ -690,8 +714,10 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
             f"supported on the {lane} path: the lane forks on "
             "`impedance > 0.0 and extent is None` and then on "
             "`impedance == 0.0` (the source/termination fork in "
-            "rfx/runners/distributed_v2.py, and its twin at "
-            "rfx/runners/distributed.py:1414-1422), and a port with a "
+            "rfx/runners/distributed_v2.py, and its twin at the same two "
+            "`if pe.impedance > 0.0 and pe.extent is None:` / `elif "
+            "pe.impedance == 0.0:` lines of rfx/runners/distributed.py), "
+            "and a port with a "
             "positive impedance AND an extent satisfies NEITHER -- it gets "
             "no source, no resistive termination and no error. Declared "
             f"here: {_detail}. Measured on main before this refusal: the "
@@ -759,7 +785,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
 def check_x_absorber_fits_ranks(*, nx, n_devices, nx_per, pad_x, ghost,
                                 cpml_layers, pad_x_lo=None, pad_x_hi=None,
                                 lane="distributed multi-device run()"):
-    """Refuse an x CPML absorber that does not fit inside one rank's slab.
+    """Refuse an x CPML absorber whose window overflows a rank's slab by >1.
 
     Class 5 of the admission gate, and the one that is position-dependent:
     it depends on the slab arithmetic, so it runs inside
@@ -776,58 +802,74 @@ def check_x_absorber_fits_ranks(*, nx, n_devices, nx_per, pad_x, ghost,
     (``xlo``/``xhi`` at rfx/runners/distributed.py:807-808; ``pad_x`` is the
     #623 alignment pad, which sits PAST the real x-hi face on the last
     rank.)  A rank owns the real cells ``[ghost, ghost + nx_per)`` of its
-    own slab, so the windows stay inside owned cells exactly while::
+    own slab, so the windows stay inside owned cells exactly while
+    ``n <= nx_per`` (x-lo) and ``n <= nx_per - pad_x`` (x-hi).
 
-        n <= nx_per           (x-lo face)
-        n <= nx_per - pad_x   (x-hi face)
+    **That is NOT the bound this check enforces**, and round 3 of the B0
+    review is why.  ONE cell of overflow is provably and measurably a
+    NO-OP, so refusing it refuses configurations main runs at parity::
 
-    Past that the window slides into the ghost halo.  ONE cell of overflow
-    keeps the window's LENGTH at ``n``, so every shape still matches,
-    nothing raises, and the absorber updates a halo cell instead of the
-    owned cell it should.
+        n <= nx_per + 1           (x-lo face)
+        n <= nx_per - pad_x + 1   (x-hi face)
 
-    MEASURED on pristine main (d56f68eb, 2026-09-14, 2 virtual CPU
-    devices, 60 steps).  The measuring fixture is stated in full because
-    the digits do not survive a change of source or probe placement; it is
-    ``_asym(8, 6)`` in
-    ``tests/unit/runners/test_distributed_admission_refusals.py``, i.e.
-    ``BoundarySpec(x=(cpml, pec), y=(cpml, cpml), z=(cpml, cpml))``,
-    ``cpml_layers=8``, domain 6x8x8 mm at dx=1 mm (so nx=15, pad_x=1,
-    nx_per=8), an Ez soft source at (3, 4, 4) mm with
-    ``amplitude_kind='field'``, and an Ez probe ROW at x = 1, 3, 5 and
-    6 mm (y = z = 4 mm)::
+    Why one cell is free, from the code: ``_cpml_profile``
+    (rfx/boundaries/cpml.py) grades ``rho = 1 - arange(n)/(n-1)``, so the
+    INNERMOST layer (profile index ``n-1``, or index ``0`` of the flipped
+    x-hi profile) has ``rho = 0``, hence ``sigma = 0``, ``kappa = 1`` and
+    ``c = sigma*(b-1)/denom = 0``.  Its psi therefore stays at its zero
+    initial value forever and the correction it applies,
+    ``-ce*psi - ce*(1/kappa - 1)*curl``, is identically zero -- not small,
+    exactly zero.  Both windows are ANCHORED (x-lo at ``ghost``, x-hi at
+    ``-(ghost + pad_x)``), so one cell of overflow moves exactly that
+    no-op layer into the halo and leaves layers ``0..n-2`` (x-hi:
+    ``1..n-1``) on the very cells they occupy when the absorber fits.
 
-        native peak |Ez|                4.416633e+00   (probe x=3 mm)
-        distributed vs native max|dEz|  2.207244e+00   (49.98% of peak)
-        probe x=5 mm (one cell inside
-          the x-hi PEC face)            1.646758e-01 wrong on its own
-                                        1.646768e-01 peak -- 99.9994%
-        warnings raised                 0
+    MEASURED on pristine origin/main (7b511591, 2026-09-14, symmetric
+    ``boundary='cpml'``, ``cpml_layers=8``, dx = 1 mm, y/z 8 mm,
+    ``amplitude_kind='field'`` Ez source at x = 3 mm, Ez probe row
+    x = 1/3/5/6 mm, 120 steps), with
+    ``XLA_FLAGS=--xla_force_host_platform_device_count=4``:
 
-    The probe ON the x-hi face (x=6 mm) reads exactly 0.0 on both lanes --
-    it sits on the PEC plane -- so the "99.9994%" probe is the one a cell
-    inside it, not the face probe.  The same fixture with the domain
-    widened to 24x8x8 mm (nx=33, pad_x=1, nx_per=17, so the absorber
-    fits) is at max|dEz| = 1.005828e-06 on a 4.422700e+00 peak =
-    **2.274240e-07 of peak**, i.e. parity; that is the negative control,
-    and it is the same fixture with one number changed.
+    * 11x8x8 mm -> nx = 28, 4 devices, ``pad_x=0``, ``nx_per=7``: ``n=8``
+      overflows BOTH faces by one cell.  max|dEz| vs native
+      9.536743e-07 on a 9.238437e+00 peak = **1.032290e-07 of peak**,
+      0 warnings, and the probe trace is **byte-identical** to the
+      2-device run (``nx_per=14``, absorber fits).
+    * 8x8x8 mm -> nx = 25, 3 devices, ``pad_x=2``, ``nx_per=9``: the x-hi
+      bound ``nx_per - pad_x = 7`` is exceeded by one.  1.430511e-06 on
+      9.238317e+00 = **1.548455e-07 of peak**, 0 warnings, the same
+      digits as the fitting 2-device run.
 
-    TWO or more cells of overflow run past the slab end, the clipped
-    window is shorter than the psi arrays, and XLA raises a broadcasting
-    error that names no feature.  That quote also needs its fixture: with
-    the SAME boundary spec but ``cpml_layers=20`` and domain 7x12x12 mm at
-    dx=1 mm (nx=28, pad_x=0, nx_per=14, ny=nz=53) main dies with "mul got
-    incompatible shapes for broadcasting: (20, 1, 1), (15, 53, 53)" -- the
-    ``(20, 1, 1)`` is the 20-layer psi profile and the ``15`` is the
-    clipped window ``nx_local - (ghost + pad_x)``.
+    A 25-row sweep on the same tree (domains 6/8/11 mm, ``cpml_layers``
+    8/12/16, ``n_devices`` 2..6) separates the bands exactly: every
+    configuration this check now admits ran at 5.4e-08..1.1e-07 of peak
+    with 0 warnings, and every configuration it refuses died with
+    ``TypeError: mul got incompatible shapes for broadcasting`` -- 0
+    mismatches in either direction.
+
+    TWO cells of overflow move a layer with ``sigma > 0`` into the halo.
+    At ``ghost == 1`` (what :func:`run_distributed` hardcodes) that is
+    also where the window runs past the slab end, the clipped window is
+    shorter than the psi arrays, and XLA raises a broadcasting error that
+    names no feature: e.g. ``BoundarySpec(x=('pec','pec'), y=cpml,
+    z=cpml)`` with ``cpml_layers=8`` at 6x8x8 mm (nx=7, pad_x=1,
+    nx_per=4) dies with ``(8, 1, 1), (5, 25, 25)``, and at 8x8x8 mm
+    (nx=9, nx_per=5) with ``(8, 1, 1), (6, 25, 25)``.  The general
+    statement is per ``ghost``, not per two cells: the window CLIPS when
+    ``n > nx_per + ghost`` (x-lo) / ``n > nx_per + ghost - pad_x``
+    (x-hi), so at ``ghost > 1`` overflows of 2..ghost cells would be
+    SILENT rather than fatal -- which is why this check refuses at
+    ``> 1`` and not at the clip, and why the bound does not go stale the
+    day ``ghost`` stops being 1.  ``ghost`` is still reported in the
+    message and used to say which band the caller is in.
 
     **This bound is NECESSARY, NOT SUFFICIENT** (round-2 review,
     measured 2026-09-14 on pristine d56f68eb, 2 CPU devices, 60 steps).
-    Satisfying it does not make the run right, and the arithmetic is not
-    what produces the 49.98% above.  The ADMITTED boundary case
-    ``n == nx_per - pad_x`` -- the same ``ASYM`` spec at domain 7x8x8 mm,
-    ``cpml_layers=8`` (nx=16, pad_x=0, nx_per=8), source (3, 4, 4) mm,
-    probe row x = 1/3/5/6 mm -- is::
+    Satisfying it does not make the run right.  The ADMITTED boundary
+    case ``n == nx_per - pad_x`` -- ``BoundarySpec(x=(cpml, pec),
+    y=cpml, z=cpml)`` at domain 7x8x8 mm, ``cpml_layers=8`` (nx=16,
+    pad_x=0, nx_per=8), source (3, 4, 4) mm, probe row x = 1/3/5/6 mm --
+    is::
 
         native peak |Ez| (x=3 mm)       4.420052e+00
         max|dEz|                        2.040125e+00   (46.16% of peak)
@@ -837,36 +879,30 @@ def check_x_absorber_fits_ranks(*, nx, n_devices, nx_per, pad_x, ghost,
                                         distributed 1.295477e-07  (100.0%)
         warnings raised                 0
 
-    i.e. the same magnitude as the REFUSED 6 mm case, with the window
-    arithmetic satisfied.  The dominant mechanism is not the overflow but
-    the PHANTOM x window itself: the runner applies BOTH x-face windows
-    whenever ``sim._boundary == "cpml"`` and ``grid.cpml_layers > 0``,
-    without consulting ``grid.face_pads``, and ``ce_xhi = dt / (eps_r *
-    EPS_0)`` is non-zero at a PEC face
-    (``rfx/runners/distributed.py``, the ``ce_xhi`` / ``xhi`` slices), so
-    the lane absorbs at the reflector.  That is decided by measurement,
-    not by reading: the same asymmetric model at 24x8x8 mm reads
-    max|dEz| = 1.610351e-04 on a 3.165971e-03 peak = 5.086e-02 of peak at
-    n_devices=2 AND the identical 1.610351e-04 / 5.086e-02 at
-    n_devices=1, where there is no slab to overflow at all.  A phantom
-    window, not a decomposition artifact.
-
-    So this check stays as the arithmetic guard it is -- past the bound
-    the window slides into the halo or dies in XLA, both worth refusing --
-    and the phantom window is refused separately and unconditionally by
+    The dominant mechanism there is not the overflow but the PHANTOM x
+    window: the runner applies BOTH x-face windows whenever
+    ``sim._boundary == "cpml"`` and ``grid.cpml_layers > 0``, without
+    consulting ``grid.face_pads``, and ``ce_xhi = dt / (eps_r * EPS_0)``
+    is non-zero at a PEC face, so the lane absorbs at the reflector.
+    Decided by measurement, not by reading: the same asymmetric model at
+    24x8x8 mm reads max|dEz| = 1.610351e-04 on a 3.165971e-03 peak =
+    5.086e-02 of peak at ``n_devices=2`` AND the identical figure at
+    ``n_devices=1``, where there is no slab to overflow.  That class is
+    refused separately and unconditionally by
     :func:`check_x_absorber_faces_are_absorbing` (class 6), which is what
-    actually covers ``BoundarySpec(x=('pec', 'pec'), ...)`` and the
-    asymmetric composition.  ``pad_x_lo`` / ``pad_x_hi`` are still read
-    here for the message only, so a caller who asked for no x absorber is
-    not told to shrink one.
+    covers ``BoundarySpec(x=('pec', 'pec'), ...)`` and every asymmetric
+    composition -- including ``_asym(8, 6)``, which this check admitted
+    again the moment its bound was narrowed to the measurement.
+    ``pad_x_lo`` / ``pad_x_hi`` are read here for the message only, so a
+    caller who asked for no x absorber is not told to shrink one.
 
-    Coverage limit, recorded rather than papered over: the inequality is
-    verified end to end only at ``ghost == 1``, which
-    :func:`run_distributed` hardcodes.  The ``ghost > 1`` branch has a
-    brute-force check against the literal window slices (nx_per 1..13,
-    ghost in {1, 2}, pad_x 0..3, n 1..19: 0 mismatches) but NO simulation
-    coverage; the call site already forwards ``ghost``, so nothing needs
-    changing the day it stops being 1.
+    Reachability, stated rather than implied: with a symmetric absorber at
+    2 devices the bound is unreachable by construction
+    (``nx_per >= n + 1``; confirmed at ``cpml_layers=16`` on a 2 mm
+    interior, nx=35, which runs), and every asymmetric route is refused
+    earlier-in-effect by class 6, so what this check actually catches on
+    the CPU lane is ``n_devices >= 3`` with a deep absorber -- exactly the
+    band that dies in XLA with no feature named.
 
     Parameters
     ----------
@@ -883,29 +919,60 @@ def check_x_absorber_fits_ranks(*, nx, n_devices, nx_per, pad_x, ghost,
         Naming nx, n_devices, nx_per, cpml_layers and the face(s) that
         overflow, and how to proceed.
     """
+    # ONE cell of overflow moves only the sigma=0 / kappa=1 no-op layer
+    # into the halo, measured byte-identical to the fitting run -- see the
+    # docstring. The binding depth is therefore one deeper than the
+    # "stays inside owned cells" depth on each face.
+    lo_limit = nx_per + 1
+    hi_limit = nx_per - pad_x + 1
     faces = []
-    if cpml_layers > nx_per:
+    if cpml_layers > lo_limit:
         faces.append(
             f"x-lo needs cells [{ghost}, {ghost + cpml_layers}) of rank 0's "
-            f"slab but rank 0 owns [{ghost}, {ghost + nx_per})"
+            f"slab but rank 0 owns [{ghost}, {ghost + nx_per}) and only its "
+            f"innermost layer may fall outside"
         )
-    if cpml_layers > nx_per - pad_x:
+    if cpml_layers > hi_limit:
         _start = nx_per + ghost - pad_x - cpml_layers
         # The last rank's REAL cells stop pad_x short of its owned slab:
         # the trailing pad_x cells are #623 PEC-fill alignment cells that
         # sit past the physical x-hi face, which is exactly why the x-hi
-        # bound is nx_per - pad_x and not nx_per.
+        # limit is nx_per - pad_x (+1) and not nx_per (+1).
+        _pad_note = (
+            f" (its last {pad_x} cell(s) of "
+            f"[{ghost}, {ghost + nx_per}) are #623 PEC-fill alignment cells "
+            "past the x-hi face)"
+        ) if pad_x else ""
         faces.append(
             f"x-hi needs cells [{_start}, {nx_per + ghost - pad_x}) of rank "
             f"{n_devices - 1}'s slab but that rank owns only "
-            f"[{ghost}, {ghost + nx_per - pad_x}) real cells "
-            f"(its last {pad_x} cell(s) of [{ghost}, {ghost + nx_per}) are "
-            "#623 PEC-fill alignment cells past the x-hi face)"
+            f"[{ghost}, {ghost + nx_per - pad_x}) real cells{_pad_note}, and "
+            "only its innermost layer may fall outside"
         )
     if not faces:
         return
+    # Which band: the window CLIPS (and XLA dies) past `ghost` cells of
+    # overflow, and is silently wrong in between. At the hardcoded
+    # ghost == 1 the two coincide, so the "died in XLA" sentence below is
+    # true of everything this check refuses there -- but it is asserted
+    # only when it is actually true, because a false claim about the
+    # caller's own configuration is worse than a vaguer message.
+    clips = (cpml_layers > nx_per + ghost
+             or cpml_layers > nx_per + ghost - pad_x)
+    _band = (
+        "On main this configuration died inside XLA with a broadcasting "
+        "error that named no feature (the clipped window is shorter than "
+        "the psi profile)."
+        if clips else
+        f"With ghost={ghost} the window still fits the slab, so on main "
+        "this configuration ran with no error and no warning while "
+        f"{cpml_layers - min(lo_limit, hi_limit)} absorbing layer(s) "
+        "updated ghost-halo cells instead of the owned cells they belong "
+        "to."
+    )
     # The largest FEWER device count that does fit, searched exactly rather
-    # than estimated as nx // cpml_layers (pad_x is not monotone in N).
+    # than estimated as nx // cpml_layers (pad_x is not monotone in N), and
+    # against the SAME bound this check enforces.
     # n=1 is in this list whenever cpml_layers <= nx, i.e. for every real
     # grid, so the "no count fits" branch below is effectively unreachable
     # and fits == [1] is the common case -- and "use n_devices=1" is just
@@ -913,18 +980,21 @@ def check_x_absorber_fits_ranks(*, nx, n_devices, nx_per, pad_x, ghost,
     # instead of a device-count recommendation.
     fits = [
         n for n in range(2, n_devices)
-        if cpml_layers <= ((nx + (-nx) % n) // n) - ((-nx) % n)
+        if cpml_layers <= ((nx + (-nx) % n) // n) - ((-nx) % n) + 1
     ]
     remedy = (
         f"Use fewer devices (n_devices={max(fits)} is the largest count "
         f"above 1 that fits at nx={nx} and cpml_layers={cpml_layers})"
         if fits else
         f"No device count above 1 fits an absorber this deep at nx={nx}: "
-        f"reduce cpml_layers (<= {max(nx_per - pad_x, 0)} fits at "
+        f"reduce cpml_layers (<= {max(hi_limit, 0)} fits at "
         f"n_devices={n_devices}) or increase nx"
     )
     # The caller may have declared no x absorber at all; say so rather
     # than blaming one (the runner applies the x windows regardless -- S5).
+    # Name the faces that are OFF, and never assert "neither" when only
+    # one of them is: for BoundarySpec(x=(cpml, pec), ...) the x-lo pad is
+    # the full cpml_layers and only x-hi is off.
     _declared = ""
     if pad_x_lo is not None and pad_x_hi is not None:
         _faces_off = [
@@ -940,33 +1010,34 @@ def check_x_absorber_fits_ranks(*, nx, n_devices, nx_per, pad_x, ghost,
                 "whenever boundary='cpml' and cpml_layers>0 -- it does not "
                 "read grid.face_pads (rfx/runners/distributed.py, the "
                 "xlo/xhi window slices). So the depth that has to fit is "
-                f"cpml_layers={cpml_layers} on both x faces even though you "
-                "asked for an absorber on neither; on main this same "
-                "configuration died inside XLA with a broadcasting error "
-                "that named no feature."
+                f"cpml_layers={cpml_layers} on both x faces, including "
+                + " and ".join(_faces_off)
+                + ("." + (" Those faces are" if len(_faces_off) > 1
+                            else " That face is"))
+                + " also refused independently by "
+                "check_x_absorber_faces_are_absorbing() (class 6)."
             )
     raise ValueError(
         f"the x CPML absorber does not fit inside one rank's slab on the "
         f"{lane} path: cpml_layers={cpml_layers} with nx={nx}, "
         f"n_devices={n_devices} gives nx_per={nx_per} owned cells per rank "
         f"(pad_x={pad_x} alignment cell(s) on the last rank, ghost={ghost}) "
-        f"-- {'; '.join(faces)}. The distributed CPML window would reach "
-        "into the ghost halo, so it silently absorbs in a halo cell "
-        "instead of the owned cell it should (one cell of overflow keeps "
-        "the window's LENGTH, so no shape check catches it), or at two "
-        "cells of overflow dies in XLA with a broadcasting error that "
-        f"names no feature. {remedy}, or omit devices=... entirely (the "
-        "single-device run() lane has no slab to overflow). NOTE ON "
-        "MAGNITUDE: this bound is NECESSARY, NOT SUFFICIENT, and the "
-        "overflow is not the dominant error term -- measured on main, 2 "
-        "devices, 60 steps, x_lo='cpml'/x_hi='pec' with y/z CPML, "
-        "cpml_layers=8, field source (3, 4, 4) mm, Ez probes x=1/3/5/6 mm, "
-        "the overflowing 6x8x8 mm case was max|dEz| 2.207244 on a 4.416633 "
-        "peak (49.98%) while the 7x8x8 mm case that satisfies this bound "
-        "EXACTLY was 2.040125 on 4.420052 (46.16%), both with 0 warnings. "
-        "The shared cause is the phantom x window at the non-absorbing "
-        "face, refused separately by "
-        f"check_x_absorber_faces_are_absorbing().{_declared}"
+        f"-- {'; '.join(faces)}. Exactly ONE cell of overflow is harmless "
+        "(the innermost CPML layer has sigma=0 and kappa=1, so its "
+        "correction is identically zero -- measured byte-identical to the "
+        "fitting run on origin/main) and is ADMITTED; past that a layer "
+        f"that really absorbs lands outside the owned slab. {_band} "
+        f"{remedy}, or omit devices=... entirely (the single-device run() "
+        "lane has no slab to overflow). NOTE ON MAGNITUDE: this bound is "
+        "NECESSARY, NOT SUFFICIENT -- a configuration that satisfies it can "
+        "still be wrong for a different reason, measured 46.16% of peak at "
+        "the exact arithmetic limit (x_lo='cpml'/x_hi='pec' with y/z CPML, "
+        "cpml_layers=8, 7x8x8 mm, 2 devices, 60 steps, 0 warnings). That "
+        "cause is the phantom x window at a non-absorbing face, refused "
+        "separately by check_x_absorber_faces_are_absorbing(); the "
+        "measurements are in "
+        "docs/design_notes/2026-09-14_distributed_admission_refusals.md "
+        f"S2.5 and S2.6.{_declared}"
     )
 
 
@@ -1036,6 +1107,24 @@ def check_x_absorber_faces_are_absorbing(*, cpml_layers, pad_x_lo, pad_x_hi,
     admission; until it lands, the honest answer for these configurations
     is to refuse them.  When lane B lands, delete this function and narrow
     class 5 to the faces that really are CPML.
+
+    Two scope edges, recorded rather than implied (round 3):
+
+    * this check fires on ANY zero x pad, not only a ``pec``/``pmc``
+      composition.  ``rfx/grid.py``'s ``_face_pad`` also returns 0 when
+      the x axis is simply left out of ``cpml_axes``, so such a model is
+      refused too.  Nothing in-tree does it (the api-level ``Simulation``
+      has no ``cpml_axes`` parameter; the route exists for callers that
+      build a ``Grid`` themselves), but it is a behaviour change and the
+      design note names it.
+    * a gap this check does NOT close: it reads ``grid.cpml_layers`` for
+      both faces, matching the kernel, which also ignores per-face
+      ``grid.face_layers`` (``rfx/grid.py``).  A model with
+      ``face_layers`` ``x_lo=6`` / ``x_hi=10`` is therefore ADMITTED here
+      (both pads are non-zero) while the lane drives ``cpml_layers`` deep
+      at both faces regardless.  Unmeasured, and it hands to lane B with
+      the phantom window: the same ``grid.face_pads`` gating that fixes
+      one should read ``face_layers`` for the depth.
 
     Parameters
     ----------
@@ -1164,8 +1253,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # than a silently wrong one, and that single-device lane honours
     # periodic axes, wire ports, excite=False and the monitors. Before the
     # n_devices == 1 delegation below on purpose too: the pmap runner in
-    # rfx/runners/distributed.py carries the same four gaps (:1414-1422 is
-    # the same port fork; "excite", "flux" and "ntff" do not occur there
+    # rfx/runners/distributed.py carries the same four gaps (its
+    # `impedance > 0.0 and extent is None` / `elif impedance == 0.0` pair
+    # is the same port fork; "excite", "flux" and "ntff" do not occur there
     # either).
     refuse_unsupported_distributed_features(
         sim, lane="distributed (v2) runner")

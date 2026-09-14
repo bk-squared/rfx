@@ -7,12 +7,16 @@ S3-S4 and its survey ``decomposition-survey.md`` SC1; this file is the
 first layer of that note's distributed preflight -- the position-independent
 admission check plus the one position-dependent slab check.
 
-Every number below was MEASURED on ``origin/main`` (d56f68eb) before the
-refusals existed, on 2 virtual CPU devices (the root ``conftest.py`` default),
-with the harness these tests still use -- ``_build()`` for classes 1-4 and
-``_asym()`` for class 5, both of which now carry the source position and the
-probe row explicitly, because none of the digits below survive a change to
-either. None of the five raised, and none of them warned.
+Every number below was MEASURED on ``origin/main`` before the refusals
+existed, on 2 virtual CPU devices (the root ``conftest.py`` default), with the
+harness these tests still use -- ``_build()`` for classes 1-4, ``_asym()`` for
+class 6 and ``_asym_deep()`` for class 5, all of which carry the source
+position and the probe row explicitly, because none of the digits below
+survive a change to either. Classes 1-4 and 6 were measured on d56f68eb;
+round 3 re-measured the class-5 band on 7b511591 (identical to d56f68eb in
+every runtime file this lane touches) and the commit is named beside each
+round-3 number. None of the classes raised, and none of them warned -- except
+``_asym_deep()``, which raised a broadcasting error naming no feature.
 
 Two conventions, stated rather than left implicit:
 
@@ -54,7 +58,9 @@ Two conventions, stated rather than left implicit:
 
    Cause: the lane forks ``impedance > 0 and extent is None`` then
    ``elif impedance == 0`` (the source/termination fork in
-   ``distributed_v2.py``, and its twin at ``distributed.py:1414-1422``).
+   ``distributed_v2.py``, and its twin at the same two
+   ``if pe.impedance > 0.0 and pe.extent is None:`` / ``elif pe.impedance
+   == 0.0:`` lines of ``distributed.py``).
    A wire port satisfies neither, so it gets no source and no resistive
    termination.
 
@@ -83,34 +89,53 @@ Two conventions, stated rather than left implicit:
    Same class as the #579 DFT-plane refusal: no accumulator, no cross-rank
    reduce, so a registered monitor is dropped and the field comes back None.
 
-5. **x-absorber spanning ranks.** ``_asym(8, 6)``: ``x_lo='cpml'``/
-   ``x_hi='pec'`` with y/z CPML, 6x8x8 mm at dx=1 mm, ``cpml_layers=8``,
-   2 devices, 60 steps, field source at (3, 4, 4) mm, Ez probe row at
-   x = 1, 3, 5, 6 mm -> ``nx=15``, ``pad_x=1``, ``nx_per=8``, so the x-hi
-   window wants cells ``[0, 8)`` of a slab whose owned REAL cells are
-   ``[1, 8)`` (its 9th is a #623 alignment cell)::
+5. **x-absorber overflowing a rank's slab by more than one cell.** Round 3
+   of the review narrowed this class by one cell on each face, by
+   measurement, and re-attributed the fixture below.
+
+   ``_asym(8, 6)`` -- ``x_lo='cpml'``/``x_hi='pec'`` with y/z CPML,
+   6x8x8 mm at dx=1 mm, ``cpml_layers=8``, 2 devices, 60 steps, field
+   source at (3, 4, 4) mm, Ez probe row at x = 1, 3, 5, 6 mm -> ``nx=15``,
+   ``pad_x=1``, ``nx_per=8`` -- overflows the x-hi window by exactly ONE
+   cell, and on origin/main (7b511591) it **RUNS**::
 
        native peak abs(Ez)             = 4.416633e+00  (probe x=3 mm)
        max|Ez_distributed - Ez_native| = 2.207244e+00  (49.98% of peak)
        probe at x=5 mm, one cell inside
          the x-hi PEC face             = 1.646758e-01 wrong on its own
                                          1.646768e-01 peak = 99.9994%
+       errors raised                   = 0
        warnings raised                 = 0
-       the SAME fixture at nx_per=17 (``_asym(8, 24)``, 24 mm domain)
-         = 1.005828e-06 on a 4.422700e+00 peak = 2.274240e-07 of peak
-           (parity; this is the negative control below)
 
-   The probe ON the x-hi face (x=6 mm) reads exactly 0.0 on both lanes, so
-   the 99.9994% probe is the one a cell inside it. The earlier draft of this
-   note quoted the control as ``9.7e-05`` of peak; that digit belongs to no
-   fixture that could be reproduced and is replaced by the measured
-   2.274240e-07 above.
+   That 49.98% is **100% class 6**, not class 5: the innermost CPML layer
+   has ``sigma=0`` and ``kappa=1`` (``rfx/boundaries/cpml.py``,
+   ``rho = 1 - arange(n)/(n-1)``), so its correction ``-ce*psi -
+   ce*(1/kappa - 1)*curl`` is identically zero, and both windows are
+   anchored -- one cell of overflow moves only that no-op layer into the
+   halo. Measured on origin/main with a SYMMETRIC absorber (so class 6 is
+   silent), ``cpml_layers=8``, dx=1 mm, y/z 8 mm, field source at x=3 mm,
+   probes x=1/3/5/6 mm, 120 steps, XLA host device count 4::
 
-   **The arithmetic bound is NECESSARY, NOT SUFFICIENT** (round-2 review,
-   re-measured on pristine d56f68eb, 2 devices, 60 steps). The case that
-   satisfies it EXACTLY, ``n == nx_per - pad_x`` -- same ASYM spec at
-   7x8x8 mm, ``cpml_layers=8`` (nx=16, pad_x=0, nx_per=8), same source and
-   probe row -- is wrong by the same order as the refused one::
+       11x8x8 mm, nx=28, 4 dev, pad_x=0, nx_per=7 (BOTH faces over by 1)
+         rel 1.032290e-07 of a 9.238437e+00 peak, 0 warnings, trace
+         BYTE-IDENTICAL to the fitting 2-device run (nx_per=14)
+       8x8x8 mm, nx=25, 3 dev, pad_x=2, nx_per=9 (x-hi over by 1)
+         rel 1.548455e-07, 0 warnings, same digits as the fitting run
+
+   So the refused band is TWO or more cells of overflow, and the class-5
+   fixture is ``_asym_deep()``: the same ASYM spec at 4x8x8 mm (``nx=13``,
+   ``pad_x=1``, ``nx_per=7``), which on origin/main does not run at all --
+   ``TypeError: mul got incompatible shapes for broadcasting: (8, 1, 1),
+   (7, 25, 25)``, an error naming no feature, no face and no remedy. The
+   clip that produces it happens past ``ghost`` cells of overflow
+   (``n > nx_per + ghost`` / ``n > nx_per + ghost - pad_x``), so at
+   ``ghost > 1`` the 2..ghost band would be silent instead of fatal --
+   which is why the bound is ``> 1`` and not the clip.
+
+   **The bound is NECESSARY, NOT SUFFICIENT** (round-2 review). The case
+   that satisfies it exactly -- same ASYM spec at 7x8x8 mm,
+   ``cpml_layers=8`` (nx=16, pad_x=0, nx_per=8), same source and probe row
+   -- is wrong by the same order::
 
        native peak abs(Ez) (x=3 mm)    = 4.420052e+00
        max|Ez_distributed - Ez_native| = 2.040125e+00   (46.16%)
@@ -118,23 +143,23 @@ Two conventions, stated rather than left implicit:
        probe x=6 mm  native 4.441055e-02 vs dist 1.295477e-07   (100.0%)
        warnings raised                 = 0
 
-   So the window overflow is not the mechanism. The mechanism is the
-   PHANTOM x window -- the lane applies both x-face CPML windows whenever
-   ``boundary='cpml'`` and ``cpml_layers>0``, never reading
-   ``grid.face_pads`` -- and that is class 6 below, refused separately.
-   The decisive measurement: the asymmetric 24 mm model is wrong by
-   1.610351e-04 / 5.086e-02 of peak at n_devices=2 AND by the identical
-   1.610351e-04 / 5.086e-02 at n_devices=1, where there is no slab to
-   overflow.
+   The mechanism there is the PHANTOM x window -- the lane applies both
+   x-face CPML windows whenever ``boundary='cpml'`` and
+   ``cpml_layers > 0``, never reading ``grid.face_pads`` -- and that is
+   class 6 below, refused separately. The decisive measurement: the
+   asymmetric 24 mm model is wrong by 1.610351e-04 on a 3.165971e-03 peak
+   (5.086e-02) at ``n_devices=2`` AND by the identical figure at
+   ``n_devices=1``, where there is no slab to overflow.
 
-   One cell of overflow keeps every array shape valid, so nothing raises.
-   Two or more cells overflow past the slab end and XLA raises a
-   broadcasting error that names no feature: with the same boundary spec but
-   ``cpml_layers=20`` and a 7x12x12 mm domain at dx=1 mm (nx=28, pad_x=0,
-   nx_per=14, ny=nz=53) main dies with ``mul got incompatible shapes for
-   broadcasting: (20, 1, 1), (15, 53, 53)``. The 8-layer/8 mm fixture the
-   earlier draft attached that quote to cannot produce it -- it gives
-   ``(8, 1, 1), (6, 25, 25)``.
+   The ``(5, 25, 25)`` / ``(6, 25, 25)`` broadcasting shapes quoted by an
+   earlier draft belong to ``BoundarySpec(x=('pec','pec'), y=cpml,
+   z=cpml)`` at 6 mm and 8 mm, **not** to any 8-layer ASYM fixture: the
+   ASYM 8-layer 8 mm model (nx=17, pad_x=1, nx_per=9) RUNS on origin/main
+   at max|dEz| 1.309694e+00 on a 4.421298e+00 peak = 2.962240e-01, with 0
+   warnings -- a 29.6% silent case that class 5 admits and only class 6
+   catches. A 20-layer ASYM fixture at 7x12x12 mm (nx=28, pad_x=0,
+   nx_per=14, ny=nz=53) is the one that gives ``(20, 1, 1),
+   (15, 53, 53)``.
 
 6. **Phantom x CPML window at a non-absorbing x face.** The lane applies
    BOTH x-face CPML windows whenever ``boundary='cpml'`` and
@@ -151,9 +176,27 @@ Two conventions, stated rather than left implicit:
                                     peak  ->  99.46% wrong
            at 100 steps the row figure grows to 7.890e-02
            at n_devices=1: the IDENTICAL 1.610351e-04 / 5.086e-02
-       x='pec'/'pec', y/z cpml, cpml_layers=8, nx=16/20/40:
-           2.74% / 3.06% / 3.07% at the source probe,
-           99.2%-100.0% at every probe inside the phantom window
+       x_lo='cpml'/x_hi='pec', y/z cpml, cpml_layers=8, 8x8x8 mm,
+       source (3,4,4) mm, probes x=1/3/5/6 mm, 60 steps:
+           max|dEz| = 1.309694e+00 on a 4.421298e+00 peak  (2.962240e-01)
+           -- the row an earlier draft hid by attributing the XLA
+           broadcasting shapes (5,25,25)/(6,25,25) to this spec; those
+           belong to x='pec'/'pec'. class 5 ADMITS this one (nx=17,
+           pad_x=1, nx_per=9, n=8 <= 9)
+       x='pec'/'pec', y/z cpml, cpml_layers=8, with the fixture STATED
+       (an earlier draft gave 2.74%/3.06%/3.07% "at the source" with no
+       source position and no probe row, and it is not re-derivable that
+       way -- the source-probe figure decays as the domain grows while
+       the window stays 8 deep):
+           15 mm (nx=16), source x=7 mm, probes x=2/7/13 mm:
+               7.786655e-02 on a 4.421772e+00 row peak (1.760981e-02);
+               the x=2/13 mm probes 99.9986% / 99.9319% on their own peaks
+           19 mm (nx=20), source x=9 mm, probes 2/9/17 mm:
+               6.308181e-04 of the row peak; 99.9917% / 99.8366% on the
+               face probes
+           39 mm (nx=40), source x=19 mm, probes 2/19/37 mm:
+               3.307773e-05 of the row peak; 99.9424% / 99.4168% on the
+               face probes
        x_lo='pmc'/x_hi='cpml', y/z cpml, dx=5 mm, 16x8x8 cells:
            54.1% of peak at 30 steps, 93.5% at 80 steps
 
@@ -515,20 +558,88 @@ def _asym(cpml_layers, domain_x_mm):
                   probes=(1e-3, 3e-3, 5e-3, 6e-3))
 
 
+def _asym_deep():
+    """THE class-5 measuring fixture after round 3 narrowed the bound.
+
+    ``_asym(8, 6)`` is NOT it any more: at nx=15 / nx_per=8 / pad_x=1 its
+    x-hi window overflows by exactly ONE cell, which is a measured no-op
+    (see ``check_x_absorber_fits_ranks``) and is now admitted by class 5
+    and refused by class 6 instead.  This fixture overflows by two, which
+    is the band that is really broken: same ASYM spec, ``cpml_layers=8``,
+    4x8x8 mm at dx = 1 mm -> ``nx=13``, ``pad_x=1``, ``nx_per=7``, so the
+    x-hi limit ``nx_per - pad_x + 1 = 7`` is exceeded by one.
+
+    MEASURED on pristine origin/main (7b511591), 2 CPU devices, 60 steps:
+    this configuration does not run at all -- it dies inside XLA with
+    ``TypeError: mul got incompatible shapes for broadcasting:
+    (8, 1, 1), (7, 25, 25)``, an error that names no feature, no face and
+    no remedy.  That is what class 5 replaces with a named refusal.
+    """
+    return _build(boundary=ASYM_SPEC, cpml_layers=8,
+                  domain=(4e-3, 8e-3, 8e-3),
+                  source=(2e-3, 4e-3, 4e-3),
+                  probes=(1e-3, 2e-3, 3e-3))
+
+
 def test_x_absorber_spanning_ranks_is_refused():
-    """RED: 2.207244 on a 4.416633 peak (49.98%), and the probe one cell
-    inside the x-hi face wrong by 99.9994% of its own peak, 0 warnings --
-    with the ``_asym`` fixture below, whose source and probe row are part of
-    the measurement (see module docstring)."""
+    """RED: on origin/main this died inside XLA with ``mul got incompatible
+    shapes for broadcasting: (8, 1, 1), (7, 25, 25)`` -- see
+    ``_asym_deep``."""
     with pytest.raises(ValueError, match="x CPML absorber"):
+        _run_distributed(_asym_deep(), n_steps=8)
+
+
+def test_one_cell_of_overflow_is_admitted_by_class_5():
+    """Round 3, BLOCKING 1: ``_asym(8, 6)`` overflows the x-hi window by
+    exactly one cell and class 5 must NOT be what refuses it.
+
+    MEASURED on pristine origin/main (7b511591), 2 devices, 60 steps:
+    ``_asym(8, 6)`` RUNS -- 0 warnings, no error, max|dEz| 2.207244e+00 on
+    a 4.416633e+00 peak (49.98%). The one-cell overflow is not the cause:
+    the innermost CPML layer has sigma=0 and kappa=1, so its correction is
+    identically zero, and the window is anchored, so one cell of overflow
+    moves only that no-op layer into the halo. Decisive measurement, same
+    tree, symmetric ``boundary='cpml'`` (both x faces absorbing, so class 6
+    is silent), ``cpml_layers=8``, dx=1 mm, field source at x=3 mm, probe
+    row x=1/3/5/6 mm, 120 steps, XLA host device count 4:
+
+        11x8x8 mm, nx=28, 4 devices, pad_x=0, nx_per=7 (n=8 overflows BOTH
+          faces by one): rel 1.032290e-07 of a 9.238437e+00 peak, 0
+          warnings, and the trace BYTE-IDENTICAL to the 2-device run that
+          fits (nx_per=14)
+        8x8x8 mm, nx=25, 3 devices, pad_x=2, nx_per=9 (x-hi only):
+          rel 1.548455e-07, 0 warnings, same digits as the fitting 2-device
+          run
+
+    So class 5 admits the one-cell band, and ``_asym(8, 6)`` is refused by
+    class 6 -- which is the real defect in it (49.98% is 100% phantom
+    window: the same model at n_devices=1, with no slab to overflow, is
+    wrong by the same amount).
+    """
+    from rfx.runners.distributed_v2 import check_x_absorber_fits_ranks
+
+    # _asym(8, 6): nx=15, pad_x=1, nx_per=8 -> x-hi overflows by one cell
+    assert check_x_absorber_fits_ranks(
+        nx=15, n_devices=2, nx_per=8, pad_x=1, ghost=1, cpml_layers=8,
+        pad_x_lo=8, pad_x_hi=0) is None
+    # the measured symmetric cases: one cell over on both faces, and on
+    # x-hi only
+    assert check_x_absorber_fits_ranks(
+        nx=28, n_devices=4, nx_per=7, pad_x=0, ghost=1, cpml_layers=8,
+        pad_x_lo=8, pad_x_hi=8) is None
+    assert check_x_absorber_fits_ranks(
+        nx=25, n_devices=3, nx_per=9, pad_x=2, ghost=1, cpml_layers=8,
+        pad_x_lo=8, pad_x_hi=8) is None
+    # and end to end: _asym(8, 6) is refused by class 6, not class 5
+    with pytest.raises(ValueError, match="declares no CPML absorber"):
         _run_distributed(_asym(8, 6), n_steps=8)
 
 
 def test_x_absorber_refusal_reports_the_slab_arithmetic():
     with pytest.raises(ValueError) as excinfo:
-        _run_distributed(_asym(8, 6), n_steps=8)
+        _run_distributed(_asym_deep(), n_steps=8)
     msg = str(excinfo.value)
-    for token in ("cpml_layers=8", "nx=15", "n_devices=2", "nx_per=8",
+    for token in ("cpml_layers=8", "nx=13", "n_devices=2", "nx_per=7",
                   "pad_x=1"):
         assert token in msg, f"{token!r} missing from: {msg}"
     # At n_devices=2 there IS no smaller multi-device count, so the message
@@ -543,11 +654,17 @@ def test_x_absorber_refusal_reports_the_slab_arithmetic():
     assert "NECESSARY, NOT SUFFICIENT" in msg, msg
     assert "46.16%" in msg, msg
     assert "check_x_absorber_faces_are_absorbing" in msg, msg
+    # Round 3, BLOCKING 2: the "died inside XLA" claim is asserted only
+    # when it is true of the caller's own configuration. It is here (the
+    # window clips at ghost=1), and it was NOT for _asym(8, 6), which ran.
+    assert "died inside XLA" in msg, msg
+    # Round 3, BLOCKING 1: the one-cell band is named as admitted.
+    assert "ONE cell of overflow is harmless" in msg, msg
 
 
 def test_x_absorber_refusal_also_fires_through_the_public_dispatch():
     with pytest.raises(ValueError, match="x CPML absorber"):
-        _run_api(_asym(8, 6), n_steps=8)
+        _run_api(_asym_deep(), n_steps=8)
 
 
 def test_the_x_absorber_condition_is_the_window_arithmetic():
@@ -557,6 +674,14 @@ def test_the_x_absorber_condition_is_the_window_arithmetic():
     pad_x)`` on a slab whose owned cells are ``[ghost, ghost + nx_per)``, so
     ``n == nx_per - pad_x`` is the last depth this CHECK admits and
     ``n + 1`` is the first it refuses.
+
+    Round 3 narrowed that by one cell on each face, by measurement: the
+    innermost CPML layer has ``sigma=0``/``kappa=1`` so its correction is
+    identically zero, and both windows are anchored, so ONE cell of
+    overflow moves only that no-op layer into the halo -- byte-identical
+    to the fitting run on origin/main. The last depth this check admits is
+    therefore ``nx_per - pad_x + 1`` (x-hi) and ``nx_per + 1`` (x-lo), and
+    one deeper is the first it refuses.
 
     "Admits" means this check alone, and the bound is a NECESSARY
     condition only -- passing it does not make the configuration right.
@@ -576,15 +701,27 @@ def test_the_x_absorber_condition_is_the_window_arithmetic():
         nx_per = 12
         kw = dict(nx=nx_per * 2, n_devices=2, nx_per=nx_per, pad_x=pad_x,
                   ghost=1)
-        # last admissible depth: silent, returns None
+        # inside the owned cells: silent, returns None
         assert check_x_absorber_fits_ranks(
             cpml_layers=nx_per - pad_x, **kw) is None
-        # one cell deeper: refused
+        # one cell of overflow: a measured no-op, so still admitted
+        assert check_x_absorber_fits_ranks(
+            cpml_layers=nx_per - pad_x + 1, **kw) is None
+        # two cells: refused
         with pytest.raises(ValueError, match="x CPML absorber"):
-            check_x_absorber_fits_ranks(cpml_layers=nx_per - pad_x + 1, **kw)
-        # and the x-lo face has its own (looser) bound
+            check_x_absorber_fits_ranks(cpml_layers=nx_per - pad_x + 2, **kw)
+        # The x-lo face has its own, looser bound (no pad_x eats into it),
+        # so one cell over is admitted there too -- separable from the x-hi
+        # bound only at pad_x == 0, since at pad_x > 0 a depth of
+        # nx_per + 1 has already tripped x-hi.
+        if pad_x == 0:
+            assert check_x_absorber_fits_ranks(
+                cpml_layers=nx_per + 1, **kw) is None
+        else:
+            with pytest.raises(ValueError, match="x-hi"):
+                check_x_absorber_fits_ranks(cpml_layers=nx_per + 1, **kw)
         with pytest.raises(ValueError, match="x-lo"):
-            check_x_absorber_fits_ranks(cpml_layers=nx_per + 1, **kw)
+            check_x_absorber_fits_ranks(cpml_layers=nx_per + 2, **kw)
 
 
 def _sym_cpml(cpml_layers=8, domain_x_mm=24):
@@ -1024,13 +1161,15 @@ def test_the_absorber_remedy_never_recommends_a_one_device_run():
     2 up and falls through to naming the depth that would fit."""
     from rfx.runners.distributed_v2 import check_x_absorber_fits_ranks
 
-    # n_devices=2: no smaller MULTI-device count exists.
+    # n_devices=2: no smaller MULTI-device count exists. cpml_layers=10 and
+    # not 8: after round 3 an 8-layer window at nx_per=8/pad_x=1 overflows
+    # by exactly one cell, which is admitted.
     with pytest.raises(ValueError) as excinfo:
         check_x_absorber_fits_ranks(nx=15, n_devices=2, nx_per=8, pad_x=1,
-                                    ghost=1, cpml_layers=8)
+                                    ghost=1, cpml_layers=10)
     msg = str(excinfo.value)
     assert "n_devices=1" not in msg, msg
-    assert "reduce cpml_layers (<= 7 fits at n_devices=2)" in msg, msg
+    assert "reduce cpml_layers (<= 8 fits at n_devices=2)" in msg, msg
 
     # n_devices=4 with a depth that fits at 2: the recommendation is real.
     with pytest.raises(ValueError) as excinfo:
@@ -1112,19 +1251,36 @@ def test_the_v1_refusal_names_the_v1_lane():
 
 
 def test_the_v1_pmap_runner_refuses_an_x_absorber_that_spans_ranks():
-    """RED on the first-round tree: ``x_lo='cpml'``/``x_hi='pec'`` with y/z
-    CPML, ``cpml_layers=8``, 5x8x8 mm at dx=1 mm (nx=14, nx_per=7, so an
-    8-layer window overflows by one cell) ran at max|dEz| 2.207114e+00 on a
-    4.416774e+00 peak -- 50% of peak, 0 warnings.
+    """RED on the first-round tree, and round 3 splits it in two.
 
-    Both slab checks apply to this fixture; class 5 is the one that fires
-    first and it is the more specific message, so it is the one asserted.
+    (a) ``x_lo='cpml'``/``x_hi='pec'`` with y/z CPML, ``cpml_layers=8``,
+    5x8x8 mm at dx=1 mm (nx=14, nx_per=7, pad_x=0 -- the v1 runner requires
+    ``nx % n_devices == 0``, so an 8-layer window overflows the x-hi face by
+    exactly ONE cell) ran at max|dEz| 2.207114e+00 on a 4.416774e+00 peak --
+    49.97% of peak, 0 warnings (re-reproduced on origin/main 7b511591). One
+    cell of overflow is a measured no-op, so class 5 now admits this and
+    class 6 refuses it, which is the class the 49.97% actually belongs to.
+
+    (b) ``x=('pec','pec')`` with y/z CPML, ``cpml_layers=8``, 7x8x8 mm
+    (nx=8, 2 devices, nx_per=4) overflows by four and on origin/main died
+    inside XLA with ``mul got incompatible shapes for broadcasting:
+    (8, 1, 1), (5, 25, 25)``. That is the band class 5 keeps, and it is
+    asserted through the v1 lane here.
     """
-    sim = _build(boundary=ASYM_SPEC, cpml_layers=8,
-                 domain=(5e-3, 8e-3, 8e-3), source=(2e-3, 4e-3, 4e-3),
-                 probes=(1e-3, 2e-3, 4e-3))
+    one_cell = _build(boundary=ASYM_SPEC, cpml_layers=8,
+                      domain=(5e-3, 8e-3, 8e-3), source=(2e-3, 4e-3, 4e-3),
+                      probes=(1e-3, 2e-3, 4e-3))
     with pytest.raises(ValueError) as excinfo:
-        _run_v1(sim, n_steps=8)
+        _run_v1(one_cell, n_steps=8)
+    msg = str(excinfo.value)
+    assert "declares no CPML absorber" in msg, msg
+    assert "distributed (v1) pmap runner" in msg, msg
+
+    deep = _build(boundary=PEC_X_SPEC, cpml_layers=8,
+                  domain=(7e-3, 8e-3, 8e-3), source=(3e-3, 4e-3, 4e-3),
+                  probes=(1e-3, 3e-3, 5e-3))
+    with pytest.raises(ValueError) as excinfo:
+        _run_v1(deep, n_steps=8)
     msg = str(excinfo.value)
     assert "x CPML absorber" in msg, msg
     assert "distributed (v1) pmap runner" in msg, msg
@@ -1187,7 +1343,10 @@ def test_the_v1_pmap_runner_still_runs_a_symmetric_absorber_at_one_device():
 # 1.910045e-02 with 0 warnings; flux and ntff returned
 # ``flux_monitors=None`` / ``ntff_data=None`` (the NTFF case with one
 # advisory about PEC + far-field, which says nothing about the drop); and
-# ``_asym(8, 6)`` ran with one advisory about a probe near the absorber.
+# ``_asym(8, 6)`` ran with one advisory about a probe near the absorber
+# (round 3: that fixture is now the class-6 case -- its one-cell overflow is
+# a no-op -- and the class-5 row below uses ``_asym_deep()``, which on
+# origin/main died inside XLA rather than running).
 # So "no refusal and no warning" held through the default path too, and now
 # it is a pinned fact rather than a measured one.
 
@@ -1205,7 +1364,7 @@ def test_the_v1_pmap_runner_still_runs_a_symmetric_absorber_at_one_device():
      NotImplementedError, "add_flux_monitor"),
     ("ntff box", lambda: _build(ntff=True),
      NotImplementedError, "add_ntff_box"),
-    ("x absorber", lambda: _asym(8, 6), ValueError, "x CPML absorber"),
+    ("x absorber", lambda: _asym_deep(), ValueError, "x CPML absorber"),
     ("phantom window", lambda: _asym(8, 24), ValueError,
      "declares no CPML absorber"),
 ])

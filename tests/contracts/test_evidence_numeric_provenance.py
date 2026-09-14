@@ -585,6 +585,29 @@ CLASSIFICATION: dict[str, str] = {
     # this note to fail that way (the first was `9.7e-05`, caught in round
     # 1), which is why the rule is written down in the note's S6 rather
     # than applied case by case.
+    #
+    # Round 3 (2026-09-14) caught two more, and both were attribution
+    # rather than arithmetic:
+    #   (a) the `(8, 1, 1), (5, 25, 25)` / `(6, 25, 25)` XLA broadcasting
+    #       shapes were attributed to the 8-layer ASYM fixtures "with the
+    #       same boundary spec"; they belong to
+    #       BoundarySpec(x=(pec,pec), y=cpml, z=cpml) at 6 mm and 8 mm.
+    #       The 8-layer ASYM model at 8 mm does not die at all -- it RUNS
+    #       at 1.309694e+00 on a 4.421298e+00 peak = 2.962240e-01 with 0
+    #       warnings, a silent case the misattribution hid. Now a table in
+    #       S2.5 with the spec beside every shape pair.
+    #   (b) S2.6's `2.74 % / 3.06 % / 3.07 %` row for x=(pec,pec) at
+    #       nx=16/20/40 stated NO source position and NO probe row, and is
+    #       not re-derivable as written: with a centred source and a stated
+    #       probe row the source-probe figure is 1.76 % / 0.063 % /
+    #       0.0033 % (it decays as the source moves away from the phantom
+    #       window) while the face probes are 99.4-100 % wrong in all
+    #       three. Replaced by three fully-stated rows.
+    # So the rule now reads: a quoted relative figure needs its source
+    # position and probe row, and a quoted ERROR STRING needs the spec that
+    # produced it. Round-3 numbers were re-measured on origin/main
+    # 7b511591, which is identical to d56f68eb in every runtime file this
+    # lane touches; the note names the commit beside each figure.
     "docs/design_notes/2026-09-14_distributed_admission_refusals.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260829_spec01_multiband_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260830_issue786_convergence_floor.md": NO_ARTIFACT_REFERENCE,
