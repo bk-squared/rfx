@@ -1,0 +1,138 @@
+name: build-crossval-solvers-image
+
+# Builds and publishes docker/crossval-solvers-lane/Dockerfile -- the
+# openEMS + pymeep two-solver image for the weekly crossval lane
+# (scripts/vessl_crossval_solvers_lane.yaml, issue #717 option (b), PI
+# decision 2026-09-15).
+#
+# Separate from build-openems-image.yml on purpose. That workflow owns the
+# expensive openEMS source build and its solver-commit pin; this one owns a
+# thin conda layer on top. Keeping them apart means a pymeep bump does not
+# re-run a 30-60 min openEMS build, and an openEMS-commit bump does not
+# silently change what pymeep was solved against -- the parent tag is an
+# explicit ARG here, so bumping it is a reviewable diff in this repo.
+#
+# Like its sibling, this workflow only builds and publishes. Pointing the lane
+# YAML at a new tag is a separate commit, gated on (a) this workflow having
+# produced a real image and (b) scripts/vessl_image_pull_smoke.yaml confirming
+# the cluster can pull it (the ghcr package's first private -> public flip is a
+# manual step GITHUB_TOKEN cannot perform).
+
+on:
+  workflow_dispatch:
+    inputs:
+      openems_image_tag:
+        description: "parent ghcr.io/bk-squared/rfx-openems tag (defaults to the Dockerfile's ARG OPENEMS_IMAGE_TAG)"
+        required: false
+        type: string
+      pymeep_version:
+        description: "conda-forge pymeep version (defaults to the Dockerfile's ARG PYMEEP_VERSION)"
+        required: false
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - "docker/crossval-solvers-lane/Dockerfile"
+      - ".github/workflows/build-crossval-solvers-image.yml"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/bk-squared/rfx-crossval-solvers
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    outputs:
+      image_tag: ${{ steps.resolve.outputs.image_tag }}
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Resolve parent tag, pymeep version and image tag
+        id: resolve
+        env:
+          # Routed through env: rather than spliced inline -- `${{ inputs.x }}`
+          # inside a shell script body is an Actions script-injection footgun.
+          # Same treatment as build-openems-image.yml's OPENEMS_SHA_INPUT.
+          OPENEMS_TAG_INPUT: ${{ inputs.openems_image_tag }}
+          PYMEEP_INPUT: ${{ inputs.pymeep_version }}
+        run: |
+          set -eu
+          DOCKERFILE=docker/crossval-solvers-lane/Dockerfile
+          PARENT_PIN=$(grep -m1 '^ARG OPENEMS_IMAGE_TAG=' "$DOCKERFILE" | cut -d= -f2)
+          PYMEEP_PIN=$(grep -m1 '^ARG PYMEEP_VERSION=' "$DOCKERFILE" | cut -d= -f2)
+          PARENT="$OPENEMS_TAG_INPUT"; [ -n "$PARENT" ] || PARENT="$PARENT_PIN"
+          PYMEEP="$PYMEEP_INPUT";      [ -n "$PYMEEP" ] || PYMEEP="$PYMEEP_PIN"
+          # The tag names BOTH inputs, because the image is exactly their pair.
+          # A tag naming only one of them would be ambiguous the first time the
+          # other moves, and ghcr tags are mutable.
+          TAG="openems-${PARENT}-pymeep-${PYMEEP}"
+          echo "parent=ghcr.io/bk-squared/rfx-openems:${PARENT}  pymeep=${PYMEEP}  tag=${TAG}"
+          {
+            echo "openems_image_tag=${PARENT}"
+            echo "pymeep_version=${PYMEEP}"
+            echo "image_tag=${TAG}"
+            echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/crossval-solvers-lane/Dockerfile
+          push: true
+          build-args: |
+            OPENEMS_IMAGE_TAG=${{ steps.resolve.outputs.openems_image_tag }}
+            PYMEEP_VERSION=${{ steps.resolve.outputs.pymeep_version }}
+            BUILD_DATE=${{ steps.resolve.outputs.build_date }}
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.resolve.outputs.image_tag }}
+            ${{ env.IMAGE_NAME }}:latest
+
+      - name: Report image digest and tags
+        run: |
+          echo "image: ${{ env.IMAGE_NAME }}"
+          echo "tags: ${{ steps.resolve.outputs.image_tag }}, latest"
+          echo "digest: ${{ steps.push.outputs.digest }}"
+
+  verify-pull:
+    name: pull-back-and-verify-both-solvers-import
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull by digest and re-run the one-interpreter import check
+        run: |
+          set -eu
+          IMAGE="${{ env.IMAGE_NAME }}@${{ needs.build-and-push.outputs.digest }}"
+          echo "pulling $IMAGE"
+          docker pull "$IMAGE"
+          # Deliberately the same assertion the Dockerfile makes at build time:
+          # the lane's whole premise is that ONE pytest process can import both.
+          docker run --rm "$IMAGE" python -c "\
+          import meep; from openEMS.openEMS import openEMS; \
+          from CSXCAD.CSXCAD import ContinuousStructure; import numpy; \
+          print('post-push: meep', meep.__version__, '+ openEMS bindings, numpy', numpy.__version__)"
