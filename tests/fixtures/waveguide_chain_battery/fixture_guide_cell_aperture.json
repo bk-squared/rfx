@@ -10,6 +10,7 @@
  "generated_at": "2026-09-03T23:18:09.066609+00:00",
  "provenance": {
   "commit": "5b588f3c6cdc2aeeb9af1eb528889cec3813525d",
+  "rfx_code_tree": "7d93cbe022da003de9ed375f809cdecadf72ce73",
   "run_id": "369367258205",
   "run_lane": "vessl",
   "jax_version": "0.4.33.dev20241023+e3c6d6430",
@@ -17547,6 +17548,7 @@
      ],
      "provenance": {
       "commit": "5b588f3c6cdc2aeeb9af1eb528889cec3813525d",
+      "rfx_code_tree": "7d93cbe022da003de9ed375f809cdecadf72ce73",
       "run_id": "vessl",
       "run_lane": "vessl",
       "jax_default_backend": "gpu"
@@ -17567,6 +17569,7 @@
      ],
      "provenance": {
       "commit": "5b588f3c6cdc2aeeb9af1eb528889cec3813525d",
+      "rfx_code_tree": "7d93cbe022da003de9ed375f809cdecadf72ce73",
       "run_id": "vessl",
       "run_lane": "vessl",
       "jax_default_backend": "gpu"
@@ -17589,6 +17592,7 @@
      ],
      "provenance": {
       "commit": "5b588f3c6cdc2aeeb9af1eb528889cec3813525d",
+      "rfx_code_tree": "7d93cbe022da003de9ed375f809cdecadf72ce73",
       "run_id": "vessl",
       "run_lane": "vessl",
       "jax_default_backend": "gpu"
@@ -17611,6 +17615,7 @@
      ],
      "provenance": {
       "commit": "5b588f3c6cdc2aeeb9af1eb528889cec3813525d",
+      "rfx_code_tree": "7d93cbe022da003de9ed375f809cdecadf72ce73",
       "run_id": "vessl",
       "run_lane": "vessl",
       "jax_default_backend": "gpu"

@@ -114,6 +114,20 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          # #1013. tests/contracts/test_fixture_provenance_reachability.py asks
+          # "is this fixture's commit sha still reachable from main?". The
+          # default depth-1 checkout cannot tell "not on main" from "never
+          # fetched", so the gate would hit its shallow branch and skip on every
+          # run -- protecting nothing, which is the exact failure this issue is
+          # about. fetch-depth: 0 also creates the origin/main remote-tracking
+          # ref the gate resolves against.
+          #
+          # Cost: full history (1936 commits at time of writing) on each of the
+          # 12 matrix jobs. If that becomes unacceptable, move THIS ONE contract
+          # into its own small fetch-depth: 0 job -- do not drop the setting and
+          # let the gate go back to skipping.
+          fetch-depth: 0
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -126,6 +140,18 @@ jobs:
       - name: Record the resolved JAX/numpy versions (the pin this lane really has)
         run: python -c "import jax, jaxlib, numpy; print('jax', jax.__version__, 'jaxlib', jaxlib.__version__, 'numpy', numpy.__version__)"
 
+      - name: Record the git state the provenance gate depends on (#1013)
+        # Fails the job loudly if the checkout is shallow or origin/main is
+        # missing. Without this, the provenance contract would SKIP and the job
+        # would still be green -- a skip and a pass look identical in the
+        # summary, which is the shape of defect #1013 exists to stop.
+        run: |
+          set -e
+          echo "is-shallow: $(git rev-parse --is-shallow-repository)"
+          echo "origin/main: $(git rev-parse origin/main)"
+          echo "commits: $(git rev-list --count HEAD)"
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+
       - name: Fast suite — Python ${{ matrix.python-version }}, shard ${{ matrix.group }} of 6
         env:
           # issue #594 remedy (a): the same per-test RSS delta/peak reporter +
@@ -137,6 +163,14 @@ jobs:
           # a no-op beyond this flag when nothing is anomalous. (Variable
           # name kept for continuity with the weekly lane's wiring.)
           RFX_WEEKLY_RSS: "1"
+          # #1013: this is the ONE job whose checkout is fetch-depth: 0, so it
+          # is the one job where the fixture-provenance reachability gate is
+          # answerable. The flag says "a skip here is a failure" -- without it
+          # the gate would skip wherever the checkout is shallow (the weekly
+          # lane runs the same tests/ tree from a depth-1 checkout) and a skip
+          # is indistinguishable from a pass in the summary. Pinned by
+          # tests/contracts/test_fixture_provenance_reachability.py.
+          RFX_PROVENANCE_GATE_REQUIRED: "1"
         run: >
           pytest -q -ra -p no:cacheprovider
           --splits 6 --group ${{ matrix.group }}

@@ -14,7 +14,6 @@ normalization). Backscatter leakage ~0, so the validated monostatic bin is
 unchanged (default subtract_incident_reference=False is byte-identical).
 """
 import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -33,6 +32,7 @@ _REPO = _HERE.parents[2]
 sys.path.insert(0, str(_REPO))
 sys.path.insert(0, str(_REPO / "tests/fixtures/rcs_sphere_mie"))
 from mie_oracle import bistatic_over_pi_a2  # noqa: E402
+from tests._fixture_provenance import capture  # noqa: E402
 
 import rfx  # noqa: E402
 _rfx_root = Path(rfx.__file__).resolve().parents[1]
@@ -93,8 +93,7 @@ def main():
     uncorr = _sphere_bistatic(False)
     corr = _sphere_bistatic(True)
     leak = _empty_leakage()
-    sha = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
-                         text=True).stdout.strip()
+    prov = capture(_REPO, generator="tests/fixtures/rcs280_reference_subtraction/generate.py")
 
     def _db(x):
         return 10 * np.log10(np.maximum(x, 1e-30))
@@ -137,7 +136,7 @@ def main():
             "empty_leakage_peak_over_pi_a2": float(leak.max()),
             "empty_leakage_backscatter_over_pi_a2": float(leak[-1]),
         },
-        "provenance": {"rfx_commit": sha, "producer": str(_HERE.name) + "/generate.py"},
+        "provenance": {**prov, "producer": str(_HERE.name) + "/generate.py"},
     }
     (_HERE / "fixture.json").write_text(json.dumps(fixture, indent=2) + "\n")
     m = fixture["metrics"]

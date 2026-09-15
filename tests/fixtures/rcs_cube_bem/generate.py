@@ -19,12 +19,22 @@ sigma reported in m^2.
 """
 import json
 import os
-import subprocess
+import sys
 import time
 from pathlib import Path
 
 os.environ.setdefault("JAX_PLATFORMS", "cpu")
 import numpy as np
+
+_HERE = Path(__file__).resolve().parent
+_REPO = _HERE.parents[2]
+# Pin THIS repo tree ahead of any installed rfx, and make the shared provenance
+# helper importable when the script is run directly (#1013). Without the guard
+# `python tests/fixtures/rcs_cube_bem/generate.py` puts only this directory on
+# sys.path -- the same silent-wrong-tree hazard rcs280/generate.py documents.
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
+from tests._fixture_provenance import capture  # noqa: E402
 
 F0 = 6e9
 C0 = 299792458.0
@@ -37,7 +47,6 @@ N_PHI = 37
 POL_STR = "ez"
 BW = 0.5
 PEC_SIGMA = 1e7
-_HERE = Path(__file__).resolve().parent
 
 phi = np.linspace(0.0, np.pi, N_PHI)
 PHI_DEG = [round(float(np.degrees(p)), 2) for p in phi]
@@ -96,8 +105,7 @@ def main():
     rfx_out = run_rfx()
     b_main, n_main, ver = run_bempp(min(L / 10, LAM / 12))
     b_fine, n_fine, _ = run_bempp(min(L / 14, LAM / 16))
-    sha = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
-                         text=True).stdout.strip()
+    prov = capture(_REPO, generator="tests/fixtures/rcs_cube_bem/generate.py")
 
     rfx_m2 = np.array(rfx_out["bistatic_sigma_m2"])
     bm = np.array(b_main); bf = np.array(b_fine)
@@ -164,7 +172,7 @@ def main():
                      "so backscatter/PO~2 is an order-of-magnitude sanity only, not a tight gate. "
                      "rfx and Bempp agreeing on this ratio is the meaningful statement."),
         },
-        "provenance": {"rfx_commit": sha, "bempp_version": ver,
+        "provenance": {**prov, "bempp_version": ver,
                        "producer": "tests/fixtures/rcs_cube_bem/generate.py",
                        "wall_s": time.time() - t0,
                        "env": "OPENBLAS_NUM_THREADS<=64; import name bempp_cl (not bempp) in 0.4.x"},

@@ -6,6 +6,7 @@
   "vessl_run_id": "369367257803",
   "run_dir_on_nfs": "claude-workspace/rfx/runs/thru_sv_dx_ladder/20260902T101202Z-08828189",
   "rfx_sha": "088281899727fcc644814f0ae9451b6b89a26af8",
+  "rfx_code_tree": "f72547caacbd8b18690eebd5e8c6266a5e2a61c3",
   "floor": 1e-05,
   "excess_3ghz": {
     "dx": 0.0032274714899067636,

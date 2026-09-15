@@ -337,6 +337,7 @@
     "historical_provenance_status_2026_08_31": null,
     "normalization_source_audit_2026_09_13": {
       "producer_commit": "8206031de9923dfaddc17f7060def466a7906915",
+      "rfx_code_tree": "3d2176e84bfee18b699d0976726bce27ff507bbe",
       "producer_file": "validation/crossval/11_waveguide_port_wr90.py",
       "source_cv11_stdout_sha256": "842441489acc3c0a9651221ed731db4bac0378909666f454266bec8e6f4b78b5",
       "method": "Read the pinned producer wrappers and _s_params default: empty/slab use normalize=True; pec_short explicitly passes False. This is source-audited metadata, not a new measured run.",
@@ -357,6 +358,7 @@
   },
   "setup": {
     "commit": "8206031de9923dfaddc17f7060def466a7906915",
+    "rfx_code_tree": "3d2176e84bfee18b699d0976726bce27ff507bbe",
     "vessl_run_id": "369367260736",
     "image": "ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8",
     "jax_version": "0.6.2",

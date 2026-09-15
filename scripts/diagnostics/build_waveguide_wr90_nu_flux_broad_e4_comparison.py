@@ -124,15 +124,18 @@ GRADING_RATIO = 2.0
 # Safe to tighten without CI-flakiness risk: the gate test REPLAYS this frozen
 # artifact rather than re-running FDTD, so these bounds constrain the next
 # REGENERATION rather than a per-run measurement.
-def _git_commit() -> str:
-    """Short HEAD of the producing tree, or "unknown" outside a checkout."""
-    import subprocess
-    try:
-        return subprocess.run(["git", "rev-parse", "--short", "HEAD"],
-                              cwd=str(REPO), capture_output=True, text=True,
-                              timeout=10).stdout.strip() or "unknown"
-    except Exception:
-        return "unknown"
+def _setup_provenance() -> dict:
+    """Full HEAD sha plus the rfx/ code-tree witness, fail-closed (#1013).
+
+    This function used to call ``git rev-parse --short HEAD`` and fall back to
+    ``"unknown"``. That produced the one entry in the whole fixture backlog
+    that is unrecoverable in any clone: ``"commit": "6fd6ea0"``, seven
+    characters, too short to fetch and too short to disambiguate. Short shas
+    are refused by the shared helper for exactly that reason.
+    """
+    return PROV.capture(
+        REPO, commit_key="commit",
+        generator="scripts/diagnostics/build_waveguide_wr90_nu_flux_broad_e4_comparison.py")
 
 
 # Derived through the shared helper, not restated as literals (#576 review F5:
@@ -140,6 +143,7 @@ def _git_commit() -> str:
 # _gate_policy, so the arithmetic was right and unenforced). quantum=1000
 # because the residual is milli-scale.
 from tests._gate_policy import gate_from_envelope  # noqa: E402
+from tests import _fixture_provenance as PROV  # noqa: E402
 
 _ENVELOPE_MAX_PER_PAIR = 0.008529
 _ENVELOPE_MEAN_PER_PAIR = 0.002998
@@ -365,7 +369,7 @@ def build(output_dir: Path) -> dict[str, Any]:
             "num_periods": float(NUM_PERIODS),
             "dx_m": float(DX),
             "grading_ratio": float(GRADING_RATIO),
-            "commit": _git_commit(),
+            **_setup_provenance(),
         },
         "summary": {
             "geometry_count": len(geometries),

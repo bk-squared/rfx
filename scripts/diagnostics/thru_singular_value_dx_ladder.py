@@ -34,7 +34,6 @@ import datetime as _dt
 import json
 import os
 import platform
-import subprocess
 import sys
 import time
 import warnings
@@ -51,6 +50,7 @@ import rfx  # noqa: E402
 from rfx import Box, Simulation  # noqa: E402
 from rfx.boundaries.spec import Boundary, BoundarySpec  # noqa: E402
 from rfx.sources.sources import GaussianPulse  # noqa: E402
+from tests import _fixture_provenance as PROV  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fixture constants — verbatim from the battery module.  The dx rung must
@@ -154,15 +154,16 @@ def settling_db(ts: np.ndarray | None) -> tuple[float, list[float]]:
     return float(np.max(per_probe)), [float(v) for v in per_probe]
 
 
-def git_sha(override: str | None) -> str:
-    if override:
-        return override
-    try:
-        return subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], cwd=str(REPO), text=True,
-            stderr=subprocess.DEVNULL).strip()
-    except Exception:  # noqa: BLE001 — provenance only, never fatal
-        return "unknown"
+def git_provenance(override: str | None) -> dict:
+    """#1013: shared and fail-closed, plus the rfx/ code-tree witness.
+
+    The old local ``git_sha`` returned ``"unknown"`` on any failure, which is
+    indistinguishable in the committed record from a real sha that has since
+    become unreachable. ``--git-sha`` remains the supported override for a run
+    whose tree is not a checkout.
+    """
+    return PROV.capture(REPO, commit_key="git_sha", commit_override=override,
+                        generator="scripts/diagnostics/thru_singular_value_dx_ladder.py")
 
 
 def rasterization_witness(sim: Simulation, grid) -> dict:
@@ -221,6 +222,9 @@ def rasterization_witness(sim: Simulation, grid) -> dict:
 
 
 def run_rung(divisor: int, git_sha_override: str | None) -> dict:
+    # Read provenance FIRST: a fail-closed capture must refuse before the solve,
+    # not after it.
+    prov = git_provenance(git_sha_override)
     t_start = time.time()
     sim, geom = build_rung(divisor)
 
@@ -350,7 +354,7 @@ def run_rung(divisor: int, git_sha_override: str | None) -> dict:
                      "definition": "max over probes of 10*log10(mean(E^2, last 10%) / max(E^2))"},
         "wall_time_s": {"run": t_run, "total": time.time() - t_start},
         "provenance": {
-            "git_sha": git_sha(git_sha_override),
+            **prov,
             "rfx_version": getattr(rfx, "__version__", "?"),
             "rfx_file": os.path.relpath(rfx.__file__, str(REPO))
             if rfx.__file__.startswith(str(REPO)) else rfx.__file__,

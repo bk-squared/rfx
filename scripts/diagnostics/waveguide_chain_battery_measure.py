@@ -53,7 +53,6 @@ import json
 import math
 import os
 import platform
-import subprocess
 import sys
 import time
 import warnings
@@ -75,6 +74,7 @@ from rfx.simulation import _nearest_divisor  # noqa: E402
 from tests import _waveguide_chain_battery_fixture as F  # noqa: E402
 from tests import _waveguide_chain_battery_gates as G  # noqa: E402
 from tests._x64_compat import enable_x64  # noqa: E402
+from tests import _fixture_provenance as PROV  # noqa: E402
 
 SCHEMA = "rfx.waveguide_chain_battery"
 # New measurement identity; old schema 1--3 artifacts retain their own declarations.
@@ -94,19 +94,14 @@ SETTLING_RERUN_NUM_PERIODS = 2.0 * F.NUM_PERIODS      # §2.5 record-length doub
 # provenance
 # ---------------------------------------------------------------------------
 
-def git_sha(override: str | None) -> str:
-    if override:
-        return override
-    try:
-        return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(REPO), text=True,
-                                       stderr=subprocess.DEVNULL).strip()
-    except Exception:  # noqa: BLE001 — provenance only, never fatal
-        return "unknown"
-
-
 def provenance(args) -> dict:
+    # #1013: the sha alone is a dangling pointer the day the PR squash-merges,
+    # and the old local git_sha() swallowed every failure into "unknown". The
+    # shared helper adds the rfx/ code-tree witness and raises instead; --git-sha
+    # stays the one supported way to stamp a run made outside a checkout.
     return {
-        "commit": git_sha(args.git_sha),
+        **PROV.capture(REPO, commit_key="commit", commit_override=args.git_sha,
+                       generator=DRIVER),
         "run_id": args.run_id,
         "run_lane": args.run_lane,
         "jax_version": jax.__version__,
@@ -745,7 +740,8 @@ def attach_section_4_falsifier(fx: dict, out_dir: Path) -> dict:
     legs, red, prov = {}, [], None
     for p in files:
         rec = json.loads(p.read_text())
-        prov = prov or {k: rec["provenance"].get(k) for k in ("commit", "jax_version", "jax_devices",
+        prov = prov or {k: rec["provenance"].get(k) for k in ("commit", PROV.CODE_TREE_KEY,
+                                                                "jax_version", "jax_devices",
                                                                 "precision", "jax_enable_x64")}
         for leg in rec["legs"]:
             key = f"{leg['dut']}|{leg['lane']}|{leg['theta_kind']}|{leg['objective']}"
@@ -816,7 +812,8 @@ def assemble(args, out_dir: Path, prov: dict) -> Path:
             "per_case": [{"dut": r["dut"], "lane": r["lane"],
                           "resid_yee_per_entry": {k: v["resid_yee_max"] for k, v in r["rotation_deg"].items()},
                           "entries_measurable": r["entries_measurable"],
-                          "provenance": {k: r["provenance"][k] for k in ("commit", "run_id", "run_lane",
+                          "provenance": {k: r["provenance"][k] for k in ("commit", PROV.CODE_TREE_KEY,
+                                                                          "run_id", "run_lane",
                                                                           "jax_default_backend")}}
                          for r in refutes],
         }
@@ -906,8 +903,9 @@ def assemble(args, out_dir: Path, prov: dict) -> Path:
     run_prov = dict(prov)
     # the measurement's own provenance comes from the per-case records
     run_prov.update({k: cells[0]["provenance"][k] for k in
-                     ("commit", "run_id", "run_lane", "jax_version", "numpy_version",
-                      "jax_default_backend", "jax_devices", "jax_enable_x64", "precision", "hostname")})
+                     ("commit", PROV.CODE_TREE_KEY, "run_id", "run_lane", "jax_version",
+                      "numpy_version", "jax_default_backend", "jax_devices", "jax_enable_x64",
+                      "precision", "hostname")})
     if args.run_id != "local":
         run_prov["run_id"] = args.run_id
     if args.run_lane != "local":

@@ -28,7 +28,6 @@ import datetime as _dt
 import json
 import os
 import platform
-import subprocess
 import sys
 from pathlib import Path
 
@@ -43,24 +42,18 @@ import jax  # noqa: E402
 import rfx  # noqa: E402
 
 from tests.oracle import test_waveguide_chain_battery_closure as C  # noqa: E402
+from tests import _fixture_provenance as PROV  # noqa: E402
 
 DRIVER = "scripts/diagnostics/waveguide_chain_battery_closure_measure.py"
 DEFAULT_OUT = "tests/fixtures/waveguide_chain_battery/closure_witness.json"
 
 
-def git_sha(override: str | None) -> str:
-    if override:
-        return override
-    try:
-        return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(REPO),
-                                       text=True, stderr=subprocess.DEVNULL).strip()
-    except Exception:  # noqa: BLE001 — provenance only, never fatal
-        return "unknown"
-
-
 def provenance(args) -> dict:
+    # #1013: shared, fail-closed, and carries the rfx/ code-tree witness so the
+    # sha survives the squash that makes it unreachable from main.
     return {
-        "commit": git_sha(args.git_sha),
+        **PROV.capture(REPO, commit_key="commit", commit_override=args.git_sha,
+                       generator=DRIVER),
         "run_id": args.run_id,
         "run_lane": args.run_lane,
         "jax_version": jax.__version__,
