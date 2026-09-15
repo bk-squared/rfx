@@ -1,5 +1,19 @@
 """Phase B: Non-uniform FDTD kernels for the shard_map distributed runner.
 
+Lane policy (#1053, PI decision 2026-09-15). ``distributed_v2.py`` is the
+distributed development trunk: ``Simulation.run(devices=...)`` dispatches
+there for uniform AND non-uniform grids, and since #1065/#1068 it realizes
+declared PEC volumes through the shared ``apply_pec_mask_shmap`` stage at the
+#1041 ordering. THIS module is the ``forward(distributed=True)`` NU lane and
+stays: it uniquely carries NU-grid CPML / Debye / Lorentz, ``checkpoint_every``,
+``n_warmup``, ``emit_time_series`` and tracer-safe array inputs, none of which
+v2 has (v2 raises on NU dispersion). Retiring it would require porting those,
+not the two stages #1053 moved. New distributed features go to v2; kernels
+both lanes need go to ``_distributed_common.py`` with an ``is``-identity guard
+in ``tests/locks/test_runner_split_bit_identity.py``. Soft occupancy
+(``_apply_pec_occupancy_nu_shmap``) is deliberately NOT ported to v2: ``run()``
+has no ``pec_occupancy_override`` caller; revisit when v2 serves ``forward()``.
+
 This module supplies the NU analogues of the uniform kernels used by
 ``rfx/runners/distributed_v2.py`` so the distributed path can accept
 ``NonUniformGrid`` without silently dropping the profile. The uniform
