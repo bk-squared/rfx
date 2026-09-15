@@ -68,7 +68,13 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   sheet (it shorts the normal E edge between its two faces, #690). Use `sim.run()`
   without `devices=`, which realizes all three.
 - The `jax.pmap` runner `rfx.runners.distributed` is unchanged: it still drops
-  the mask, so it still refuses all three kinds (#1055).
+  the mask, so it still refuses all three kinds (#1055). One consequence is
+  visible only to direct callers of `rfx.runners.distributed_v2.run_distributed`:
+  its `n_devices == 1` fast path delegates to that pmap runner, so the same
+  call refuses a declared volume at one device and runs it at two.
+  `Simulation.run(devices=...)` is unaffected — it dispatches to this lane only
+  for `len(devices) > 1`, and one device takes the ordinary single-device lane,
+  which realizes the volume.
 
 ### BREAKING — `PreflightReport` refuses boolean evaluation (#980)
 

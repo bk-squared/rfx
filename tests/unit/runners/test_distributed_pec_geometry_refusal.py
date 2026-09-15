@@ -144,6 +144,27 @@ def test_the_shmap_distributed_lane_refuses_a_sheet_and_a_wire(kind):
     assert res.time_series is not None
 
 
+def test_the_one_device_fast_path_still_refuses_a_volume():
+    """The seam between the two runners, pinned rather than left to surprise.
+
+    ``distributed_v2.run_distributed`` delegates to the pmap runner at
+    ``n_devices == 1``, and that runner still drops the mask — so the same
+    call refuses a declared volume at one device and runs it at two. Nobody
+    reaches this through the public API: ``rfx/api/_execute.py`` routes to
+    this lane only for ``len(devices) > 1``, and one device takes the ordinary
+    single-device lane, which realizes the volume. It is reachable by calling
+    the runner directly, and #1055 is where it closes.
+    """
+    from rfx.runners.distributed_v2 import run_distributed as shmap_run
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(NotImplementedError) as excinfo:
+            shmap_run(_build("volume"), n_steps=4, devices=jax.devices()[:1])
+    # the pmap runner's message, not this lane's
+    _assert_pmap_remedy_is_honest(str(excinfo.value))
+
+
 def test_the_pmap_distributed_lane_refuses_a_declared_volume():
     """The lane ``run_distributed_v2`` delegates to at one device. It still
     drops the mask, so its refusal still covers volumes (#1055)."""

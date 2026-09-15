@@ -18,7 +18,10 @@ sharded with the material arrays and applied in both step bodies after
 source injection and immediately before the E ghost exchange, which is
 ``distributed_nu``'s stage 8 at the #1041 ordering.  Declared SHEETS and
 sub-cell WIRES own no cell, this lane has no other carrier for them, and
-they are refused rather than silently dropped.
+they are refused rather than silently dropped.  Note the single-device fast
+path below delegates to the pmap runner, which still drops the mask and so
+still refuses a volume (#1055); ``Simulation.run(devices=...)`` never reaches
+it, because ``rfx/api/_execute.py`` routes here only for ``len(devices) > 1``.
 
 Known limitations (transparent single-device fallback):
 - TFSF plane-wave sources: require full-domain field injection, not
@@ -521,6 +524,12 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # Single-device fast path: skip all sharding overhead.
     # ------------------------------------------------------------------
     if n_devices == 1:
+        # This lane realizes a declared PEC volume (#1053) but the pmap
+        # runner does not, so a volume is refused HERE and runs at
+        # n_devices >= 2. Not reachable from Simulation.run(devices=...),
+        # which dispatches here only for len(devices) > 1; a direct caller
+        # passing one device gets the pmap refusal, which is honest about
+        # that runner (#1055).
         from rfx.runners.distributed import run_distributed as _pmap_run
         return _pmap_run(sim, n_steps=n_steps, devices=devices,
                          exchange_interval=exchange_interval, **kwargs)
