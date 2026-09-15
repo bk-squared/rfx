@@ -81,6 +81,47 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   the MSL and mixed lanes run preflight automatically, the waveguide and
   coaxial lanes do not. Routing through `compute_s_matrix` adds none.
 
+### Fixed — a dielectric touching the domain boundary was solved with vacuum in the absorber pad whenever subpixel smoothing was on (#1043, #831)
+
+- The CPML/UPML pad material extension — on by default, and there "so that
+  guided modes in dielectric waveguides see an impedance-matched absorber" —
+  reached the staircase material arrays and not the subpixel-smoothed update
+  permittivity, which `run(subpixel_smoothing=…)` rebuilds from the declared
+  geometry. Every structure touching a domain face was solved with `eps_r = 1`
+  in its own absorber and a Kottke half-cell at the seam, i.e. terminated by an
+  end facet. Fixed at all three sites that rebuild that array (Stage-1,
+  Stage-2 `kottke_pec`, and the non-uniform mirror) through one shared builder.
+- **This changes solved numbers for boundary-touching dielectrics under
+  subpixel smoothing, and only for those.** Measured: crossval 03's straight
+  guide `|B/A|` 0.531 → 0.030 at 20 absorber cells, with the depth trend
+  inverted back (it rose 0.53 → 0.59 → 0.62 over 20/40/60 cells and now falls
+  0.030 → 0.012 → 0.002) and the ring-down settling witness −37.3 → −138.3 dB;
+  band-mean `T` 0.9657 → 0.9682, which is **not** a recovery to 1 and was not
+  expected to be. crossval 01's straight-guide flux self-check under CPML
+  0.7489 → 0.9876, which moves it inside its own 0.95–1.05 gate, and its
+  absorber-depth ladder goes flat (0.9876 / 0.9890 / 0.9894 / 0.9889 at 10 / 16
+  / 20 / 40 cells, spread 0.0018, against 0.7489 → 0.9473 before): the depth
+  dependence was the facet, not the absorber.
+- Everything without a boundary-touching dielectric is **bit-identical** —
+  eight configurations (vacuum pads, interior dielectric under CPML and UPML,
+  `subpixel_smoothing=False` on the same touching geometry, PEC walls, 3-D,
+  `kottke_pec`, non-uniform) SHA-256-identical over the six final field arrays
+  and the probe trace, in both the x64 and float32 lanes.
+- Not continued into a pad, each for a measured reason: PEC volumes (the
+  staircase lane does not extend `pec_mask` either), dispersive materials
+  (#627b: a high-Q pole in a pad turns a stable run divergent with no NaN;
+  #808: promoting such a column's statics moved a committed Debye recovery past
+  its gate), and shapes with no continuation across the reached face — a
+  sphere's tangency, a cylinder reached across its axis, an imported mesh.
+- **New preflight advisory** `dielectric_at_absorber_seam`: a dielectric that
+  ends at an absorber seam in one of those un-continuable shapes is reported,
+  with the permittivity its pad will hold. It is the complement of
+  `geometry_in_absorber`, which reports geometry standing *inside* the
+  absorber.
+- Depends on the same issue's stage A (#1047): landing this before the CPML psi
+  coefficient and the Yee update read the same epsilon made the simulation
+  divergent rather than merely wrong.
+
 ### Fixed — the TF/SF auxiliary grid's own absorber reflected 4–6 % (#888)
 
 - Both auxiliary grids now build their absorber through the same

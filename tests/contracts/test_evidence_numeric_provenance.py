@@ -342,6 +342,20 @@ ISSUE1043_STABILITY_NOTE = (
     "docs/design_notes/issue1043_cpml_subpixel_coefficient_results.md")
 ISSUE1043_F1_NOTE = (
     "docs/design_notes/issue1043_f1_pec_short_gate_results.md")
+# 2026-09-15 (#1043 stage B): the #831 diagnosis lane's two notes arrive from
+# the unmerged branch that produced them, because section 8.4 of the
+# pre-declaration is the falsifier the stage-B PR is judged by and a falsifier
+# a reviewer cannot re-run is not one. Both carry resolvable citations into
+# issue812_cv03_dispersion_matched_frequency.json, so GATED is the only
+# classification available to them -- there is no "resolvable but not opted
+# in" class, deliberately.
+ISSUE831_PREDECLARATION = (
+    "docs/design_notes/issue831_far_end_return_predeclaration.md")
+ISSUE831_RESULTS = "docs/design_notes/issue831_far_end_return_results.md"
+# Stage B's own results note, opted in for the same reason: its verdict IS a
+# table of measured numbers read out of committed artifacts.
+ISSUE1043_PAD_CONTINUATION_NOTE = (
+    "docs/design_notes/issue1043_pad_continuation_results.md")
 
 # Markdown documents, with the regex that cuts them into named sites.
 MARKDOWN_SITES: dict[str, str] = {
@@ -385,6 +399,9 @@ MARKDOWN_SITES: dict[str, str] = {
     # instance.
     ISSUE1043_STABILITY_NOTE: r"^#+\s+(.*\S)\s*$",
     ISSUE1043_F1_NOTE: r"^#+\s+(.*\S)\s*$",
+    ISSUE831_PREDECLARATION: r"^#+\s+(.*\S)\s*$",
+    ISSUE831_RESULTS: r"^#+\s+(.*\S)\s*$",
+    ISSUE1043_PAD_CONTINUATION_NOTE: r"^#+\s+(.*\S)\s*$",
 }
 
 DOCUMENTS = (MANIFEST, *MARKDOWN_SITES)
@@ -740,6 +757,13 @@ CLASSIFICATION: dict[str, str] = {
     "docs/design_notes/issue1043_f1_pec_short_gate_predeclaration.md":
         NO_ARTIFACT_REFERENCE,
     ISSUE1043_F1_NOTE: GATED,
+    # 2026-09-15 (#1043 stage B): the #831 diagnosis notes and stage B's own
+    # results note. All three carry resolvable citations, so GATED is the only
+    # class open to them -- see the constants above for why the two #831 notes
+    # travel with this change at all.
+    ISSUE831_PREDECLARATION: GATED,
+    ISSUE831_RESULTS: GATED,
+    ISSUE1043_PAD_CONTINUATION_NOTE: GATED,
     "docs/design_notes/mixed_refplane_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/portgrid_m0m1_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/portgrid_m0m1_results.md": NO_ARTIFACT_REFERENCE,

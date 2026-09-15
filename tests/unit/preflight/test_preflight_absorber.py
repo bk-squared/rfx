@@ -48,6 +48,17 @@ Sections, each formerly its own file:
    and non-absorbing boundaries stay quiet. Module constants of this
    section carry a ``DP_`` prefix (``DP_DX``, ``_dp_sim``) to coexist with
    section 2's ``DX`` / ``_sim``; values are unchanged.
+4. **Dielectric ending AT an absorber seam in a shape with no continuation
+   (issue #1043, stage B)** — written here rather than absorbed from
+   anywhere, because it is section 2's complement and shares its fixtures.
+   Section 2 reports geometry standing INSIDE the absorber; this reports
+   geometry ABSENT from it under the feature that claims to put it there.
+   The advisory ``dielectric_at_absorber_seam`` fires for a dielectric that
+   reaches a padded face in a shape the smoothed lane cannot continue — a
+   sphere's tangency, a cylinder reached across its axis, an imported mesh —
+   and stays quiet for a Box, an axis-aligned Cylinder, a PEC volume
+   (continued by neither lane), a dispersive material (section 3's subject)
+   and a non-absorbing boundary. Reuses section 3's ``DP_`` fixtures.
 
 Every assertion, tolerance, fixture value and parametrisation of the
 absorbed files is kept verbatim.
@@ -61,7 +72,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from rfx import Simulation, Box
+from rfx import Simulation, Box, Cylinder, Sphere
 from rfx.api._preflight import (
     _PreflightMixin,
     _absorber_boundary_for_axis,
@@ -872,3 +883,111 @@ def test_two_touching_entries_aggregate_into_one_finding():
     found = _findings(sim)
     assert len(found) == 1, found
     assert "#0" in found[0].loc and "#1" in found[0].loc
+
+
+# ---------------------------------------------------------------------------
+# 4. Dielectric ending AT an absorber seam in an un-continuable shape (#1043)
+#
+# The complement of section 2. That one reports geometry standing INSIDE the
+# absorber; this one reports geometry ABSENT from it under the feature that
+# says it puts it there. The CPML/UPML pad material extension continues a
+# boundary-touching structure outward -- the staircase lane by replicating the
+# material arrays, the smoothed lane by continuing the SHAPE. A shape with no
+# continuation across the reached face (a sphere's tangency, a cylinder reached
+# across its axis, an imported mesh) gets neither on the smoothed lane and is
+# solved with vacuum in its own pad: the end facet #831 measured as |B/A| 0.53
+# on a straight guide, worsening with absorber depth.
+#
+# Silent where nothing is lost or another check already speaks: a Box and an
+# axis-aligned Cylinder ARE continued, a PEC volume is continued by neither
+# lane, a dispersive material is section 3's subject, and a shape clear of the
+# faces has nothing to continue.
+# ---------------------------------------------------------------------------
+
+_SEAM_CODE = "dielectric_at_absorber_seam"
+
+
+def _seam_findings(sim):
+    return sim.preflight().by_code(_SEAM_CODE)
+
+
+def _seam_sphere():
+    # Tangent to x-lo at the y/z centre of the domain.
+    r = 4 * DP_DX
+    return Sphere((r, NB * DP_DX / 2, NZ * DP_DX / 2), r)
+
+
+def test_sphere_tangent_to_an_absorber_face_is_reported():
+    sim = _dp_sim()
+    sim.add_material("d", eps_r=4.0)
+    sim.add(_seam_sphere(), material="d")
+    found = _seam_findings(sim)
+    assert len(found) == 1, found
+    msg = str(found[0])
+    assert "Sphere" in msg and "x-lo" in msg, msg
+    # Declared vs solved, in input units -- the advisory says what the pad will
+    # hold, not what that costs the answer.
+    assert "eps_r = 1.0" in msg and "4" in msg, msg
+
+
+def test_box_at_the_same_seam_stays_quiet_because_it_is_continued():
+    sim = _dp_sim()
+    sim.add_material("d", eps_r=4.0)
+    sim.add(_touching_box(), material="d")
+    assert _seam_findings(sim) == []
+
+
+def test_axis_aligned_cylinder_is_continued_and_across_its_axis_is_not():
+    # Along z, reaching z-lo and z-hi: continued along its own axis, quiet.
+    along = Simulation(freq_max=2.5 * F0,
+                       domain=(NA * DP_DX, NB * DP_DX, NZ * DP_DX),
+                       dx=DP_DX, boundary="cpml", cpml_layers=8)
+    along.add_material("d", eps_r=4.0)
+    along.add(Cylinder((NA * DP_DX / 2, NB * DP_DX / 2, NZ * DP_DX / 2),
+                       3 * DP_DX, NZ * DP_DX, axis="z"), material="d")
+    assert _seam_findings(along) == []
+
+    # The same cylinder reaching an x face, which is ACROSS its axis: no
+    # continuation exists for that face, so it is reported.
+    across = Simulation(freq_max=2.5 * F0,
+                        domain=(NA * DP_DX, NB * DP_DX, NZ * DP_DX),
+                        dx=DP_DX, boundary="cpml", cpml_layers=8)
+    across.add_material("d", eps_r=4.0)
+    across.add(Cylinder((3 * DP_DX, NB * DP_DX / 2, NZ * DP_DX / 2),
+                        3 * DP_DX, 4 * DP_DX, axis="z"), material="d")
+    found = _seam_findings(across)
+    assert len(found) == 1, found
+    assert "Cylinder" in str(found[0]) and "x-lo" in str(found[0])
+
+
+def test_inset_sphere_stays_quiet():
+    sim = _dp_sim()
+    sim.add_material("d", eps_r=4.0)
+    sim.add(Sphere((NA * DP_DX / 2, NB * DP_DX / 2, NZ * DP_DX / 2),
+                   3 * DP_DX), material="d")
+    assert _seam_findings(sim) == []
+
+
+def test_pec_sphere_at_the_seam_stays_quiet():
+    """PEC is continued by NEITHER lane, so there is no gap to report."""
+    sim = _dp_sim()
+    sim.add_material("metal", sigma=1e10)
+    sim.add(_seam_sphere(), material="metal")
+    assert _seam_findings(sim) == []
+
+
+def test_non_absorbing_boundary_stays_quiet():
+    sim = _dp_sim(boundary="pec")
+    sim.add_material("d", eps_r=4.0)
+    sim.add(_seam_sphere(), material="d")
+    assert _seam_findings(sim) == []
+
+
+def test_dispersive_sphere_is_section_3s_subject_not_this_one():
+    sim = _dp_sim()
+    sim.add_material("slab", eps_r=4.0,
+                     lorentz_poles=[LorentzPole(omega_0=W0, delta=W0 / 120.0,
+                                                kappa=3.0 * W0 ** 2)])
+    sim.add(_seam_sphere(), material="slab")
+    assert _seam_findings(sim) == []
+    assert _findings(sim), "section 3's advisory should still speak here"
