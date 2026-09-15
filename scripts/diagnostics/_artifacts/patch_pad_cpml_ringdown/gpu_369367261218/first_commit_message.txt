@@ -1,0 +1,40 @@
+a3e4dba46fff45d65743b02ef65afb3185d0c15b
+2026-09-07 00:58:02 +0000
+Byungkwan Kim
+feat(pec): lattice ownership contract — one realized-edge source for volumes, sheets, wires; two_plane deleted (#931, stage A)
+
+rfx/boundaries/pec.py now carries the #931 contract: an E component is PEC
+iff its own location is inside the closed conductor region.
+
+- realized_pec_edge_masks(cell_mask, sheets, wires, periodic): the only
+  function turning geometry into PEC edges. Volume rule = four incident
+  cells (backward shifts under the #689 convention, one spelling `_shift`);
+  sheet rule = union footprints per normal axis, both end nodes with the
+  forward in-plane shift; wire = edges of the axis-aligned lattice path.
+- SheetSpec (frozen; full-shape one-layer footprint, static plane),
+  WireSpec + wire_path_edge_masks (diagonal segment raises).
+- realized_wall_planes(edge_masks, axis, *, ij=None, region=None),
+  edge_is_pec, clear_edges, apply_pec_edges; apply_pec_mask is a wrapper
+  (periodic, sheets) — no two_plane_mask kwarg.
+- apply_pec_occupancy: noisy-OR of the four incident cells with the same
+  shifts applied to the OCCUPANCY (a zero pad reads "no conductor"),
+  periodic flags, static sheet_edge_masks OR'd in; bit-identical to the hard
+  rule at binary occupancy on the battery (faces 0 and n-1, seam, 2-D lane).
+- Deleted: two_plane_extension_masks, _place_at_next_plane.
+  tangential_edge_masks kept only as the pre-#931 classification the f0
+  sheet ctx and sheet_normal_live_axis_masks still read (TODO stage B).
+- simulation.py / nonuniform.py per-step calls drop two_plane_mask;
+  simulation.py hands the run's periodic flags to the soft path too.
+- tests/contracts/test_lattice_ownership_contract.py: §5 battery (slab
+  t=1..3 per axis, sheet, footprint, mirror/permutation, soft==hard, wire,
+  helpers, API-level sheet/G4/sub-cell/grep). On the old rule all 9 slab
+  cases failed "FAR FACE MISSING"; now 77/81 pass — the 4 reds need the
+  rasterizer stage (pec_sheets collector, sub-cell refusal, two_plane
+  removal from api/visualize/etc.).
+- tests/locks/test_two_plane_pec_slab.py deleted (design note §2).
+
+R3: memory=rfx-known-issues.md("top face plane is never zeroed" 2026-08-28; two_plane A/B verdict) | R2-attempts=0 (redesign, not a repeat) | falsifier=§5 slab battery t=1,2,3 on each axis + soft≡hard at binary incl. faces 0/n-1 and the periodic seam (tests/contracts/test_lattice_ownership_contract.py)
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01DPkZyauVRCaEhBHXxvxYaN
+

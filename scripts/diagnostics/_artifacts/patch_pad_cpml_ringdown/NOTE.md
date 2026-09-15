@@ -163,6 +163,64 @@ hypothesis. Note also that every sheet-board arm is 4–6 dB deeper than its fa3
 (−57.28 vs −51.39 at +6h, where both are comfortably stable), so the dynamics differ across the
 whole family and not only at the arm that used to grow.
 
+## The bisect: it is `a3e4dba4`, #931 stage A (VESSL 369367261218)
+
+Pre-declared in Addendum E before it ran: range `fa3a99bd..fc7f7202` (734 commits), the arm
+the issue measured (n4, +10h, cpml 8, board AS DECLARED), criterion `settling_db > -40 dB` =
+grows, and the predicate inverted so git's "first bad commit" is the first commit where the
+growth STOPPED.
+
+**Endpoint falsifier, run before the bisect: both reproduced.** `fa3a99bd` grows at 0.00 dB
+with per-probe rates +4.389e-4 / +4.391e-4 / +4.384e-4 / +4.443e-4 per step — the issue's own
+numbers, reproduced directly on this hardware for the first time (until now only its recorded
+series had been re-scored). `fc7f7202` settles at -43.37 dB.
+
+**Result: `a3e4dba46fff45d65743b02ef65afb3185d0c15b`** — *"feat(pec): lattice ownership
+contract — one realized-edge source for volumes, sheets, wires; two_plane deleted (#931,
+stage A)"*, PR **#931**, 2026-09-07. `bisect_run.rc` 0, ten steps, no skips.
+
+Its parent `0ad801dc` is **documentation only** (*"docs(design_notes): lattice ownership
+contract for conductors…"*), so the A/B the PI asked for is the bisect's own last two steps
+and nothing else moved between them:
+
+| commit | what it is | settling dB | per-probe rate /step |
+|---|---|---|---|
+| `fa3a99bd` | the issue's tree | 0.00 | +4.389e-4 / +4.391e-4 / +4.384e-4 / +4.443e-4 |
+| `0ad801dc` | `a3e4dba4^`, docs only | **0.00** | **the same four values** |
+| `a3e4dba4` | #931 stage A | **-43.37** | -1.861e-4 / -2.007e-4 / -1.791e-4 / -2.023e-4 |
+| `fc7f7202` | main | -43.37 | the same four values |
+
+The raw series say it more sharply than the summary does: `fa3a99bd` and `0ad801dc` are
+**bit-identical** (max|diff| 0.000e+00), `a3e4dba4` and `fc7f7202` are **bit-identical**, and
+across the boundary max|diff| is 1.571e-02 on a peak of 1.632e-02. The 734-commit range
+collapses to one commit; everything before it reproduces the issue exactly and everything
+after it reproduces main exactly.
+
+### Mechanism, one paragraph
+
+`a3e4dba4` replaced the rule that decides which E edges a conductor zeroes. The old
+`tangential_edge_masks` selected a component *"iff the body extends >= 2 cells in that
+component's direction"*, so **a one-cell-thick PEC Box selected only its in-plane components
+and left the normal edge through its own cell live**; the new contract is *"an E component is
+PEC iff its own location is inside the closed conductor region"*, which shorts every edge
+between a one-cell Box's two faces. This fixture is two one-cell PEC Boxes — a ground plane
+and a patch — and the ground spans the entire lateral domain, so the rule change acts along
+the whole conductor including where it runs into the absorber pads. Its visible consequence on
+this board is the one already recorded above: wall planes 1 -> 4, cavity 983.75 -> 787.00 um.
+But that is *not* the whole of it, and the H4 arm is what proves it: declaring the same board
+as SHEETs on main reproduces the old raster field-for-field (walls, cavity, `sum(d/eps)` to
+twelve digits) and still settles at -52.78 dB. So within `a3e4dba4` the operative difference
+for the ring-down is in the **realized edge set**, not in the wall planes it moved — which
+edge, exactly, is a diff-level question this lane did not open.
+
+### What this makes #801
+
+Not a CPML-parameterisation ticket, and not #1043. The growth was a property of the pre-#931
+PEC edge rule on a board whose conductors reach the absorber, and #931 stage A ended it — as a
+side effect of a contract change made for other reasons, with no test pinning the ring-down.
+The 8/12/16/24-layer ladder the issue proposed would not have found this: the layer count was
+never what moved.
+
 ## A second, separate defect found on the way (not the growth)
 
 At +10h the entire +x absorber pad is solved as **vacuum** while the substrate continues
@@ -181,6 +239,8 @@ fixed, reached through grid sizing instead of through the smoothing rebuild.
 Falsifier, run: shrinking the declared domain length by one ULP removes the extra cell and
 the facet on +8h, +10h and +12h, and changes nothing at +6h.
 
+Filed as **#1070**, with the guard that should have caught it named: `extend_cpml_pad_materials` already has the **#627a hi-face fallback** for this shape, but its docstring bounds it to *"exactly one column inward — ... never more"*. That bound is right for the half-open Box rule alone; the `ceil` overshoot adds a SECOND empty node, so the fallback inspects the interior edge (vacuum), looks one column in (also vacuum) and gives up. Two correct rules composing into a wrong board — measured per pad value in `pad_facet_why_627a_underreaches.py`. There is no existing lock on "every interior cell a declared Box covers is actually filled"; the nearest family (#802/#807, `test_rasterization_coordinate_exactness.py`) pins node coordinates and cross-lane agreement, and both lanes agree here while both are wrong the same way.
+
 **It is not the growth.** `main_cpml8_noulp` (facet removed) reads −43.30 dB against
 `main_cpml8`'s −43.37 dB, a 0.07 dB difference inside the pre-declared 3 dB band, so H2 is
 refuted. The recorded arms say the same from the other side: the facet is present at +8h
@@ -195,38 +255,24 @@ is exactly the invariance the rig was built to test.
   fire; the two trees are bit-identical.
 * **Does the arm still grow on main? No** — and not at any lateral pad from +6h to +16h, and
   not with the pre-#931 board restored, and not on the n = 3 arm that grew hardest.
-* **What removed it is still unidentified.** It is not #1047/#1057 (bit-identical) and not
-  #931's board change alone (restoring the board field-for-field does not restore the growth).
-  22 arms across three GPU jobs decay; the recorded arms grew. Something else in the 734
-  commits between `fa3a99bd` and `fc7f7202` is responsible.
+* **What removed it: `a3e4dba4`, #931 stage A** (the lattice-ownership contract, PR #931),
+  found by bisect and confirmed against a documentation-only parent. It is not #1047/#1057
+  (bit-identical) and not #931's cavity change alone (restoring the board field-for-field does
+  not restore the growth) — it is that commit's change to the realized PEC edge set.
 * **Rig/solver split.** Nothing here asks for a CPML change. The vacuum-pad facet is a
   solver-side surprise (grid sizing feeding the pad continuation) with a rig-side trigger (a
   domain length that is not an exact multiple of `dx`); either side can own it, as its own
   ticket.
 
-## What to do next — a bisect, pre-sized
+## What remains
 
-The next step is localization, not another mechanism hypothesis, and Addendum D committed to
-that reading before the measurement was taken. It is cheap: `fa3a99bd..fc7f7202` is 734
-commits, so a `git bisect` is 10 steps, and an arm is 26 s of rtx4090 — about 10 minutes of GPU
-plus fetch overhead.
-
-* **Arm**: `--n 4 --pad 10 --periods 150` with the rig's own default absorber (`2n = 8`), the
-  board AS DECLARED (no `--sheet-conductors`) — the configuration that grew.
-* **Criterion**: `bad` (grows) iff `settling_db > -40 dB`; `good` iff it settles.
-* **Known endpoints**: `fa3a99bd` bad (0.00 dB), `fc7f7202` good (−43.37 dB).
-* **Portability note for whoever runs it**: `raster()` in this lane's driver spans the #931
-  rename (`tangential_edge_masks` → `realized_pec_edge_masks`) and the sheet-collector
-  signature change in `_assemble_materials`, but intermediate commits may break other
-  reporting calls. Add a `--no-raster` escape before starting rather than discovering it at
-  bisect step 6.
-
-Two candidate areas to look at first, from `git log fa3a99bd..fc7f7202 -- rfx/boundaries/
-rfx/simulation.py rfx/geometry/` (≈ 37 commits): the #931 lattice-ownership stack (a3e4dba4
-through f112f7bb — the board change is only one of its effects; it also rewrote how every lane
-realizes and applies PEC edges) and `a65c6626` *"never promote a pole-carrying column's statics
-into a hi-face pad"*, which is a CPML-pad materials change on the same face family this lane
-found the vacuum facet on.
+* Which edge in `a3e4dba4`'s new rule carries the difference — the wall planes it moved are
+  demonstrably not it (H4). A diff-level question on the realized edge masks at the pad seam,
+  answerable without FDTD by comparing the two rules' edge sets on this fixture.
+* Nothing pins this. The growth ended as a side effect of a contract change made for other
+  reasons; no test covers "a lossless open-domain ring-down does not grow". A two-sided
+  settling gate on a padded isolated-patch arm would be the lock, if the PI wants one.
+* **#1070**, the vacuum absorber pad, is independent of all of the above.
 
 ## R2 accounting
 
@@ -239,8 +285,9 @@ found the vacuum facet on.
 * H4 (does restoring the pre-#931 board restore it) — attempt 1, **CLOSED REFUTED**, residual
   `max(−47.56 + 40, 0) = 0`.
 
-Four hypotheses, four closures, no repeats. The next action is a bisect, which is localization
-under a criterion already fixed, not a fifth mechanism attempt.
+Four hypotheses, four closures, no repeats. The bisect (VESSL 369367261218) was localization
+under a criterion fixed in Addendum E before it ran, not a fifth mechanism attempt, and it
+closed on `a3e4dba4` with a documentation-only parent as its control.
 
 ## Artifacts
 
@@ -255,9 +302,11 @@ under a criterion already fixed, not a fifth mechanism attempt.
 | amplification model at this arm | `amplification_at_this_arm.py`, `.json` |
 | pad material map | `pad_material_map.py`, `padmap_*.json` |
 | the ULP falsifier | `pad_facet_rounding.py`, `.json` |
+| why #627a under-reaches | `pad_facet_why_627a_underreaches.py`, `.json` (filed as #1070) |
 | figure | `.../runs/patch-pad-cpml-ringdown-20260915T131410Z-834a43e7/ringdown_envelopes.png` (see below) |
 | ladder job | `scripts/vessl_patch_pad_cpml_ringdown_ladder.yaml`, VESSL 369367261205, arms in `gpu_369367261205/` |
 | restored-board job | `scripts/vessl_patch_pad_cpml_ringdown_sheet.yaml`, VESSL 369367261209, arms in `gpu_369367261209/` |
+| bisect job | `scripts/vessl_patch_pad_cpml_ringdown_bisect.yaml` + `patch_pad_cpml_ringdown_bisect_step.sh`, VESSL 369367261218, trace and landing diff in `gpu_369367261218/` |
 
 Raw probe series (`*_ts.npz`, 427 KB per arm) stay on NFS at
 `/root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-ringdown-20260915T131410Z-834a43e7/`;

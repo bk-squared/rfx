@@ -1,0 +1,1 @@
+0ad801dc0b50918aa36f6b6ade48c2d2950bdea2 docs(design_notes): lattice ownership contract for conductors — volume/sheet/wire, one realized-edge source, two_plane and #702 deleted (#931)

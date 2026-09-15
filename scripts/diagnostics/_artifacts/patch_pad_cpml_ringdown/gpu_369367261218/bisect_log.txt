@@ -1,0 +1,24 @@
+# bad: [fc7f7202567e2cf78a65ab90a709e4ff45b185f1] docs/research_notes is local-only: untrack it and add the contract (#1051)
+# good: [fa3a99bda71728b6f00575540995e690ad16cbda] fix(preflight): stop scoring MSL Z0 against the declared board; anchor the sweep on the realized one (#752) (#766)
+git bisect start 'fc7f7202567e2cf78a65ab90a709e4ff45b185f1' 'fa3a99bda71728b6f00575540995e690ad16cbda'
+# bad: [f4d53f8d56f7f3a0c8e9affb04139680de2acc0a] Merge branch 'feat/931-wr90-iris' into feat/931-lattice-ownership
+git bisect bad f4d53f8d56f7f3a0c8e9affb04139680de2acc0a
+# bad: [31b9b3480d05abd0f75af37bc7a49705b2cbfb3a] merge: feat/931-wr90-iris — cv18/cv19 volume irises drawn on node planes (#931 phase 2a)
+git bisect bad 31b9b3480d05abd0f75af37bc7a49705b2cbfb3a
+# good: [495e180c24372c332e082aa064c201ef0871ee63] feat(run): ring-down settling witness on run() results, absent-not-NaN, one verdict helper, preflight notice (#885; post-v1.8 plan item 4) (#917)
+git bisect good 495e180c24372c332e082aa064c201ef0871ee63
+# bad: [dea0c5246ad36f83ece78a3bd32aacb7e90e129b] chore(931): record the four X-C run ids (#931, X-C)
+git bisect bad dea0c5246ad36f83ece78a3bd32aacb7e90e129b
+# bad: [9d4289d699e0ce8a5ba3578058ecf304c750a50e] docs(subgridded): say why the fine-region rasterization collects no sheets (#931, stage C)
+git bisect bad 9d4289d699e0ce8a5ba3578058ecf304c750a50e
+# bad: [34956de23615954453730a7698b47bde562c7c23] test+docs: PEC-short fixture drawn as one full cell, viewer patterned-body fixture off the substrate plane; API symbol inventory regenerated (#931, stage B)
+git bisect bad 34956de23615954453730a7698b47bde562c7c23
+# bad: [8a61afcea9f7c3ddec5c91ab6ac6790588d5f005] docs(design_notes): zero-extent PEC Box via add() is a sheet declaration; VESSL fast-lane pytest yaml (#931)
+git bisect bad 8a61afcea9f7c3ddec5c91ab6ac6790588d5f005
+# good: [d990e18ce0870ac7a893a86627e7232d1cf92c7b] feat(preflight,sparams): layout-from-band-low-edge note near cutoff; S21 phase residual vs −βL reported on waveguide S-matrix results (post-v1.8 plan item 5) (#925)
+git bisect good d990e18ce0870ac7a893a86627e7232d1cf92c7b
+# bad: [a3e4dba46fff45d65743b02ef65afb3185d0c15b] feat(pec): lattice ownership contract — one realized-edge source for volumes, sheets, wires; two_plane deleted (#931, stage A)
+git bisect bad a3e4dba46fff45d65743b02ef65afb3185d0c15b
+# good: [0ad801dc0b50918aa36f6b6ade48c2d2950bdea2] docs(design_notes): lattice ownership contract for conductors — volume/sheet/wire, one realized-edge source, two_plane and #702 deleted (#931)
+git bisect good 0ad801dc0b50918aa36f6b6ade48c2d2950bdea2
+# first bad commit: [a3e4dba46fff45d65743b02ef65afb3185d0c15b] feat(pec): lattice ownership contract — one realized-edge source for volumes, sheets, wires; two_plane deleted (#931, stage A)

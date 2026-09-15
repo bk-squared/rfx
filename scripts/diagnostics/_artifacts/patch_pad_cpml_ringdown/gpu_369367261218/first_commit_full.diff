@@ -1,0 +1,1887 @@
+commit a3e4dba46fff45d65743b02ef65afb3185d0c15b
+Author: Byungkwan Kim <byungkwan.kim@cnu.ac.kr>
+Date:   Mon Sep 7 00:58:02 2026 +0000
+
+    feat(pec): lattice ownership contract — one realized-edge source for volumes, sheets, wires; two_plane deleted (#931, stage A)
+    
+    rfx/boundaries/pec.py now carries the #931 contract: an E component is PEC
+    iff its own location is inside the closed conductor region.
+    
+    - realized_pec_edge_masks(cell_mask, sheets, wires, periodic): the only
+      function turning geometry into PEC edges. Volume rule = four incident
+      cells (backward shifts under the #689 convention, one spelling `_shift`);
+      sheet rule = union footprints per normal axis, both end nodes with the
+      forward in-plane shift; wire = edges of the axis-aligned lattice path.
+    - SheetSpec (frozen; full-shape one-layer footprint, static plane),
+      WireSpec + wire_path_edge_masks (diagonal segment raises).
+    - realized_wall_planes(edge_masks, axis, *, ij=None, region=None),
+      edge_is_pec, clear_edges, apply_pec_edges; apply_pec_mask is a wrapper
+      (periodic, sheets) — no two_plane_mask kwarg.
+    - apply_pec_occupancy: noisy-OR of the four incident cells with the same
+      shifts applied to the OCCUPANCY (a zero pad reads "no conductor"),
+      periodic flags, static sheet_edge_masks OR'd in; bit-identical to the hard
+      rule at binary occupancy on the battery (faces 0 and n-1, seam, 2-D lane).
+    - Deleted: two_plane_extension_masks, _place_at_next_plane.
+      tangential_edge_masks kept only as the pre-#931 classification the f0
+      sheet ctx and sheet_normal_live_axis_masks still read (TODO stage B).
+    - simulation.py / nonuniform.py per-step calls drop two_plane_mask;
+      simulation.py hands the run's periodic flags to the soft path too.
+    - tests/contracts/test_lattice_ownership_contract.py: §5 battery (slab
+      t=1..3 per axis, sheet, footprint, mirror/permutation, soft==hard, wire,
+      helpers, API-level sheet/G4/sub-cell/grep). On the old rule all 9 slab
+      cases failed "FAR FACE MISSING"; now 77/81 pass — the 4 reds need the
+      rasterizer stage (pec_sheets collector, sub-cell refusal, two_plane
+      removal from api/visualize/etc.).
+    - tests/locks/test_two_plane_pec_slab.py deleted (design note §2).
+    
+    R3: memory=rfx-known-issues.md("top face plane is never zeroed" 2026-08-28; two_plane A/B verdict) | R2-attempts=0 (redesign, not a repeat) | falsifier=§5 slab battery t=1,2,3 on each axis + soft≡hard at binary incl. faces 0/n-1 and the periodic seam (tests/contracts/test_lattice_ownership_contract.py)
+    
+    Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+    Claude-Session: https://claude.ai/code/session_01DPkZyauVRCaEhBHXxvxYaN
+
+diff --git a/rfx/boundaries/pec.py b/rfx/boundaries/pec.py
+index bf5edc69..f0a30769 100644
+--- a/rfx/boundaries/pec.py
++++ b/rfx/boundaries/pec.py
+@@ -1,12 +1,20 @@
+-"""Perfect Electric Conductor (PEC) boundary condition.
++"""Perfect Electric Conductor (PEC): domain faces and conductor bodies.
+ 
+-Zeros tangential E-field at boundary faces.
++Domain-face PEC (:func:`apply_pec`, :func:`apply_pec_faces`) keeps its own
++convention (E_tan = 0 on the face plane at index 0 / N) — it is not a body.
++Conductor bodies follow the lattice ownership contract (#931):
++:func:`realized_pec_edge_masks` is the one source of PEC E edges for
++volumes, sheets and wires.
+ """
+ 
+ from __future__ import annotations
+ 
++from dataclasses import dataclass
++
+ import jax.numpy as jnp
++import numpy as np
+ 
++from rfx.core.jax_utils import is_tracer as _is_tracer
+ from rfx.core.yee import _shift_bwd, _shift_fwd
+ 
+ 
+@@ -87,226 +95,374 @@ def apply_pec_faces(state, faces: set[str]) -> object:
+     return state._replace(ex=ex, ey=ey, ez=ez)
+ 
+ 
+-def tangential_edge_masks(cell_mask, periodic=(False, False, False)):
+-    """Per-component tangential E-edge masks for a boolean CELL mask.
+-
+-    The single source of the thin-sheet neighbor rule (#677): a component
+-    is tangential to the masked body iff the body extends >= 2 cells in
+-    that component's direction (i.e. has a masked neighbor along it). A
+-    one-cell-thick sheet therefore selects only its in-plane (tangential)
+-    E components.
+-
+-    Boundary convention (#689). The neighbour lookup used to be
+-    ``jnp.roll`` on every axis, which wraps: on a NON-periodic axis, a
+-    one-cell body on the ``0`` face and another on the ``n-1`` face saw
+-    each other through the domain and BOTH had their sheet-normal
+-    component selected. Whether a component is tangential or normal to a
+-    body is a property of the body, so translating the same pair one cell
+-    inward must not change the answer — and it did (measured, two 4x4
+-    plates in a (6,6,10) domain: per-component nnz [32, 32, 32] on the
+-    faces versus [32, 32, 0] anywhere inside). Non-periodic axes now use
+-    the explicit zero pad ``rfx.core.yee._shift_bwd/_shift_fwd``, which is
+-    also the convention the solver's own curl uses for out-of-domain H.
+-
+-    The wrap is kept, deliberately, on two kinds of axis — both measured,
+-    neither assumed:
+-
+-    * ``periodic[ax]`` — cell ``0`` and cell ``n-1`` really are
+-      neighbours there, so a body straddling the seam is contiguous.
+-      A seam-straddling body one cell either side goes from 8 selected
+-      edges to 0 under an unconditional zero pad. Callers on a periodic
+-      lane MUST pass their run's flags; the default is the non-periodic
+-      convention.
+-    * ``cell_mask.shape[ax] == 1`` — the 2-D lane. ``rfx/simulation.py``
+-      forces ``periodic[2] = True`` when ``grid.is_2d``, and with
+-      ``nz == 1`` the wrap is what makes a body self-adjacent along z.
+-      An unconditional zero pad selects zero Ez edges there, i.e. every
+-      2-D run with interior PEC silently loses that PEC (measured
+-      max|Ez| inside the block 0.0 -> 2.60e+06).
+-
+-    Shared by :func:`apply_pec_mask` (which zeroes the selected edges) and
+-    the surface-impedance sheet operator
+-    (:func:`rfx.materials.thin_conductor.apply_sheet_impedance_e`, which
+-    applies a resistive update on them), so the PEC and sheet footprints
+-    are structurally identical — pinned by
+-    tests/unit/materials/test_sheet_impedance.py (G4 footprint identity). Both
+-    consumers must be handed the SAME ``periodic``, or that identity is
+-    computed against two different neighbour rules.
+-
+-    The distributed NU lane's hard-PEC kernel
+-    (``rfx/runners/distributed_nu.py::_apply_pec_mask_nu_shmap``) also
+-    CALLS this function, with ``periodic=(True, False, False)`` — its
+-    sharded x axis keeps the wrap because a slab's ghost rows carry the
+-    seam neighbour and are forced ``False`` afterwards. It used to carry
+-    an inlined ``roll`` copy of the rule, did not follow #689, and so
+-    disagreed with the single-device lane at a y or z domain face
+-    (measured, two 4x4 plates in a (6,6,10) domain: ``[32, 32, 32]``
+-    there against ``[32, 32, 0]`` here). Pinned by
+-    ``tests/unit/runners/test_distributed_nu_pec_mask_lane_parity.py``.
+-
+-    Still NOT moved in lockstep, and worth knowing before the next reader
+-    rediscovers it: the SOFT PEC path — :func:`apply_pec_occupancy` below,
+-    its distributed twin ``_apply_pec_occupancy_nu_shmap``, and the
+-    AD-smooth dilation in ``rfx/geometry/smoothing.py`` — still spells the
+-    rule with ``roll``, so hard and soft PEC differ at a non-periodic
+-    domain face. Widening #689 into the differentiable-geometry lane was
+-    out of its scope; ``tests/unit/autodiff/test_topology.py`` does not discriminate
+-    either way (its mask spans the full y/z extent, where wrap and zero
+-    pad agree).
++# ---------------------------------------------------------------------------
++# Lattice ownership contract for conductors (#931)
++#
++# One sentence, three regions: an E component is PEC iff its own location is
++# inside the closed conductor region — a VOLUME (a set of primal cells), a
++# SHEET (a footprint on one node plane, zero thickness) or a WIRE (a 1-D path
++# of edges).  :func:`realized_pec_edge_masks` is the ONLY function that turns
++# geometry into PEC edges; every consumer reads its ``(Mx, My, Mz)`` or one
++# of the two helpers built on it (:func:`realized_wall_planes`,
++# :func:`edge_is_pec`).  Normative text:
++# docs/design_notes/20260906_plan_realign_lattice_ownership.md (§1).
++#
++# Index conventions (§1.1): node ``i`` at ``x_i`` is the LOWER corner of
++# primal cell ``i``; ``Ex[i,j,k]`` sits at ``(x_{i+1/2}, y_j, z_k)``,
++# ``Ey[i,j,k]`` at ``(x_i, y_{j+1/2}, z_k)``, ``Ez[i,j,k]`` at
++# ``(x_i, y_j, z_{k+1/2})``.  ``C[i,j,k]`` means primal cell ``(i,j,k)`` is
++# conductor.
++# ---------------------------------------------------------------------------
++
++
++def _shift(arr, ax, periodic, direction):
++    """THE single spelling of the #689 boundary convention.
++
++    ``direction=+1`` returns ``arr[i-1]`` (backward neighbour), ``-1``
++    returns ``arr[i+1]`` (forward neighbour).  Wrap (``jnp.roll``) on a
++    periodic axis and on a length-1 axis (the 2-D lane's self-adjacency);
++    explicit zero pad (``_shift_bwd`` / ``_shift_fwd``) otherwise — the
++    same out-of-domain convention the solver's curl uses.  A hand-copied
++    second neighbour rule is this repo's recurring defect (#689/#690
++    class); volume, sheet and wire realization all come through here.
++    """
++    if arr.shape[ax] == 1 or periodic[ax]:
++        return jnp.roll(arr, direction, axis=ax)
++    return _shift_bwd(arr, ax) if direction > 0 else _shift_fwd(arr, ax)
+ 
+-    Parameters
+-    ----------
+-    cell_mask : (nx, ny, nz) boolean array
+-    periodic : (bool, bool, bool)
+-        Per-axis periodic-boundary flags for the run. Defaults to the
+-        non-periodic convention.
+ 
+-    Returns
+-    -------
+-    (mask_ex, mask_ey, mask_ez) boolean arrays, same shape.
++def _axis_neighbors(cell_mask, ax, periodic):
++    """Per-axis (backward, forward) neighbour occupancy under #689."""
++    return _shift(cell_mask, ax, periodic, +1), _shift(cell_mask, ax, periodic, -1)
++
++
++def tangential_edge_masks(cell_mask, periodic=(False, False, False)):
++    """Pre-#931 thin-sheet neighbour classification of a CELL mask (#677).
++
++    A component is selected at cell ``c`` iff ``c`` is masked and a
++    neighbour of ``c`` along that component's axis is masked.  This is a
++    CLASSIFICATION (which components are tangential to a one-layer cell
++    mask), not a PEC realization: it never realizes a body's far face and
++    is no longer what :func:`apply_pec_mask` applies.
++
++    TODO(stage B, #931): the only remaining consumers are the f0
++    surface-impedance ctx (``rfx.materials.thin_conductor.build_sheet_impedance_ctx``)
++    and ``rfx.geometry.rasterize_grid.sheet_normal_live_axis_masks`` — both
++    move to the §1.3 sheet rule via :func:`realized_pec_edge_masks` on a
++    :class:`SheetSpec` footprint, after which this function is deleted.
+     """
+     masks = []
+     for ax in range(3):
+         bwd, fwd = _axis_neighbors(cell_mask, ax, periodic)
+-        neighbor = bwd | fwd
+-        masks.append(cell_mask & neighbor)
++        masks.append(cell_mask & (bwd | fwd))
+     return tuple(masks)
+ 
+ 
+-def _axis_neighbors(cell_mask, ax, periodic):
+-    """Per-axis (backward, forward) neighbour occupancy of ``cell_mask``.
+-
+-    THE single spelling of the #689 boundary convention, shared by
+-    :func:`tangential_edge_masks` and :func:`two_plane_extension_masks`
+-    (a hand-copied second rule is this repo's recurring defect — #689/#690
+-    class).  Wrap (``jnp.roll``) on periodic axes and on length-1 axes
+-    (the 2-D lane's self-adjacency); explicit zero pad
+-    (``_shift_bwd``/``_shift_fwd``) otherwise — the same out-of-domain
+-    convention the solver's curl uses.
++@dataclass(frozen=True)
++class SheetSpec:
++    """One PEC sheet: a node footprint on ONE plane, zero thickness (§1.3).
++
++    ``footprint`` is a boolean ``(nx, ny, nz)`` NODE mask that is True only
++    on layer ``plane`` along ``normal_axis`` (the full-shape layout keeps it
++    interchangeable with ``SheetImpedanceSpec.mask``, so a lossy f0 sheet
++    and a PEC sheet are one footprint with a different operator — the #677
++    G4 identity by construction).  ``plane`` is a static Python int: a
++    sheet's plane is never a traced quantity (the ``argmin`` cliff).  A
++    sheet owns NO cell — it adds nothing to the cell mask and writes no
++    material.
++    """
++    normal_axis: int
++    plane: int
++    footprint: object
++    name: str | None = None
++
++    def __post_init__(self):
++        a = int(self.normal_axis)
++        if a not in (0, 1, 2):
++            raise ValueError(f"SheetSpec.normal_axis must be 0/1/2, got {self.normal_axis!r}")
++        object.__setattr__(self, "normal_axis", a)
++        object.__setattr__(self, "plane", int(self.plane))
++        fp = self.footprint
++        if getattr(fp, "ndim", None) != 3:
++            raise ValueError("SheetSpec.footprint must be a 3-D (nx, ny, nz) boolean array")
++        if not (0 <= self.plane < fp.shape[a]):
++            raise ValueError(
++                f"SheetSpec.plane={self.plane} is outside the array along axis "
++                f"{'xyz'[a]} (length {fp.shape[a]})")
++        if not _is_tracer(fp):
++            fp_np = np.asarray(fp, dtype=bool)
++            other = tuple(b for b in range(3) if b != a)
++            layers = np.flatnonzero(np.any(fp_np, axis=other))
++            if layers.size and (layers.size != 1 or int(layers[0]) != self.plane):
++                raise ValueError(
++                    f"SheetSpec footprint must occupy exactly its own plane "
++                    f"{self.plane} along {'xyz'[a]}; found layers {layers.tolist()}")
++            object.__setattr__(self, "footprint", jnp.asarray(fp_np))
++
++
++@dataclass(frozen=True)
++class WireSpec:
++    """One PEC filament: the E edges of an axis-aligned lattice path (§1.4).
++
++    ``edges`` is the ``(Mx, My, Mz)`` boolean triple naming the edges on the
++    path — built by :func:`wire_path_edge_masks` from the path's node
++    indices.  A wire owns no cell.
+     """
+-    if cell_mask.shape[ax] == 1 or periodic[ax]:
+-        return jnp.roll(cell_mask, 1, axis=ax), jnp.roll(cell_mask, -1, axis=ax)
+-    return _shift_bwd(cell_mask, ax), _shift_fwd(cell_mask, ax)
++    edges: tuple
++    name: str | None = None
+ 
+ 
+-def _place_at_next_plane(mask, ax, periodic):
+-    """Move a per-cell-index selection to the NEXT plane index along ``ax``.
++def wire_path_edge_masks(nodes, shape, periodic=(False, False, False)):
++    """E edges of the axis-aligned lattice path through ``nodes`` (§1.4).
+ 
+-    ``out[k+1] = mask[k]`` — used to realize a one-cell slab's FAR face
+-    (issue #706).  Same #689 convention as :func:`_axis_neighbors`: on a
+-    periodic (or length-1) axis the k = n-1 selection wraps to plane 0
+-    (the seam-straddling far face IS plane 0 there); on a non-periodic
+-    axis it is dropped (plane n has no array entry — a slab in the last
+-    cell has its far face on the domain boundary, owned by the domain
+-    BC).
++    ``nodes`` is a sequence of integer ``(i, j, k)`` node indices; each
++    consecutive pair must differ along exactly ONE axis (a diagonal
++    segment raises — today such a wire silently rasterizes to nothing).
++    The edge between node ``i`` and ``i+1`` along ``x`` is ``Ex[i, j, k]``,
++    so a segment from ``a`` to ``b`` marks ``E_ax[min(a,b) .. max(a,b)-1]``.
++    On a periodic axis a segment may cross the seam only by naming both
++    end nodes on either side of it explicitly.
+     """
+-    if mask.shape[ax] == 1 or periodic[ax]:
+-        return jnp.roll(mask, 1, axis=ax)
+-    return _shift_bwd(mask, ax)
+-
+-
+-def two_plane_extension_masks(pec_mask, two_plane_mask,
+-                              periodic=(False, False, False)):
+-    """Extra E-edge zero masks realizing the OPT-IN two-plane slab (#706).
+-
+-    ``apply_pec_mask``'s base rule zeroes ONE tangential-E entry per PEC
+-    cell index — the cell's LOWER node plane — so a PEC body filling
+-    exactly one cell along its normal presents only its bottom face and
+-    its own cell volume stays live (eigenmode-witnessed in #706: the
+-    measured lateral-mode ladder pinned L_eff = gap + t, excluding the
+-    face-to-face family at the first gap).  For bodies the user flagged
+-    ``two_plane=True``, this function adds, per axis ``a`` on which the
+-    body's cell run has length exactly 1 (no PEC neighbour on either
+-    side along ``a``, evaluated against the FULL ``pec_mask`` union so a
+-    flagged cell abutting another PEC body is a >= 2-cell run and gets
+-    NOTHING extra — thick bodies are unchanged, the k+2 plane is out of
+-    scope):
+-
+-    * the same tangential-E selection the base rule made at plane ``k``,
+-      replicated at the NEXT plane ``k+1`` (the slab's far face) — the
+-      lateral footprint gating (a component is only zeroed where the
+-      body has a neighbour along the component's own axis) is inherited
+-      from the base masks rather than re-derived, so the two planes
+-      cannot disagree at the slab's lateral rim;
+-    * the slab's interior normal-E edge ``E_a(k)`` (it lies strictly
+-      inside the conductor once both faces are walls — leaving it live
+-      would leave a driveable edge between two shielding planes).
+-
+-    Array edges and periodic seams follow the shared #689 convention via
+-    :func:`_axis_neighbors` / :func:`_place_at_next_plane`.  The
+-    intersection with the live ``pec_mask`` means cells cleared after
+-    assembly (e.g. wire-port live-cell clearing) contribute no
+-    extension.
++    masks = [np.zeros(tuple(shape), dtype=bool) for _ in range(3)]
++    pts = [tuple(int(v) for v in n) for n in nodes]
++    if len(pts) < 2:
++        raise ValueError("a PolylineWire filament needs at least two nodes")
++    for a, b in zip(pts[:-1], pts[1:]):
++        moving = [ax for ax in range(3) if a[ax] != b[ax]]
++        if len(moving) != 1:
++            raise ValueError(
++                f"PolylineWire segment {a} -> {b} is not axis-aligned; only "
++                "axis-aligned segments are supported (lattice ownership "
++                "contract §1.4). Split the segment into axis-aligned legs.")
++        ax = moving[0]
++        lo, hi = sorted((a[ax], b[ax]))
++        idx = [slice(v, v + 1) for v in a]
++        idx[ax] = slice(lo, hi)
++        masks[ax][tuple(idx)] = True
++    return tuple(jnp.asarray(m) for m in masks)
++
++
++def _volume_edge_masks(cell_mask, periodic):
++    """§1.2: an edge is PEC iff it is incident to an occupied cell.
++
++    ``Mx[i,j,k] = C[i,j,k] | C[i,j-1,k] | C[i,j,k-1] | C[i,j-1,k-1]`` and
++    cyclically — the four cells sharing the edge, reached by the backward
++    shifts along the two axes transverse to the component.
++    """
++    C = cell_mask
++    out = []
++    for c in range(3):
++        m = C
++        for t in range(3):
++            if t == c:
++                continue
++            m = m | _shift(m, t, periodic, +1)
++        out.append(m)
++    return tuple(out)
+ 
+-    Parameters
+-    ----------
+-    pec_mask : (nx, ny, nz) boolean array
+-        FULL PEC cell union of the run (post any clearing).
+-    two_plane_mask : (nx, ny, nz) boolean array
+-        Cells of the geometry entries flagged ``two_plane=True``.
+-    periodic : (bool, bool, bool)
+-        The run's per-axis periodic flags (#689).
+ 
+-    Returns
+-    -------
+-    (extra_ex, extra_ey, extra_ez) boolean arrays to OR into the base
+-    tangential-edge masks.
++def _volume_occupancy_masks(occ, periodic):
++    """§1.6: noisy-OR of the four incident cells, ``M = 1 - Π(1 - o_c)``.
++
++    Same shifts as :func:`_volume_edge_masks`, applied to the OCCUPANCY
++    (so the zero pad of a non-periodic axis reads "no conductor outside",
++    exactly as the hard rule's ``False`` pad does — shifting ``1 - o``
++    would pad with "conductor").  The pairwise noisy-OR ``a ⊕ b =
++    1 - (1-a)(1-b)`` chained over the two transverse axes is the
++    four-cell product; at binary occupancy it is exactly 0 or 1, so the
++    result is bit-identical to the hard rule.
+     """
+-    base = tangential_edge_masks(pec_mask, periodic)
+-    extras = [jnp.zeros_like(pec_mask) for _ in range(3)]
+-    for ax in range(3):
+-        bwd, fwd = _axis_neighbors(pec_mask, ax, periodic)
+-        run1 = two_plane_mask & pec_mask & ~bwd & ~fwd
+-        # Interior normal-E edge of the slab: inside the conductor.
+-        extras[ax] = extras[ax] | run1
+-        # Far-face plane k+1: replicate the base tangential selection.
++    out = []
++    for c in range(3):
++        m = occ
+         for t in range(3):
+-            if t == ax:
++            if t == c:
+                 continue
+-            extras[t] = extras[t] | _place_at_next_plane(
+-                base[t] & run1, ax, periodic)
+-    return tuple(extras)
++            m = 1.0 - (1.0 - m) * (1.0 - _shift(m, t, periodic, +1))
++        out.append(m)
++    return tuple(out)
+ 
+ 
+-def apply_pec_mask(state, pec_mask, periodic=(False, False, False),
+-                   two_plane_mask=None) -> object:
+-    """Zero tangential E-field components at PEC geometry cells.
++def _sheet_edge_masks(sheets, shape, periodic):
++    """§1.3: E_t (t != normal) on the sheet plane, both end nodes in F.
++
++    Footprints are UNIONED per normal axis BEFORE the edge rule (two
++    abutting sheets realize seamlessly; a per-sheet application would leave
++    the shared edge live — a slit).  Because a footprint is a full-shape
++    mask that is non-zero only on its own plane and the end-node shift runs
++    along an IN-PLANE axis, the per-axis union is exactly the per-(axis,
++    plane) union the design note asks for, and sheets on adjacent planes
++    stay two films with the normal edge between them live (#690).
++
++    On a length-1 normal axis (the 2-D lane) a sheet has no tangential
++    components; its footprint is returned separately as CELLS so the caller
++    realizes it as a 2-D volume (design note §1.3).
++    """
++    edge = [None, None, None]
++    extra_cells = None
++    per_axis = {}
++    for sp in sheets:
++        fp = sp.footprint
++        if tuple(fp.shape) != tuple(shape):
++            raise ValueError(
++                f"SheetSpec footprint shape {tuple(fp.shape)} does not match the "
++                f"grid shape {tuple(shape)}")
++        if shape[sp.normal_axis] == 1:
++            extra_cells = fp if extra_cells is None else (extra_cells | fp)
++            continue
++        a = sp.normal_axis
++        per_axis[a] = fp if a not in per_axis else (per_axis[a] | fp)
++    for a, F in per_axis.items():
++        for t in range(3):
++            if t == a:
++                continue
++            m = F & _shift(F, t, periodic, -1)
++            edge[t] = m if edge[t] is None else (edge[t] | m)
++    return edge, extra_cells
++
+ 
+-    For thin PEC sheets (1 cell thick), only tangential E-components
+-    are zeroed; the normal component is preserved (represents surface
+-    charge). A component is tangential if the PEC extends >= 2 cells
+-    in that component's direction (i.e., has a PEC neighbor).
++def realized_pec_edge_masks(cell_mask, sheets=(), wires=(),
++                            periodic=(False, False, False)):
++    """The one function that turns conductor geometry into PEC E edges.
+ 
+     Parameters
+     ----------
+-    state : FDTDState
+-    pec_mask : (nx, ny, nz) boolean array
+-        True where material is PEC.
++    cell_mask : (nx, ny, nz) bool array or None
++        Primal-cell occupancy of every PEC VOLUME (Box / Sphere / Cylinder
++        via ``sim.add``, and thick ``PolylineWire``).  ``None`` when the run
++        has no volume conductor.
++    sheets : iterable of :class:`SheetSpec`
++        PEC sheets (``add_thin_conductor`` with PEC conductivity).
++    wires : iterable of :class:`WireSpec`
++        PEC filaments.
+     periodic : (bool, bool, bool)
+-        The run's per-axis periodic flags, forwarded to
+-        :func:`tangential_edge_masks`. The default is the non-periodic
+-        convention, so a caller on a periodic lane must pass its own
+-        flags — see that function's boundary-convention note (#689).
+-        A length-1 axis is handled without it.
+-    two_plane_mask : (nx, ny, nz) boolean array or None
+-        OPT-IN (issue #706): cells of PEC bodies flagged
+-        ``two_plane=True``.  Where such a body fills exactly one cell
+-        along an axis, the far-face plane ``k+1`` is also zeroed and the
+-        slab's interior normal edge is shielded — see
+-        :func:`two_plane_extension_masks`.  ``None`` (the default) is
+-        bit-identical to the historical one-plane behaviour.
++        The run's per-axis periodic flags (#689).  Callers on a periodic
++        lane MUST pass their own; the default is the non-periodic
++        convention.
++
++    Returns
++    -------
++    (Mx, My, Mz) boolean arrays, grid shape: True where that E component
++    is zeroed.  Consequences the contract test pins: a Box drawn
++    ``z_a -> z_b`` on node planes realizes walls at BOTH planes and shorts
++    every normal edge between them; a 1-cell Box is a filled slab with two
++    faces on every axis; a sheet is one plane with its normal edge live;
++    the rule is invariant under mirror and axis permutation.
+     """
+-    # Per-component masks: zero E only where PEC has extent in that direction
+-    # Ex(i,j,k) zeroed if pec(i,j,k) AND neighbor PEC in x
+-    # (if no x-neighbor is PEC → thin x-sheet → Ex is normal → preserve)
+-    mask_ex, mask_ey, mask_ez = tangential_edge_masks(pec_mask, periodic)
+-    if two_plane_mask is not None:
+-        ex2, ey2, ez2 = two_plane_extension_masks(
+-            pec_mask, two_plane_mask, periodic)
+-        mask_ex = mask_ex | ex2
+-        mask_ey = mask_ey | ey2
+-        mask_ez = mask_ez | ez2
++    sheets = list(sheets or ())
++    wires = list(wires or ())
++    if cell_mask is None:
++        src = next((sp.footprint for sp in sheets), None)
++        if src is None:
++            src = next((w.edges[0] for w in wires), None)
++        if src is None:
++            raise ValueError("realized_pec_edge_masks: no cell mask, sheets or wires given")
++        shape = tuple(src.shape)
++    else:
++        shape = tuple(cell_mask.shape)
++    sheet_edges, sheet_cells = _sheet_edge_masks(sheets, shape, periodic)
++    cells = cell_mask
++    if sheet_cells is not None:
++        cells = sheet_cells if cells is None else (cells | sheet_cells)
++    if cells is not None:
++        out = list(_volume_edge_masks(cells.astype(bool), periodic))
++    else:
++        out = [jnp.zeros(shape, dtype=bool) for _ in range(3)]
++    for c in range(3):
++        if sheet_edges[c] is not None:
++            out[c] = out[c] | sheet_edges[c]
++        for w in wires:
++            out[c] = out[c] | w.edges[c]
++    return tuple(out)
++
++
++def realized_wall_planes(edge_masks, axis, *, ij=None, region=None):
++    """Sorted node-plane indices along ``axis`` where a tangential wall exists.
++
++    A plane ``k`` counts when some E component tangential to ``axis`` (the
++    two components other than ``axis``) is PEC on that plane, inside the
++    selection:
++
++    * ``region`` — a tuple of three slices over the grid; ``None`` is the
++      whole grid.  Any tangential edge whose index falls in the region.
++    * ``ij`` — the two in-plane node indices of ONE column (in axis order,
++      skipping ``axis``).  A wall counts on the column when any tangential
++      edge INCIDENT to the node ``(ij, k)`` is PEC, i.e. ``E_t`` at the
++      node's own index or at the backward index along ``t`` — so a node on
++      the hi rim of a footprint, whose incident edges are stored at
++      ``i-1``, is found.
++
++    ``ij`` and ``region`` are exclusive.  Consumers: preflight cavity /
++    guide-width checks, cv15 ``assert_realized_stack``, MSL trace
++    detection, oracles.
++    """
++    if ij is not None and region is not None:
++        raise ValueError("pass either ij= or region=, not both")
++    tangential = [c for c in range(3) if c != axis]
++    hit = None
++    if ij is not None:
++        i, j = (int(v) for v in ij)
++        in_plane = tangential
++        for t in tangential:
++            m = np.asarray(edge_masks[t], dtype=bool)
++            idx = [None, None, None]
++            idx[in_plane[0]] = i
++            idx[in_plane[1]] = j
++            idx[axis] = slice(None)
++            col = m[tuple(idx)]
++            back = list(idx)
++            if back[t] - 1 >= 0:
++                back[t] = back[t] - 1
++                col = col | m[tuple(back)]
++            elif m.shape[t] == 1:
++                pass  # length-1 axis: the node's own index is the wrap neighbour
++            hit = col if hit is None else (hit | col)
++    else:
++        sel = tuple(region) if region is not None else (slice(None),) * 3
++        other = tuple(c for c in range(3) if c != axis)
++        for t in tangential:
++            m = np.asarray(edge_masks[t], dtype=bool)
++            sub = np.zeros_like(m)
++            sub[sel] = m[sel]
++            col = np.any(sub, axis=other)
++            hit = col if hit is None else (hit | col)
++    return [int(k) for k in np.flatnonzero(hit)]
++
++
++_COMPONENT_INDEX = {"ex": 0, "ey": 1, "ez": 2, "x": 0, "y": 1, "z": 2, 0: 0, 1: 1, 2: 2}
++
++
++def edge_is_pec(edge_masks, component, i, j, k) -> bool:
++    """True iff the E edge ``component`` at index ``(i, j, k)`` is PEC.
++
++    ``component`` is ``"ex"``/``"ey"``/``"ez"``, ``"x"``/``"y"``/``"z"`` or
++    0/1/2.  Wire-port live-cell logic (#556 end gap, #929 ``port_in_pec``),
++    probes and sources read this instead of scanning a cell mask.
++    """
++    c = _COMPONENT_INDEX[component.lower() if isinstance(component, str) else int(component)]
++    return bool(np.asarray(edge_masks[c])[int(i), int(j), int(k)])
++
+ 
++def clear_edges(edge_masks, cells):
++    """Un-zero the three E entries at the given cell indices (§1.9 clearing).
++
++    ``cells`` is either a boolean grid-shaped mask or an iterable of
++    ``(i, j, k)`` index triples.  Replaces the old ``pec_mask[c] = False``
++    port clearing: the port's own E entries at those indices are released
++    while every other realized edge stays.
++    """
++    if hasattr(cells, "shape") and tuple(getattr(cells, "shape", ())) == tuple(edge_masks[0].shape):
++        keep = ~jnp.asarray(cells, dtype=bool)
++        return tuple(m & keep for m in edge_masks)
++    out = list(edge_masks)
++    for (i, j, k) in cells:
++        out = [m.at[int(i), int(j), int(k)].set(False) for m in out]
++    return tuple(out)
++
++
++def apply_pec_edges(state, edge_masks) -> object:
++    """Zero E on the realized ``(Mx, My, Mz)`` edge masks."""
++    mask_ex, mask_ey, mask_ez = edge_masks
+     return state._replace(
+         ex=state.ex * (1.0 - mask_ex.astype(state.ex.dtype)),
+         ey=state.ey * (1.0 - mask_ey.astype(state.ey.dtype)),
+@@ -314,6 +470,19 @@ def apply_pec_mask(state, pec_mask, periodic=(False, False, False),
+     )
+ 
+ 
++def apply_pec_mask(state, pec_mask, periodic=(False, False, False),
++                   sheets=()) -> object:
++    """Zero E at the PEC edges realized from a cell mask (and sheets).
++
++    Convenience wrapper: :func:`realized_pec_edge_masks` then
++    :func:`apply_pec_edges`.  Step functions precompute the edge masks once
++    at setup and call :func:`apply_pec_edges` directly; this wrapper is for
++    tests and one-shot callers.  ``periodic`` is the run's flags (#689).
++    """
++    return apply_pec_edges(
++        state, realized_pec_edge_masks(pec_mask, sheets=sheets, periodic=periodic))
++
++
+ def apply_pec_h_mask(state, pec_mask=None, *,
+                      mask_hx=None, mask_hy=None, mask_hz=None) -> object:
+     """Zero H-field components inside PEC cells.
+@@ -375,22 +544,29 @@ def apply_pec_h_mask(state, pec_mask=None, *,
+     )
+ 
+ 
+-def apply_pec_occupancy(state, pec_occupancy) -> object:
+-    """Apply a relaxed PEC occupancy field to tangential E components.
++def apply_pec_occupancy(state, pec_occupancy, periodic=(False, False, False),
++                        sheet_edge_masks=None) -> object:
++    """Differentiable PEC: relaxed occupancy on the §1.2 incident rule (§1.6).
+ 
+-    This is the differentiable analogue of :func:`apply_pec_mask`.
+-    ``pec_occupancy`` is a float field in ``[0, 1]`` where 0 means no
+-    conductor and 1 means full PEC occupancy. For binary occupancy it
+-    reproduces the hard-mask behaviour.
++    ``pec_occupancy`` is a float CELL field in ``[0, 1]``.  Each E component
++    is scaled by ``1 - M`` with ``M`` the noisy-OR of its four incident
++    cells, ``M = 1 - Π(1 - o_c)``, under the same #689 shifts as the hard
++    rule — so at binary occupancy this is bit-identical to
++    :func:`apply_pec_mask` (pinned on a battery that includes bodies on
++    faces 0 and n-1 of a non-periodic axis and the periodic seam).  Sheets
++    enter as STATIC edge masks (``sheet_edge_masks = (Sx, Sy, Sz)`` from
++    :func:`realized_pec_edge_masks`) OR'd in; a sheet's plane is not a
++    traced quantity.
+     """
+     occ = jnp.clip(pec_occupancy.astype(state.ex.dtype), 0.0, 1.0)
+-
+-    occ_ex = occ * jnp.maximum(jnp.roll(occ, 1, axis=0), jnp.roll(occ, -1, axis=0))
+-    occ_ey = occ * jnp.maximum(jnp.roll(occ, 1, axis=1), jnp.roll(occ, -1, axis=1))
+-    occ_ez = occ * jnp.maximum(jnp.roll(occ, 1, axis=2), jnp.roll(occ, -1, axis=2))
+-
++    m_ex, m_ey, m_ez = _volume_occupancy_masks(occ, periodic)
++    if sheet_edge_masks is not None:
++        sx, sy, sz = sheet_edge_masks
++        m_ex = jnp.maximum(m_ex, sx.astype(m_ex.dtype))
++        m_ey = jnp.maximum(m_ey, sy.astype(m_ey.dtype))
++        m_ez = jnp.maximum(m_ez, sz.astype(m_ez.dtype))
+     return state._replace(
+-        ex=state.ex * (1.0 - occ_ex),
+-        ey=state.ey * (1.0 - occ_ey),
+-        ez=state.ez * (1.0 - occ_ez),
++        ex=state.ex * (1.0 - m_ex),
++        ey=state.ey * (1.0 - m_ey),
++        ez=state.ez * (1.0 - m_ez),
+     )
+diff --git a/rfx/nonuniform.py b/rfx/nonuniform.py
+index 6a944c6b..a225a77e 100644
+--- a/rfx/nonuniform.py
++++ b/rfx/nonuniform.py
+@@ -1398,8 +1398,8 @@ def _build_nu_scan(
+             # #689: default (non-periodic) is correct here — the NU
+             # stepper installs no periodic BC at all, and NU grids are
+             # 3-D, so both of the wrap-keeping guards are inert.
+-            st = apply_pec_mask(st, pec_mask,
+-                                two_plane_mask=pec_two_plane_mask)
++            # TODO(stage C, #931): precompute the edge masks once at setup.
++            st = apply_pec_mask(st, pec_mask)
+         if use_pec_occupancy:
+             st = apply_pec_occupancy(st, pec_occupancy)
+ 
+diff --git a/rfx/simulation.py b/rfx/simulation.py
+index b17abcfd..e04d1028 100644
+--- a/rfx/simulation.py
++++ b/rfx/simulation.py
+@@ -1427,11 +1427,12 @@ def make_core_step(ctx: _StepContext):
+                 from rfx.boundaries.pec import apply_pec_mask
+                 # #689: the tangential-edge rule keeps the wrap only on
+                 # genuinely periodic axes, so hand it the run's flags.
+-                st = apply_pec_mask(st, ctx.pec_mask, ctx.periodic,
+-                                    two_plane_mask=ctx.pec_two_plane_mask)
++                # TODO(stage C, #931): precompute (Mx,My,Mz) once at setup
++                # via realized_pec_edge_masks and call apply_pec_edges here.
++                st = apply_pec_mask(st, ctx.pec_mask, ctx.periodic)
+ 
+             if ctx.use_pec_occupancy:
+-                st = apply_pec_occupancy(st, ctx.pec_occupancy)
++                st = apply_pec_occupancy(st, ctx.pec_occupancy, ctx.periodic)
+ 
+             # #677 node-thin surface-impedance sheet operator. Contract slot:
+             # AFTER apply_pec_mask/apply_pec_occupancy (PEC wins on overlap —
+diff --git a/tests/contracts/test_lattice_ownership_contract.py b/tests/contracts/test_lattice_ownership_contract.py
+new file mode 100644
+index 00000000..470bf1d2
+--- /dev/null
++++ b/tests/contracts/test_lattice_ownership_contract.py
+@@ -0,0 +1,546 @@
++"""#931 lattice ownership contract — the pre-declared battery (design note §5).
++
++Normative source: ``docs/design_notes/20260906_plan_realign_lattice_ownership.md``.
++One sentence covers every conductor: **an E component is PEC iff its own
++location is inside the closed conductor region**, evaluated for a 3-D
++(volume), 2-D (sheet) and 1-D (wire) region on the Yee lattice.
++
++Index conventions (§1.1): node ``i`` is the LOWER corner of primal cell
++``i``; ``Ex[i,j,k]`` sits at ``(x_{i+1/2}, y_j, z_k)`` and cyclically. A
++Box drawn ``z_a -> z_b`` on node planes occupies cells ``a .. b-1`` and
++must realize tangential walls at BOTH ``z_a`` and ``z_b``.
++
++The slab battery goes through ``apply_pec_mask`` (present in the old code
++too) so that the far-face assertions FAIL on the pre-#931 neighbour rule
++rather than erroring at import: on the old rule a 1-cell slab is a single
++plane at ``lo`` and its far face at ``hi`` is never a wall.
++
++Sections that need the rasterizer side of the contract (sheet
++declarations through ``add_thin_conductor``, the sub-cell refusal, the
++``two_plane`` grep) are marked in their docstrings; they stay red until
++that stage lands.
++"""
++
++from __future__ import annotations
++
++import itertools
++import re
++import subprocess
++from pathlib import Path
++
++import jax.numpy as jnp
++import numpy as np
++import pytest
++
++from rfx.boundaries.pec import apply_pec_mask
++from rfx.core.yee import init_state
++
++RFX_ROOT = Path(__file__).resolve().parents[2]
++
++SHAPE = (7, 8, 9)
++LO = (2, 2, 2)          # first occupied cell per axis
++HI = (5, 6, 7)          # one past the last occupied cell per axis
++
++
++# ---------------------------------------------------------------------------
++# helpers
++# ---------------------------------------------------------------------------
++
++def _ones_state(shape):
++    ones = jnp.ones(shape, jnp.float32)
++    return init_state(shape)._replace(ex=ones, ey=ones, ez=ones)
++
++
++def _zeroed(state):
++    """Boolean per-component 'this edge was zeroed' masks from a ones state."""
++    return tuple(np.asarray(getattr(state, c)) == 0.0 for c in ("ex", "ey", "ez"))
++
++
++def _box_cells(shape, lo, hi):
++    m = np.zeros(shape, dtype=bool)
++    m[lo[0]:hi[0], lo[1]:hi[1], lo[2]:hi[2]] = True
++    return m
++
++
++def _slab_cells(shape, axis, k0, t, foot_lo=(1, 1, 1), foot_hi=None):
++    """Cells of a slab ``t`` cells thick along ``axis`` starting at cell k0."""
++    lo = list(foot_lo)
++    hi = list(foot_hi) if foot_hi is not None else [s - 1 for s in shape]
++    lo[axis] = k0
++    hi[axis] = k0 + t
++    return _box_cells(shape, lo, hi)
++
++
++def _expected_volume_edges(shape, lo, hi):
++    """Closed-region reading of the contract for a node-aligned Box.
++
++    Written directly from §1.1 (where each component sits), NOT from the
++    §1.2 formula, so the test is an independent statement of the rule.
++    Ex[i,j,k] at (x_{i+1/2}, y_j, z_k) is inside the closed box iff
++    lo_x <= i < hi_x (its centre), lo_y <= j <= hi_y, lo_z <= k <= hi_z.
++    """
++    ex = np.zeros(shape, dtype=bool)
++    ey = np.zeros(shape, dtype=bool)
++    ez = np.zeros(shape, dtype=bool)
++    ex[lo[0]:hi[0], lo[1]:hi[1] + 1, lo[2]:hi[2] + 1] = True
++    ey[lo[0]:hi[0] + 1, lo[1]:hi[1], lo[2]:hi[2] + 1] = True
++    ez[lo[0]:hi[0] + 1, lo[1]:hi[1] + 1, lo[2]:hi[2]] = True
++    return ex, ey, ez
++
++
++def _interior_slab_case(axis, t):
++    lo = [2, 2, 2]
++    hi = [5, 6, 7]
++    lo[axis] = 3
++    hi[axis] = 3 + t
++    return tuple(lo), tuple(hi)
++
++
++# ---------------------------------------------------------------------------
++# §5 slab battery — volume: walls at lo AND hi, no live normal edge inside
++# ---------------------------------------------------------------------------
++
++@pytest.mark.parametrize("axis", [0, 1, 2])
++@pytest.mark.parametrize("t", [1, 2, 3])
++def test_slab_realizes_both_faces_and_shorts_its_interior(axis, t):
++    lo, hi = _interior_slab_case(axis, t)
++    cells = _box_cells(SHAPE, lo, hi)
++    got = _zeroed(apply_pec_mask(_ones_state(SHAPE), jnp.asarray(cells)))
++    tangential = [c for c in range(3) if c != axis]
++    k_lo, k_hi = lo[axis], hi[axis]
++    for c in tangential:
++        m = got[c]
++        wall_lo = np.take(m, k_lo, axis=axis)
++        wall_hi = np.take(m, k_hi, axis=axis)
++        assert wall_lo.any(), f"axis={axis} t={t}: no wall at lo plane {k_lo} for E{'xyz'[c]}"
++        assert wall_hi.any(), (
++            f"axis={axis} t={t}: FAR FACE MISSING — no wall at hi plane "
++            f"{k_hi} for E{'xyz'[c]} (old one-plane-per-cell rule)")
++        # the two faces carry the same footprint
++        np.testing.assert_array_equal(wall_lo, wall_hi)
++        # nothing outside the closed extent
++        outside = [k for k in range(SHAPE[axis]) if k < k_lo or k > k_hi]
++        for k in outside:
++            assert not np.take(m, k, axis=axis).any(), (axis, t, c, k)
++    # normal component: every edge inside the closed slab (cells and the
++    # lateral rim nodes) is shorted, none outside
++    n = got[axis]
++    exp_n = _expected_volume_edges(SHAPE, lo, hi)[axis]
++    for k in range(SHAPE[axis]):
++        plane = np.take(n, k, axis=axis)
++        if k_lo <= k < k_hi:
++            assert np.all(plane[np.take(cells, k, axis=axis)]), \
++                f"live normal edge inside slab k={k}"
++            np.testing.assert_array_equal(plane, np.take(exp_n, k, axis=axis))
++        else:
++            assert not plane.any(), (axis, t, k)
++
++
++@pytest.mark.parametrize("axis", [0, 1, 2])
++@pytest.mark.parametrize("t", [1, 2, 3])
++def test_slab_realized_thickness_equals_drawn(axis, t):
++    from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
++    lo, hi = _interior_slab_case(axis, t)
++    masks = realized_pec_edge_masks(jnp.asarray(_box_cells(SHAPE, lo, hi)))
++    planes = realized_wall_planes(masks, axis)
++    assert planes == list(range(lo[axis], hi[axis] + 1)), (axis, t, planes)
++    assert planes[-1] - planes[0] == t
++
++
++def test_one_cell_box_is_a_filled_slab_with_no_flag():
++    """A 1-cell PEC Box realizes two faces on every axis — no ``two_plane``."""
++    from rfx.boundaries.pec import realized_pec_edge_masks
++    lo, hi = (3, 3, 3), (4, 4, 4)
++    got = realized_pec_edge_masks(jnp.asarray(_box_cells(SHAPE, lo, hi)))
++    exp = _expected_volume_edges(SHAPE, lo, hi)
++    for c in range(3):
++        np.testing.assert_array_equal(np.asarray(got[c]), exp[c], err_msg="xyz"[c])
++    # 4 edges per component: the 12 edges of one cube
++    assert [int(np.asarray(g).sum()) for g in got] == [4, 4, 4]
++
++
++# ---------------------------------------------------------------------------
++# §5 footprint battery — a patch Box realizes its drawn rectangle (closed)
++# ---------------------------------------------------------------------------
++
++def test_volume_box_realizes_its_closed_extent_exactly():
++    from rfx.boundaries.pec import realized_pec_edge_masks
++    got = realized_pec_edge_masks(jnp.asarray(_box_cells(SHAPE, LO, HI)))
++    exp = _expected_volume_edges(SHAPE, LO, HI)
++    for c in range(3):
++        np.testing.assert_array_equal(np.asarray(got[c]), exp[c], err_msg="xyz"[c])
++
++
++def test_volume_box_through_the_api_has_walls_on_both_drawn_planes():
++    """Node-aligned Box via ``sim.add(..., material='pec')`` — cell set is
++    the same under node and centre sampling, so this holds with either
++    rasterizer; the wall planes are what the contract adds."""
++    from rfx import Box, Simulation
++    from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
++    dx = 1e-3
++    sim = Simulation(freq_max=10e9, domain=(0.010, 0.010, 0.010),
++                     boundary="pec", dx=dx)
++    lo = (0.002, 0.003, 0.004)
++    hi = (0.006, 0.007, 0.005)      # z: 1 cell thick
++    sim.add(Box(lo, hi), material="pec")
++    grid = sim._build_grid()
++    pec_mask = sim._assemble_materials(grid)[3]
++    assert pec_mask is not None
++    masks = realized_pec_edge_masks(pec_mask)
++    i_lo = grid.position_to_index(lo)
++    i_hi = grid.position_to_index(hi)
++    for ax in range(3):
++        assert realized_wall_planes(masks, ax) == list(range(i_lo[ax], i_hi[ax] + 1)), ax
++    exp = _expected_volume_edges(grid.shape, i_lo, i_hi)
++    for c in range(3):
++        np.testing.assert_array_equal(np.asarray(masks[c]), exp[c], err_msg="xyz"[c])
++
++
++# ---------------------------------------------------------------------------
++# §5 sheet battery — one plane, live normal edge, closed footprint
++# ---------------------------------------------------------------------------
++
++def _sheet(shape, axis, plane, foot_lo, foot_hi):
++    """SheetSpec with a closed node footprint [foot_lo, foot_hi] in-plane."""
++    from rfx.boundaries.pec import SheetSpec
++    f = np.zeros(shape, dtype=bool)
++    sl = [slice(foot_lo[a], foot_hi[a] + 1) for a in range(3)]
++    sl[axis] = slice(plane, plane + 1)
++    f[tuple(sl)] = True
++    return SheetSpec(normal_axis=axis, plane=plane, footprint=jnp.asarray(f))
++
++
++def _expected_sheet_edges(shape, axis, plane, foot_lo, foot_hi):
++    """§1.3 read directly: E_t (t != axis) at plane, both end nodes in F."""
++    out = [np.zeros(shape, dtype=bool) for _ in range(3)]
++    for t in range(3):
++        if t == axis:
++            continue
++        sl = [slice(foot_lo[a], foot_hi[a] + 1) for a in range(3)]
++        sl[axis] = slice(plane, plane + 1)
++        sl[t] = slice(foot_lo[t], foot_hi[t])          # edges i .. i+1, last node excluded
++        out[t][tuple(sl)] = True
++    return tuple(out)
++
++
++@pytest.mark.parametrize("axis", [0, 1, 2])
++def test_sheet_realizes_one_plane_and_leaves_the_normal_edge_live(axis):
++    from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
++    plane = 4
++    foot_lo, foot_hi = (1, 2, 1), (4, 5, 6)
++    spec = _sheet(SHAPE, axis, plane, foot_lo, foot_hi)
++    got = realized_pec_edge_masks(None, sheets=[spec])
++    exp = _expected_sheet_edges(SHAPE, axis, plane, foot_lo, foot_hi)
++    for c in range(3):
++        np.testing.assert_array_equal(np.asarray(got[c]), exp[c], err_msg="xyz"[c])
++    assert not bool(jnp.any(got[axis])), "sheet-normal E must stay live"
++    assert realized_wall_planes(got, axis) == [plane]
++
++
++def test_sheet_with_a_cell_mask_of_none_or_zeros_is_the_same():
++    from rfx.boundaries.pec import realized_pec_edge_masks
++    spec = _sheet(SHAPE, 2, 3, (1, 1, 0), (5, 5, 0))
++    a = realized_pec_edge_masks(None, sheets=[spec])
++    b = realized_pec_edge_masks(jnp.zeros(SHAPE, bool), sheets=[spec])
++    for c in range(3):
++        np.testing.assert_array_equal(np.asarray(a[c]), np.asarray(b[c]))
++
++
++def test_abutting_sheets_on_one_plane_union_before_the_edge_rule():
++    """Two footprints sharing a node row realize seamlessly — no slit."""
++    from rfx.boundaries.pec import realized_pec_edge_masks
++    left = _sheet(SHAPE, 2, 3, (1, 1, 0), (3, 5, 0))
++    right = _sheet(SHAPE, 2, 3, (3, 1, 0), (5, 5, 0))
++    whole = _sheet(SHAPE, 2, 3, (1, 1, 0), (5, 5, 0))
++    two = realized_pec_edge_masks(None, sheets=[left, right])
++    one = realized_pec_edge_masks(None, sheets=[whole])
++    for c in range(3):
++        np.testing.assert_array_equal(np.asarray(two[c]), np.asarray(one[c]))
++
++
++def test_sheets_on_adjacent_planes_keep_a_live_normal_edge_between_them():
++    """#690 semantics: two films one cell apart, the gap edge stays live."""
++    from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
++    a = _sheet(SHAPE, 2, 3, (1, 1, 0), (5, 5, 0))
++    b = _sheet(SHAPE, 2, 4, (1, 1, 0), (5, 5, 0))
++    got = realized_pec_edge_masks(None, sheets=[a, b])
++    assert realized_wall_planes(got, 2) == [3, 4]
++    assert not bool(jnp.any(got[2]))
++
++
++def test_sheet_footprint_is_the_closed_rectangle():
++    """The hi row of the footprint carries a wall edge (closed sampling)."""
++    from rfx.boundaries.pec import realized_pec_edge_masks
++    foot_lo, foot_hi = (1, 2, 0), (4, 5, 0)
++    got = realized_pec_edge_masks(None, sheets=[_sheet(SHAPE, 2, 3, foot_lo, foot_hi)])
++    ex, ey, _ = (np.asarray(g) for g in got)
++    assert ex[1:4, 5, 3].all()          # hi row j=5 carries Ex edges
++    assert ey[4, 2:5, 3].all()          # hi column i=4 carries Ey edges
++    assert not ex[4, :, 3].any()        # no edge leaves the footprint
++    assert not ey[:, 5, 3].any()
++
++
++def test_sheet_spec_validates_its_layer():
++    from rfx.boundaries.pec import SheetSpec
++    f = np.zeros(SHAPE, dtype=bool)
++    f[1:3, 1:3, 2] = True
++    f[1:3, 1:3, 4] = True       # a second layer
++    with pytest.raises(ValueError):
++        SheetSpec(normal_axis=2, plane=2, footprint=jnp.asarray(f))
++
++
++# ---------------------------------------------------------------------------
++# §5 mirror / axis-permutation invariance
++# ---------------------------------------------------------------------------
++
++def _random_body(rng, shape):
++    m = np.zeros(shape, dtype=bool)
++    for _ in range(3):
++        lo = [rng.integers(1, s - 2) for s in shape]
++        hi = [rng.integers(l + 1, s - 1) for l, s in zip(lo, shape)]
++        m[lo[0]:hi[0], lo[1]:hi[1], lo[2]:hi[2]] = True
++    return m
++
++
++@pytest.mark.parametrize("perm", list(itertools.permutations(range(3))))
++def test_realized_edges_commute_with_axis_permutation(perm):
++    from rfx.boundaries.pec import realized_pec_edge_masks
++    rng = np.random.default_rng(931)
++    cells = _random_body(rng, (8, 8, 8))
++    base = [np.asarray(m) for m in realized_pec_edge_masks(jnp.asarray(cells))]
++    permuted = realized_pec_edge_masks(jnp.asarray(np.transpose(cells, perm)))
++    for new_axis, old_axis in enumerate(perm):
++        np.testing.assert_array_equal(np.asarray(permuted[new_axis]),
++                                      np.transpose(base[old_axis], perm))
++
++
++@pytest.mark.parametrize("axis", [0, 1, 2])
++def test_realized_edges_commute_with_mirror_of_an_interior_body(axis):
++    """Mirroring cells i <-> n-1-i maps the along-axis component index
++    i -> n-1-i and the other two (node-plane) components i -> n-i."""
++    from rfx.boundaries.pec import realized_pec_edge_masks
++    rng = np.random.default_rng(7)
++    cells = _random_body(rng, (8, 8, 8))
++    base = [np.asarray(m) for m in realized_pec_edge_masks(jnp.asarray(cells))]
++    mirrored = [np.asarray(m) for m in
++                realized_pec_edge_masks(jnp.asarray(np.flip(cells, axis)))]
++    for c in range(3):
++        if c == axis:
++            np.testing.assert_array_equal(mirrored[c], np.flip(base[c], axis))
++        else:
++            flipped = np.flip(base[c], axis)            # plane i -> n-1-i
++            shifted = np.roll(flipped, 1, axis=axis)   # -> n-i
++            # plane n (index n) has no array entry; interior bodies never
++            # touch it, so roll wrap carries only zeros
++            np.testing.assert_array_equal(mirrored[c], shifted)
++
++
++# ---------------------------------------------------------------------------
++# §5 soft == hard at binary occupancy
++# ---------------------------------------------------------------------------
++
++def _soft_hard_battery():
++    n = 8
++    shape = (n, n, n)
++    cases = []
++    for axis in range(3):
++        for t in (1, 2, 3):
++            for k0 in (0, 2, n - t):          # face 0, interior, face n-1
++                cases.append((f"slab ax={axis} t={t} k0={k0}",
++                              _slab_cells(shape, axis, k0, t, (1, 1, 1), (n - 1, n - 1, n - 1)),
++                              (False, False, False)))
++    # a seam-straddling body on a periodic axis (cells n-1 and 0)
++    for axis in range(3):
++        m = np.zeros(shape, dtype=bool)
++        sl = [slice(2, 5)] * 3
++        sl[axis] = slice(0, 1)
++        m[tuple(sl)] = True
++        sl[axis] = slice(n - 1, n)
++        m[tuple(sl)] = True
++        per = [False, False, False]
++        per[axis] = True
++        cases.append((f"seam ax={axis}", m, tuple(per)))
++    rng = np.random.default_rng(3)
++    cases.append(("random", rng.random(shape) < 0.35, (False, False, False)))
++    cases.append(("random-periodic-y", rng.random(shape) < 0.35, (False, True, False)))
++    cases.append(("2d-lane", _slab_cells((9, 9, 1), 0, 3, 2, (0, 2, 0), (9, 7, 1)),
++                  (False, False, True)))
++    return cases
++
++
++@pytest.mark.parametrize("case", _soft_hard_battery(), ids=lambda c: c[0])
++def test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary(case):
++    from rfx.boundaries.pec import apply_pec_occupancy
++    name, cells, periodic = case
++    st = _ones_state(cells.shape)
++    hard = apply_pec_mask(st, jnp.asarray(cells), periodic)
++    soft = apply_pec_occupancy(st, jnp.asarray(cells, dtype=jnp.float32), periodic)
++    for c in ("ex", "ey", "ez"):
++        np.testing.assert_array_equal(np.asarray(getattr(hard, c)),
++                                      np.asarray(getattr(soft, c)), err_msg=f"{name} {c}")
++
++
++def test_soft_path_ors_sheet_masks_in_statically():
++    from rfx.boundaries.pec import apply_pec_occupancy, realized_pec_edge_masks
++    spec = _sheet(SHAPE, 2, 3, (1, 1, 0), (5, 5, 0))
++    sheet_masks = realized_pec_edge_masks(None, sheets=[spec])
++    cells = _box_cells(SHAPE, (1, 1, 5), (3, 3, 7))
++    st = _ones_state(SHAPE)
++    hard = apply_pec_mask(st, jnp.asarray(cells), sheets=[spec])
++    soft = apply_pec_occupancy(st, jnp.asarray(cells, jnp.float32),
++                               sheet_edge_masks=sheet_masks)
++    for c in ("ex", "ey", "ez"):
++        np.testing.assert_array_equal(np.asarray(getattr(hard, c)),
++                                      np.asarray(getattr(soft, c)), err_msg=c)
++
++
++def test_soft_occupancy_is_differentiable_and_noisy_or():
++    import jax
++    from rfx.boundaries.pec import apply_pec_occupancy
++    st = _ones_state((5, 5, 5))
++
++    def f(occ):
++        return jnp.sum(apply_pec_occupancy(st, occ).ex)
++
++    occ = 0.5 * jnp.ones((5, 5, 5), jnp.float32)
++    g = jax.grad(f)(occ)
++    assert bool(jnp.all(jnp.isfinite(g))) and float(jnp.max(jnp.abs(g))) > 0
++    # one interior cell at 0.5: the four Ex edges it touches read 1 - (1-0.5) = 0.5
++    occ1 = jnp.zeros((5, 5, 5), jnp.float32).at[2, 2, 2].set(0.5)
++    out = apply_pec_occupancy(st, occ1).ex
++    assert float(out[2, 2, 2]) == pytest.approx(0.5)
++    assert float(out[2, 3, 3]) == pytest.approx(0.5)
++    assert float(out[2, 2, 4]) == pytest.approx(1.0)
++
++
++# ---------------------------------------------------------------------------
++# wires (§1.4) and the helpers (§1.7 / §1.9)
++# ---------------------------------------------------------------------------
++
++def test_wire_path_realizes_the_axis_aligned_lattice_edges():
++    from rfx.boundaries.pec import WireSpec, realized_pec_edge_masks, wire_path_edge_masks
++    nodes = [(1, 1, 1), (4, 1, 1), (4, 3, 1), (4, 3, 5)]
++    edges = wire_path_edge_masks(nodes, SHAPE)
++    ex, ey, ez = (np.asarray(e) for e in edges)
++    assert ex[1:4, 1, 1].all() and ex.sum() == 3
++    assert ey[4, 1:3, 1].all() and ey.sum() == 2
++    assert ez[4, 3, 1:5].all() and ez.sum() == 4
++    got = realized_pec_edge_masks(None, wires=[WireSpec(edges=edges)])
++    for c in range(3):
++        np.testing.assert_array_equal(np.asarray(got[c]), (ex, ey, ez)[c])
++
++
++def test_wire_path_refuses_a_diagonal_segment():
++    from rfx.boundaries.pec import wire_path_edge_masks
++    with pytest.raises(ValueError, match="axis-aligned"):
++        wire_path_edge_masks([(1, 1, 1), (3, 2, 1)], SHAPE)
++
++
++def test_edge_is_pec_and_clear_edges():
++    from rfx.boundaries.pec import clear_edges, edge_is_pec, realized_pec_edge_masks
++    masks = realized_pec_edge_masks(jnp.asarray(_box_cells(SHAPE, LO, HI)))
++    assert edge_is_pec(masks, "ez", 3, 3, 3)
++    assert edge_is_pec(masks, 0, 2, 2, 2)
++    assert not edge_is_pec(masks, "ex", 5, 2, 2)       # x edge past the hi face
++    cleared = clear_edges(masks, [(3, 3, 3)])
++    for c in ("ex", "ey", "ez"):
++        assert not edge_is_pec(cleared, c, 3, 3, 3)
++    assert edge_is_pec(cleared, "ez", 3, 3, 4)
++    as_mask = np.zeros(SHAPE, dtype=bool)
++    as_mask[3, 3, 3] = True
++    cleared2 = clear_edges(masks, jnp.asarray(as_mask))
++    for c in range(3):
++        np.testing.assert_array_equal(np.asarray(cleared[c]), np.asarray(cleared2[c]))
++
++
++def test_realized_wall_planes_region_and_column():
++    from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
++    masks = realized_pec_edge_masks(jnp.asarray(_box_cells(SHAPE, LO, HI)))
++    assert realized_wall_planes(masks, 2) == [2, 3, 4, 5, 6, 7]
++    assert realized_wall_planes(masks, 2, ij=(3, 3)) == [2, 3, 4, 5, 6, 7]
++    assert realized_wall_planes(masks, 2, ij=(0, 0)) == []
++    # hi-rim node (i=5, j=6): its incident tangential edges are at i-1 / j-1
++    assert realized_wall_planes(masks, 2, ij=(5, 6)) == [2, 3, 4, 5, 6, 7]
++    region = (slice(0, 2), slice(None), slice(None))
++    assert realized_wall_planes(masks, 2, region=region) == []
++
++
++# ---------------------------------------------------------------------------
++# rasterizer-facing contract (needs the geometry stage; red until it lands)
++# ---------------------------------------------------------------------------
++
++def _patch_sim(**thin_kwargs):
++    from rfx import Box, Simulation
++    sim = Simulation(freq_max=10e9, domain=(0.010, 0.010, 0.006),
++                     boundary="pec", dx=1e-3)
++    sim.add_thin_conductor(Box((0.002, 0.003, 0.003), (0.006, 0.007, 0.003)),
++                           **thin_kwargs)
++    return sim
++
++
++def test_pec_thin_conductor_is_a_sheet_not_a_cell():
++    """A zero-thickness PEC Box via ``add_thin_conductor`` owns no cell and
++    realizes exactly its closed drawn footprint on one plane (§1.3)."""
++    from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
++    sim = _patch_sim()
++    grid = sim._build_grid()
++    pec_sheets: list = []
++    pec_mask = sim._assemble_materials(grid, pec_sheets=pec_sheets)[3]
++    assert pec_mask is None or not bool(jnp.any(pec_mask))
++    assert len(pec_sheets) == 1
++    spec = pec_sheets[0]
++    assert spec.normal_axis == 2
++    i_lo = grid.position_to_index((0.002, 0.003, 0.003))
++    i_hi = grid.position_to_index((0.006, 0.007, 0.003))
++    assert spec.plane == i_lo[2]
++    masks = realized_pec_edge_masks(pec_mask, sheets=pec_sheets)
++    exp = _expected_sheet_edges(grid.shape, 2, i_lo[2], i_lo, i_hi)
++    for c in range(3):
++        np.testing.assert_array_equal(np.asarray(masks[c]), exp[c], err_msg="xyz"[c])
++    assert realized_wall_planes(masks, 2) == [i_lo[2]]
++
++
++def test_g4_pec_sheet_and_f0_sheet_share_footprint_and_edge_set():
++    """G4 by construction: the same Box declared PEC and declared lossy
++    (``surface_impedance_f0``) gives one footprint and one edge set."""
++    from rfx.boundaries.pec import realized_pec_edge_masks
++    from rfx.materials.thin_conductor import build_sheet_impedance_ctx
++    pec_sheets: list = []
++    sim_pec = _patch_sim()
++    sim_pec._assemble_materials(sim_pec._build_grid(), pec_sheets=pec_sheets)
++    f0_specs: list = []
++    sim_f0 = _patch_sim(sigma_bulk=1e4, thickness=35e-6, surface_impedance_f0=5e9)
++    sim_f0._assemble_materials(sim_f0._build_grid(), sheet_specs=f0_specs)
++    assert len(pec_sheets) == 1 and len(f0_specs) == 1
++    np.testing.assert_array_equal(np.asarray(pec_sheets[0].footprint),
++                                  np.asarray(f0_specs[0].mask))
++    pec_edges = realized_pec_edge_masks(None, sheets=pec_sheets)
++    ctx = build_sheet_impedance_ctx(f0_specs)
++    for got, exp in zip((ctx.mask_ex, ctx.mask_ey, ctx.mask_ez), pec_edges):
++        np.testing.assert_array_equal(np.asarray(got), np.asarray(exp))
++
++
++def test_sub_cell_pec_box_via_add_is_refused():
++    from rfx import Box, Simulation
++    sim = Simulation(freq_max=10e9, domain=(0.010, 0.010, 0.006),
++                     boundary="pec", dx=1e-3)
++    sim.add(Box((0.002, 0.003, 0.003), (0.006, 0.007, 0.0034)), material="pec")
++    with pytest.raises(ValueError, match="add_thin_conductor"):
++        sim._assemble_materials(sim._build_grid())
++
++
++def test_two_plane_is_gone_from_the_package():
++    """§1.5: no ``two_plane`` and no per-entry realization knob in rfx/.
++    The reference-plane helper ``refplane_zc_two_plane`` is unrelated."""
++    out = subprocess.run(
++        ["grep", "-rn", "two_plane", str(RFX_ROOT / "rfx")],
++        capture_output=True, text=True, check=False).stdout.splitlines()
++    hits = [h for h in out if "refplane_zc_two_plane" not in h]
++    assert hits == [], "\n".join(hits)
++    knob = re.compile(r"\brealization\s*=")
++    bad = []
++    for p in (RFX_ROOT / "rfx" / "api").glob("*.py"):
++        for n, line in enumerate(p.read_text().splitlines(), 1):
++            if knob.search(line):
++                bad.append(f"{p}:{n}: {line.strip()}")
++    assert bad == [], "\n".join(bad)
+diff --git a/tests/locks/test_two_plane_pec_slab.py b/tests/locks/test_two_plane_pec_slab.py
+deleted file mode 100644
+index 1d7bec39..00000000
+--- a/tests/locks/test_two_plane_pec_slab.py
++++ /dev/null
+@@ -1,595 +0,0 @@
+-"""Issue #706 — opt-in two-plane realization for one-cell PEC slabs.
+-
+-Measured baseline (issue #706, eigenmode-witnessed): ``apply_pec_mask``
+-zeroes ONE tangential-E entry per PEC cell index — the cell's LOWER node
+-plane — so a PEC body filling exactly one cell along its normal presents
+-one electrical wall and its own cell volume stays live.  The opt-in
+-(``sim.add(shape, material="pec", two_plane=True)``) additionally zeroes
+-the tangential components at the NEXT node plane (k+1) and shields the
+-slab's interior normal edge, for cell runs of length exactly 1 only.
+-
+-Off-state is pinned bit-identical to main (golden fixture captured from
+-the main checkout at 8e00497, sha256
+-96ba81c10b2459c4f594e1f54fba67d64336660f8db6d18a094721a602dc65b3;
+-the sheet is deliberately PARTIAL-lateral — a full-lateral sheet plus the
+-PEC walls seals the domain and every mutated component is identically
+-zero above it, measured OFF-vs-ON max field diff 0.0 on that fixture
+-vs 3.12e+06 on this one).
+-
+-The physics gate is the eigenmode witness in
+-``TestEigenmodeWitness`` (parallel-plate cavity between two one-cell
+-sheets; ~6 s per run on CPU, ~12 s for the class).  Mutation
+-falsification results (each mutation applied by hand to
+-``rfx/boundaries/pec.py`` / ``apply_pec_mask``, the suite rerun, then
+-reverted) are recorded verbatim in the affected tests' docstrings.
+-"""
+-
+-LOCK_PROVENANCE = {
+-    "fixture": "none",
+-    "generator": "hand-derived (same-process off-state contract; the 8e00497 golden was retired in #707)",
+-    "commit": "4bc7707",
+-    "date": "2026-08-24",
+-    "run_id": "local",
+-    "host": "authoring workstation, JAX_PLATFORMS=cpu (os / jax version not recorded in #707)",
+-    "pinned_until": "2027-02-20",
+-}
+-
+-import os
+-
+-os.environ.setdefault("JAX_PLATFORMS", "cpu")
+-
+-import numpy as np
+-import jax.numpy as jnp
+-import pytest
+-
+-from rfx import Simulation, GaussianPulse, Box
+-from rfx.boundaries.pec import (
+-    apply_pec_mask,
+-    tangential_edge_masks,
+-    two_plane_extension_masks,
+-)
+-
+-C0 = 299792458.0
+-DX = 0.2e-3
+-
+-
+-def _np(a):
+-    return np.asarray(a)
+-
+-
+-def _mask(shape, cells):
+-    m = np.zeros(shape, dtype=bool)
+-    for c in cells:
+-        m[c] = True
+-    return jnp.asarray(m)
+-
+-
+-# ---------------------------------------------------------------------------
+-# Unit level: the extension rule itself
+-# ---------------------------------------------------------------------------
+-
+-class TestExtensionMasks:
+-    def test_one_cell_z_slab_planes(self):
+-        """A flagged 4x4x1 z-slab adds: tangential Ex/Ey at plane k+1 with
+-        the SAME lateral footprint the base rule zeroed at plane k, plus
+-        the interior normal edge Ez(k).  Nothing else.
+-
+-        Mutation falsification M1 (far-plane neuter: replace the inner
+-        ``for t in range(3)`` loop of ``two_plane_extension_masks`` with
+-        ``pass``): this test FAILED at
+-        ``assert np.array_equal(ex2[:, :, 4], base_ex[:, :, 3])``
+-        (``assert False`` — no plane-4 selection), and the ON-state
+-        eigenmode witness fell back to the one-plane ladder — measured
+-        ``(47748540156.41224, 49922252775.160515)`` at its 1% gate,
+-        i.e. dominant 47.7485 GHz = the OFF value, 4.35% from the
+-        two-plane prediction.  Reverted after measurement.
+-        """
+-        shape = (8, 8, 8)
+-        cells = [(i, j, 3) for i in range(2, 6) for j in range(2, 6)]
+-        pec = _mask(shape, cells)
+-        ex2, ey2, ez2 = [_np(a) for a in two_plane_extension_masks(pec, pec)]
+-        base_ex, base_ey, base_ez = [_np(a) for a in tangential_edge_masks(pec)]
+-        # base: tangential at plane k=3 only, no normal component
+-        assert sorted(set(np.where(base_ex)[2])) == [3]
+-        assert not base_ez.any()
+-        # extras: same footprint moved to plane 4
+-        assert np.array_equal(ex2[:, :, 4], base_ex[:, :, 3])
+-        assert np.array_equal(ey2[:, :, 4], base_ey[:, :, 3])
+-        assert sorted(set(np.where(ex2)[2])) == [4]
+-        assert sorted(set(np.where(ey2)[2])) == [4]
+-        # interior normal edge at the slab cell itself
+-        assert sorted(set(np.where(ez2)[2])) == [3]
+-        assert np.array_equal(ez2[:, :, 3], _np(pec)[:, :, 3])
+-
+-    def test_two_cell_run_gets_nothing(self):
+-        """A 2-cell run (flagged one-cell slab ADJACENT to more PEC) is a
+-        thick body: the base tangential rule already zeroes planes k and
+-        k+1, and the extension must add NOTHING (no double-masking, no
+-        k+2 plane).
+-
+-        Covers both spellings: (a) a 2-cell body entirely flagged,
+-        (b) a flagged one-cell slab abutting an UNflagged PEC body —
+-        the run-length test is evaluated against the FULL pec union.
+-
+-        Mutation falsification M4 (adjacency neuter: compute the run-1
+-        neighbours from ``two_plane_mask`` instead of ``pec_mask`` in
+-        ``two_plane_extension_masks``): case (b) FAILED
+-        (``assert not any(a.any() for a in extras)`` -> ``assert not
+-        True`` — the flagged cell, self-isolated in its own union,
+-        sprouted extension planes inside the neighbouring body), and
+-        ``test_seam_adjacency_through_wrap`` failed the same way.
+-        Reverted after measurement.
+-        """
+-        shape = (8, 8, 8)
+-        foot = [(i, j) for i in range(2, 6) for j in range(2, 6)]
+-        two_cell = _mask(shape, [(i, j, k) for (i, j) in foot for k in (3, 4)])
+-        # (a) whole body flagged
+-        extras = [_np(a) for a in two_plane_extension_masks(two_cell, two_cell)]
+-        assert not any(a.any() for a in extras)
+-        # (b) flagged one-cell slab abutting an unflagged PEC body
+-        flagged = _mask(shape, [(i, j, 3) for (i, j) in foot])
+-        extras = [_np(a) for a in two_plane_extension_masks(two_cell, flagged)]
+-        assert not any(a.any() for a in extras)
+-
+-    def test_slab_in_last_cell_nonperiodic(self):
+-        """Non-periodic axis, slab in the last cell: the far face is the
+-        domain boundary (owned by the domain BC / apply_pec) — the k+1
+-        plane has no array entry and is dropped; the interior normal
+-        edge is still shielded.  No crash, no wraparound."""
+-        shape = (6, 6, 6)
+-        cells = [(i, j, 5) for i in range(1, 5) for j in range(1, 5)]
+-        pec = _mask(shape, cells)
+-        ex2, ey2, ez2 = [_np(a) for a in two_plane_extension_masks(pec, pec)]
+-        assert not ex2.any() and not ey2.any()
+-        assert sorted(set(np.where(ez2)[2])) == [5]
+-
+-    def test_periodic_seam_wraps_to_plane_zero(self):
+-        """Periodic axis, slab in the last cell: the far-face plane IS
+-        plane 0 across the seam (#689 convention, shared helper — not a
+-        hand-copied second rule)."""
+-        shape = (6, 6, 6)
+-        cells = [(i, j, 5) for i in range(1, 5) for j in range(1, 5)]
+-        pec = _mask(shape, cells)
+-        per = (False, False, True)
+-        ex2, ey2, ez2 = [_np(a) for a in
+-                         two_plane_extension_masks(pec, pec, per)]
+-        base_ex, _, _ = [_np(a) for a in tangential_edge_masks(pec, per)]
+-        assert sorted(set(np.where(ex2)[2])) == [0]
+-        assert np.array_equal(ex2[:, :, 0], base_ex[:, :, 5])
+-        assert sorted(set(np.where(ez2)[2])) == [5]
+-
+-    def test_seam_adjacency_through_wrap(self):
+-        """Periodic axis, flagged slab at k=n-1 with PEC at k=0: through
+-        the seam that is a 2-cell run — no extension."""
+-        shape = (6, 6, 6)
+-        foot = [(i, j) for i in range(1, 5) for j in range(1, 5)]
+-        pec = _mask(shape, [(i, j, k) for (i, j) in foot for k in (0, 5)])
+-        flagged = _mask(shape, [(i, j, 5) for (i, j) in foot])
+-        extras = [_np(a) for a in
+-                  two_plane_extension_masks(pec, flagged, (False, False, True))]
+-        assert not any(a.any() for a in extras)
+-
+-    def test_length_one_axis_no_op(self):
+-        """2-D lane: a length-1 axis makes every cell self-adjacent
+-        through the wrap (never a run of length 1) — no extension along
+-        it."""
+-        shape = (6, 6, 1)
+-        cells = [(i, j, 0) for i in range(1, 5) for j in range(1, 5)]
+-        pec = _mask(shape, cells)
+-        ex2, ey2, ez2 = [_np(a) for a in two_plane_extension_masks(pec, pec)]
+-        assert not ex2.any() and not ey2.any() and not ez2.any()
+-
+-    def test_cleared_cells_contribute_nothing(self):
+-        """Cells removed from the live pec_mask after assembly (wire-port
+-        live-cell clearing pattern) must not sprout extension planes even
+-        if still present in the flagged mask."""
+-        shape = (8, 8, 8)
+-        cells = [(i, j, 3) for i in range(2, 6) for j in range(2, 6)]
+-        flagged = _mask(shape, cells)
+-        live = flagged & ~_mask(shape, [(3, 3, 3)])
+-        extras = [_np(a) for a in two_plane_extension_masks(live, flagged)]
+-        ez2 = extras[2]
+-        assert not ez2[3, 3, 3]
+-
+-    def test_apply_pec_mask_off_path_unchanged(self):
+-        """``two_plane_mask=None`` (the default) computes exactly the base
+-        tangential masks — spot-checked against a state of ones."""
+-        from rfx.core.yee import FDTDState
+-        shape = (8, 8, 8)
+-        cells = [(i, j, 3) for i in range(2, 6) for j in range(2, 6)]
+-        pec = _mask(shape, cells)
+-        ones = jnp.ones(shape, dtype=jnp.float32)
+-        st = FDTDState(ex=ones, ey=ones, ez=ones, hx=ones, hy=ones,
+-                       hz=ones, step=0)
+-        out = apply_pec_mask(st, pec)
+-        bex, bey, bez = tangential_edge_masks(pec)
+-        assert np.array_equal(_np(out.ex) == 0.0, _np(bex))
+-        assert np.array_equal(_np(out.ey) == 0.0, _np(bey))
+-        assert not (_np(out.ez) == 0.0).any()
+-        # and the opt-in zeroes the extension planes on the same state
+-        out2 = apply_pec_mask(st, pec, two_plane_mask=pec)
+-        assert (_np(out2.ex)[:, :, 4][_np(bex)[:, :, 3]] == 0.0).all()
+-        assert (_np(out2.ez)[:, :, 3][_np(pec)[:, :, 3]] == 0.0).all()
+-
+-
+-# ---------------------------------------------------------------------------
+-# API level: opt-in registration and lane refusals
+-# ---------------------------------------------------------------------------
+-
+-def _small_sim(**kw):
+-    L = 8 * DX
+-    sim = Simulation(40e9, (L, L, L), dx=DX, boundary="pec", **kw)
+-    sim.add(Box((0, 0, 3 * DX), (L, L, 4 * DX)), material="pec",
+-            two_plane=True)
+-    sim.add_source((2.5 * DX, 2.5 * DX, 5.5 * DX), "ex",
+-                   waveform=GaussianPulse(f0=20e9, bandwidth=0.8),
+-                   amplitude_kind="current")
+-    return sim
+-
+-
+-class TestOptInSurface:
+-    def test_non_pec_material_refused(self):
+-        """f0 / dielectric fence: two_plane is a hard-PEC-slab option; a
+-        surface-impedance sheet is a different operator
+-        (``add_thin_conductor``) and is deliberately untouched — it never
+-        enters ``pec_mask`` nor ``_two_plane_cell_mask``."""
+-        L = 8 * DX
+-        sim = Simulation(40e9, (L, L, L), dx=DX, boundary="pec")
+-        sim.add_material("diel", eps_r=2.2)
+-        with pytest.raises(ValueError, match="not PEC"):
+-            sim.add(Box((0, 0, 3 * DX), (L, L, 4 * DX)), material="diel",
+-                    two_plane=True)
+-
+-    def test_flag_default_off_and_mask_none(self):
+-        L = 8 * DX
+-        sim = Simulation(40e9, (L, L, L), dx=DX, boundary="pec")
+-        sim.add(Box((0, 0, 3 * DX), (L, L, 4 * DX)), material="pec")
+-        assert sim._two_plane_cell_mask(sim._build_grid()) is None
+-
+-    def test_flagged_mask_matches_pec_cells(self):
+-        sim = _small_sim()
+-        grid = sim._build_grid()
+-        _, _, _, pec, _, _, _ = sim._assemble_materials(grid)
+-        tp = sim._two_plane_cell_mask(grid)
+-        assert tp is not None
+-        assert np.array_equal(_np(tp), _np(pec))
+-
+-    def test_vmap_sweep_refuses(self):
+-        from rfx.vmap_sweep import vmap_material_sweep
+-        sim = _small_sim()
+-        sim.add_material("sweepme", eps_r=2.0)
+-        with pytest.raises(NotImplementedError, match="706"):
+-            vmap_material_sweep(sim, "eps_r", [1.0, 2.0], n_steps=4)
+-
+-    def test_conformal_pec_refuses(self):
+-        sim = _small_sim()
+-        with pytest.raises(NotImplementedError, match="706"):
+-            sim.run(n_steps=4, conformal_pec=True, skip_preflight=True)
+-
+-    def test_adi_subgrid_distributed_refuse(self):
+-        """The refusal guard is the FIRST statement of each unsupported
+-        private lane entry, so calling with dummy args raises before any
+-        arg is touched."""
+-        sim = _small_sim()
+-        with pytest.raises(NotImplementedError, match="706"):
+-            sim._run_adi_from_materials(None, None, None, None, n_steps=1)
+-        with pytest.raises(NotImplementedError, match="706"):
+-            sim._run_subgridded(None, None, None, 1)
+-        with pytest.raises(NotImplementedError, match="706"):
+-            sim._forward_distributed_nonuniform_from_materials(n_steps=1)
+-
+-
+-# ---------------------------------------------------------------------------
+-# Off-state bit-identity (golden captured at main 8e00497, this platform)
+-# ---------------------------------------------------------------------------
+-
+-class TestOffStateBitIdentity:
+-    """OFF-state contract: with no entry flagged, the #706 machinery is
+-    INERT — not "close", inert.  The one-plane behaviour is load-bearing
+-    (#677), so any drift here is a defect, not a tolerance question.
+-
+-    HISTORY.  The first version of this contract byte-compared against a
+-    golden .npz captured from main on the authoring workstation.  It red
+-    on CI within the hour: GitHub's runner produces last-bit float
+-    differences (reduction order — the same cross-machine class that red
+-    the #698 mode-profile pin), so the golden pinned the HOST, not the
+-    contract.  The two tests below state the same contract WITHOUT any
+-    cross-machine artifact: everything is computed twice in ONE process
+-    on ONE machine, so byte-equality is exact by rights and any mismatch
+-    is the feature leaking.
+-
+-    Mutation coverage of the PAIR, measured on this rewrite (M2 = inside
+-    ``apply_pec_mask``, substitute ``two_plane_mask = pec_mask`` when
+-    handed ``None`` — forced default-on):
+-    ``test_unflagged_sim_never_reaches_the_extension`` RED
+-    (``two_plane_extension_masks invoked 2x``); the byte-equality test
+-    alone SURVIVES M2 because the mutation contaminates both of its legs
+-    identically — the two tests are complementary, not redundant: the
+-    spy catches invocation leaks, the byte test catches a path handing a
+-    non-None mask to ``apply_pec_mask`` without going through the
+-    collector.  Verbatim: ``1 failed, 1 passed``; clean tree
+-    ``22 passed``.
+-    """
+-
+-    def _fixture(self):
+-        L = 16 * DX
+-        sim = Simulation(40e9, (L, L, L), dx=DX, boundary="pec")
+-        sim.add_material("diel22", eps_r=2.2)
+-        sim.add(Box((2 * DX, 2 * DX, 7 * DX), (14 * DX, 14 * DX, 8 * DX)),
+-                material="pec")
+-        sim.add(Box((3 * DX, 3 * DX, 10 * DX), (9 * DX, 9 * DX, 13 * DX)),
+-                material="diel22")
+-        sim.add_source((4.5 * DX, 5.5 * DX, 3.5 * DX), "ex",
+-                       waveform=GaussianPulse(f0=20e9, bandwidth=0.8),
+-                       amplitude_kind="current")
+-        sim.add_probe((11.5 * DX, 9.5 * DX, 4.5 * DX), "ex")
+-        sim.add_probe((5.5 * DX, 6.5 * DX, 11.5 * DX), "ez")
+-        return sim
+-
+-    def test_unflagged_sim_never_reaches_the_extension(self, monkeypatch):
+-        """A sim with no ``two_plane`` entry must not INVOKE the rule at
+-        all.  Stronger than comparing outputs: if the extension is never
+-        called, it cannot have contributed, on any hardware."""
+-        import rfx.boundaries.pec as _pecmod
+-        calls = []
+-        real = _pecmod.two_plane_extension_masks
+-
+-        def _spy(*a, **k):
+-            calls.append(1)
+-            return real(*a, **k)
+-
+-        monkeypatch.setattr(_pecmod, "two_plane_extension_masks", _spy)
+-        self._fixture().run(n_steps=60)
+-        assert not calls, (
+-            f"two_plane_extension_masks invoked {len(calls)}x on a sim "
+-            "with no flagged entry — the OFF state must be inert (#706)")
+-
+-    def test_off_state_byte_equal_to_integration_bypassed_run(self,
+-                                                              monkeypatch):
+-        """Same process, same machine: a normal flag-free run must be
+-        BYTE-equal to a run with the #706 integration surgically forced
+-        off (the union-mask collector returns None, exactly the pre-#706
+-        code path).  Cross-machine float drift cannot enter — both legs
+-        share one BLAS, one XLA, one reduction order."""
+-        res_a = self._fixture().run(n_steps=300)
+-
+-        from rfx.api import Simulation as _S
+-        monkeypatch.setattr(_S, "_two_plane_cell_mask",
+-                            lambda self, *a, **k: None)
+-        res_b = self._fixture().run(n_steps=300)
+-
+-        for name, ga, gb in (
+-                ("ex", res_a.state.ex, res_b.state.ex),
+-                ("ey", res_a.state.ey, res_b.state.ey),
+-                ("ez", res_a.state.ez, res_b.state.ez),
+-                ("hx", res_a.state.hx, res_b.state.hx),
+-                ("hy", res_a.state.hy, res_b.state.hy),
+-                ("hz", res_a.state.hz, res_b.state.hz),
+-                ("time_series", res_a.time_series, res_b.time_series)):
+-            a, b = _np(ga), _np(gb)
+-            assert a.dtype == b.dtype, name
+-            assert np.array_equal(a, b), (
+-                f"{name}: flag-free run differs from the "
+-                "integration-bypassed run — the OFF state must be "
+-                "bit-identical to the pre-#706 path (#706 opt-in contract)")
+-
+-
+-# ---------------------------------------------------------------------------
+-# #702 interaction: assembly untouched, interior edge dead when ON
+-# ---------------------------------------------------------------------------
+-
+-class TestInteriorEdgeAnd702:
+-    def _build(self, two_plane):
+-        L = 12 * DX
+-        sim = Simulation(40e9, (L, L, L), dx=DX, boundary="pec")
+-        sim.add_material("diel3", eps_r=3.0)
+-        # dielectric fills the region; the slab's faces abut it (#702's
+-        # stackup pattern: the metal layer is a slot no dielectric fills)
+-        sim.add(Box((0, 0, 2 * DX), (L, L, 5 * DX)), material="diel3")
+-        sim.add(Box((0, 0, 6 * DX), (L, L, 9 * DX)), material="diel3")
+-        # PARTIAL-lateral slab: with a full-lateral slab the PEC walls
+-        # seal the cell once both planes are dead and NOTHING drives the
+-        # interior edge, so the interior-edge pin cannot fail (measured:
+-        # the M3 mutation below passed on a full-lateral fixture).  The
+-        # open rim keeps curl-H drive available at the slab's edge.
+-        sim.add(Box((2 * DX, 2 * DX, 5 * DX), (10 * DX, 10 * DX, 6 * DX)),
+-                material="pec", two_plane=two_plane)
+-        sim.add_source((3.5 * DX, 4.5 * DX, 7.5 * DX), "ez",
+-                       waveform=GaussianPulse(f0=20e9, bandwidth=0.8),
+-                       amplitude_kind="current")
+-        return sim
+-
+-    def test_assembled_eps_independent_of_flag(self):
+-        """The flag changes the per-step mask only — the assembled eps
+-        (including the #702 live-edge resample of the slab's cell) is
+-        bit-identical either way.  With two planes the slab's interior
+-        edge is DEAD, so whatever eps #702 left there is inert rather
+-        than fought."""
+-        son = self._build(True)
+-        soff = self._build(False)
+-        g = son._build_grid()
+-        mon, _, _, pon, _, _, _ = son._assemble_materials(g)
+-        moff, _, _, poff, _, _, _ = soff._assemble_materials(soff._build_grid())
+-        assert np.array_equal(_np(mon.eps_r), _np(moff.eps_r))
+-        assert np.array_equal(_np(mon.sigma), _np(moff.sigma))
+-        assert np.array_equal(_np(pon), _np(poff))
+-
+-    def test_interior_edge_energy_zero_when_on(self):
+-        """ON: the slab's interior normal edge (Ez at the slab cells) is
+-        exactly 0 after every step.  OFF: the same edge is live (that is
+-        the measured #706 baseline) — recorded as the contrast witness.
+-
+-        Mutation falsification M3 (interior-edge neuter: delete
+-        ``extras[ax] = extras[ax] | run1`` in
+-        ``two_plane_extension_masks``): this test FAILED — measured
+-        ``assert 24953462.0 == 0.0`` (ON max|Ez| at the slab cells
+-        2.50e+07) — while the eigenmode witness still PASSED under the
+-        same mutation, which is exactly why this dedicated pin exists.
+-        On the earlier FULL-lateral fixture the mutation escaped this
+-        test too (walls sealed the rim; nothing drove the edge) — hence
+-        the partial-lateral slab.  Reverted after measurement.
+-        """
+-        son = self._build(True)
+-        g = son._build_grid()
+-        _, _, _, pec, _, _, _ = son._assemble_materials(g)
+-        slab = _np(pec)
+-        zs = sorted(set(np.where(slab)[2]))
+-        assert len(zs) == 1, "fixture must rasterize to a one-cell slab"
+-        res_on = son.run(n_steps=200)
+-        ez_on = _np(res_on.state.ez)[slab]
+-        assert float(np.max(np.abs(ez_on))) == 0.0
+-        res_off = self._build(False).run(n_steps=200)
+-        ez_off = _np(res_off.state.ez)[slab]
+-        assert float(np.max(np.abs(ez_off))) > 0.0  # live edge = baseline
+-
+-    def test_far_plane_dead_when_on(self):
+-        """ON: tangential E at the k+1 plane is exactly 0 after the run;
+-        OFF: live.  Direct end-to-end pin of the uniform-lane threading.
+-
+-        Under mutation M1 (far-plane neuter) this test FAILED — measured
+-        ``assert 34045928.0 == 0.0`` (ON Ex at the k+1 plane 3.40e+07).
+-        Reverted after measurement."""
+-        son = self._build(True)
+-        g = son._build_grid()
+-        _, _, _, pec, _, _, _ = son._assemble_materials(g)
+-        slab = _np(pec)
+-        k = sorted(set(np.where(slab)[2]))[0]
+-        foot = slab[:, :, k]
+-        res_on = son.run(n_steps=200)
+-        assert float(np.max(np.abs(_np(res_on.state.ex)[:, :, k + 1][foot]))) == 0.0
+-        res_off = self._build(False).run(n_steps=200)
+-        assert float(np.max(np.abs(_np(res_off.state.ex)[:, :, k + 1][foot]))) > 0.0
+-
+-
+-# ---------------------------------------------------------------------------
+-# Non-uniform lane threading
+-# ---------------------------------------------------------------------------
+-
+-class TestNonUniformLane:
+-    def _build(self, two_plane):
+-        # deliberately non-uniform dz (finer around the slab) — a
+-        # uniform-valued profile tests nothing (workspace lesson)
+-        dz = np.array([2.0, 2.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 2.0]) * DX
+-        Lz = float(dz.sum())
+-        L = 8 * DX
+-        z_lo = float(dz[:3].sum())   # start of cell 3 (a 1.0*DX cell)
+-        z_hi = z_lo + float(dz[3])
+-        sim = Simulation(40e9, (L, L, Lz), dx=DX, dz_profile=dz,
+-                         boundary="pec")
+-        sim.add(Box((0, 0, z_lo), (L, L, z_hi)), material="pec",
+-                two_plane=two_plane)
+-        sim.add_source((2.5 * DX, 2.5 * DX, z_hi + 2.5 * DX), "ex",
+-                       waveform=GaussianPulse(f0=20e9, bandwidth=0.8),
+-                       amplitude_kind="current")
+-        return sim
+-
+-    def test_nu_far_plane_and_interior_dead_when_on(self):
+-        """NU runner (rfx/runners/nonuniform.py -> rfx/nonuniform.py scan):
+-        ON kills Ex at the k+1 plane and Ez at the slab cell; OFF leaves
+-        both live.  Pins that the coords-based flagged mask lands on the
+-        same cells as the NU pec_mask."""
+-        son = self._build(True)
+-        res_on = son.run(n_steps=150)
+-        grid = son._build_nonuniform_grid()
+-        from rfx.runners.nonuniform import assemble_materials_nu
+-        _, _, _, pec = assemble_materials_nu(son, grid)
+-        slab = _np(pec)
+-        assert slab.any()
+-        zs = sorted(set(np.where(slab)[2]))
+-        assert len(zs) == 1
+-        k = zs[0]
+-        foot = slab[:, :, k]
+-        assert float(np.max(np.abs(_np(res_on.state.ex)[:, :, k + 1][foot]))) == 0.0
+-        assert float(np.max(np.abs(_np(res_on.state.ez)[:, :, k][foot]))) == 0.0
+-        res_off = self._build(False).run(n_steps=150)
+-        assert float(np.max(np.abs(_np(res_off.state.ex)[:, :, k + 1][foot]))) > 0.0
+-
+-
+-# ---------------------------------------------------------------------------
+-# ACCEPTANCE: the eigenmode witness (issue #706)
+-# ---------------------------------------------------------------------------
+-
+-class TestEigenmodeWitness:
+-    """CPU-sized port of the #706 witness (/tmp/sheet_boundary_witness.py).
+-
+-    Parallel-plate cavity between two z-normal one-cell PEC sheets in a
+-    PEC box; the lowest Ex mode is f = c/2 * sqrt((1/Lxy)^2 + (1/Lz')^2)
+-    with Lxy the lateral wall spacing and Lz' the plate spacing.  All
+-    lengths are derived from the RASTERIZED cell indices (immune to
+-    float registration of box edges — this fixture's second sheet lands
+-    one cell high of the naive coordinate arithmetic, measured):
+-
+-      OFF (one-plane): walls at each sheet's LOWER node plane
+-                       -> Lz' = (k2 - k1) * dx
+-      ON  (two-plane): walls at sheet1's UPPER and sheet2's LOWER plane
+-                       -> Lz' = (k2 - k1 - 1) * dx
+-
+-    Measured on this fixture (grid (33,33,25), sheets at z-cells {3,21},
+-    8000 steps, harminv over the [2000:] window, preflight advisory
+-    "'pec' z-extent 200um = 1.0 cells — below 1 cell resolution ..."
+-    quoted in full in the PR body):
+-
+-      OFF: dominant 47.7486 GHz (Q 1.8e5) vs pred 47.7733 -> -0.05%;
+-           ladder (1,1,1) 53.19 / (0,2,1) 62.64 fits <=0.05%
+-      ON:  dominant 49.8924 GHz (Q 8.7e4) vs pred 49.9223 -> -0.06%;
+-           ladder 55.12 / 64.29 fits <=0.2%
+-      cross-hypothesis distance 4.3-4.5% >> the 1% gates.
+-
+-    Runtime ~6 s per leg on CPU (12 s for the class).
+-
+-    Mutation falsification (M1 far-plane neuter, see
+-    TestExtensionMasks.test_one_cell_z_slab_planes): the ON leg measured
+-    dominant 47.7485 GHz — the OFF value, 4.35% from the two-plane
+-    prediction — and failed the 1% gate; (M2 default-on): the OFF leg
+-    measured 49.8924 GHz — the two-plane value — and failed its gate.
+-    """
+-
+-    GAP_CELLS = 16
+-    LAT_CELLS = 32
+-
+-    def _run(self, two_plane):
+-        lat = self.LAT_CELLS * DX
+-        z1_lo = 3 * DX
+-        z1_hi = z1_lo + DX
+-        z2_lo = z1_hi + self.GAP_CELLS * DX
+-        z2_hi = z2_lo + DX
+-        Lz = z2_hi + 3 * DX
+-        sim = Simulation(60e9, (lat, lat, Lz), dx=DX, boundary="pec")
+-        kw = {"two_plane": True} if two_plane else {}
+-        sim.add(Box((0, 0, z1_lo), (lat, lat, z1_hi)), material="pec", **kw)
+-        sim.add(Box((0, 0, z2_lo), (lat, lat, z2_hi)), material="pec", **kw)
+-        sim.add_source((11.1 * DX, 13.3 * DX, z1_hi + self.GAP_CELLS * DX * 0.31),
+-                       "ex", waveform=GaussianPulse(f0=50e9, bandwidth=0.5),
+-                       amplitude_kind="current")
+-        sim.add_probe((21.7 * DX, 8.9 * DX, z1_hi + self.GAP_CELLS * DX * 0.62),
+-                      "ex")
+-        grid = sim._build_grid()
+-        _, _, _, pec, _, _, _ = sim._assemble_materials(grid)
+-        zs = sorted(set(np.where(_np(pec))[2]))
+-        assert len(zs) == 2, f"expected two one-cell sheets, got z-cells {zs}"
+-        k1, k2 = zs
+-        nlat = grid.shape[0] - 1  # tangential-E walls at planes 0 and n-1
+-        res = sim.run(n_steps=8000)
+-        ts = _np(res.time_series)[:, 0].ravel()
+-        from rfx import harminv
+-        modes = harminv(ts[2000:], float(res.dt), f_min=35e9, f_max=60e9)
+-        cand = sorted([m for m in modes if m.Q > 100],
+-                      key=lambda m: -abs(m.amplitude))
+-        assert cand, "harminv found no modes"
+-        f_meas = cand[0].freq
+-        lxy = nlat * DX
+-
+-        def pred(nz_cells):
+-            return C0 / 2 * np.sqrt((1 / lxy) ** 2 + (1 / (nz_cells * DX)) ** 2)
+-
+-        return f_meas, pred(k2 - k1), pred(k2 - k1 - 1)
+-
+-    def test_off_one_plane_ladder(self):
+-        f, f_one, f_two = self._run(False)
+-        assert abs(f - f_one) / f_one < 0.01, (f, f_one)
+-        assert abs(f - f_two) / f_two > 0.03, (f, f_two)
+-
+-    def test_on_two_plane_ladder(self):
+-        f, f_one, f_two = self._run(True)
+-        assert abs(f - f_two) / f_two < 0.01, (f, f_two)
+-        assert abs(f - f_one) / f_one > 0.03, (f, f_one)

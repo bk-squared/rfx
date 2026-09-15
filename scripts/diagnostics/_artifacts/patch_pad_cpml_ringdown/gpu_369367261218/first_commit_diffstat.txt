@@ -1,0 +1,6 @@
+ rfx/boundaries/pec.py                              | 592 +++++++++++++-------
+ rfx/nonuniform.py                                  |   4 +-
+ rfx/simulation.py                                  |   7 +-
+ tests/contracts/test_lattice_ownership_contract.py | 546 +++++++++++++++++++
+ tests/locks/test_two_plane_pec_slab.py             | 595 ---------------------
+ 5 files changed, 936 insertions(+), 808 deletions(-)

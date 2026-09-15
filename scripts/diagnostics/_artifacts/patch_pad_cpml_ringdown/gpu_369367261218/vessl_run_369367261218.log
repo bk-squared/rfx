@@ -1,0 +1,443 @@
+Organization: remilab
+Project: byungkwan
+Displayed last 439 lines of #369367261218.
+[13:43:41.498398] workload awaiting to start
+[13:43:41.498498] Workload status changed to pending
+[13:43:47.551179] VESSL Workload assigned successfully. Starting soon.
+[13:43:48.000000] Creating VESSL Workload...
+[13:43:48.000000] Created container run-exec
+[13:43:48.000000] Container image "quay.io/vessl-ai/kernels-toolbox:0.1.188" already present on machine
+[13:43:48.000000] Created container vops-init
+[13:43:48.000000] Container image "nvcr.io/nvidia/jax:24.10-py3" already present on machine
+[13:43:48.000000] Started container vops-init
+[13:43:48.001000] Container image "nvcr.io/nvidia/jax:24.10-py3" already present on machine
+[13:43:49.000000] Created container ttyd-sidecar
+[13:43:49.000000] Starting VESSL Workload...
+[13:43:49.000000] Started container vops-sidecar
+[13:43:49.000000] Container image "quay.io/vessl-ai/kernels-toolbox:0.1.188" already present on machine
+[13:43:49.000000] Started container run-exec
+[13:43:49.000000] Started container fluentbit
+[13:43:49.000000] Created container fluentbit
+[13:43:49.000000] Container image "quay.io/vessl-ai/sidecar:v0.0.3" already present on machine
+[13:43:49.000000] Created container run-sidecar
+[13:43:49.922035] Installing VESSL CLI...
+[13:44:00.841427] workload reported alive as pod run-execution-didurkyozt7m-0
+[13:44:00.841527] Workload status changed to initializing
+[13:44:01.953687] + set +x
+[13:44:07.739012] vessl, version 0.1.199
+[13:44:12.060378] workload reported alive as pod run-execution-didurkyozt7m-0
+[13:44:12.060478] Workload status changed to running
+[13:44:12.211585] + mkdir -p /root
+[13:44:12.213267] + cd /root
+[13:44:12.213669] === rfx #801: which commit stopped the growth? (git bisect) ===
+[13:44:12.213689] + set -eu
+[13:44:12.213707] + echo '=== rfx #801: which commit stopped the growth? (git bisect) ==='
+[13:44:12.213716] + date
+[13:44:12.215519] Tue Sep 15 13:44:12 UTC 2026
+[13:44:12.215573] + '[' 9ead07b128ae5dec0904739d1c8f3bc9dd62d344 '=' FILL_AFTER_PUSH ]
+[13:44:12.215586] driver commit: 9ead07b128ae5dec0904739d1c8f3bc9dd62d344
+[13:44:12.215592] bisect bad  (arm SETTLES): fc7f7202567e2cf78a65ab90a709e4ff45b185f1
+[13:44:12.215593] + echo 'driver commit: 9ead07b128ae5dec0904739d1c8f3bc9dd62d344'
+[13:44:12.215605] bisect good (arm GROWS):  fa3a99bda71728b6f00575540995e690ad16cbda
+[13:44:12.215605] + echo 'bisect bad  (arm SETTLES): fc7f7202567e2cf78a65ab90a709e4ff45b185f1'
+[13:44:12.215614] + echo 'bisect good (arm GROWS):  fa3a99bda71728b6f00575540995e690ad16cbda'
+[13:44:12.215630] + command -v git
+[13:44:12.215748] + git config --global --add safe.directory '*'
+[13:44:12.218172] + git config --global user.email bisect@rfx.invalid
+[13:44:12.220569] + git config --global user.name 'rfx bisect'
+[13:44:12.222925] + rm -rf /tmp/rfx-801b-driver /tmp/rfx-801b-work
+[13:44:12.224584] + git init -q /tmp/rfx-801b-driver
+[13:44:12.230554] + cd /tmp/rfx-801b-driver
+[13:44:12.230565] + git fetch -q --depth 1 https://github.com/bk-squared/rfx.git 9ead07b128ae5dec0904739d1c8f3bc9dd62d344
+[13:44:18.335161] + git checkout -q FETCH_HEAD
+[13:44:18.985203] + git rev-parse HEAD
+[13:44:18.987411] + got=9ead07b128ae5dec0904739d1c8f3bc9dd62d344
+[13:44:18.987435] + '[' 9ead07b128ae5dec0904739d1c8f3bc9dd62d344 '!=' 9ead07b128ae5dec0904739d1c8f3bc9dd62d344 ]
+[13:44:18.987445] + DRVDIR=/tmp/rfx-801b-driver/scripts/diagnostics
+[13:44:18.987451] + STEP=/tmp/rfx-801b-driver/scripts/diagnostics/patch_pad_cpml_ringdown_bisect_step.sh
+[13:44:18.987457] + test -f /tmp/rfx-801b-driver/scripts/diagnostics/patch_pad_cpml_ringdown.py
+[13:44:18.987462] + test -f /tmp/rfx-801b-driver/scripts/diagnostics/patch_pad_cpml_ringdown_bisect_step.sh
+[13:44:18.987468] + test -f /tmp/rfx-801b-driver/scripts/diagnostics/_artifacts/patch_pad_cpml_ringdown/PREDECLARATION.md
+[13:44:18.987473] + git clone -q https://github.com/bk-squared/rfx.git /tmp/rfx-801b-work
+[13:44:41.796381] + cd /tmp/rfx-801b-work
+[13:44:41.796414] + git cat-file -e 'fa3a99bda71728b6f00575540995e690ad16cbda^{commit}'
+[13:44:41.797661] + git cat-file -e 'fc7f7202567e2cf78a65ab90a709e4ff45b185f1^{commit}'
+[13:44:41.799151] + git rev-list --count fa3a99bda71728b6f00575540995e690ad16cbda..fc7f7202567e2cf78a65ab90a709e4ff45b185f1
+[13:44:41.812338] + N=734
+[13:44:41.812349] + echo 'commits in range: 734'
+[13:44:41.812353] + echo '=== runtime deps ==='
+[13:44:41.812357] + python -m pip install -q 'scipy>=1.11' 'h5py>=3.8' 'matplotlib>=3.7'
+[13:44:41.812375] commits in range: 734
+[13:44:41.812393] === runtime deps ===
+[13:44:46.712031] WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+[13:44:46.921369] + python -c 'import jax; print('"'"'probe ok | jax'"'"', jax.__version__, '"'"'| backend'"'"', jax.default_backend(), '"'"'| devices'"'"', jax.devices(), '"'"'| x64'"'"', jax.config.x64_enabled)'
+[13:44:47.311416] probe ok | jax 0.4.33.dev20241023+e3c6d6430 | backend gpu | devices [CudaDevice(id=0)] | x64 False
+[13:44:47.391593] + echo 9ead07b128ae5dec0904739d1c8f3bc9dd62d344
+[13:44:47.391700] + cut -c1-8
+[13:44:47.392675] + SHORT=9ead07b1
+[13:44:47.392776] + date -u '+%Y%m%dT%H%M%SZ'
+[13:44:47.393819] + OUT=/root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-bisect-20260915T134447Z-9ead07b1
+[13:44:47.393826] + mkdir -p /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-bisect-20260915T134447Z-9ead07b1
+[13:44:47.403390] + echo 'artifacts: /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-bisect-20260915T134447Z-9ead07b1'
+[13:44:47.403401] artifacts: /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-bisect-20260915T134447Z-9ead07b1
+[13:44:47.404926] + echo 9ead07b128ae5dec0904739d1c8f3bc9dd62d344
+[13:44:47.407725] + echo fc7f7202567e2cf78a65ab90a709e4ff45b185f1
+[13:44:47.410192] + echo fa3a99bda71728b6f00575540995e690ad16cbda
+[13:44:47.412586] + echo 734
+[13:44:47.414273] + cp /tmp/rfx-801b-driver/scripts/diagnostics/_artifacts/patch_pad_cpml_ringdown/PREDECLARATION.md /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-bisect-20260915T134447Z-9ead07b1/
+[13:44:47.430340] + printf 'sha	settling_db	verdict
+[13:44:47.430340] '
+[13:44:47.431886] + DRIVER=/tmp/rfx-801b-driver/scripts/diagnostics/patch_pad_cpml_ringdown.py
+[13:44:47.431894] + ARM_ARGS=
+[13:44:47.431901] + export OUT DRIVER ARM_ARGS
+[13:44:47.431916] + echo '===== endpoint check: good = fa3a99bd must GROW (step exit 0) ====='
+[13:44:47.431929] + endcheck fa3a99bda71728b6f00575540995e690ad16cbda good/fa3a99bd 0
+[13:44:47.431945] + git checkout -q fa3a99bda71728b6f00575540995e690ad16cbda
+[13:44:47.431959] ===== endpoint check: good = fa3a99bd must GROW (step exit 0) =====
+[13:44:47.959876] + set +e
+[13:44:47.959895] + sh /tmp/rfx-801b-driver/scripts/diagnostics/patch_pad_cpml_ringdown_bisect_step.sh
+[13:44:48.015585] ===== bisect step at fa3a99bda71728b6f00575540995e690ad16cbda =====
+[13:44:48.018502] fa3a99bd 2026-08-30 fix(preflight): stop scoring MSL Z0 against the declared board; anchor the sweep on the realized one (#752) (#766)
+[13:45:19.809928]   fa3a99bda717  settling_db=0.00 dB  -> grows
+[13:45:19.812918] + erc=0
+[13:45:19.812932] + set -e
+[13:45:19.812936] + echo '  endpoint good/fa3a99bd -> step exit 0 (expected 0)'
+[13:45:19.812944] + '[' 0 -ne 0 ]
+[13:45:19.812948] + echo '===== endpoint check: bad = fc7f7202 must SETTLE (step exit 1) ====='
+[13:45:19.812954] + endcheck fc7f7202567e2cf78a65ab90a709e4ff45b185f1 bad/fc7f7202 1
+[13:45:19.812958] + git checkout -q fc7f7202567e2cf78a65ab90a709e4ff45b185f1
+[13:45:19.812962]   endpoint good/fa3a99bd -> step exit 0 (expected 0)
+[13:45:19.812981] ===== endpoint check: bad = fc7f7202 must SETTLE (step exit 1) =====
+[13:45:20.199305] + set +e
+[13:45:20.199323] + sh /tmp/rfx-801b-driver/scripts/diagnostics/patch_pad_cpml_ringdown_bisect_step.sh
+[13:45:20.254479] ===== bisect step at fc7f7202567e2cf78a65ab90a709e4ff45b185f1 =====
+[13:45:20.257906] fc7f7202 2026-09-15 docs/research_notes is local-only: untrack it and add the contract (#1051)
+[13:45:49.711067]   fc7f7202567e  settling_db=-43.37 dB  -> settles
+[13:45:49.713497] + erc=1
+[13:45:49.713507] + set -e
+[13:45:49.713512] + echo '  endpoint bad/fc7f7202 -> step exit 1 (expected 1)'
+[13:45:49.713517] + '[' 1 -ne 1 ]
+[13:45:49.713526] + cp /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-bisect-20260915T134447Z-9ead07b1/bisect_trace.tsv /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-bisect-20260915T134447Z-9ead07b1/endpoint_trace.tsv
+[13:45:49.713537]   endpoint bad/fc7f7202 -> step exit 1 (expected 1)
+[13:45:49.720792] + git bisect start fc7f7202567e2cf78a65ab90a709e4ff45b185f1 fa3a99bda71728b6f00575540995e690ad16cbda
+[13:45:49.857647] Bisecting: 366 revisions left to test after this (roughly 9 steps)
+[13:45:50.004920] [f4d53f8d56f7f3a0c8e9affb04139680de2acc0a] Merge branch 'feat/931-wr90-iris' into feat/931-lattice-ownership
+[13:45:50.006155] + set +e
+[13:45:50.006302] + git bisect run sh /tmp/rfx-801b-driver/scripts/diagnostics/patch_pad_cpml_ringdown_bisect_step.sh
+[13:45:50.006526] + tee /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-bisect-20260915T134447Z-9ead07b1/bisect_run.log
+[13:45:50.078310] running  'sh' '/tmp/rfx-801b-driver/scripts/diagnostics/patch_pad_cpml_ringdown_bisect_step.sh'
+[13:45:50.186822] ===== bisect step at f4d53f8d56f7f3a0c8e9affb04139680de2acc0a =====
+[13:45:50.189400] f4d53f8d 2026-09-07 Merge branch 'feat/931-wr90-iris' into feat/931-lattice-ownership
+[13:46:19.682462]   f4d53f8d56f7  settling_db=-43.37 dB  -> settles
+[13:46:19.793487] Bisecting: 188 revisions left to test after this (roughly 8 steps)
+[13:46:19.793502] [31b9b3480d05abd0f75af37bc7a49705b2cbfb3a] merge: feat/931-wr90-iris — cv18/cv19 volume irises drawn on node planes (#931 phase 2a)
+[13:46:19.793508] running  'sh' '/tmp/rfx-801b-driver/scripts/diagnostics/patch_pad_cpml_ringdown_bisect_step.sh'
+[13:46:19.889101] ===== bisect step at 31b9b3480d05abd0f75af37bc7a49705b2cbfb3a =====
+[13:46:19.890556] 31b9b348 2026-09-07 merge: feat/931-wr90-iris — cv18/cv19 volume irises drawn on node planes (#931 phase 2a)
+[13:46:49.306831]   31b9b3480d05  settling_db=-43.37 dB  -> settles
+[13:46:49.377829] Bisecting: 88 revisions left to test after this (roughly 7 steps)
+[13:46:49.377849] [495e180c24372c332e082aa064c201ef0871ee63] feat(run): ring-down settling witness on run() results, absent-not-NaN, one verdict helper, preflight notice (#885; post-v1.8 plan item 4) (#917)
+[13:46:49.377855] running  'sh' '/tmp/rfx-801b-driver/scripts/diagnostics/patch_pad_cpml_ringdown_bisect_step.sh'
+[13:46:49.501744] ===== bisect step at 495e180c24372c332e082aa064c201ef0871ee63 =====
+[13:46:49.503674] 495e180c 2026-09-06 feat(run): ring-down settling witness on run() results, absent-not-NaN, one verdict helper, preflight notice (#885; post-v1.8 plan item 4) (#917)
+[13:47:18.679563]   495e180c2437  settling_db=0.00 dB  -> grows
+[13:47:18.855942] Bisecting: 44 revisions left to test after this (roughly 6 steps)
+[13:47:18.855955] [dea0c5246ad36f83ece78a3bd32aacb7e90e129b] chore(931): record the four X-C run ids (#931, X-C)
+[13:47:18.855961] running  'sh' '/tmp/rfx-801b-driver/scripts/diagnostics/patch_pad_cpml_ringdown_bisect_step.sh'
+[13:47:18.957376] ===== bisect step at dea0c5246ad36f83ece78a3bd32aacb7e90e129b =====
+[13:47:18.958790] dea0c524 2026-09-07 chore(931): record the four X-C run ids (#931, X-C)
+[13:47:48.449763]   dea0c5246ad3  settling_db=-43.37 dB  -> settles
+[13:47:48.498466] Bisecting: 21 revisions left to test after this (roughly 5 steps)
+[13:47:48.498486] [9d4289d699e0ce8a5ba3578058ecf304c750a50e] docs(subgridded): say why the fine-region rasterization collects no sheets (#931, stage C)
+[13:47:48.498492] running  'sh' '/tmp/rfx-801b-driver/scripts/diagnostics/patch_pad_cpml_ringdown_bisect_step.sh'
+[13:47:48.606724] ===== bisect step at 9d4289d699e0ce8a5ba3578058ecf304c750a50e =====
+[13:47:48.609199] 9d4289d6 2026-09-07 docs(subgridded): say why the fine-region rasterization collects no sheets (#931, stage C)
+[13:48:17.872553]   9d4289d699e0  settling_db=-43.37 dB  -> settles
+[13:48:17.914922] Bisecting: 10 revisions left to test after this (roughly 4 steps)
+[13:48:17.914943] [34956de23615954453730a7698b47bde562c7c23] test+docs: PEC-short fixture drawn as one full cell, viewer patterned-body fixture off the substrate plane; API symbol inventory regenerated (#931, stage B)
+[13:48:17.914950] running  'sh' '/tmp/rfx-801b-driver/scripts/diagnostics/patch_pad_cpml_ringdown_bisect_step.sh'
+[13:48:18.038146] ===== bisect step at 34956de23615954453730a7698b47bde562c7c23 =====
+[13:48:18.040627] 34956de2 2026-09-07 test+docs: PEC-short fixture drawn as one full cell, viewer patterned-body fixture off the substrate plane; API symbol inventory regenerated (#931, stage B)
+[13:48:46.555746]   34956de23615  settling_db=-43.37 dB  -> settles
+[13:48:46.697034] Bisecting: 5 revisions left to test after this (roughly 3 steps)
+[13:48:46.697055] [8a61afcea9f7c3ddec5c91ab6ac6790588d5f005] docs(design_notes): zero-extent PEC Box via add() is a sheet declaration; VESSL fast-lane pytest yaml (#931)
+[13:48:46.697063] running  'sh' '/tmp/rfx-801b-driver/scripts/diagnostics/patch_pad_cpml_ringdown_bisect_step.sh'
+[13:48:46.818049] ===== bisect step at 8a61afcea9f7c3ddec5c91ab6ac6790588d5f005 =====
+[13:48:46.819619] 8a61afce 2026-09-07 docs(design_notes): zero-extent PEC Box via add() is a sheet declaration; VESSL fast-lane pytest yaml (#931)
+[13:49:15.824498]   8a61afcea9f7  settling_db=-43.37 dB  -> settles
+[13:49:15.842682] Bisecting: 2 revisions left to test after this (roughly 1 step)
+[13:49:15.842703] [d990e18ce0870ac7a893a86627e7232d1cf92c7b] feat(preflight,sparams): layout-from-band-low-edge note near cutoff; S21 phase residual vs −βL reported on waveguide S-matrix results (post-v1.8 plan item 5) (#925)
+[13:49:15.842710] running  'sh' '/tmp/rfx-801b-driver/scripts/diagnostics/patch_pad_cpml_ringdown_bisect_step.sh'
+[13:49:15.972561] ===== bisect step at d990e18ce0870ac7a893a86627e7232d1cf92c7b =====
+[13:49:15.974663] d990e18c 2026-09-06 feat(preflight,sparams): layout-from-band-low-edge note near cutoff; S21 phase residual vs −βL reported on waveguide S-matrix results (post-v1.8 plan item 5) (#925)
+[13:49:45.135288]   d990e18ce087  settling_db=0.00 dB  -> grows
+[13:49:45.153072] Bisecting: 0 revisions left to test after this (roughly 1 step)
+[13:49:45.153092] [a3e4dba46fff45d65743b02ef65afb3185d0c15b] feat(pec): lattice ownership contract — one realized-edge source for volumes, sheets, wires; two_plane deleted (#931, stage A)
+[13:49:45.153099] running  'sh' '/tmp/rfx-801b-driver/scripts/diagnostics/patch_pad_cpml_ringdown_bisect_step.sh'
+[13:49:45.255013] ===== bisect step at a3e4dba46fff45d65743b02ef65afb3185d0c15b =====
+[13:49:45.257428] a3e4dba4 2026-09-07 feat(pec): lattice ownership contract — one realized-edge source for volumes, sheets, wires; two_plane deleted (#931, stage A)
+[13:50:14.226418]   a3e4dba46fff  settling_db=-43.37 dB  -> settles
+[13:50:14.344879] Bisecting: 0 revisions left to test after this (roughly 0 steps)
+[13:50:14.344903] [0ad801dc0b50918aa36f6b6ade48c2d2950bdea2] docs(design_notes): lattice ownership contract for conductors — volume/sheet/wire, one realized-edge source, two_plane and #702 deleted (#931)
+[13:50:14.344910] running  'sh' '/tmp/rfx-801b-driver/scripts/diagnostics/patch_pad_cpml_ringdown_bisect_step.sh'
+[13:50:14.407985] ===== bisect step at 0ad801dc0b50918aa36f6b6ade48c2d2950bdea2 =====
+[13:50:14.409947] 0ad801dc 2026-09-06 docs(design_notes): lattice ownership contract for conductors — volume/sheet/wire, one realized-edge source, two_plane and #702 deleted (#931)
+[13:50:43.455797]   0ad801dc0b50  settling_db=0.00 dB  -> grows
+[13:50:43.465023] a3e4dba46fff45d65743b02ef65afb3185d0c15b is the first bad commit
+[13:50:43.465036] commit a3e4dba46fff45d65743b02ef65afb3185d0c15b
+[13:50:43.465042] Author: Byungkwan Kim <byungkwan.kim@cnu.ac.kr>
+[13:50:43.465046] Date:   Mon Sep 7 00:58:02 2026 +0000
+[13:50:43.465050] 
+[13:50:43.465055]     feat(pec): lattice ownership contract — one realized-edge source for volumes, sheets, wires; two_plane deleted (#931, stage A)
+[13:50:43.465059]     
+[13:50:43.465064]     rfx/boundaries/pec.py now carries the #931 contract: an E component is PEC
+[13:50:43.465068]     iff its own location is inside the closed conductor region.
+[13:50:43.465073]     
+[13:50:43.465077]     - realized_pec_edge_masks(cell_mask, sheets, wires, periodic): the only
+[13:50:43.465081]       function turning geometry into PEC edges. Volume rule = four incident
+[13:50:43.465086]       cells (backward shifts under the #689 convention, one spelling `_shift`);
+[13:50:43.465090]       sheet rule = union footprints per normal axis, both end nodes with the
+[13:50:43.465094]       forward in-plane shift; wire = edges of the axis-aligned lattice path.
+[13:50:43.465098]     - SheetSpec (frozen; full-shape one-layer footprint, static plane),
+[13:50:43.465102]       WireSpec + wire_path_edge_masks (diagonal segment raises).
+[13:50:43.465106]     - realized_wall_planes(edge_masks, axis, *, ij=None, region=None),
+[13:50:43.465110]       edge_is_pec, clear_edges, apply_pec_edges; apply_pec_mask is a wrapper
+[13:50:43.465114]       (periodic, sheets) — no two_plane_mask kwarg.
+[13:50:43.465118]     - apply_pec_occupancy: noisy-OR of the four incident cells with the same
+[13:50:43.465122]       shifts applied to the OCCUPANCY (a zero pad reads "no conductor"),
+[13:50:43.465127]       periodic flags, static sheet_edge_masks OR'd in; bit-identical to the hard
+[13:50:43.465131]       rule at binary occupancy on the battery (faces 0 and n-1, seam, 2-D lane).
+[13:50:43.465135]     - Deleted: two_plane_extension_masks, _place_at_next_plane.
+[13:50:43.465139]       tangential_edge_masks kept only as the pre-#931 classification the f0
+[13:50:43.465143]       sheet ctx and sheet_normal_live_axis_masks still read (TODO stage B).
+[13:50:43.465159]     - simulation.py / nonuniform.py per-step calls drop two_plane_mask;
+[13:50:43.465163]       simulation.py hands the run's periodic flags to the soft path too.
+[13:50:43.465168]     - tests/contracts/test_lattice_ownership_contract.py: §5 battery (slab
+[13:50:43.465172]       t=1..3 per axis, sheet, footprint, mirror/permutation, soft==hard, wire,
+[13:50:43.465176]       helpers, API-level sheet/G4/sub-cell/grep). On the old rule all 9 slab
+[13:50:43.465180]       cases failed "FAR FACE MISSING"; now 77/81 pass — the 4 reds need the
+[13:50:43.465184]       rasterizer stage (pec_sheets collector, sub-cell refusal, two_plane
+[13:50:43.465188]       removal from api/visualize/etc.).
+[13:50:43.465192]     - tests/locks/test_two_plane_pec_slab.py deleted (design note §2).
+[13:50:43.465196]     
+[13:50:43.465200]     R3: memory=rfx-known-issues.md("top face plane is never zeroed" 2026-08-28; two_plane A/B verdict) | R2-attempts=0 (redesign, not a repeat) | falsifier=§5 slab battery t=1,2,3 on each axis + soft≡hard at binary incl. faces 0/n-1 and the periodic seam (tests/contracts/test_lattice_ownership_contract.py)
+[13:50:43.465205]     
+[13:50:43.465209]     Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+[13:50:43.465213]     Claude-Session: https://claude.ai/code/session_01DPkZyauVRCaEhBHXxvxYaN
+[13:50:43.465217] 
+[13:50:43.465221]  rfx/boundaries/pec.py                              | 592 +++++++++++++-------
+[13:50:43.465226]  rfx/nonuniform.py                                  |   4 +-
+[13:50:43.465230]  rfx/simulation.py                                  |   7 +-
+[13:50:43.465234]  tests/contracts/test_lattice_ownership_contract.py | 546 +++++++++++++++++++
+[13:50:43.465238]  tests/locks/test_two_plane_pec_slab.py             | 595 ---------------------
+[13:50:43.465242]  5 files changed, 936 insertions(+), 808 deletions(-)
+[13:50:43.465246]  create mode 100644 tests/contracts/test_lattice_ownership_contract.py
+[13:50:43.465250]  delete mode 100644 tests/locks/test_two_plane_pec_slab.py
+[13:50:43.468587] + brc=0
+[13:50:43.468607] + set -e
+[13:50:43.469751] + echo 0
+[13:50:43.471544] + echo '===== bisect log ====='
+[13:50:43.471555] bisect found first bad commit===== bisect log =====
+[13:50:43.472260] + git bisect log
+[13:50:43.549052] + cat /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-bisect-20260915T134447Z-9ead07b1/bisect_log.txt
+[13:50:43.550870] # bad: [fc7f7202567e2cf78a65ab90a709e4ff45b185f1] docs/research_notes is local-only: untrack it and add the contract (#1051)
+[13:50:43.550883] # good: [fa3a99bda71728b6f00575540995e690ad16cbda] fix(preflight): stop scoring MSL Z0 against the declared board; anchor the sweep on the realized one (#752) (#766)
+[13:50:43.550890] git bisect start 'fc7f7202567e2cf78a65ab90a709e4ff45b185f1' 'fa3a99bda71728b6f00575540995e690ad16cbda'
+[13:50:43.550894] # bad: [f4d53f8d56f7f3a0c8e9affb04139680de2acc0a] Merge branch 'feat/931-wr90-iris' into feat/931-lattice-ownership
+[13:50:43.550901] git bisect bad f4d53f8d56f7f3a0c8e9affb04139680de2acc0a
+[13:50:43.550905] # bad: [31b9b3480d05abd0f75af37bc7a49705b2cbfb3a] merge: feat/931-wr90-iris — cv18/cv19 volume irises drawn on node planes (#931 phase 2a)
+[13:50:43.550910] git bisect bad 31b9b3480d05abd0f75af37bc7a49705b2cbfb3a
+[13:50:43.550925] # good: [495e180c24372c332e082aa064c201ef0871ee63] feat(run): ring-down settling witness on run() results, absent-not-NaN, one verdict helper, preflight notice (#885; post-v1.8 plan item 4) (#917)
+[13:50:43.550930] git bisect good 495e180c24372c332e082aa064c201ef0871ee63
+[13:50:43.550934] # bad: [dea0c5246ad36f83ece78a3bd32aacb7e90e129b] chore(931): record the four X-C run ids (#931, X-C)
+[13:50:43.550938] git bisect bad dea0c5246ad36f83ece78a3bd32aacb7e90e129b
+[13:50:43.550944] # bad: [9d4289d699e0ce8a5ba3578058ecf304c750a50e] docs(subgridded): say why the fine-region rasterization collects no sheets (#931, stage C)
+[13:50:43.550948] git bisect bad 9d4289d699e0ce8a5ba3578058ecf304c750a50e
+[13:50:43.550952] # bad: [34956de23615954453730a7698b47bde562c7c23] test+docs: PEC-short fixture drawn as one full cell, viewer patterned-body fixture off the substrate plane; API symbol inventory regenerated (#931, stage B)
+[13:50:43.550956] git bisect bad 34956de23615954453730a7698b47bde562c7c23
+[13:50:43.550963] # bad: [8a61afcea9f7c3ddec5c91ab6ac6790588d5f005] docs(design_notes): zero-extent PEC Box via add() is a sheet declaration; VESSL fast-lane pytest yaml (#931)
+[13:50:43.550967] git bisect bad 8a61afcea9f7c3ddec5c91ab6ac6790588d5f005
+[13:50:43.550972] # good: [d990e18ce0870ac7a893a86627e7232d1cf92c7b] feat(preflight,sparams): layout-from-band-low-edge note near cutoff; S21 phase residual vs −βL reported on waveguide S-matrix results (post-v1.8 plan item 5) (#925)
+[13:50:43.550976] git bisect good d990e18ce0870ac7a893a86627e7232d1cf92c7b
+[13:50:43.550981] # bad: [a3e4dba46fff45d65743b02ef65afb3185d0c15b] feat(pec): lattice ownership contract — one realized-edge source for volumes, sheets, wires; two_plane deleted (#931, stage A)
+[13:50:43.550985] git bisect bad a3e4dba46fff45d65743b02ef65afb3185d0c15b
+[13:50:43.550989] # good: [0ad801dc0b50918aa36f6b6ade48c2d2950bdea2] docs(design_notes): lattice ownership contract for conductors — volume/sheet/wire, one realized-edge source, two_plane and #702 deleted (#931)
+[13:50:43.550993] git bisect good 0ad801dc0b50918aa36f6b6ade48c2d2950bdea2
+[13:50:43.550997] # first bad commit: [a3e4dba46fff45d65743b02ef65afb3185d0c15b] feat(pec): lattice ownership contract — one realized-edge source for volumes, sheets, wires; two_plane deleted (#931, stage A)
+[13:50:43.552084] + grep -oE '^[0-9a-f]{40} is the first bad commit' /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-bisect-20260915T134447Z-9ead07b1/bisect_run.log
+[13:50:43.552191] + cut '-d ' -f1
+[13:50:43.552381] + head -1
+[13:50:43.555939] + FIRST=a3e4dba46fff45d65743b02ef65afb3185d0c15b
+[13:50:43.555955] + '[' -n a3e4dba46fff45d65743b02ef65afb3185d0c15b ]
+[13:50:43.557006] + echo a3e4dba46fff45d65743b02ef65afb3185d0c15b
+[13:50:43.559200] ===== first commit where the arm SETTLES: a3e4dba46fff45d65743b02ef65afb3185d0c15b =====
+[13:50:43.559207] + echo '===== first commit where the arm SETTLES: a3e4dba46fff45d65743b02ef65afb3185d0c15b ====='
+[13:50:43.560142] + git --no-pager log -1 '--format=%H%n%ad%n%an%n%s%n%n%b' '--date=iso' a3e4dba46fff45d65743b02ef65afb3185d0c15b
+[13:50:43.564935] + cat /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-bisect-20260915T134447Z-9ead07b1/first_commit_message.txt
+[13:50:43.566682] a3e4dba46fff45d65743b02ef65afb3185d0c15b
+[13:50:43.566691] 2026-09-07 00:58:02 +0000
+[13:50:43.566696] Byungkwan Kim
+[13:50:43.566710] feat(pec): lattice ownership contract — one realized-edge source for volumes, sheets, wires; two_plane deleted (#931, stage A)
+[13:50:43.566714] 
+[13:50:43.566721] rfx/boundaries/pec.py now carries the #931 contract: an E component is PEC
+[13:50:43.566726] iff its own location is inside the closed conductor region.
+[13:50:43.566730] 
+[13:50:43.566734] - realized_pec_edge_masks(cell_mask, sheets, wires, periodic): the only
+[13:50:43.566738]   function turning geometry into PEC edges. Volume rule = four incident
+[13:50:43.566742]   cells (backward shifts under the #689 convention, one spelling `_shift`);
+[13:50:43.566746]   sheet rule = union footprints per normal axis, both end nodes with the
+[13:50:43.566761]   forward in-plane shift; wire = edges of the axis-aligned lattice path.
+[13:50:43.566767] - SheetSpec (frozen; full-shape one-layer footprint, static plane),
+[13:50:43.566770]   WireSpec + wire_path_edge_masks (diagonal segment raises).
+[13:50:43.566775] - realized_wall_planes(edge_masks, axis, *, ij=None, region=None),
+[13:50:43.566779]   edge_is_pec, clear_edges, apply_pec_edges; apply_pec_mask is a wrapper
+[13:50:43.566783]   (periodic, sheets) — no two_plane_mask kwarg.
+[13:50:43.566787] - apply_pec_occupancy: noisy-OR of the four incident cells with the same
+[13:50:43.566791]   shifts applied to the OCCUPANCY (a zero pad reads "no conductor"),
+[13:50:43.566795]   periodic flags, static sheet_edge_masks OR'd in; bit-identical to the hard
+[13:50:43.566799]   rule at binary occupancy on the battery (faces 0 and n-1, seam, 2-D lane).
+[13:50:43.566803] - Deleted: two_plane_extension_masks, _place_at_next_plane.
+[13:50:43.566807]   tangential_edge_masks kept only as the pre-#931 classification the f0
+[13:50:43.566811]   sheet ctx and sheet_normal_live_axis_masks still read (TODO stage B).
+[13:50:43.566815] - simulation.py / nonuniform.py per-step calls drop two_plane_mask;
+[13:50:43.566819]   simulation.py hands the run's periodic flags to the soft path too.
+[13:50:43.566823] - tests/contracts/test_lattice_ownership_contract.py: §5 battery (slab
+[13:50:43.566827]   t=1..3 per axis, sheet, footprint, mirror/permutation, soft==hard, wire,
+[13:50:43.566831]   helpers, API-level sheet/G4/sub-cell/grep). On the old rule all 9 slab
+[13:50:43.566835]   cases failed "FAR FACE MISSING"; now 77/81 pass — the 4 reds need the
+[13:50:43.566839]   rasterizer stage (pec_sheets collector, sub-cell refusal, two_plane
+[13:50:43.566844]   removal from api/visualize/etc.).
+[13:50:43.566847] - tests/locks/test_two_plane_pec_slab.py deleted (design note §2).
+[13:50:43.566851] 
+[13:50:43.566857] R3: memory=rfx-known-issues.md("top face plane is never zeroed" 2026-08-28; two_plane A/B verdict) | R2-attempts=0 (redesign, not a repeat) | falsifier=§5 slab battery t=1,2,3 on each axis + soft≡hard at binary incl. faces 0/n-1 and the periodic seam (tests/contracts/test_lattice_ownership_contract.py)
+[13:50:43.566861] 
+[13:50:43.566865] Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+[13:50:43.566870] Claude-Session: https://claude.ai/code/session_01DPkZyauVRCaEhBHXxvxYaN
+[13:50:43.566874] 
+[13:50:43.568353] + git --no-pager show --stat '--format=' a3e4dba46fff45d65743b02ef65afb3185d0c15b
+[13:50:43.578933] + cat /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-bisect-20260915T134447Z-9ead07b1/first_commit_diffstat.txt
+[13:50:43.580668]  rfx/boundaries/pec.py                              | 592 +++++++++++++-------
+[13:50:43.580684]  rfx/nonuniform.py                                  |   4 +-
+[13:50:43.580689]  rfx/simulation.py                                  |   7 +-
+[13:50:43.580694]  tests/contracts/test_lattice_ownership_contract.py | 546 +++++++++++++++++++
+[13:50:43.580699]  tests/locks/test_two_plane_pec_slab.py             | 595 ---------------------
+[13:50:43.580703]  5 files changed, 936 insertions(+), 808 deletions(-)
+[13:50:43.582805] + git --no-pager log -1 '--format=%H %s' a3e4dba46fff45d65743b02ef65afb3185d0c15b^
+[13:50:43.587697] + cat /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-bisect-20260915T134447Z-9ead07b1/first_commit_parent.txt
+[13:50:43.589557] 0ad801dc0b50918aa36f6b6ade48c2d2950bdea2 docs(design_notes): lattice ownership contract for conductors — volume/sheet/wire, one realized-edge source, two_plane and #702 deleted (#931)
+[13:50:43.591300] + git --no-pager show a3e4dba46fff45d65743b02ef65afb3185d0c15b
+[13:50:43.605389] + git bisect reset
+[13:50:43.952593] Previous HEAD position was 0ad801dc docs(design_notes): lattice ownership contract for conductors — volume/sheet/wire, one realized-edge source, two_plane and #702 deleted (#931)
+[13:50:43.952739] HEAD is now at fc7f7202 docs/research_notes is local-only: untrack it and add the contract (#1051)
+[13:50:43.959711] + echo '===== per-step trace ====='
+[13:50:43.959723] ===== per-step trace =====
+[13:50:43.959728] + cat /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-bisect-20260915T134447Z-9ead07b1/bisect_trace.tsv
+[13:50:43.961961] sha	settling_db	verdict
+[13:50:43.961980] fa3a99bda71728b6f00575540995e690ad16cbda	0.00	grows
+[13:50:43.961987] fc7f7202567e2cf78a65ab90a709e4ff45b185f1	-43.37	settles
+[13:50:43.961993] f4d53f8d56f7f3a0c8e9affb04139680de2acc0a	-43.37	settles
+[13:50:43.961998] 31b9b3480d05abd0f75af37bc7a49705b2cbfb3a	-43.37	settles
+[13:50:43.962006] 495e180c24372c332e082aa064c201ef0871ee63	0.00	grows
+[13:50:43.962012] dea0c5246ad36f83ece78a3bd32aacb7e90e129b	-43.37	settles
+[13:50:43.962018] 9d4289d699e0ce8a5ba3578058ecf304c750a50e	-43.37	settles
+[13:50:43.962023] 34956de23615954453730a7698b47bde562c7c23	-43.37	settles
+[13:50:43.962029] 8a61afcea9f7c3ddec5c91ab6ac6790588d5f005	-43.37	settles
+[13:50:43.962034] d990e18ce0870ac7a893a86627e7232d1cf92c7b	0.00	grows
+[13:50:43.962039] a3e4dba46fff45d65743b02ef65afb3185d0c15b	-43.37	settles
+[13:50:43.962045] 0ad801dc0b50918aa36f6b6ade48c2d2950bdea2	0.00	grows
+[13:50:43.962774] + ls -la /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-bisect-20260915T134447Z-9ead07b1
+[13:50:43.969233] total 6268
+[13:50:43.969248] drwxr-xr-x   2 nobody nogroup   4096 Sep 15 13:50 .
+[13:50:43.969254] drwxrwxrwx 349 nobody nogroup  40960 Sep 15 13:44 ..
+[13:50:43.969259] -rw-r--r--   1 nobody nogroup  18739 Sep 15 13:44 PREDECLARATION.md
+[13:50:43.969265] -rw-r--r--   1 nobody nogroup      2 Sep 15 13:50 bisect_0ad801dc0b50.driver_rc
+[13:50:43.969271] -rw-r--r--   1 nobody nogroup  54024 Sep 15 13:50 bisect_0ad801dc0b50.json
+[13:50:43.969290] -rw-r--r--   1 nobody nogroup  19783 Sep 15 13:50 bisect_0ad801dc0b50.log
+[13:50:43.969297] -rw-r--r--   1 nobody nogroup      6 Sep 15 13:50 bisect_0ad801dc0b50.verdict
+[13:50:43.969303] -rw-r--r--   1 nobody nogroup 427046 Sep 15 13:50 bisect_0ad801dc0b50_ts.npz
+[13:50:43.969308] -rw-r--r--   1 nobody nogroup      2 Sep 15 13:46 bisect_31b9b3480d05.driver_rc
+[13:50:43.969313] -rw-r--r--   1 nobody nogroup  54264 Sep 15 13:46 bisect_31b9b3480d05.json
+[13:50:43.969319] -rw-r--r--   1 nobody nogroup  19749 Sep 15 13:46 bisect_31b9b3480d05.log
+[13:50:43.969325] -rw-r--r--   1 nobody nogroup      8 Sep 15 13:46 bisect_31b9b3480d05.verdict
+[13:50:43.969330] -rw-r--r--   1 nobody nogroup 427046 Sep 15 13:46 bisect_31b9b3480d05_ts.npz
+[13:50:43.969335] -rw-r--r--   1 nobody nogroup      2 Sep 15 13:48 bisect_34956de23615.driver_rc
+[13:50:43.969341] -rw-r--r--   1 nobody nogroup  54208 Sep 15 13:48 bisect_34956de23615.json
+[13:50:43.969346] -rw-r--r--   1 nobody nogroup  19581 Sep 15 13:48 bisect_34956de23615.log
+[13:50:43.969352] -rw-r--r--   1 nobody nogroup      8 Sep 15 13:48 bisect_34956de23615.verdict
+[13:50:43.969357] -rw-r--r--   1 nobody nogroup 427046 Sep 15 13:48 bisect_34956de23615_ts.npz
+[13:50:43.969362] -rw-r--r--   1 nobody nogroup      2 Sep 15 13:47 bisect_495e180c2437.driver_rc
+[13:50:43.969367] -rw-r--r--   1 nobody nogroup  54024 Sep 15 13:47 bisect_495e180c2437.json
+[13:50:43.969373] -rw-r--r--   1 nobody nogroup  19783 Sep 15 13:47 bisect_495e180c2437.log
+[13:50:43.969378] -rw-r--r--   1 nobody nogroup      6 Sep 15 13:47 bisect_495e180c2437.verdict
+[13:50:43.969383] -rw-r--r--   1 nobody nogroup 427046 Sep 15 13:47 bisect_495e180c2437_ts.npz
+[13:50:43.969389] -rw-r--r--   1 nobody nogroup      2 Sep 15 13:49 bisect_8a61afcea9f7.driver_rc
+[13:50:43.969394] -rw-r--r--   1 nobody nogroup  54208 Sep 15 13:49 bisect_8a61afcea9f7.json
+[13:50:43.969399] -rw-r--r--   1 nobody nogroup  19581 Sep 15 13:49 bisect_8a61afcea9f7.log
+[13:50:43.969404] -rw-r--r--   1 nobody nogroup      8 Sep 15 13:49 bisect_8a61afcea9f7.verdict
+[13:50:43.969410] -rw-r--r--   1 nobody nogroup 427046 Sep 15 13:49 bisect_8a61afcea9f7_ts.npz
+[13:50:43.969415] -rw-r--r--   1 nobody nogroup      2 Sep 15 13:48 bisect_9d4289d699e0.driver_rc
+[13:50:43.969420] -rw-r--r--   1 nobody nogroup  54208 Sep 15 13:48 bisect_9d4289d699e0.json
+[13:50:43.969425] -rw-r--r--   1 nobody nogroup  19581 Sep 15 13:48 bisect_9d4289d699e0.log
+[13:50:43.969431] -rw-r--r--   1 nobody nogroup      8 Sep 15 13:48 bisect_9d4289d699e0.verdict
+[13:50:43.969436] -rw-r--r--   1 nobody nogroup 427046 Sep 15 13:48 bisect_9d4289d699e0_ts.npz
+[13:50:43.969441] -rw-r--r--   1 nobody nogroup      2 Sep 15 13:50 bisect_a3e4dba46fff.driver_rc
+[13:50:43.969449] -rw-r--r--   1 nobody nogroup  54207 Sep 15 13:50 bisect_a3e4dba46fff.json
+[13:50:43.969454] -rw-r--r--   1 nobody nogroup  19580 Sep 15 13:50 bisect_a3e4dba46fff.log
+[13:50:43.969459] -rw-r--r--   1 nobody nogroup      8 Sep 15 13:50 bisect_a3e4dba46fff.verdict
+[13:50:43.969465] -rw-r--r--   1 nobody nogroup 427046 Sep 15 13:50 bisect_a3e4dba46fff_ts.npz
+[13:50:43.969470] -rw-r--r--   1 nobody nogroup     41 Sep 15 13:44 bisect_bad_settles.txt
+[13:50:43.969475] -rw-r--r--   1 nobody nogroup      2 Sep 15 13:49 bisect_d990e18ce087.driver_rc
+[13:50:43.969481] -rw-r--r--   1 nobody nogroup  54024 Sep 15 13:49 bisect_d990e18ce087.json
+[13:50:43.969494] -rw-r--r--   1 nobody nogroup  19783 Sep 15 13:49 bisect_d990e18ce087.log
+[13:50:43.969499] -rw-r--r--   1 nobody nogroup      6 Sep 15 13:49 bisect_d990e18ce087.verdict
+[13:50:43.969504] -rw-r--r--   1 nobody nogroup 427046 Sep 15 13:49 bisect_d990e18ce087_ts.npz
+[13:50:43.969510] -rw-r--r--   1 nobody nogroup      2 Sep 15 13:47 bisect_dea0c5246ad3.driver_rc
+[13:50:43.969515] -rw-r--r--   1 nobody nogroup  54208 Sep 15 13:47 bisect_dea0c5246ad3.json
+[13:50:43.969520] -rw-r--r--   1 nobody nogroup  19581 Sep 15 13:47 bisect_dea0c5246ad3.log
+[13:50:43.969520] + echo 'artifacts persisted (mounted, survives teardown): /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-bisect-20260915T134447Z-9ead07b1'
+[13:50:43.969529] -rw-r--r--   1 nobody nogroup      8 Sep 15 13:47 bisect_dea0c5246ad3.verdict
+[13:50:43.969535] -rw-r--r--   1 nobody nogroup 427046 Sep 15 13:47 bisect_dea0c5246ad3_ts.npz
+[13:50:43.969545] + echo 'bisect_rc=0'
+[13:50:43.969555] -rw-r--r--   1 nobody nogroup      2 Sep 15 13:46 bisect_f4d53f8d56f7.driver_rc
+[13:50:43.969558] -rw-r--r--   1 nobody nogroup  54265 Sep 15 13:46 bisect_f4d53f8d56f7.json
+[13:50:43.969562] -rw-r--r--   1 nobody nogroup  19750 Sep 15 13:46 bisect_f4d53f8d56f7.log
+[13:50:43.969565] -rw-r--r--   1 nobody nogroup      8 Sep 15 13:46 bisect_f4d53f8d56f7.verdict
+[13:50:43.969573] -rw-r--r--   1 nobody nogroup 427046 Sep 15 13:46 bisect_f4d53f8d56f7_ts.npz
+[13:50:43.969577] -rw-r--r--   1 nobody nogroup      2 Sep 15 13:45 bisect_fa3a99bda717.driver_rc
+[13:50:43.969580] -rw-r--r--   1 nobody nogroup  54023 Sep 15 13:45 bisect_fa3a99bda717.json
+[13:50:43.969584] -rw-r--r--   1 nobody nogroup  19782 Sep 15 13:45 bisect_fa3a99bda717.log
+[13:50:43.969587] -rw-r--r--   1 nobody nogroup      6 Sep 15 13:45 bisect_fa3a99bda717.verdict
+[13:50:43.969590] -rw-r--r--   1 nobody nogroup 427046 Sep 15 13:45 bisect_fa3a99bda717_ts.npz
+[13:50:43.969594] -rw-r--r--   1 nobody nogroup      2 Sep 15 13:45 bisect_fc7f7202567e.driver_rc
+[13:50:43.969597] -rw-r--r--   1 nobody nogroup  54380 Sep 15 13:45 bisect_fc7f7202567e.json
+[13:50:43.969600] -rw-r--r--   1 nobody nogroup  20210 Sep 15 13:45 bisect_fc7f7202567e.log
+[13:50:43.969604] -rw-r--r--   1 nobody nogroup      8 Sep 15 13:45 bisect_fc7f7202567e.verdict
+[13:50:43.969607] -rw-r--r--   1 nobody nogroup 427046 Sep 15 13:45 bisect_fc7f7202567e_ts.npz
+[13:50:43.969610] -rw-r--r--   1 nobody nogroup     41 Sep 15 13:44 bisect_good_grows.txt
+[13:50:43.969614] -rw-r--r--   1 nobody nogroup   2806 Sep 15 13:50 bisect_log.txt
+[13:50:43.969617] -rw-r--r--   1 nobody nogroup   8957 Sep 15 13:50 bisect_run.log
+[13:50:43.969620] -rw-r--r--   1 nobody nogroup      2 Sep 15 13:50 bisect_run.rc
+[13:50:43.969625] -rw-r--r--   1 nobody nogroup    680 Sep 15 13:50 bisect_trace.tsv
+[13:50:43.969629] -rw-r--r--   1 nobody nogroup     41 Sep 15 13:44 driver_commit.txt
+[13:50:43.969632] -rw-r--r--   1 nobody nogroup    132 Sep 15 13:45 endpoint_trace.tsv
+[13:50:43.969635] -rw-r--r--   1 nobody nogroup    413 Sep 15 13:50 first_commit_diffstat.txt
+[13:50:43.969639] -rw-r--r--   1 nobody nogroup  89932 Sep 15 13:50 first_commit_full.diff
+[13:50:43.969642] -rw-r--r--   1 nobody nogroup   2576 Sep 15 13:50 first_commit_message.txt
+[13:50:43.969653] -rw-r--r--   1 nobody nogroup    186 Sep 15 13:50 first_commit_parent.txt
+[13:50:43.969657] -rw-r--r--   1 nobody nogroup     41 Sep 15 13:50 first_commit_where_it_settles.txt
+[13:50:43.969660] -rw-r--r--   1 nobody nogroup      4 Sep 15 13:44 range_commit_count.txt
+[13:50:43.969664] -rw-r--r--   1 nobody nogroup     13 Sep 15 13:44 run_id.txt
+[13:50:43.969671] artifacts persisted (mounted, survives teardown): /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-bisect-20260915T134447Z-9ead07b1
+[13:50:43.969674] bisect_rc=0
+[13:50:43.986291] workload reported done
+[13:50:43.986392] Workload status changed to stopping
+[13:50:48.346780] + set +x
+[13:50:53.374257] workload reported done
+[13:50:53.374357] Workload status changed to waitToBeKilled
+[13:50:56.000000] Stopping container vops-sidecar
+[13:50:56.000000] Stopping container run-exec
+[13:50:56.000000] Terminating VESSL Workload...
+[13:50:56.000000] Stopping container ttyd-sidecar
+[13:50:56.000000] Stopping container fluentbit
+[13:50:56.738425] workload completed
+[13:50:56.738526] Workload status changed to completed
