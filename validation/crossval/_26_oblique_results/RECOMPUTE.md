@@ -217,3 +217,30 @@ Since 2026-09-14 (#1015) it also carries `domain_R` / `domain_T` per arm: the bi
 which the standard's window is a valid bound at all, and how the GL1 breaches split
 across that line (standard §13). Nothing numeric moved when those keys were added —
 every value the file already carried is bit-identical, and `tm_60` still fails GL2_R.
+
+Since 2026-09-15 (#1015, standard §14) each entry also carries `witness_reference`:
+**which** lattice its witness is judged against, chosen by ARRIVAL — the same test
+standard §3 (Z1) already uses — from `record["t_safe_cpml_steps"]` and the #892
+auxiliary-echo arrival against the record length. `witness_reference_inputs` carries
+those three numbers, `witness_reference_reason` the rule, and
+`mean_dR_lattice_gated_alt` / `mean_dT_lattice_gated_alt` what the OTHER reference would
+have given, so the choice can be checked rather than trusted.
+
+`te_00`, `tm_00`, `te_30`, `te_00__settle60` and `tm_00__settle60` are
+`absorber_free_by_arrival`; the other seven are `realized_absorbers`. This **did** move
+numbers, and only on those five: their GL1 breach counts go to zero over every gated bin
+(302 → 0), their validity domains become total, and cv26's
+`verdict.gl1_breaches_in_domain` goes **135 → 73** with the all-bin total **1291 → 989**.
+The seven amplitude-capped entries are bit-identical apart from a rewritten
+`GL1_not_gated_reason`, and **`tm_60` still FAILS GL2_R** — it is not arrival-safe, so
+§14 cannot touch it.
+
+**Regenerating this file on an unmodified checkout is NOT bit-identical to the committed
+copy.** Re-running `emit_cv26_lattice_witness_replay.py` at `541f703f` with no change at
+all reproduces every count and every boolean exactly but differs from the committed JSON
+in ~138 float fields, the worst by 1.78e-09 relative
+(`arms/te_45/domain_R/max_unmodelled_over_window_gated`). Two consecutive runs on one
+revision ARE byte-identical after dropping `replay_commit` / `date_utc`, so the drift is
+across environments, not across runs. Compare a regeneration against a **fresh
+pre-change run in the same session**, never against the committed artifact, and treat
+1e-9 relative as the floor. The cause has not been bisected.

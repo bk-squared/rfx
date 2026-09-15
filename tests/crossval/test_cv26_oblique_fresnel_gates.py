@@ -56,14 +56,56 @@ _GL2_EXPECTED = {
 
 # #1015 / standard section 13: GL1's validity domain on R, as MEASURED --
 # (bins in the domain, breaches inside it, breaches outside it).  A record of the
-# outcome, not a claim that the domain closes GL1: te_30's R domain is the whole
-# band, so all 18 of its R breaches lie INSIDE it, which is why the domain is
-# stated as a necessary condition and GL1 stayed ungated here.  Of this case's
-# 1291 R+T breaches, 1156 (89.5 %) fall outside the domain and 135 inside.
+# outcome, not a claim that the domain closes GL1.
+#
+# REWRITTEN BY SECTION 14.  The previous text here read that te_30 has 18 in-domain
+# R breaches and that 1156 of this case's 1291 R+T breaches fall outside the domain.
+# Both were true of the pre-section-14 reference and are false now: te_30 is one of
+# the five arrival-safe entries, it is judged against the absorber-free lattice, and
+# its R breaches are 0.  The in-domain total is 73, not 135.  The domain is still
+# stated as a NECESSARY condition and GL1 is still ungated on this case -- that part
+# did not change, and the 73 that remain are all on the four amplitude-capped arms
+# with no mechanism proposed for them.
 _DOMAIN_EXPECTED = {
-    "te_00": (290, 0, 0), "te_30": (441, 18, 0), "te_45": (341, 16, 59),
+    "te_00": (290, 0, 0), "te_30": (441, 0, 0), "te_45": (341, 16, 59),
     "te_60": (214, 8, 90), "tm_00": (290, 0, 0), "tm_45": (211, 13, 177),
     "tm_60": (42, 14, 343),
+}
+
+# #1015 section 14: WHICH lattice each arm's witness is judged against, and the
+# GEOMETRY that decides it -- `record["t_safe_cpml_steps"] >= n_steps` AND the
+# #892 auxiliary-echo arrival `> n_steps`.  An arm whose two absorber echoes are
+# both outside its record cannot have measured either, so it is judged against
+# the ABSORBER-FREE lattice (the slab family's own reference) and its unmodelled
+# term is zero BY ARRIVAL; an arm that admits an echo by AMPLITUDE keeps the
+# realized lattice and section 13's validity domain.
+#
+# This table is pinned against the GEOMETRY, not against a breach count: a rig
+# change that moved the CPML standoff or the auxiliary absorber distance would
+# otherwise silently re-pick an arm's reference and change what GL1 is measured
+# against with nothing going red.  That is the silent-default hazard standard
+# section 13.6 warns about for `unmodelled_term=None`, and this is the guard.
+#
+# te_30 is the arm the correction moves: (441, 18, 0) -> (441, 0, 0) above.
+# te_00 and tm_00 were already (290, 0, 0) and cannot move.
+_WITNESS_REFERENCE = {
+    "te_00": "absorber_free_by_arrival", "te_30": "absorber_free_by_arrival",
+    "tm_00": "absorber_free_by_arrival",
+    "te_45": "realized_absorbers", "te_60": "realized_absorbers",
+    "tm_45": "realized_absorbers", "tm_60": "realized_absorbers",
+    "graze_vac": "realized_absorbers", "graze_pec": "realized_absorbers",
+    "graze_te": "realized_absorbers",
+}
+
+# The two settle-60 rungs, which NO test pinned before #1015 section 14 and
+# which are the entries the correction moves MOST: 76.6 % / 75.5 % domain
+# coverage with 4/66 and 5/66 in/out-of-domain R breaches, against the realized
+# lattice, become 100 % coverage and 0/0 against the absorber-free one.  Each
+# tuple is (bins in domain, in-domain breaches, out-of-domain breaches) on R,
+# then on T, then the all-bin GL1 (R, T) counts.
+_SETTLE60_EXPECTED = {
+    "te_00__settle60": ("rfx__te_00_settle60.json", "te_00", 1611, (290, 0, 0), (290, 0, 0), (0, 0)),
+    "tm_00__settle60": ("rfx__tm_00_settle60.json", "tm_00", 1612, (290, 0, 0), (290, 0, 0), (0, 0)),
 }
 
 
@@ -188,6 +230,22 @@ def test_baseline_replays_and_passes_on_every_arm():
             lat["domain_R"]["n_bins_in_domain"],
             lat["domain_R"]["n_bins_beyond_in_domain"],
             lat["domain_R"]["n_bins_beyond_outside_domain"]), (arm, lat["domain_R"])
+        # #1015 section 14: the reference is chosen by ARRIVAL, and the choice is
+        # pinned here beside the domain it decides.  The two ratio keys must
+        # SURVIVE the choice: on an arrival-safe arm the domain is total and the
+        # absorber magnitude is reported through `report_term`, so a reader still
+        # sees how big the content the chosen reference EXCLUDES is.
+        assert lat["witness_reference"] == _WITNESS_REFERENCE[arm], (arm, lat["witness_reference"])
+        assert lat["witness_reference_reason"].strip(), arm
+        for obs in ("R", "T"):
+            dom = lat[f"domain_{obs}"]
+            assert "max_unmodelled_over_window_gated" in dom, (arm, obs, sorted(dom))
+            assert "mean_unmodelled_over_mean_window_gated" in dom, (arm, obs, sorted(dom))
+            if lat["witness_reference_arrival_safe"]:
+                assert dom["unmodelled_term_is_reported_only"] is True, (arm, obs)
+                assert dom["n_bins_in_domain"] == e2["n_bins_gated"], (arm, obs, dom)
+            else:
+                assert "unmodelled_term_is_reported_only" not in dom, (arm, obs)
         # the budget must use the ARM's source, not the slab family's constant
         assert lat["tau_src_s"] == pytest.approx(run["record"]["src_tau_s"], rel=1e-12), arm
         assert lat["tau_src_s"] != pytest.approx(_LW.TAU_SRC_S, rel=1e-9), (
@@ -232,6 +290,138 @@ def test_baseline_replays_and_passes_on_every_arm():
     _assert_compact_declaration(doc, "graze_pec", {"G6_absorber": True, "G3_tail": True})
     _assert_compact_declaration(doc, "graze_te", {"G7_R": True, "G7_T": True, "G3_tail": True})
     _assert_compact_declaration(doc, "graze_vac", {"G_leak": True, "G3_tail": True})
+
+
+def test_the_witness_reference_is_chosen_by_arrival_geometry_not_by_a_residual():
+    """#1015 section 14: which lattice each arm's witness is judged against is
+    decided by GEOMETRY -- `record["t_safe_cpml_steps"]` and the #892 auxiliary
+    echo's flight-minus-lead arrival, both against the arm's own record length.
+
+    The predicate is recomputed here from those two numbers ALONE, with no
+    window, no residual and no breach count in sight, and required to agree with
+    what the comparator chose on every arm.  That is the whole content of the
+    mechanism claim, so it is pinned rather than described: an arm that started
+    matching a different reference would have to red here first.
+
+    The two clauses are collinear on this rig -- every arm that clears the CPML
+    round trip also clears the auxiliary arrival -- so this is ten entries of
+    evidence, not twenty independent bits, and the docstring says so instead of
+    letting the "10/10" read stronger than it is.
+    """
+    doc = _artifact("rfx.json")
+    for arm in O.ARM_ORDER + O.GRAZE_ARMS:
+        ad = doc["arms"][arm]
+        spec, run, cells, e2 = _replay_arm(arm, ad)
+        rec = run["record"]
+        n = int(rec["n_steps"])
+        ae = O.aux_echo_arrival_report(spec, cells, dx=float(cells["dx"]), dt=float(run["dt_s"]), n_steps=n)
+        expect = _LW.reference_is_absorber_free(rec["t_safe_cpml_steps"], ae["arrival_steps"], n)
+        lat = e2["lattice"]
+        assert lat["witness_reference_arrival_safe"] is bool(expect), (
+            arm, rec["t_safe_cpml_steps"], ae["arrival_steps"], n)
+        assert lat["witness_reference"] == _WITNESS_REFERENCE[arm], (arm, lat["witness_reference"])
+        # the geometry the comparator recorded is the geometry recomputed here
+        wi = lat["witness_reference_inputs"]
+        assert wi["n_steps"] == n and wi["t_safe_cpml_steps"] == rec["t_safe_cpml_steps"], (arm, wi)
+        assert wi["aux_echo_arrival_steps"] == pytest.approx(float(ae["arrival_steps"]), rel=1e-12), (arm, wi)
+        # and the decisive witness: the chosen reference is the one the record
+        # actually matches.  R and T are checked separately -- the sign has to
+        # agree on both or the mechanism claim is a coincidence on one observable.
+        #
+        # graze_vac is EXCLUDED here, and the exclusion is asserted rather than
+        # assumed: it is the vacuum arm, so it has no scatterer and its two
+        # references are the same lattice to 1e-8 relative.  There is no sign to
+        # agree with there, and counting it would inflate the claim.  It is also
+        # one of the two arms with no defined W_witness, so it is not one of the
+        # ten entries the mechanism claim is made over.
+        if arm == "graze_vac":
+            for obs in ("R", "T"):
+                a_, b_ = float(lat[f"mean_d{obs}_lattice_gated"]), float(lat[f"mean_d{obs}_lattice_gated_alt"])
+                assert a_ == pytest.approx(b_, rel=1e-8), (arm, obs, a_, b_)
+            continue
+        for obs in ("R", "T"):
+            chosen = float(lat[f"mean_d{obs}_lattice_gated"])
+            other = float(lat[f"mean_d{obs}_lattice_gated_alt"])
+            assert chosen < other, (arm, obs, chosen, other,
+                                    "the arrival predicate picked the reference the record matches WORSE")
+
+
+def test_the_two_settle60_rungs_are_judged_against_the_absorber_free_lattice():
+    """The two entries #1015 section 14 moves MOST, and which no test pinned before.
+
+    `rfx__te_00_settle60.json` / `rfx__tm_00_settle60.json` are the 60-step
+    settling rungs of the two normal-incidence arms.  Both have
+    `t_safe_cpml_steps` 3141 and an auxiliary echo arriving at 3197 steps
+    against records of 1611 and 1612 steps -- neither absorber echo can be in
+    either record -- yet they were judged against the lattice WITH both
+    absorbers, which put 76.6 % and 75.5 % of their gated bins in the validity
+    domain and left 4 and 5 in-domain R breaches (66 more outside it each).
+
+    Against the reference their arrival entitles them to, the domain is the
+    whole gated band and the breach count is zero on both observables, with the
+    worst per-bin ratio 0.25 rather than 3.06.  Pinned so the correction cannot
+    regress silently on the rungs nothing else covers.
+    """
+    for key, (fname, arm, n_steps, exp_R, exp_T, exp_gl1) in _SETTLE60_EXPECTED.items():
+        doc = _artifact(fname)
+        ad = doc["arms"][arm]
+        spec, run, cells, e2 = _replay_arm(arm, ad)
+        assert int(run["n_steps"]) == n_steps, (key, run["n_steps"])
+        lat = e2["lattice"]
+        assert lat["witness_reference"] == "absorber_free_by_arrival", (key, lat["witness_reference"])
+        assert lat["witness_reference_inputs"]["t_safe_cpml_steps"] >= n_steps, key
+        assert lat["witness_reference_inputs"]["aux_echo_arrival_steps"] > n_steps, key
+        for obs, exp in (("R", exp_R), ("T", exp_T)):
+            dom = lat[f"domain_{obs}"]
+            got = (dom["n_bins_in_domain"], dom["n_bins_beyond_in_domain"],
+                   dom["n_bins_beyond_outside_domain"])
+            assert got == exp, (key, obs, got, exp)
+            assert dom["domain_fraction"] == 1.0, (key, obs, dom["domain_fraction"])
+            assert dom["worst_ratio_in_domain"] <= 0.90, (key, obs, dom["worst_ratio_in_domain"])
+        assert (lat["GL1_R_bins_beyond"], lat["GL1_T_bins_beyond"]) == exp_gl1, key
+        # GL2 was passing before and must still pass; nothing here may turn a
+        # reported failure green, which is the same A2 rule `_GL2_EXPECTED` pins
+        assert lat["GL2_R"] and lat["GL2_T"], key
+
+
+def test_the_family_default_reference_rule_is_unchanged_by_the_cv26_correction():
+    """`reference_is_absorber_free` states the rule; `domain_report`'s default
+    output must be untouched by it.
+
+    The slab family (cv04, cv22, cv23) reaches `domain_report` with neither
+    `unmodelled_term` nor `report_term`, and its dict must keep exactly the six
+    keys it had -- no `max_unmodelled_over_window_gated`, no
+    `unmodelled_term_is_reported_only`.  `report_term` must also never be able
+    to move the domain itself.
+    """
+    W = np.full(8, 1e-3)
+    resid = np.linspace(0.0, 2e-3, 8)
+    base = _LW.domain_report(W, resid)
+    assert sorted(base) == sorted([
+        "n_bins_gated", "n_bins_in_domain", "domain_fraction",
+        "n_bins_beyond_in_domain", "n_bins_beyond_outside_domain", "worst_ratio_in_domain"])
+    assert base["n_bins_in_domain"] == 8 and base["domain_fraction"] == 1.0
+
+    # report_term reports and does not restrict: the domain stays total even
+    # when the reported magnitude is 100x the window
+    rep = _LW.domain_report(W, resid, None, report_term=np.full(8, 0.1))
+    for k in base:
+        assert rep[k] == base[k], k
+    assert rep["max_unmodelled_over_window_gated"] == pytest.approx(100.0)
+    assert rep["unmodelled_term_is_reported_only"] is True
+
+    # the same magnitude as an unmodelled_term DOES restrict, and says nothing
+    # about being reported-only
+    real = _LW.domain_report(W, resid, np.full(8, 0.1))
+    assert real["n_bins_in_domain"] == 0 and "unmodelled_term_is_reported_only" not in real
+
+    # and the predicate itself is geometry: equal arrival is not safe, strictly
+    # greater is, and a non-applicable (negative) arrival is never safe
+    assert _LW.reference_is_absorber_free(3141, 3197.0, 1611) is True
+    assert _LW.reference_is_absorber_free(1000, 3197.0, 1611) is False      # CPML echo inside
+    assert _LW.reference_is_absorber_free(3141, 1611.0, 1611) is False      # aux echo not strictly outside
+    assert _LW.reference_is_absorber_free(4776, -8641.0, 21835) is False    # cv26's compact boxes
+    assert _LW.reference_is_absorber_free(float("nan"), 3197.0, 1611) is False
 
 
 @pytest.mark.parametrize("name", sorted(O.FALSIFIER_MUST_EXIT_1))
@@ -321,3 +511,72 @@ def test_every_meep_leg_vouched_for_its_own_output(arm):
     assert geo["src_x"] >= -geo["sx"] / 2 + geo["dpml"], arm
     # and the stop condition could not fire before first arrival
     assert doc["run"]["t_min_after_sources"] >= abs(geo["trans_x"] - geo["src_x"]), arm
+
+
+# --------------------------------------------------------------------------
+# section 14: the reference is chosen by GEOMETRY, and that has to be checkable
+# --------------------------------------------------------------------------
+
+
+def test_every_entry_s_reference_re_derives_from_its_own_recorded_geometry() -> None:
+    """The anti-gate-lock for section 14, and it is the point of the whole change.
+
+    §14's claim is that the witness reference is decided by ARRIVAL -- two numbers
+    that come out of the rig's layout and the record length -- and never by fitting
+    a residual. Nothing in the suite used to hold anyone to that: a review
+    substituted the call site with ``arrival_safe = mean|R_rfx - lat_ideal["R"]| <
+    threshold``, a pure residual fit, and all 20 tests stayed green. The decision
+    was recorded; the two inputs that produced it were not, so no reader and no test
+    could re-derive it.
+
+    Both inputs now travel with the decision on every entry that has a lattice, and
+    this test recomputes the decision from them through the same public predicate.
+    A residual-substituted call site disagrees with the arm's own geometry and reds
+    here.
+    """
+    replay = json.loads(
+        (_REPO / "validation/crossval/_26_oblique_results/lattice_witness_replay.json")
+        .read_text(encoding="utf-8")
+    )
+    arms = replay["arms"]
+    assert arms, "the replay carries no arms"
+
+    checked = 0
+    for name, entry in sorted(arms.items()):
+        recorded = entry.get("witness_reference_arrival_safe")
+        inputs = entry.get("witness_reference_inputs")
+        assert recorded is not None and inputs is not None, (
+            f"{name} records no reference decision or no geometry for it. Both must "
+            "travel together or §14's rule is unfalsifiable from the artifact."
+        )
+        assert set(inputs) == {"n_steps", "t_safe_cpml_steps", "aux_echo_arrival_steps"}, (
+            f"{name}'s witness_reference_inputs changed shape: {sorted(inputs)}. The "
+            "predicate takes exactly the rig's layout and the record length; a new "
+            "key here is how a residual gets in."
+        )
+        derived = _LW.reference_is_absorber_free(
+            inputs["t_safe_cpml_steps"],
+            inputs["aux_echo_arrival_steps"],
+            inputs["n_steps"],
+        )
+        assert derived is recorded, (
+            f"{name}: the recorded reference decision is {recorded}, but its own "
+            f"recorded geometry gives {derived}. Either the call site is not using "
+            "the geometric predicate, or the inputs are not the ones it was given."
+        )
+        # And the decision must agree with the label, so neither can drift alone.
+        expected_label = "absorber_free_by_arrival" if recorded else "realized_absorbers"
+        assert entry["witness_reference"] == expected_label, (
+            f"{name}: decision {recorded} but label {entry['witness_reference']!r}"
+        )
+        checked += 1
+
+    assert checked == len(arms)
+    # The grazing boxes are False by the non-finite / non-positive arrival rule, not
+    # by omission -- assert that explicitly so a future emit that drops them from the
+    # artifact cannot pass this test by shrinking the set it iterates.
+    grazing = {k for k in arms if k.startswith("graze_")}
+    assert grazing, "the grazing boxes left the replay; they are the counter-examples"
+    for name in sorted(grazing):
+        assert arms[name]["witness_reference_arrival_safe"] is False
+        assert arms[name]["witness_reference_inputs"]["aux_echo_arrival_steps"] <= 0.0

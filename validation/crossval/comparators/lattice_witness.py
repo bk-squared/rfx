@@ -257,6 +257,35 @@ def windows_from_terms(R_lat, T_lat, terms: dict):
     return wR, wT, wR + wT
 
 
+def reference_is_absorber_free(t_safe_cpml_steps, aux_echo_arrival_steps, n_steps) -> bool:
+    """Which lattice reference a record is entitled to, from GEOMETRY alone (#1015).
+
+    ``True`` when BOTH absorber echoes the standard declares zero by
+    construction in section 3 (Z1) are outside this record by ARRIVAL: the
+    rig's own 3-D CPML round trip (``t_safe_cpml_steps``, cv04's 0.95 rule) and
+    the auxiliary grid's echo (``aux_echo_arrival_steps``, the #888 / #892
+    flight-minus-lead arrival). Then the reference must be the ABSORBER-FREE
+    lattice -- what the slab family already uses -- and ``witness_domain``'s
+    unmodelled term is zero BY ARRIVAL.
+
+    ``False`` when either echo is inside the record: the reference then carries
+    the realized absorbers and the case MUST supply ``U(f)``.
+
+    Every input is a property of the rig's LAYOUT and the record length. No
+    residual, no window, no breach count and no rfx number enters this
+    function, which is what lets it decide a reference without fitting one.
+    A non-finite or non-positive arrival (a compact box whose pulse lead
+    exceeds the echo flight, cv26's grazing arms) is ``False`` by the same
+    rule -- the echo is inside the record from the start.
+    """
+    t_safe = float(t_safe_cpml_steps)
+    arrival = float(aux_echo_arrival_steps)
+    n = float(n_steps)
+    if not (np.isfinite(t_safe) and np.isfinite(arrival) and np.isfinite(n)):
+        return False
+    return bool(t_safe >= n and arrival > n)
+
+
 def witness_domain(W, unmodelled_term=None):
     """The per-bin domain on which ``W_witness`` is a valid bound (#1015).
 
@@ -290,9 +319,30 @@ def witness_domain(W, unmodelled_term=None):
     reference has no absorber in it.
 
     **The predicate is NECESSARY, not sufficient.** It says where the bound is
-    not valid; it does not promise GL1 holds where it is. On cv26, 1156 of
-    1291 breaches (89.5 %) sit outside the domain and 135 sit inside it
-    (revision section 13 of the note).
+    not valid; it does not promise GL1 holds where it is. On cv26 as section 13
+    measured it, 1156 of 1291 breaches (89.5 %) sat outside the domain and 135
+    inside it. Section 14 (below) then found 62 of those 135 to be a REFERENCE
+    defect rather than a domain one; the current numbers are 73 in-domain of
+    989, and the predicate is still necessary and still not sufficient.
+
+    **BEFORE this predicate is reached, the REFERENCE must be chosen by the
+    same arrival test section 3 (Z1) uses (revision section 14, #1015).** ``U``
+    is a property of the reference, so which reference is handed in decides
+    whether there is an unmodelled term at all:
+
+    - a record whose absorber echoes are outside it by ARRIVAL
+      (``reference_is_absorber_free`` below) must be judged against the
+      ABSORBER-FREE lattice -- the family's own construction -- and then
+      ``U`` is zero BY ARRIVAL and ``unmodelled_term=None`` is the correct,
+      not merely the convenient, argument;
+    - a record that admits an echo INSIDE it by AMPLITUDE keeps the realized
+      reference and MUST supply ``U``.
+
+    Handing in the realized reference on a record that is arrival-safe
+    manufactures an unmodelled term the measurement cannot contain, and then
+    reports GL1 breaches against it. That was cv26's defect on five of its ten
+    witness entries; correcting it took 302 all-bin and 62 in-domain GL1
+    breaches to zero without moving any window's definition (section 14).
     """
     w = np.asarray(W, dtype=float)
     if unmodelled_term is None:
@@ -305,12 +355,23 @@ def witness_domain(W, unmodelled_term=None):
     return np.broadcast_to(u, w.shape) <= w
 
 
-def domain_report(W, resid, unmodelled_term=None, gated=None) -> dict:
+def domain_report(W, resid, unmodelled_term=None, gated=None, *, report_term=None) -> dict:
     """Per-bin GL1 bookkeeping split by ``witness_domain``: how much of the
     gated band the window is valid on, and where the breaches fall.
 
     ``resid`` is ``|measured - lattice|`` per bin. Returns only counts and
     ratios -- it never decides a gate; ``evaluate`` does that.
+
+    ``report_term`` (#1015, section 14) carries a magnitude that is REPORTED
+    beside the domain without defining it. It exists for the arrival-safe case:
+    there the reference is absorber-free, so ``unmodelled_term`` is ``None``
+    (zero by arrival) and the domain is every gated bin, but the size of the
+    absorber content the chosen reference EXCLUDES is still worth carrying --
+    it is the same quantity, with the same definition, that the realized-
+    reference branch passes as ``unmodelled_term``. Without it the two ratio
+    keys below would silently disappear from those entries' ``domain_report``.
+    It is ignored when ``unmodelled_term`` is given, and the default ``None``
+    leaves every existing caller's output byte-identical.
     """
     w = np.asarray(W, dtype=float)
     r = np.asarray(resid, dtype=float)
@@ -328,11 +389,15 @@ def domain_report(W, resid, unmodelled_term=None, gated=None) -> dict:
         "n_bins_beyond_outside_domain": int((beyond & out_dom).sum()),
         "worst_ratio_in_domain": worst_in,
     }
-    if unmodelled_term is not None:
-        u = np.broadcast_to(np.asarray(unmodelled_term, dtype=float), w.shape)
+    ratio_term = unmodelled_term if unmodelled_term is not None else report_term
+    if ratio_term is not None:
+        u = np.broadcast_to(np.asarray(ratio_term, dtype=float), w.shape)
         rep["max_unmodelled_over_window_gated"] = float(np.max(u[g] / w[g])) if g.any() else float("nan")
         rep["mean_unmodelled_over_mean_window_gated"] = (
             float(np.mean(u[g]) / np.mean(w[g])) if g.any() else float("nan"))
+        if unmodelled_term is None:
+            # the domain is total (zero by arrival); the ratio is a diagnostic only
+            rep["unmodelled_term_is_reported_only"] = True
     return rep
 
 
