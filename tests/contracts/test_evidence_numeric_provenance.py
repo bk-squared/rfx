@@ -425,8 +425,11 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # note's third result section states a before/after gate table -- including
     # a gate that CHANGES verdict -- and resolves every cell of it against
     # validation/crossval/_01_waveguide_bend_results/crossval_r2.json. The
-    # floor is the reproduced count of value-carrying citations (31 of its 45).
-    (CV01_CPML_NOTE, "Numeric provenance, after #1057"): 31,
+    # floor is the reproduced count of value-carrying citations (40 of its 56;
+    # raised from 31/45 by the PR #1080 review, which replaced one existence-only
+    # citation about upstream's tutorial geometry with twelve that resolve the
+    # bend arms' actual extents).
+    (CV01_CPML_NOTE, "Numeric provenance, after #1057"): 40,
     (MANIFEST, "11_waveguide_port_wr90"): 4,
     (MANIFEST, "15_patch_antenna_rt5880"): 3,
     (MANIFEST, "17_dielectric_sphere_mie"): 2,
@@ -536,8 +539,13 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # September; they are not any more -- the actuals had drifted to 1409 / 1326 / 89
 # by other PRs before this one, and absorbing that slack is not this change's to
 # make, so the delta is added to the floors and the slack is left where it is.
-MIN_REFERENCES = 1315
-MIN_VALUE_CHECKED = 1238
+# 2026-09-16 (#813, PR #1080 review): +11 references and +9 value-checked over
+# no new artifact -- the comparator note's upstream claim was wrong (it read the
+# tutorial's STRAIGHT-run mp.inf block as the bend geometry), and the correction
+# replaces one existence-only citation with twelve that resolve the bend arms'
+# measured extents. Raised by the delta, in the same commit.
+MIN_REFERENCES = 1326
+MIN_VALUE_CHECKED = 1247
 MIN_DISTINCT_ARTIFACTS = 78
 
 
