@@ -849,3 +849,28 @@ chain-rule shares differ by 1 / 28 ulp from a float64 reduction-order
 difference in the denominator, recorded). The 5.4 expectation text's
 "1.6 %" was reworded to 3.3 % in the lane note before any run (7.5 mm
 free length, note 1c); noted, not edited here.
+
+## Addendum (Lane 2b result, 2026-09-15; sections 1-7 above not edited)
+
+Lane 2b (`20260915_nu_lane2b_predeclaration.md`, `e7_lane2b.py`,
+`results/e7_{y,pos,zsmooth}.json`) closed the three recorded limits of
+Lane 2 / AD-Q with no `rfx/` change and no CPML (every fixture PEC-closed):
+(1) **y axis** — E6 rotated onto y reproduces x to the third digit: `w`
+HELD on both observables (R1 1.943 / 1.962, 3B/|g| 4.4e-3 / 7.0e-4), dt
+share 0.588 / 0.767, revert FIRED; (2) **band position** — with the probe
+on the source side (cancellation ratio 1.0 against E6's 0.023; ≥ 0.5
+declared) `x_c` is order-verified on both observables (R1 2.233 / 1.989,
+FD 6.7e-4 / 7.5e-3), which closes G7's "no band position judged"; (3)
+**z thickness on a long spectral loss** — `h_thin` HELD (R1 1.981, FD
+7.8e-4, floor 3.6 ulp against AD-Q's 44), revert FIRED (dt share −1.045):
+AD-Q's "L2 thickness NOT verified" is closed on the Hann+comb observable.
+Two FIRED results are on record: pos L1 `w` on the R0 lower edge (0.8997
+vs 0.9; R1 2.025, FD HELD) and zsmooth `h_core_right` (R1 1.721) along the
+exact negative of `h_core_left`'s direction (HELD, 2.188) — diagnosed from
+the stored ladders as the one-sided R1's cubic asymmetry (even remainder
+1.99–2.01 on all four controls, central remainder h³, |δ|/|g·v| < 6.8e-4).
+Judge finding for a separate pre-declaration: the one-sided R1 wanders to
+both sides of 2 by this mechanism (AD-Q `h_air` > 2.2, pos `x_c` 2.233,
+zsmooth 1.721), so the central/even remainder is the order statistic to
+adopt. One instrument fix mid-lane (step direction built in `x0`'s space)
+preceded the zsmooth attempt; the broken launch measured no ladder.
