@@ -271,6 +271,52 @@ proven safe. Measured here while building the gate: at **n = 2, +10h, `cpml_laye
 arm grows on main as well** (settling 0.00 dB, block-max envelope up 507× from its minimum),
 under the current edge rule. A thin absorber remains outside the supported envelope.
 
+## Round F — the LIVE thin-absorber growth (VESSL 369367261265)
+
+Everything above is about the `n = 4 / cpml 8` arm, which is settled and gated by PR #1077.
+This section is about the growth that is **still live on current main**: at `n = 3 / cpml 6`
+with a `+10h` pad — one of #801's OWN recorded arms — the same fixture reads 0.00 dB.
+
+The surrounding ladder was measured by the independent reviewer and imported unchanged
+(`thin_absorber_ladder_review2/`, with provenance; not re-run): `n = 2 / cpml 4` grows at
++2.73e-3 per step, while `n = 2 / cpml 8`, `n = 2 / cpml 16`, `n = 2 / cpml 4 with pad = 0`
+and `n = 4 / cpml 8` settle. So it is **not** under-resolution (dx held at n = 2, only the
+layer count moves), **not** physical thickness alone (1.574 mm grows at 4 and 6 cells, settles
+at 8), and **not** #1070 (the vacuum pad is in growing and settling arms alike).
+
+Pre-declared in Addendum F before any arm ran, verdict rule fixed first:
+
+| arm | cpml | settling dB | growth | verdict |
+|---|---|---|---|---|
+| `ref_n3_cpml6` (this lane's own control) | 6 | **0.00** | 13.13 | **GROWS** |
+| `h1_inset2_n3_cpml6` | 6 | **−42.76** | 0.486 | SETTLES |
+| `h2_n3_cpml8` | 8 | −44.21 | 0.477 | SETTLES |
+| `h2_n3_cpml12` | 12 | −45.99 | 0.468 | SETTLES |
+| `h4_ulp_n3_cpml6` | 6 | **0.00** | 7.011 | GROWS |
+
+* **H1 CONFIRMED** (residual 0). Pulling every conductor 2 cells back from the lateral pads —
+  the substrate untouched — turns 0.00 dB into −42.76 dB. The ground is otherwise flush against
+  the absorber on x-lo and y-lo.
+* **H2 CONFIRMED** (residual 0). Same dx, same geometry: 8 and 12 layers settle where 6 grows.
+  The threshold at this dx is between 6 and 8 cells.
+* **H3 NON-CLOSING** (no FDTD, `absorber_pec_amplification.py`). rfx's own amplification model
+  extended by a PEC node — the extension reproduces the owned model to `max|diff| = 0.000e+00`
+  and both trivial comparators return ρ = 1 — is unstable at 6 layers (ρ ≈ 1.0000045) and
+  bounded at 4, 8, 16. The gate required ρ > 1 at 4 **and** 6, so it closes neither way. The
+  post-hoc per-arm check disposes of it: the model misses `n = 2 / cpml 4`, which grows hardest,
+  and where it fires it gives +4.5e-6 per step against a measured +8.5e-4 — **188× too small**.
+  A 1-D slice does not carry this mechanism.
+* **H4 REFUTED** (residual 0). The ULP snap removed the extra cell (`domx/dx` 174.0 against
+  174.00000000000003, grid 187 against 188) and the arm still reads 0.00 dB.
+
+**The condition is a conjunction, and either leg removes it:** a conductor edge at or adjacent
+to the absorber boundary AND few absorber layers. That is the same shape as the #931 finding on
+the n = 4 arm, which is why the two are one class and not two.
+
+**Not established:** the eigenvalue mechanism itself. H1 and H2 say which two conditions must
+hold together; they do not say why the operator amplifies, and H3 showed a 1-D slice will not
+answer it. Landing options and what must not be written as measured: Addendum G.
+
 ## A second, separate defect found on the way (not the growth)
 
 At +10h the entire +x absorber pad is solved as **vacuum** while the substrate continues
@@ -357,6 +403,9 @@ closed on `a3e4dba4` with a documentation-only parent as its control.
 | edge-set comparison (the mechanism) | `edge_set_comparison.py`, `.json` |
 | ladder job | `scripts/vessl_patch_pad_cpml_ringdown_ladder.yaml`, VESSL 369367261205, arms in `gpu_369367261205/` |
 | restored-board job | `scripts/vessl_patch_pad_cpml_ringdown_sheet.yaml`, VESSL 369367261209, arms in `gpu_369367261209/` |
+| round-F arms | `scripts/vessl_thin_absorber_growth_round_f.yaml`, VESSL 369367261265, arms in `gpu_369367261265/` |
+| reviewer's ladder (imported) | `thin_absorber_ladder_review2/` + its `PROVENANCE.md` |
+| H3 amplification model | `absorber_pec_amplification.py`, `.json` |
 | bisect job | `scripts/vessl_patch_pad_cpml_ringdown_bisect.yaml` + `patch_pad_cpml_ringdown_bisect_step.sh`, VESSL 369367261218, trace and landing diff in `gpu_369367261218/` |
 
 Raw probe series (`*_ts.npz`, 427 KB per arm) stay on NFS at

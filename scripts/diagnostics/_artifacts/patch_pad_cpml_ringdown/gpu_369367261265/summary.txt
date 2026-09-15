@@ -1,0 +1,15 @@
+arm                      cpml subpx             grid  steps  settle dB settled   growth    NaN@  wall s
+-------------------------------------------------------------------------------------------------------
+h1_inset2_n3_cpml6          6 False   [188, 142, 61]  19994     -42.76    True    0.486    None       9
+h2_n3_cpml12               12 False   [200, 154, 73]  19994     -45.99    True    0.468    None      14
+h2_n3_cpml8                 8 False   [192, 146, 65]  19994     -44.21    True    0.477    None      10
+h4_ulp_n3_cpml6             6 False   [187, 142, 61]  19994       0.00   False    7.011    None       9
+ref_n3_cpml6                6 False   [188, 142, 61]  19994       0.00   False   13.130    None       9
+
+h1_inset2_n3_cpml6       rfx tree 6e4629bb26cd head 6e4629bb26cd dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=174.00000000000003 domy/dx=129.0
+h2_n3_cpml12             rfx tree 6e4629bb26cd head 6e4629bb26cd dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=174.00000000000003 domy/dx=129.0
+h2_n3_cpml8              rfx tree 6e4629bb26cd head 6e4629bb26cd dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=174.00000000000003 domy/dx=129.0
+h4_ulp_n3_cpml6          rfx tree 6e4629bb26cd head 6e4629bb26cd dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=174.0 domy/dx=129.0
+ref_n3_cpml6             rfx tree 6e4629bb26cd head 6e4629bb26cd dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=174.00000000000003 domy/dx=129.0
+
+summary written: /root/workspace/claude-workspace/rfx/runs/thin-absorber-round-f-20260915T173825Z-3ea2778d/summary.json

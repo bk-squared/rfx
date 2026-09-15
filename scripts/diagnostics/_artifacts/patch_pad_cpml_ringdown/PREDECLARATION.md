@@ -388,3 +388,61 @@ append-only preflight advisory (family module + `register_config_check`) reading
 < 8 with a padded lateral domain and a conductor reaching the absorber boundary: known growth
 class (#801)"* — an advisory, not a refusal, because the supported envelope is not yet known.
 No second attempt on any hypothesis without a named new falsifier in writing.
+
+---
+
+## Addendum G — round F closed; landing pre-declaration for the PI
+
+VESSL 369367261265, `gpu-rtx4090`, 5 arms, rc 0, n = 3 / +10h / 150 periods = 19994 steps,
+scored by the rule fixed in Addendum F before any arm ran.
+
+| arm | cpml | settling dB | last-30 % growth | verdict |
+|---|---|---|---|---|
+| `ref_n3_cpml6` (control) | 6 | **0.00** | 13.13 | **GROWS** |
+| `h1_inset2_n3_cpml6` | 6 | **−42.76** | 0.486 | SETTLES |
+| `h2_n3_cpml8` | 8 | −44.21 | 0.477 | SETTLES |
+| `h2_n3_cpml12` | 12 | −45.99 | 0.468 | SETTLES |
+| `h4_ulp_n3_cpml6` | 6 | **0.00** | 7.011 | GROWS |
+
+The control reproduces the reviewer's growing arm on this lane's own run, so the four test
+arms are read against a same-session control rather than an imported number.
+
+* **H1 CONFIRMED**, residual `max(−42.76 + 40, 0) = 0`. Pulling every conductor 2 cells back
+  from the lateral pads — substrate untouched — turns 0.00 dB into −42.76 dB. The ground is
+  otherwise flush against the absorber on x-lo/y-lo.
+* **H2 CONFIRMED**, residual `max(−45.99 + 40, 0) = 0`. At the same dx and the same geometry,
+  8 and 12 layers settle where 6 grows. The threshold at this dx sits between 6 and 8 cells.
+* **H3 NON-CLOSING** (Addendum F, no FDTD): the 1-D slice model fires at 6 layers but not at
+  the n = 2 / 4-layer arm that grows hardest, and at 188× too small a rate.
+* **H4 REFUTED**, residual 0. The ULP snap removed the extra cell (`domx/dx` 174.0 against
+  174.00000000000003, grid 187 against 188) and the arm still reads 0.00 dB. #1070 is not this.
+
+**The condition is a CONJUNCTION**, and either leg removes it: a conductor edge at or adjacent
+to the absorber boundary **AND** few absorber layers. That is the same shape as the #931 finding
+on the n = 4 arm — a conductor-edge-at-the-seam effect — which is why the two arms belong to one
+class rather than two.
+
+### Landing pre-declaration — PI decision, nothing implemented in this lane
+
+The fix is **not** a CPML coefficient change and **not** `rfx/boundaries/pec.py`: at 8 layers the
+same conductor placement is stable, and at 2 cells' clearance the same 6 layers are stable, so
+neither the profile nor the edge rule is wrong on its own. What is missing is that **nothing
+warns**. Proposed landing, in order of confidence:
+
+1. **A preflight advisory** (append-only; family module under `rfx/preflight/` plus
+   `register_config_check`), firing on the measured conjunction: `cpml_layers < 8` **and** a
+   laterally padded domain **and** a conductor whose realized edges reach the absorber boundary.
+   Advisory, not refusal — the supported envelope is not yet mapped, and `pad = 0` with 4 layers
+   is stable, so a blanket `cpml_layers` floor would refuse working configurations. Text to be
+   settled by the PI; this lane proposes *"cpml_layers < 8 with a padded lateral domain and a
+   conductor reaching the absorber boundary: known growth class (#801)"*.
+2. **A documented clearance** in the guides: keep conductors ≥ 2 cells off the absorber, which
+   is what H1 measured. Needs its own ladder (1 cell? is 2 the floor or just sufficient?) before
+   it is written as a number — **not** measured here, and it should not be stated as if it were.
+3. **A gate** at `n = 3 / cpml 6` in the shape of PR #1077's, once (1) or (2) lands.
+
+**What is NOT established, and must not be written as if it were:** the eigenvalue mechanism
+itself. H1 and H2 say which two conditions must hold together; they do not say why the operator
+amplifies, and H3 showed a 1-D slice does not carry it. Anyone continuing should start from a
+3-D operator restricted to the seam, not from another parameter sweep — and this lane's R2 count
+is one attempt per hypothesis, all four closed, so a new attempt needs a new hypothesis.

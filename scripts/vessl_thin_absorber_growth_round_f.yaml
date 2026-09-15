@@ -1,0 +1,107 @@
+name: rfx-thin-absorber-growth-round-f
+description: "Issue #801, the LIVE thin-absorber growth (not the #931-fixed n=4/cpml-8 arm, which PR #1077 gates). One pre-declared round, Addendum F of scripts/diagnostics/_artifacts/patch_pad_cpml_ringdown/PREDECLARATION.md, written before any arm ran. Reference arm n=3, +10h lateral pad, cpml_layers=6, 150 periods = 19994 steps, board as declared -- one of #801's own recorded arms, which the independent reviewer's ladder shows still growing on current main at 0.00 dB / +8.53e-4 per step. Arms: H1 conductors inset 2 cells from every lateral pad (is a conductor edge at the absorber seam what grows?); H2 the same arm at cpml 8 and 12 (is the layer COUNT the variable at fixed dx and geometry?); H4 the same arm with the domain length snapped by one ULP (the #1070 vacuum pad, refuted at n=4, re-checked at n=3); plus the reference arm itself as this lane's own control under identical conditions. H3 was answered without FDTD and is not in this job. MEASUREMENT ONLY -- each arm persists its JSON and raw series before the next starts, and the shared GROWS/SETTLES rule was fixed in Addendum F, not here."
+tags: [rfx, issue-801, cpml, thin-absorber, ring-down, measurement]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: "Agg"
+  JAX_ENABLE_X64: "0"
+  RFX_DRIVER_BRANCH: "diag/801-patch-ringdown-padding"
+  RFX_DRIVER_SHA: "3ea2778df53adff5d32d78ed7db151cd1dcd30a8"
+  RFX_TREE_MAIN: "6e4629bb26cd3c2c72ea57b551629ead92a65969"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #801 round F: the live thin-absorber growth ==="
+  date
+  if [ "$RFX_DRIVER_SHA" = "FILL_AFTER_PUSH" ] || [ "$RFX_TREE_MAIN" = "FILL_AFTER_PUSH" ]; then
+    echo "FATAL: a sha still holds the FILL_AFTER_PUSH placeholder"
+    exit 3
+  fi
+  echo "driver commit: $RFX_DRIVER_SHA"
+  echo "rfx tree:      $RFX_TREE_MAIN"
+
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  git config --global --add safe.directory '*' || true
+
+  fetch_sha() {
+    git init -q "$1"
+    cd "$1"
+    git fetch -q --depth 1 https://github.com/bk-squared/rfx.git "$2"
+    git checkout -q FETCH_HEAD
+    got=$(git rev-parse HEAD)
+    if [ "$got" != "$2" ]; then
+      echo "FATAL: $1 is at $got, wanted $2"
+      exit 3
+    fi
+    echo "fetched $2 into $1"
+    cd /
+  }
+  rm -rf /tmp/rfx-801f-driver /tmp/rfx-801f-main
+  fetch_sha /tmp/rfx-801f-driver "$RFX_DRIVER_SHA"
+  fetch_sha /tmp/rfx-801f-main "$RFX_TREE_MAIN"
+
+  DRVDIR=/tmp/rfx-801f-driver/scripts/diagnostics
+  test -f "$DRVDIR/patch_pad_cpml_ringdown.py" || { echo "FATAL: driver missing"; exit 3; }
+  test -f "$DRVDIR/patch_pad_cpml_ringdown_summary.py" || { echo "FATAL: summary missing"; exit 3; }
+  test -f "$DRVDIR/_artifacts/patch_pad_cpml_ringdown/PREDECLARATION.md" || { echo "FATAL: pre-declaration missing"; exit 3; }
+  grep -q "Addendum F" "$DRVDIR/_artifacts/patch_pad_cpml_ringdown/PREDECLARATION.md" || { echo "FATAL: Addendum F not in the fetched pre-declaration"; exit 3; }
+  cp "$DRVDIR/patch_pad_cpml_ringdown.py" /tmp/rfx-801f-main/scripts/diagnostics/
+
+  echo "=== runtime deps ==="
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  python -c "import jax; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| devices', jax.devices(), '| x64', jax.config.x64_enabled)"
+
+  SHORT=$(echo "$RFX_DRIVER_SHA" | cut -c1-8)
+  OUT="/root/workspace/claude-workspace/rfx/runs/thin-absorber-round-f-$(date -u +%Y%m%dT%H%M%SZ)-$SHORT"
+  mkdir -p "$OUT"
+  echo "artifacts: $OUT"
+  echo "$RFX_DRIVER_SHA" > "$OUT/driver_commit.txt"
+  echo "$RFX_TREE_MAIN" > "$OUT/tree_main_commit.txt"
+  cp "$DRVDIR/_artifacts/patch_pad_cpml_ringdown/PREDECLARATION.md" "$OUT/"
+
+  # tag:cpml:extra   (underscores in field 3 become spaces; "-" means no extra flags)
+  ARMS="ref_n3_cpml6:6:-
+  h1_inset2_n3_cpml6:6:--conductor-inset-cells_2
+  h2_n3_cpml8:8:-
+  h2_n3_cpml12:12:-
+  h4_ulp_n3_cpml6:6:--shrink-domain-ulp_1"
+
+  cd /tmp/rfx-801f-main
+  PYTHONPATH=/tmp/rfx-801f-main
+  export PYTHONPATH
+  fails=0
+  for A in $ARMS; do
+    TAG=$(echo "$A" | cut -d: -f1)
+    CPML=$(echo "$A" | cut -d: -f2)
+    RAW=$(echo "$A" | cut -d: -f3-)
+    if [ "$RAW" = "-" ]; then EXTRA=""; else EXTRA=$(echo "$RAW" | tr '_' ' '); fi
+    echo "===== arm $TAG (n 3, pad 10h, cpml $CPML, extra '$EXTRA') ====="
+    date
+    { timeout 7200 python -u scripts/diagnostics/patch_pad_cpml_ringdown.py \
+        --n 3 --pad 10 --periods 150 --cpml "$CPML" $EXTRA \
+        --tag "$TAG" --out-dir "$OUT" \
+        --rfx-tree-sha "$RFX_TREE_MAIN" --expect-rfx-root /tmp/rfx-801f-main 2>&1
+      echo "$?" > "$OUT/$TAG.rc"
+    } | tee "$OUT/$TAG.log"
+    rc=$(cat "$OUT/$TAG.rc")
+    echo "arm $TAG rc=$rc"
+    if [ "$rc" -ne 0 ]; then fails=$((fails + 1)); fi
+  done
+
+  echo "===== per-arm numbers (quoted from the JSONs; the verdict rule lives in Addendum F) ====="
+  cd /tmp/rfx-801f-driver
+  python -u scripts/diagnostics/patch_pad_cpml_ringdown_summary.py \
+    --dir "$OUT" --json-out "$OUT/summary.json" | tee "$OUT/summary.txt"
+
+  ls -la "$OUT"
+  echo "artifacts persisted (mounted, survives teardown): $OUT"
+  echo "thin_absorber_round_f_failed_arms=$fails"
+  [ "$fails" -eq 0 ]
