@@ -28,7 +28,7 @@ text or snapshot is changed by this document or by the runs it declares.
     than the realized `1.52 mm`. The defect is a quarter-cell offset that
     excludes one of the seven metal node rows asymmetrically, not a box that is
     narrower than the trace. Recorded together with the zero-compute finding
-    that the 5-face box's own closure is off by ~1.3 % on this run
+    that the 5-face box's own closure is off by 1.16–1.35 % per bin on this run
     (`scripts/diagnostics/mixed_anchor_reanalysis.py` §3, PR for #498). No gate,
     tolerance, reference, support-matrix entry, `known_limits` text or snapshot
     moves; §10 is untouched and **no lw-diagonal value is pinned**.
@@ -229,10 +229,22 @@ Declared geometric limitations (stated now, not after a surprise):
     excludes the `y = 1.76 mm` metal row asymmetrically; its `±x` faces and its
     `+y` face are pierced by PEC. Measured consequence on the committed run
     (VESSL 369367257597, re-read at zero compute): the 5-face surface does not
-    close — `box_net` exceeds a box-independent three-plane power budget by
-    **1.32 % (lw drive) / 1.31 % (MSL drive)**, the same factor on two drives,
-    and on the MSL drive that is a hard violation because the box is a
-    *subregion* of the slab it is compared against. **Widening the box does not
+    close — `box_net` exceeds a box-independent three-plane power budget at
+    **every one of the five bins, on both drives**. Per bin, in percent
+    (this is the whole measured set, not a summary):
+
+    | drive | 1.00 GHz | 1.75 GHz | 2.50 GHz | 3.25 GHz | 4.00 GHz | max | mean |
+    |---|---|---|---|---|---|---|---|
+    | lw | 1.345 | 1.262 | 1.223 | 1.210 | 1.194 | **1.345** | 1.247 |
+    | MSL | 1.312 | 1.193 | 1.158 | 1.190 | 1.238 | **1.312** | 1.218 |
+
+    i.e. **1.19–1.35 % on the lw drive and 1.16–1.31 % on the MSL drive**, the
+    two drives agreeing bin-for-bin to within 0.069 percentage points — the
+    same factor on two independent drives — and on the MSL drive that is a hard
+    violation because the box is a *subregion* of the slab it is compared
+    against. (An earlier draft of this bullet wrote a single "1.32 % (lw) /
+    1.31 % (MSL)"; 1.31 % is the MSL *maximum* and 1.32 % matched no lw bin,
+    no lw maximum and no lw mean. Corrected 2026-09-15 against the trace.) **Widening the box does not
     address this**, and widening has the wrong sign for the F4 bracket: a wider
     box reads more, which makes `r1/r0` larger and the bracket more negative.
     Full trace: `scripts/diagnostics/_mixed_anchor_reanalysis/`.

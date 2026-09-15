@@ -98,9 +98,16 @@
    * It does NOT restore passivity. On the comparator leg the balance is 1.0106-1.0579 —
      still above 1.05 at 5 of 48 bins — and |S21| stays above 1 at ALL 48 bins.
    * The residual DRIFTS with frequency (1.0101 near 1 GHz -> 1.0302 at 5 GHz, monotone above
-     the minimum). #498's 2026-08-03 comment records that exact signature as falsifying a
-     constant per-port impedance rescale: 'the required factor drifts 1.677->1.605 ... whatever
-     closes it needs a frequency-dependent term, not only a Kurokawa sqrt(Z) correction.'
+     the minimum). A frequency-DEPENDENT residual is what a constant real per-port rescale
+     cannot remove, and that is the ground on which #498's 2026-08-03 comment falsified one:
+     'the required factor drifts 1.677->1.605 ... whatever closes it needs a frequency-dependent
+     term, not only a Kurokawa sqrt(Z) correction.'
+     THAT SHARED PROPERTY IS THE WHOLE OF THE TIE — the two are NOT the same curve:
+       instrument  2026-08-03: rfx's own mixed-lane wave channel | here: the openEMS comparator
+       sign        2026-08-03: DECREASING 1.677->1.605          | here: INCREASING 1.0101->1.0302
+       scale       2026-08-03: ~0.61-0.68 above unity           | here: ~0.010-0.030, i.e. ~30x smaller
+     The verdict below does not rest on the resemblance: balance 1.0106-1.0579 (5/48 over
+     1.05) and |S21n| > 1 at 48/48 establish a second defect on their own.
    * On the reported-only dx=80um leg the SAME correction drives |S21|/|S12| to 0.65-0.83,
      i.e. it does not make that leg reciprocal either — a witness against 'normalization
      explains everything'.

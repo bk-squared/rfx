@@ -645,10 +645,23 @@ def phase_self_consistency_deg(s21: np.ndarray, beta: np.ndarray,
 #   * the residual it leaves DRIFTS with frequency -- (|S21|/|S12|) divided
 #     by the predicted Re Z_msl / 50 reads 1.0127 at 0.5 GHz, floors at
 #     1.0101 near 1 GHz and then climbs monotonically to 1.0302 at 5.0 GHz.
-#     #498's own 2026-08-03 comment records that exact signature as
-#     falsifying a constant per-port impedance rescale ("the required factor
-#     drifts 1.677->1.605 ... whatever closes it needs a frequency-dependent
-#     term, not only a Kurokawa sqrt(Z) correction").
+#     A frequency-DEPENDENT residual is precisely what a constant real
+#     per-port rescale cannot remove, and that is the ground on which #498's
+#     own 2026-08-03 comment falsified one ("the required factor drifts
+#     1.677->1.605 ... whatever closes it needs a frequency-dependent term,
+#     not only a Kurokawa sqrt(Z) correction").
+#     THE FREQUENCY DEPENDENCE IS THE WHOLE OF THE SHARED PROPERTY. These
+#     are not the same curve and not the same measurement:
+#         instrument   2026-08-03: rfx's own mixed-lane wave channel
+#                      here:       the openEMS comparator's S assembly
+#         sign         2026-08-03: DECREASING with f, 1.677 -> 1.605
+#                      here:       INCREASING with f above a ~1 GHz floor,
+#                                  1.0101 -> 1.0302
+#         scale        2026-08-03: ~0.61-0.68 above unity
+#                      here:       ~0.010-0.030 above unity, i.e. ~30x smaller
+#     The verdict does NOT rest on that tie: balance 1.0106-1.0579 with 5 of
+#     48 bins over the 1.05 bar, and |S21n| > 1 at 48 of 48, already
+#     establish on their own that a second defect remains.
 #   * it does not touch phase.  A real positive scale cannot move the
 #     ~1.29 mm de-embedding-length defect, which stays open.
 # So: normalization was ONE defect of the comparator.  Fixing it exposes a
@@ -669,6 +682,17 @@ KUROKAWA_RECORD = {
                   "scale, so the ~1.29 mm de-embedding phase defect is "
                   "untouched and stays open",
     "verbatim_fields_are_never_overwritten": True,
+    "relation_to_the_2026_08_03_falsifier": (
+        "SHARED PROPERTY, AND ONLY THAT: both are frequency-DEPENDENT "
+        "residuals, which is what a constant real per-port rescale cannot "
+        "remove -- the ground on which #498's 2026-08-03 comment falsified "
+        "one. NOT SHARED: that factor was measured on rfx's OWN mixed-lane "
+        "wave channel and DECREASES 1.677 -> 1.605 across 1-4 GHz; this one "
+        "is measured on the openEMS comparator and INCREASES 1.0101 -> "
+        "1.0302 above a ~1 GHz floor, ~30x smaller in excess over unity. "
+        "Different instrument, opposite sign, different scale. This leg's "
+        "verdict rests on balance 1.0106-1.0579 (5/48 over 1.05) and "
+        "|S21n| > 1 at 48/48, not on the resemblance."),
     "drift_is_the_post_fix_ratio": (
         "For a 2-port, kurokawa_residual_drift is identically "
         "reciprocity_ratio_renormalized -- the fix divides the raw "
@@ -782,10 +806,47 @@ def renormalized_leg_record(leg: dict) -> dict:
         "verdict": (
             "NORMALIZATION WAS ONE DEFECT; A SECOND REMAINS. The Kurokawa "
             "factor removes most of the reciprocity asymmetry but leaves "
-            "|S21| > 1 and a frequency-DRIFTING residual, which is the "
-            "signature #498's 2026-08-03 comment records as falsifying a "
-            "constant per-port rescale. NOT a verdict on rfx vs openEMS."),
+            "|S21| > 1 and a frequency-DEPENDENT residual, which no constant "
+            "real rescale can remove -- the ground on which #498's 2026-08-03 "
+            "comment falsified a constant per-port rescale. That is the "
+            "shared property and nothing more: the 2026-08-03 factor is on "
+            "rfx's own wave channel and DECREASES 1.677 -> 1.605, this one is "
+            "on the openEMS comparator and INCREASES 1.0101 -> 1.0302 and is "
+            "~30x smaller. The verdict rests on the balance and |S21n| "
+            "numbers, not on that resemblance. NOT a verdict on rfx vs "
+            "openEMS."),
     }
+
+
+def attach_renormalization(rec: dict) -> dict:
+    """Attach the report-only Kurokawa record to an ALREADY-SOLVED leg, safely.
+
+    NEVER RAISES, and that is the whole point.  It runs after the openEMS
+    solve for the leg has finished and ``rec`` is final, on a machine where
+    the solve cost a VESSL slot.  ``renormalized_leg_record`` ->
+    ``kurokawa_renormalize`` raises :class:`ConfigError` on any bin with
+    ``Re Z <= 0``, and ``z0_msl_measured_ohm`` is a genuinely swinging
+    measured quantity -- Re 33.19-81.21 ohm on the committed dx = 80 um leg.
+    An unguarded call would therefore let an ADDITIVE, report-only field
+    discard a completed solve.  On failure the reason is recorded in the same
+    field and every solved entry of ``rec`` is left exactly as it was.
+
+    Returns ``rec`` (mutated in place) so callers can ``return`` it directly.
+    """
+    try:
+        rec["kurokawa_renormalization"] = renormalized_leg_record(rec)
+    except Exception as exc:              # noqa: BLE001 -- see the docstring
+        rec["kurokawa_renormalization"] = {
+            "status": "NOT COMPUTED -- this report-only field failed. The "
+                      "solved record beside it is unaffected and is the "
+                      "record of record for this leg.",
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
+        print("WARNING: the report-only Kurokawa renormalization failed for "
+              "leg %r (%s: %s). The leg's solved record is kept."
+              % (rec.get("label"), type(exc).__name__, exc), file=sys.stderr)
+    return rec
 
 
 # A mesh line pair closer together than this fraction of dx is NOT a mesh
@@ -2099,8 +2160,9 @@ def _run_stage2_leg(*, dx_m: float, sim_root: str, threads: int, nrts: int,
     # ratios at two UNEQUAL reference impedances.  The power-wave fix is
     # recorded ALONGSIDE them (never over them), so this leg's verbatim
     # numbers stay comparable with VESSL 369367257643's artifact.
-    rec["kurokawa_renormalization"] = renormalized_leg_record(rec)
-    return rec
+    # attach_renormalization NEVER RAISES -- a report-only field must not be
+    # able to discard a solve that a VESSL slot has already been spent on.
+    return attach_renormalization(rec)
 
 
 def run_stage2(*, stage1: dict, sim_root: str, threads: int, nrts: int,
@@ -2237,6 +2299,14 @@ def print_stage_plan(*, stage: str, rfx_json: str | None,
 
 
 # ---------------------------------------------------------------------------
+# The solver mode and the offline --renormalize-json mode write documents of
+# different SHAPE. They get different defaults so that a bare invocation of
+# either can never overwrite the other's output.
+DEFAULT_OUTPUT_SOLVER = ".omx/probe-fed-msl-referee/referee.json"
+DEFAULT_OUTPUT_RENORMALIZE = (
+    ".omx/probe-fed-msl-referee/referee_kurokawa_renormalized.json")
+
+
 def run_renormalize_offline(artifact_path: str, *,
                             out_path: str | None = None) -> int:
     """Apply the #460 Kurokawa fix to a committed Stage-2 artifact, offline.
@@ -2325,7 +2395,16 @@ def main(argv: list[str] | None = None) -> int:
                         "WOULD be built; needs no openEMS")
     p.add_argument("--self-check", action="store_true",
                    help="print the pure-numpy mesh/geometry self-check only")
-    p.add_argument("--output", default=".omx/probe-fed-msl-referee/referee.json")
+    # The two modes write DIFFERENTLY SHAPED documents (a solver run writes
+    # stage1/stage2 legs; --renormalize-json writes an offline `legs` +
+    # `record` report), so they must not share a default path: a bare
+    # `--renormalize-json X` used to inherit the solver default and overwrite
+    # the real referee artifact with a report.  One `--output`, two defaults,
+    # resolved by mode.
+    p.add_argument("--output", default=None,
+                   help="artifact path. Default: %s for a solver run, %s for "
+                        "--renormalize-json." % (DEFAULT_OUTPUT_SOLVER,
+                                                 DEFAULT_OUTPUT_RENORMALIZE))
     p.add_argument("--sim-root", default="/tmp/probe_fed_msl_openems_referee")
     p.add_argument("--threads", type=int, default=8)
     p.add_argument("--nrts", type=int, default=B_NRTS_DEFAULT)
@@ -2349,8 +2428,9 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     if args.renormalize_json:
-        return run_renormalize_offline(args.renormalize_json,
-                                       out_path=args.output)
+        return run_renormalize_offline(
+            args.renormalize_json,
+            out_path=args.output or DEFAULT_OUTPUT_RENORMALIZE)
 
     repo_root = Path(args.repo_root) if args.repo_root else Path(
         __file__).resolve().parents[2]
@@ -2399,7 +2479,7 @@ def main(argv: list[str] | None = None) -> int:
         "self_check": self_check,
         "stage_requested": args.stage,
     }
-    out_path = os.path.abspath(args.output)
+    out_path = os.path.abspath(args.output or DEFAULT_OUTPUT_SOLVER)
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
 
     def _archive_openems_stdout() -> list:

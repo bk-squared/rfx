@@ -36,6 +36,8 @@ _REFEREE_SRC = (_REPO / "scripts" / "diagnostics"
                 / "probe_fed_msl_openems_referee.py")
 _REANALYSIS_SRC = (_REPO / "scripts" / "diagnostics"
                    / "mixed_anchor_reanalysis.py")
+_REANALYSIS_JSON = (_REPO / "scripts" / "diagnostics"
+                    / "_mixed_anchor_reanalysis" / "anchor_reanalysis.json")
 
 
 def _load_module(path: Path, name: str):
@@ -100,6 +102,59 @@ def test_kurokawa_rejects_a_non_positive_reference_impedance():
                                  z_port1=50.0, z_port2=-1.0)
 
 
+def test_a_failing_report_only_renormalization_cannot_discard_a_solved_leg():
+    """The additive field is attached AFTER the solve, so it must never raise.
+
+    ``_run_stage2_leg`` runs this on a machine where the leg has just cost a
+    VESSL slot. ``kurokawa_renormalize`` rejects ``Re Z <= 0``, and the
+    measured ``z0_msl_measured_ohm`` swings (Re 33.19-81.21 ohm on the
+    committed dx = 80 um leg), so an unguarded call is a new abort point
+    after the expensive part. Here the renormalization is forced to fail and
+    the solved record must survive verbatim.
+    """
+    ref = _load_module(_REFEREE_SRC, "probe_fed_msl_openems_referee")
+    leg = _doc(_REFEREE)["stage2"]["legs"]["comparator_dx50um"]
+
+    good = ref.attach_renormalization(json.loads(json.dumps(leg)))
+    assert good["kurokawa_renormalization"]["n_bins"] == 48
+
+    broken = json.loads(json.dumps(leg))
+    broken["z0_msl_measured_ohm"][7] = [-1.0, 0.0]     # Re Z <= 0 at one bin
+    solved_before = {k: v for k, v in broken.items()
+                     if k != "kurokawa_renormalization"}
+    out = ref.attach_renormalization(broken)          # must NOT raise
+
+    assert out is broken
+    rec = out["kurokawa_renormalization"]
+    assert rec["status"].startswith("NOT COMPUTED")
+    assert rec["error_type"] == "ConfigError"
+    # every solved entry is byte-identical to what the solve produced
+    assert {k: v for k, v in out.items()
+            if k != "kurokawa_renormalization"} == solved_before
+
+
+def test_the_offline_mode_has_its_own_output_default(tmp_path, monkeypatch):
+    """A bare ``--renormalize-json`` must not overwrite the solver artifact.
+
+    The two modes write differently shaped documents. They used to share
+    ``--output``'s single default, so an offline report landed on
+    ``.omx/probe-fed-msl-referee/referee.json`` -- the solver's path.
+    """
+    ref = _load_module(_REFEREE_SRC, "probe_fed_msl_openems_referee")
+    assert ref.DEFAULT_OUTPUT_SOLVER != ref.DEFAULT_OUTPUT_RENORMALIZE
+
+    monkeypatch.chdir(tmp_path)
+    assert ref.main(["--renormalize-json", str(_REFEREE)]) == 0
+
+    solver_default = tmp_path / ref.DEFAULT_OUTPUT_SOLVER
+    offline_default = tmp_path / ref.DEFAULT_OUTPUT_RENORMALIZE
+    assert not solver_default.exists()
+    assert offline_default.exists()
+    written = json.loads(offline_default.read_text())
+    assert set(written["legs"]) == {"comparator_dx50um",
+                                    "reported_only_dx80um"}
+
+
 def test_the_committed_verbatim_balance_is_exactly_abs_s11_sq_plus_abs_s21_sq():
     """The gate's baseline and the artifact field are the SAME quantity.
 
@@ -131,8 +186,12 @@ def test_the_fix_does_not_restore_passivity_on_the_committed_comparator_leg():
     assert rec["n_bins_balance_over_tol"] == 5
     assert rec["n_bins_abs_s21_over_unity"] == 48
 
-    # the residual DRIFTS -- the signature #498's 2026-08-03 comment records as
-    # falsifying a constant per-port impedance rescale.
+    # The residual DRIFTS. Frequency dependence is the ground on which #498's
+    # 2026-08-03 comment falsified a constant per-port rescale, and it is the
+    # ONLY thing the two share: that factor was on rfx's own wave channel and
+    # DECREASED 1.677 -> 1.605; this one is on the openEMS comparator, RISES
+    # 1.0101 -> 1.0302 and is ~30x smaller. The asserted direction below is
+    # this leg's own (rising above its minimum), not the 2026-08-03 curve's.
     dlo, dhi = rec["kurokawa_residual_drift_band"]
     assert dlo == pytest.approx(1.0101, abs=5e-4)
     assert dhi == pytest.approx(1.0302, abs=5e-4)
@@ -265,39 +324,117 @@ def test_the_required_instrument_bias_is_about_two_percent_either_way():
 
 
 def test_widening_the_box_has_the_wrong_sign_for_both_readings():
-    """Arithmetic, not opinion: a wider box captures MORE, so box_net grows.
+    """The box factor that would rescue either reading is BELOW one, measured.
 
-    r0 = plane/box falls, r1 = box/plane rises, r1/r0 rises as the square, and
-    the bracket 1 - (1-|S22|^2)*r1/r0 goes MORE negative. The proposed run
-    cannot produce the reading it would be spent on.
+    Two separate claims, and only the second is evidence:
+
+    1. ALGEBRA (holds for any positive data, asserts nothing about this run).
+       Scaling ``box_net`` by ``g`` on both drives sends r0 = plane/box to
+       r0/g and r1 = box/plane to g*r1, so r1/r0 scales by g**2 and the
+       bracket 1 - (1-|S22|^2)*r1/r0 falls monotonically in g. A wider box
+       captures more, i.e. g > 1, so widening pushes both readings the wrong
+       way -- PROVIDED the required g is not already above 1.
+
+    2. THE COMMITTED MEASUREMENT, which is what makes (1) bite. Solve the
+       algebra for the g that would rescue each reading:
+         * bracket >= 0 needs g <= 1/sqrt((1-|S22|^2) * r1/r0);
+         * r1 <= 1  needs g <= 1/r1.
+       Both are computed here from the ``exact_f64`` faces and both come out
+       BELOW one (0.9785 and 0.9750). A wider box moves g the other way, so
+       the proposed run cannot produce the reading it would be spent on.
+
+    Assertion 2 fails on perturbed data -- e.g. plane_msl x1.03, or box_net
+    x0.97, either of which lifts a required factor above 1.
     """
     meas = _doc(_MEAS)
     box_lw, pm_lw, _, _, box_ml, pm_ml, _, _ = _flux(meas)
-    base = (box_ml / pm_ml) / (pm_lw / box_lw)
+    n_f = len(meas["fixture"]["freqs_hz"])
+    mc = meas["msl_channel"]
+    v = _cx(np.asarray(mc["v0_msl"]).reshape(2, 1, n_f, 2))
+    i = _cx(np.asarray(mc["i_msl"]).reshape(2, 1, n_f, 2))
+    run = int(meas["refplane"]["msl_drive_run"])
+    zc = float(np.real(_cx(meas["refplane"]["runs"][0]["zc"]))[0])
+    s22 = np.abs((v[run, 0] - zc * i[run, 0]) / (v[run, 0] + zc * i[run, 0]))
+
+    r0, r1 = pm_lw / box_lw, box_ml / pm_ml
+    base = r1 / r0
+
+    # (2) THE DATA-BOUND HALF. The box factor that would rescue each reading.
+    g_bracket = float(np.min(1.0 / np.sqrt((1.0 - s22 ** 2) * base)))
+    g_physical = float(np.min(1.0 / r1))
+    assert g_bracket == pytest.approx(0.97849, abs=5e-5)
+    assert g_physical == pytest.approx(0.97498, abs=5e-5)
+    # BELOW one at every bin: only a box that reads LESS could close either,
+    # and a wider box reads MORE. This is the sign claim, and it is measured.
+    assert g_bracket < 1.0 and g_physical < 1.0
+    assert np.all(1.0 / np.sqrt((1.0 - s22 ** 2) * base) < 1.0)
+    assert np.all(1.0 / r1 < 1.0)
+
+    # (1) THE ALGEBRA, stated so the reader can check the direction. Combined
+    # with g_bracket < 1 above, this is what closes the branch.
     for gain in (1.005, 1.01, 1.02, 1.05):      # a strictly wider box
         wider = ((box_ml * gain) / pm_ml) / (pm_lw / (box_lw * gain))
         assert np.all(wider > base)
-        assert np.all(1.0 - wider < 1.0 - base)   # bracket at |S22| = 0
+        assert np.all(1.0 - (1.0 - s22 ** 2) * wider
+                      < 1.0 - (1.0 - s22 ** 2) * base)
 
 
 # ---------------------------------------------------------------------------
 # The anchor sweep reports a BOUND, never a pinned value
 # ---------------------------------------------------------------------------
 def test_the_anchor_sweep_bounds_the_anchor_and_does_not_pin_it():
-    """57.463 ohm reproduces M2 comparably to 57.925 -- ~57-58 ohm, no tighter."""
+    """57.463 ohm reproduces M2 comparably to 57.925 -- ~57-58 ohm, no tighter.
+
+    The two anchors are PINNED here. Without that the "4.88 % vs 3.60 %"
+    comparison is between two unnamed numbers: collapsing the realized-cell
+    anchor onto the measured Zc would make the deviations identical and every
+    other assertion in this test would still pass.
+    """
     mod = _load_module(_REANALYSIS_SRC, "mixed_anchor_reanalysis_498")
     meas = _doc(_MEAS)
     sec = mod.section1_anchor(meas)
     sweep = sec["anchor_sweep"]
+
+    # the two anchors being compared are DISTINCT and are these values
+    z_cell = sweep["hj_realized_cell_560x320um"]["z_ohm"]
+    z_meas = sweep["zc_measured_two_plane"]["z_ohm"]
+    assert z_cell == pytest.approx(57.463, abs=5e-4)
+    assert z_meas == pytest.approx(57.9252, abs=5e-4)
+    assert abs(z_meas - z_cell) > 0.4     # not the same anchor twice
+    assert sweep["hj_declared_600x254um"]["z_ohm"] == pytest.approx(
+        47.8948, abs=5e-4)
+    assert sweep["hj_realized_node_480x320um"]["z_ohm"] == pytest.approx(
+        62.652, abs=5e-4)
+
     d_meas = sweep["zc_measured_two_plane"]["max_dev_vs_M2_pct"]
     d_cell = sweep["hj_realized_cell_560x320um"]["max_dev_vs_M2_pct"]
     d_decl = sweep["hj_declared_600x254um"]["max_dev_vs_M2_pct"]
     d_node = sweep["hj_realized_node_480x320um"]["max_dev_vs_M2_pct"]
+    assert d_meas == pytest.approx(3.6020, abs=5e-4)
+    assert d_cell == pytest.approx(4.8829, abs=5e-4)
     assert d_meas < 5.0 and d_cell < 5.0          # both inside the band
     assert abs(d_cell - d_meas) < 2.0             # NOT discriminated
     assert d_decl > 50.0 and d_node > 20.0        # both outside it
     assert "ANCHOR-CIRCULAR" in sec["reading"]
     assert "vindicat" not in json.dumps(sec).lower()   # §10 item 11
+
+
+def test_the_word_vindicated_appears_only_inside_the_do_not_pin_fence():
+    """§10 item 11, over the WHOLE committed artifact, not one section.
+
+    The fence text itself is item 11 ("F2's consistent branch must not be
+    written up as vindicated"), so the artifact does contain the string once,
+    in ``do_not_pin``. Everywhere else -- all four sections, the headline, the
+    source block -- it must be absent, and that is the half that can fail.
+    """
+    doc = _doc(_REANALYSIS_JSON)
+    fence = json.dumps(doc["do_not_pin"], ensure_ascii=False).lower()
+    assert fence.count("vindicat") == 1        # the fence is still there
+    rest = json.dumps({k: v for k, v in doc.items() if k != "do_not_pin"},
+                      ensure_ascii=False).lower()
+    assert "vindicat" not in rest
+    # and the fence is the predeclaration's own item 11, not a paraphrase
+    assert "must not be written up as 'vindicated'" in fence
 
 
 def test_the_591_ohm_premise_does_not_reproduce():

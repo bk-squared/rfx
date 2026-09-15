@@ -53,7 +53,7 @@
   -> balance after the fix: 1.0106 .. 1.0579  (over the 1.05 bar at 5 of 48 bins)
   -> |S21n| > 1 at 48 of 48 bins
   -> residual drift 1.0101 .. 1.0302 (flat? False) -- a FLAT residual would mean normalization was the whole story
-  -> NORMALIZATION WAS ONE DEFECT; A SECOND REMAINS. The Kurokawa factor removes most of the reciprocity asymmetry but leaves |S21| > 1 and a frequency-DRIFTING residual, which is the signature #498's 2026-08-03 comment records as falsifying a constant per-port rescale. NOT a verdict on rfx vs openEMS.
+  -> NORMALIZATION WAS ONE DEFECT; A SECOND REMAINS. The Kurokawa factor removes most of the reciprocity asymmetry but leaves |S21| > 1 and a frequency-DEPENDENT residual, which no constant real rescale can remove -- the ground on which #498's 2026-08-03 comment falsified a constant per-port rescale. That is the shared property and nothing more: the 2026-08-03 factor is on rfx's own wave channel and DECREASES 1.677 -> 1.605, this one is on the openEMS comparator and INCREASES 1.0101 -> 1.0302 and is ~30x smaller. The verdict rests on the balance and |S21n| numbers, not on that resemblance. NOT a verdict on rfx vs openEMS.
 
 === reported_only_dx80um  (dx = 8e-05, REPORTED ONLY -- never the comparator (do_not_repeat)) ===
   Re Z_lumped = 50.0000 ohm (pinned Feed_R); Re Z_msl = 33.1899 .. 81.2111 ohm (openEMS MSLPort.ZL -- the independent witness)
@@ -109,7 +109,7 @@
   -> balance after the fix: 0.6999 .. 0.8303  (over the 1.05 bar at 0 of 48 bins)
   -> |S21n| > 1 at 0 of 48 bins
   -> residual drift 0.6535 .. 0.8339 (flat? False) -- a FLAT residual would mean normalization was the whole story
-  -> NORMALIZATION WAS ONE DEFECT; A SECOND REMAINS. The Kurokawa factor removes most of the reciprocity asymmetry but leaves |S21| > 1 and a frequency-DRIFTING residual, which is the signature #498's 2026-08-03 comment records as falsifying a constant per-port rescale. NOT a verdict on rfx vs openEMS.
+  -> NORMALIZATION WAS ONE DEFECT; A SECOND REMAINS. The Kurokawa factor removes most of the reciprocity asymmetry but leaves |S21| > 1 and a frequency-DEPENDENT residual, which no constant real rescale can remove -- the ground on which #498's 2026-08-03 comment falsified a constant per-port rescale. That is the shared property and nothing more: the 2026-08-03 factor is on rfx's own wave channel and DECREASES 1.677 -> 1.605, this one is on the openEMS comparator and INCREASES 1.0101 -> 1.0302 and is ~30x smaller. The verdict rests on the balance and |S21n| numbers, not on that resemblance. NOT a verdict on rfx vs openEMS.
 
 === Written to scripts/diagnostics/_probe_fed_msl_referee_logs/stage2_369367257643_kurokawa_renormalized.json ===
 

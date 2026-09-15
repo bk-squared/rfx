@@ -31,9 +31,12 @@ WHAT IT REPORTS, AND WHAT EACH REPORT IS WORTH
   §2  The #460 Kurokawa renormalization of the openEMS comparator. It is a real
       comparator bug fix and it does NOT restore passivity: balance
       1.0106–1.0579, |S21| > 1 at 48/48 bins, and a residual that DRIFTS with
-      frequency — the signature #498's own 2026-08-03 comment records as
-      falsifying a constant per-port rescale. Normalization was one defect;
-      fixing it exposes a second (the 2026-09-04 audit's D1 branch).
+      frequency — the property on which #498's own 2026-08-03 comment falsified
+      a constant per-port rescale. That property is ALL the two share: the
+      2026-08-03 factor is on rfx's own wave channel and DECREASES 1.677→1.605,
+      this one is on the openEMS comparator and INCREASES 1.0101→1.0302 and is
+      ~30× smaller. Normalization was one defect; fixing it exposes a second
+      (the 2026-09-04 audit's D1 branch).
   §3  The flux bracket 1 − (1 − |S22|²)·r1/r0, and the competing hypothesis the
       box-widening plan omitted: r1 > 1 is non-physical ON ITS OWN, and a
       box-independent third instrument (the two committed full-cross-section
@@ -328,12 +331,25 @@ def section2_openems(referee: dict) -> dict:
           "ALL 48 bins.")
     print("   * The residual DRIFTS with frequency (1.0101 near 1 GHz -> "
           "1.0302 at 5 GHz, monotone above")
-    print("     the minimum). #498's 2026-08-03 comment records that exact "
-          "signature as falsifying a")
-    print("     constant per-port impedance rescale: 'the required factor "
-          "drifts 1.677->1.605 ... whatever")
-    print("     closes it needs a frequency-dependent term, not only a "
-          "Kurokawa sqrt(Z) correction.'")
+    print("     the minimum). A frequency-DEPENDENT residual is what a "
+          "constant real per-port rescale")
+    print("     cannot remove, and that is the ground on which #498's "
+          "2026-08-03 comment falsified one:")
+    print("     'the required factor drifts 1.677->1.605 ... whatever closes "
+          "it needs a frequency-dependent")
+    print("     term, not only a Kurokawa sqrt(Z) correction.'")
+    print("     THAT SHARED PROPERTY IS THE WHOLE OF THE TIE — the two are "
+          "NOT the same curve:")
+    print("       instrument  2026-08-03: rfx's own mixed-lane wave channel"
+          " | here: the openEMS comparator")
+    print("       sign        2026-08-03: DECREASING 1.677->1.605"
+          "          | here: INCREASING 1.0101->1.0302")
+    print("       scale       2026-08-03: ~0.61-0.68 above unity"
+          "           | here: ~0.010-0.030, i.e. ~30x smaller")
+    print("     The verdict below does not rest on the resemblance: balance "
+          "1.0106-1.0579 (5/48 over")
+    print("     1.05) and |S21n| > 1 at 48/48 establish a second defect on "
+          "their own.")
     print("   * On the reported-only dx=80um leg the SAME correction drives "
           "|S21|/|S12| to 0.65-0.83,")
     print("     i.e. it does not make that leg reciprocal either — a witness "
