@@ -133,6 +133,14 @@ def stage_read() -> dict:
         # mean of |S11|^2 = |Gamma + w*u|^2 is |Gamma|^2 + |w|^2.  The bound
         # holds for ANY complex Gamma, i.e. for candidates A, B, C and E at once.
         bound = 2.0 * float(np.mean(refl))
+        # The bound governs the TRANSMISSION term, so that is what
+        # bound_violation_factor divides into it. Until the PR #1081 review this
+        # key divided in max|colpow-1| = max||S11|^2 + (|S21|^2 - 1)|, which the
+        # algebra above does not bound -- a ratio whose numerator was a different
+        # measure from its denominator. The old pairing is kept, named for what it
+        # actually is, so the note's earlier numbers (4.553 / 6.213 / 8.002) stay
+        # checkable instead of vanishing.
+        measured_tilt = float(np.max(np.abs(tilt)))
         measured = float(np.max(np.abs(col[0] - 1.0)))
 
         per_rung[rung] = {
@@ -166,7 +174,11 @@ def stage_read() -> dict:
             "candidate_C_predicted_tilt": [0.0] * len(freqs),
             "bound_2_mean_s11_mag2": bound,
             "measured_worst_abs_column_power_excess": measured,
-            "bound_violation_factor": measured / bound,
+            # No key for the numerator: it is max|s21_mag2_minus_1|, and that
+            # array is already here and cited, so a reader can re-derive the
+            # ratio without a stored scalar that could drift from it.
+            "bound_violation_factor": measured_tilt / bound,
+            "colpow_over_bound": measured / bound,
             "settling_db": cell["settling_db"],
             "warnings_verbatim": [w["message"] for w in cell["warnings"]],
             "preflight_verbatim": cell["preflight"],

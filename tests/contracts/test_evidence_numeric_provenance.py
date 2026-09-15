@@ -443,13 +443,14 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # that retires four candidates, the four-plane measurement that locates the
     # error, the profile mismatch and the post-hoc run against it, the
     # record-length run, and the PR #1081 review's corrected bound pairing. The
-    # floor is the reproduced count (51, raised from 45 by that review, which
-    # found the bound compared against the wrong quantity and required the
-    # replacement numbers to be artifact-backed too). Not a round number: a
-    # rewrite that drops citations would leave a DOES-NOT-CLOSE verdict with
-    # nothing behind it, and a negative result is exactly the kind whose numbers
-    # nobody re-derives.
-    (TILT_RESULTS, "7. Numeric provenance"): 51,
+    # floor is the reproduced count (54, raised from 45 by that review: it found
+    # the bound compared against the wrong quantity, which cost six citations for
+    # the replacement numbers and three more when the artifact field itself was
+    # re-paired and the old pairing preserved beside it as colpow_over_bound).
+    # Not a round number: a rewrite that drops citations would leave a
+    # DOES-NOT-CLOSE verdict with nothing behind it, and a negative result is
+    # exactly the kind whose numbers nobody re-derives.
+    (TILT_RESULTS, "7. Numeric provenance"): 54,
     (MANIFEST, "11_waveguide_port_wr90"): 4,
     (MANIFEST, "15_patch_antenna_rt5880"): 3,
     (MANIFEST, "17_dielectric_sphere_mie"): 2,

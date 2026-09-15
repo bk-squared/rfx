@@ -121,10 +121,14 @@ transmission term.
 | mid | 1.869e-4 | 1.087e-3 | 16 | **5.81×** |
 | fine | 3.404e-5 | 3.098e-4 | 0 | **9.10×** |
 
-(The artifact's `read.per_rung.*.bound_violation_factor` still carries the old pairing,
-4.553 / 6.213 / 8.002 — it divides the bound into `max|colpow−1|`. It is left as measured
-rather than silently re-pointed; the numbers above are recomputed from the two artifact
-fields cited in section 7, `bound_2_mean_s11_mag2` and `s21_mag2_minus_1`.)
+The artifact carries the corrected pairing: `read.per_rung.*.bound_violation_factor` is now
+`max||S21|²−1| / bound` and holds 4.048 / 5.814 / 9.100, the numbers in the table. The old
+pairing is not discarded — it is kept under `colpow_over_bound` (4.553 / 6.213 / 8.002),
+named for what it divides, so the numbers this note carried before the review stay
+checkable rather than vanishing. Both are cited in section 7. Only the `read` stage was
+recomputed for that change; the FDTD stages were not re-run, and a leaf-by-leaf diff of the
+artifact confirms it — 3 leaves changed, 3 added, 0 removed, none of them outside `read`
+and none in `provenance`.
 
 **Finite-band slack.** The step `mean_bin |Γ + w·u|² = |Γ|² + |w|²` drops a cross term
 `2·Re(Γ·w̄·ū)`, which vanishes only if `e^{jθ}` averages to zero over the band. Across 17
@@ -415,9 +419,12 @@ moves without the note moving reds this gate.
 `tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.bound_2_mean_s11_mag2 = 0.00134742`,
 `tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.mid.bound_2_mean_s11_mag2 = 0.000186878`,
 `tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.fine.bound_2_mean_s11_mag2 = 0.0000340434`,
-`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.bound_violation_factor = 4.55321`,
-`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.mid.bound_violation_factor = 6.21305`,
-`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.fine.bound_violation_factor = 8.00199`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.bound_violation_factor = 4.04797`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.mid.bound_violation_factor = 5.81398`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.fine.bound_violation_factor = 9.09988`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.colpow_over_bound = 4.55321`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.mid.colpow_over_bound = 6.21305`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.fine.colpow_over_bound = 8.00199`,
 `tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.candidate_A_gamma_tan2[0] = 0.00493967`,
 `tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.candidate_A_gamma_tan2[16] = 0.0165851`.
 
