@@ -382,14 +382,23 @@ def _enumerate_emission_sites():
 # _FROZEN_DYNAMIC_SITES_BY_FUNCTION is unchanged (no bare-except path touched)
 # and EMISSION_CLASSIFICATION is unchanged (no preflight call site added or
 # removed).
-_FROZEN_TOTAL_SITES = 113
+# 113 -> 114, 2026-09-15 (#801). One site added:
+# ``_validate_cfg_conductor_in_thin_absorber``'s ``conductor_in_thin_absorber``
+# warning in ``rfx/preflight/absorber.py`` -- the measured-conjunction advisory
+# for a conductor realizing within two cells of an absorbing face that carries
+# six layers or fewer. A GROWING surface is the direction this pin exists for,
+# so the number moves here in the same change that adds the site.
+_FROZEN_TOTAL_SITES = 114
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
 # 73 -> 74, 2026-09-15 (#1043 stage B): the new advisory kind
 # ``dielectric_at_absorber_seam``. A new code is a new advisory kind, which is
 # what this count is for.
-_FROZEN_LITERAL_CODE_COUNT = 74
+# 74 -> 75, 2026-09-15 (#801): the new advisory kind
+# ``conductor_in_thin_absorber``. A new code is a new advisory kind, which is
+# what this count is for.
+_FROZEN_LITERAL_CODE_COUNT = 75
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

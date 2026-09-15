@@ -206,6 +206,17 @@ _CALL_SEQUENCE_AT_LEG7_TIP = (
     # and builds the grid itself, so the context fields it used to read are
     # gone rather than passed and ignored.
     ("_validate_cfg_dielectric_at_absorber_seam", ("warn",)),
+    # APPENDED 2026-09-15 (#801): ``_validate_cfg_conductor_in_thin_absorber``,
+    # the measured-conjunction advisory -- a conductor realizing within two
+    # cells of an absorbing face that carries six layers or fewer. Appended at
+    # the tail for the same reason the row above was: a new check goes where it
+    # changes no existing call's position, so the snapshots move only by what
+    # the new check itself emits. Takes ``warn``, ``dx`` and ``absorber_label``:
+    # ``dx`` because the clearance is counted in CELLS (the face rasterizes onto
+    # the nearest node), and ``absorber_label`` so the message says CPML or UPML
+    # rather than guessing.
+    ("_validate_cfg_conductor_in_thin_absorber",
+     ("warn", "dx", "absorber_label")),
 )
 
 #: Just the names, in order -- the runtime view of the tuple above.

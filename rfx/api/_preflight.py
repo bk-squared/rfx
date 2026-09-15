@@ -1301,7 +1301,7 @@ class _PreflightMixin:
         # --- checks in original order ---------------------------------
         # The order lives in CORE_CONFIG_CHECKS now. It is still the
         # observable the committed snapshots pin, and the registry's own lock
-        # pins the 36 names against the sequence this body used to spell out.
+        # pins the 37 names against the sequence this body used to spell out.
         run_config_checks(self, ConfigCheckContext(
             warn=_w,
             dx=dx,
@@ -1540,6 +1540,10 @@ class _PreflightMixin:
         # puts it there. Defined in the family module like the eleven above,
         # never in this class body.
         _validate_cfg_dielectric_at_absorber_seam,
+        # #801: the measured conjunction -- a conductor realizing within two
+        # cells of an absorbing face that carries six layers or fewer. Defined
+        # in the family module like the twelve above, never in this class body.
+        _validate_cfg_conductor_in_thin_absorber,
     )
 
     # ------------------------------------------------------------------

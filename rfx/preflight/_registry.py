@@ -25,7 +25,7 @@ What is here
 * :class:`ConfigCheck` -- one entry: the method ``name`` as it appears on
   ``_PreflightMixin``, a ``run`` adapter, and the ``family`` module it lives
   in.
-* :data:`CORE_CONFIG_CHECKS` -- the 36 entries in the EXACT order the
+* :data:`CORE_CONFIG_CHECKS` -- the 37 entries in the EXACT order the
   pre-registry hub called them. 37 at leg 8; issue #1030 deleted
   ``_validate_cfg_ntff_min_steps``, a check with no emission site whose only
   effect was an instance attribute nothing read.
@@ -365,6 +365,16 @@ CORE_CONFIG_CHECKS: tuple[ConfigCheck, ...] = (
     ConfigCheck("_validate_cfg_dielectric_at_absorber_seam",
                 lambda sim, c: sim._validate_cfg_dielectric_at_absorber_seam(
                     c.warn),
+                "absorber"),
+    # #801, appended for the same reason and under the same rule as the row
+    # above: a SHIPPED check belongs in this reviewed, locked list, never in
+    # ``register_config_check``. It reports the measured conjunction -- a
+    # conductor realizing within two cells of an absorbing face that carries
+    # six layers or fewer -- and is an advisory, not a refusal, because the
+    # mechanism behind that growth is not established.
+    ConfigCheck("_validate_cfg_conductor_in_thin_absorber",
+                lambda sim, c: sim._validate_cfg_conductor_in_thin_absorber(
+                    c.warn, c.dx, c.absorber_label),
                 "absorber"),
 )
 

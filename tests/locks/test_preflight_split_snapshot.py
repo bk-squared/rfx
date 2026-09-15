@@ -144,6 +144,19 @@ reaches: the two remaining ``precision_*`` guards,
 (leg 5, which needs the optional ``cad`` extra -- see below) and
 ``dielectric_at_absorber_seam`` (#1043 stage B).
 
+SNAPSHOT CHANGE, 2026-09-15 (#801). One committed report moved, and the reason
+is written here BEFORE the regeneration because this lock's own hint says a diff
+is a behaviour change: ``guards_msl_sheet_probe`` gained two
+``conductor_in_thin_absorber`` lines. That fixture builds an MSL board whose PEC
+sheet spans the full x extent on a ``cpml_layers=4`` domain, which is exactly the
+conjunction the new advisory reports -- a conductor realizing 0 cells of
+clearance from an absorbing face that carries 4 layers. It is a true positive by
+the check's own definition and an OVER-WARN by intent: that fixture is a guards
+demo, not a claims-bearing run, and #801's one measured unpadded arm settled. The
+advisory says so in its own text, which is why it advises rather than refuses.
+No other snapshot moved: the default ``cpml_layers`` is 16, so the fixtures that
+put a conductor at a face are silent on the layer conjunct.
+
 That list is MEASURED, not maintained by hand -- it was wrong in both
 directions before #1024 re-derived it. It named ``waveguide_reference_plane``,
 which #1024 now witnesses, and it omitted ``dielectric_at_absorber_seam``,
@@ -858,6 +871,10 @@ _REBOUND_ON_MIXIN = {
         "_validate_cfg_absorber_budget_vs_grid",
         "_validate_cfg_absorber_placement",
         "_validate_cfg_compute_cpml_thickness",
+        # 2026-09-15 (#801): written in the family module like the row below,
+        # never moved, and bound on the mixin the same way -- so it wants the
+        # same qualname pin.
+        "_validate_cfg_conductor_in_thin_absorber",
         # 2026-09-15 (#1043 stage B): not a MOVED body -- written in the
         # family module, bound on the mixin the same way, so it wants the
         # same qualname pin as the eleven that moved.

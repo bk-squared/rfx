@@ -1284,3 +1284,152 @@ def test_a_shape_continued_on_one_axis_is_still_NAMED_on_another():
         assert "#-1" not in msg and "'?'" not in msg, (
             f"the entry was recovered by identity and missed: {msg}")
         assert "entry #0" in msg, msg
+
+
+# ---------------------------------------------------------------------------
+# 5. A conductor at an absorber face that has few layers -- #801.
+#
+# The advisory fires on a CONJUNCTION, and the tests below are built from the
+# arms that were actually measured on the isolated-patch rig rather than from
+# the rule as written: 6 layers with the ground flush against the face GREW,
+# while 8 layers at the same mesh and geometry SETTLED, and 6 layers with the
+# conductors pulled 2 cells clear SETTLED. So the check must speak on the first
+# and stay quiet on the other two, and the mutation test at the end is what says
+# the conjunction is load-bearing rather than decorative: drop either conjunct
+# and the silent cases start firing.
+# ---------------------------------------------------------------------------
+
+_THIN_ABS_CODE = "conductor_in_thin_absorber"
+
+
+def _thin_abs_findings(sim):
+    return sim.preflight().by_code(_THIN_ABS_CODE)
+
+
+def _conductor_at_face_sim(layers, inset_cells=0, dx=DP_DX):
+    """A PEC slab spanning the domain laterally, inset by whole cells or not.
+
+    Deliberately a slab and not the full rig: the advisory's subject is a
+    conductor's distance to an absorbing face in cells, and nothing else about
+    the patch fixture participates in the predicate.
+    """
+    sim = Simulation(freq_max=2.5 * F0,
+                     domain=(NA * dx, NB * dx, NZ * dx),
+                     dx=dx, boundary="cpml", cpml_layers=layers)
+    lo = inset_cells * dx
+    sim.add(Box((lo, lo, 4 * dx),
+                (NA * dx - lo, NB * dx - lo, 5 * dx)), material="pec")
+    return sim
+
+
+def test_conductor_flush_with_a_thin_absorber_is_reported():
+    found = _thin_abs_findings(_conductor_at_face_sim(layers=6))
+    assert found, "the measured growing configuration was not reported"
+    msg = str(found[0])
+    # It must say BOTH halves of the conjunction, in input units, and that the
+    # numbers are measured points rather than a derived bound.
+    assert "0 cell(s) of clearance" in msg, msg
+    assert "6 absorbing layer(s)" in msg, msg
+    assert "not a stability bound" in msg, msg
+    assert "mechanism is not established" in msg, msg
+    assert "#801" in msg, msg
+
+
+def test_the_same_conductor_with_a_default_absorber_is_silent():
+    # 8 layers is where the ladder settles at the same mesh and geometry.
+    assert _thin_abs_findings(_conductor_at_face_sim(layers=8)) == []
+
+
+def test_two_cells_of_clearance_is_silent_at_the_same_layer_count():
+    # The H1 arm: 6 layers, conductors pulled 2 cells clear, measured stable.
+    assert _thin_abs_findings(_conductor_at_face_sim(layers=6,
+                                                     inset_cells=2)) == []
+
+
+def test_one_cell_of_clearance_still_speaks():
+    # The clearance that was measured to work is 2 cells. One is inside the
+    # advised region and must not read as clear -- the check does not
+    # interpolate a boundary nobody measured.
+    found = _thin_abs_findings(_conductor_at_face_sim(layers=6, inset_cells=1))
+    assert found, "one cell of clearance was treated as clear"
+    assert "1 cell(s) of clearance" in str(found[0])
+
+
+def test_a_dielectric_at_the_same_face_is_not_this_check_s_subject():
+    sim = Simulation(freq_max=2.5 * F0,
+                     domain=(NA * DP_DX, NB * DP_DX, NZ * DP_DX),
+                     dx=DP_DX, boundary="cpml", cpml_layers=6)
+    sim.add_material("d", eps_r=4.0)
+    sim.add(Box((0.0, 0.0, 4 * DP_DX),
+                (NA * DP_DX, NB * DP_DX, 5 * DP_DX)), material="d")
+    assert _thin_abs_findings(sim) == []
+
+
+def test_a_pec_boundary_has_no_absorbing_face_to_be_near():
+    sim = Simulation(freq_max=2.5 * F0,
+                     domain=(NA * DP_DX, NB * DP_DX, NZ * DP_DX),
+                     dx=DP_DX, boundary="pec", cpml_layers=6)
+    sim.add(Box((0.0, 0.0, 4 * DP_DX),
+                (NA * DP_DX, NB * DP_DX, 5 * DP_DX)), material="pec")
+    assert _thin_abs_findings(sim) == []
+
+
+def test_a_non_absorbing_face_falls_out_without_a_rule():
+    # x periodic: _preflight_face_layers reports 0 there, so the x faces are
+    # not candidates even though the conductor spans to them. The y faces still
+    # absorb and still speak, which is what distinguishes "the check is
+    # per-face" from "the check switched itself off".
+    sim = Simulation(freq_max=2.5 * F0,
+                     domain=(NA * DP_DX, NB * DP_DX, NZ * DP_DX),
+                     dx=DP_DX, cpml_layers=6,
+                     boundary=BoundarySpec(x="periodic", y="cpml", z="cpml"))
+    sim.add(Box((0.0, 0.0, 4 * DP_DX),
+                (NA * DP_DX, NB * DP_DX, 5 * DP_DX)), material="pec")
+    found = _thin_abs_findings(sim)
+    assert found, "the absorbing y faces stopped speaking"
+    assert all("x-" not in f.loc for f in found), [f.loc for f in found]
+
+
+def test_the_conjunction_is_load_bearing():
+    """Drop either conjunct and the measured-stable cases start firing.
+
+    This is the mutation that says the check measures the conjunction rather
+    than one of its halves with the other along for the ride. If either branch
+    below stops changing the verdict, the advisory has collapsed into a
+    single-condition warning and its calibration no longer means what the
+    docstring says.
+    """
+    from rfx.preflight import absorber as _abs
+
+    # Silent as shipped, both of them.
+    assert _thin_abs_findings(_conductor_at_face_sim(layers=8)) == []
+    assert _thin_abs_findings(_conductor_at_face_sim(layers=6,
+                                                     inset_cells=2)) == []
+
+    # Drop the LAYER conjunct (raise the floor past the default): the 8-layer
+    # case, measured stable, starts firing.
+    original_floor = _abs._THIN_ABSORBER_LAYER_FLOOR
+    try:
+        _abs._THIN_ABSORBER_LAYER_FLOOR = 99
+        assert _thin_abs_findings(_conductor_at_face_sim(layers=8)), (
+            "raising the layer floor did not change the verdict, so the layer "
+            "count is not actually part of the predicate")
+    finally:
+        _abs._THIN_ABSORBER_LAYER_FLOOR = original_floor
+
+    # Drop the CLEARANCE conjunct (widen it): the 2-cell inset, measured
+    # stable, starts firing.
+    original_clearance = _abs._THIN_ABSORBER_CLEARANCE_CELLS
+    try:
+        _abs._THIN_ABSORBER_CLEARANCE_CELLS = 99
+        assert _thin_abs_findings(_conductor_at_face_sim(layers=6,
+                                                         inset_cells=2)), (
+            "widening the clearance did not change the verdict, so the "
+            "distance to the face is not actually part of the predicate")
+    finally:
+        _abs._THIN_ABSORBER_CLEARANCE_CELLS = original_clearance
+
+    # And restored.
+    assert _thin_abs_findings(_conductor_at_face_sim(layers=8)) == []
+    assert _thin_abs_findings(_conductor_at_face_sim(layers=6,
+                                                     inset_cells=2)) == []

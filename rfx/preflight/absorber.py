@@ -1080,3 +1080,157 @@ _validate_cfg_pec_boundary_open_structure.__qualname__ = (
 _validate_cfg_dielectric_at_absorber_seam.__qualname__ = (
     "_PreflightMixin._validate_cfg_dielectric_at_absorber_seam"
 )
+
+
+#: #801's two measured points, and they are MEASUREMENTS, not a derived bound.
+#: At n = 3 (dx = h/3) on the isolated-patch rig with a +10h laterally padded
+#: domain: 6 absorber layers with the ground flush against the face GREW
+#: (settling 0.00 dB, +8.5e-4 per step); 8 and 12 layers at the same dx and the
+#: same geometry SETTLED (-44.2 / -46.0 dB); and 6 layers with every conductor
+#: pulled 2 cells clear of the pads SETTLED (-42.8 dB). At n = 2, 4 layers grew
+#: and 8 and 16 settled. Nobody has derived a stability boundary -- the
+#: mechanism is not established -- so these are the edges of the measured
+#: region and the advisory says so in its own text.
+_THIN_ABSORBER_LAYER_FLOOR = 6
+_THIN_ABSORBER_CLEARANCE_CELLS = 2
+
+
+def _realized_clearance_cells(distance: float, dx: float) -> int:
+    """Whole cells between a declared conductor face and the absorber boundary.
+
+    Deliberately NOT :func:`_coord_near_absorber`, and the difference is the
+    whole point. That helper answers a DECLARED-coordinate question -- is this
+    coordinate within ``n_cells * dx`` of the boundary -- on the raw float. This
+    one asks where the face RASTERIZES: a PEC volume's face realizes on the
+    nearest node plane (lattice ownership contract #931 §1.1), so the clearance
+    the solver sees is the rounded cell count.
+
+    They disagree on exactly the arm this check was calibrated against. #801's
+    rig carries a uniform -0.1-cell registration nudge, so a conductor inset by
+    two cells declares its face at ``1.9 * dx``: ``_coord_near_absorber`` reads
+    that as within two cells (it is, by 0.1 of one), while the solver rasterizes
+    it onto node 2 and the arm SETTLES. Scoring the declared float would fire on
+    the one geometry measured to be stable, which is the failure mode an
+    advisory can least afford.
+    """
+    return int(np.rint(distance / dx))
+
+
+def _validate_cfg_conductor_in_thin_absorber(self, _w, dx, absorber_label) -> None:
+    """A conductor reaches an absorber face that has few layers (#801).
+
+    Fires on a CONJUNCTION, because that is what was measured: a conductor
+    whose realized face lands within
+    ``_THIN_ABSORBER_CLEARANCE_CELLS`` cells of an absorbing face, AND that
+    face carrying no more than ``_THIN_ABSORBER_LAYER_FLOOR`` layers. Either
+    condition alone was stable in every arm measured; together they produced a
+    ring-down that decayed to about -67 dB and then climbed monotonically --
+    an eigenvalue of the update operator, not a transient.
+
+    **What this is not.** It is not a stability bound. The mechanism behind the
+    growth is NOT established: the measurements say which two conditions must
+    hold together, not why the operator amplifies, and a 1-D CPML slice model
+    does not reproduce it (it misses the arm that grows hardest and is ~190x
+    too small where it fires). So the two constants are the edges of a measured
+    region, and this is an ADVISORY rather than a refusal.
+
+    **It will over-warn, knowingly.** The measured co-factor was a laterally
+    PADDED domain; the one arm measured with no padding (4 layers, conductor at
+    the face) settled. Padding is not part of the fire condition, because one
+    stable arm does not bound a region either, and a check that silently
+    assumed it would miss the padded cases this exists for. The message says
+    so, and the remedy it names is the one that was measured to work.
+
+    Silent where another check owns it or the input cannot carry the question:
+    a graded mesh (``dz_profile`` and friends) has no single cell size at a
+    face, so "clearance in cells" is not one number there -- the same precedent
+    ``_validate_cfg_graded_box_rasterization`` sets for a traced axis; a
+    non-absorbing face is already 0 layers out of :func:`_preflight_face_layers`
+    and falls out without a rule; and geometry standing INSIDE the absorber is
+    :func:`_validate_cfg_geometry_in_cpml`'s subject, which this does not
+    duplicate -- a conductor that crosses the face reads as clearance 0 here and
+    is reported by both, from the two sides it is wrong from.
+
+    Declared vs solved, in input units: which conductor reaches which face, how
+    many whole cells of clearance it realizes, and how many layers that face has.
+
+    Related: #801.
+    """
+    if self._boundary not in ("cpml", "upml") or not self._geometry:
+        return
+    if dx is None or dx <= 0 or is_tracer(dx) or is_tracer(self._dx):
+        return
+    if any(getattr(self, name, None) is not None
+           for name in ("_dx_profile", "_dy_profile", "_dz_profile")):
+        return
+
+    try:
+        face_layers = self._preflight_face_layers()
+    except Exception:
+        # Whatever makes the boundary spec unreadable has its own check; this
+        # advisory has nothing to say without per-face layer counts.
+        return
+
+    findings: list[tuple] = []
+    for idx, entry in enumerate(self._geometry):
+        mat_name = getattr(entry, "material_name", None)
+        if mat_name != "pec":
+            try:
+                if self._resolve_material(mat_name).sigma < self._PEC_SIGMA_THRESHOLD:
+                    continue
+            except Exception:
+                continue
+        if not hasattr(entry.shape, "bounding_box"):
+            continue
+        try:
+            c1, c2 = entry.shape.bounding_box()
+        except Exception:
+            continue
+        for ax in range(min(3, len(self._domain))):
+            axis_name = "xyz"[ax]
+            extent = self._domain[ax]
+            for side, distance in (("lo", float(c1[ax])),
+                                   ("hi", float(extent) - float(c2[ax]))):
+                layers = int(face_layers.get(f"{axis_name}_{side}", 0) or 0)
+                if layers <= 0 or layers > _THIN_ABSORBER_LAYER_FLOOR:
+                    continue
+                cells = _realized_clearance_cells(distance, dx)
+                if cells >= _THIN_ABSORBER_CLEARANCE_CELLS:
+                    continue
+                findings.append((idx, mat_name, type(entry.shape).__name__,
+                                 axis_name, side, layers, cells, distance))
+
+    for idx, mat_name, shape_name, axis_name, side, layers, cells, distance in findings:
+        _w.warn(
+            PreflightWarning(
+                f"Conductor '{mat_name}' (geometry entry #{idx}, {shape_name}) "
+                f"realizes {cells} cell(s) of clearance from the {axis_name}-{side} "
+                f"{absorber_label} face (declared {_fmt_len(abs(distance))} "
+                f"{'past' if distance < 0 else 'from'} it), and that face has "
+                f"{layers} absorbing layer(s). Both at once is a measured growth "
+                f"class (issue #801): on the isolated-patch rig at dx = h/3 with a "
+                f"laterally padded domain, 6 layers with the ground flush against "
+                f"the face grew (ring-down 0.00 dB, +8.5e-4 per step), while 8 and "
+                f"12 layers at the same mesh and geometry settled (-44.2 / -46.0 dB) "
+                f"and 6 layers with the conductors pulled 2 cells clear settled "
+                f"(-42.8 dB). Either remedy removed it in every arm measured. These "
+                f"are the EDGES OF THE MEASURED REGION, not a stability bound: the "
+                f"mechanism is not established, which is why this advises rather "
+                f"than refuses. The measured co-factor was the lateral padding, and "
+                f"the one unpadded arm (4 layers, conductor at the face) settled, so "
+                f"this may over-warn on an unpadded domain.",
+                code="conductor_in_thin_absorber",
+                loc=f"geometry[#{idx}] {axis_name}-{side}",
+                source="_validate_cfg_conductor_in_thin_absorber",
+            ),
+            stacklevel=3,
+        )
+
+
+# Thirteenth body, added here rather than moved (#801): like the twelfth it was
+# never in the class, so its qualname is set for the same reason -- the
+# composition-time rewrite in rfx/api/__init__.py only promotes
+# ``_PreflightMixin.<name>``.
+_validate_cfg_conductor_in_thin_absorber.__qualname__ = (
+    "_PreflightMixin._validate_cfg_conductor_in_thin_absorber"
+)
