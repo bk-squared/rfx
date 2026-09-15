@@ -1,0 +1,70 @@
+{
+ "fixture": "n=4, +10h lateral pad, cpml_layers=8, board as declared",
+ "counts": {
+  "pre931_volume_GROWS": {
+   "Mx": 42192,
+   "My": 42192,
+   "Mz": 0,
+   "total": 84384
+  },
+  "main_volume_settles": {
+   "Mx": 84936,
+   "My": 84832,
+   "Mz": 42694,
+   "total": 212462
+  },
+  "main_sheets_H4_settles": {
+   "Mx": 41968,
+   "My": 41916,
+   "Mz": 0,
+   "total": 83884
+  }
+ },
+ "pec_edges_inside_lateral_pads": {
+  "pre931_volume_GROWS": 0,
+  "main_volume_settles": 0,
+  "main_sheets_H4_settles": 0
+ },
+ "diff_pre931_vs_H4": {
+  "only_in_pre931": 500,
+  "only_in_H4": 0,
+  "rims": [
+   {
+    "component": "Mx",
+    "k": 28,
+    "n_edges": 172,
+    "i_lo": 239,
+    "i_hi": 239,
+    "j_lo": 8,
+    "j_hi": 179
+   },
+   {
+    "component": "Mx",
+    "k": 33,
+    "n_edges": 52,
+    "i_lo": 155,
+    "i_hi": 155,
+    "j_lo": 68,
+    "j_hi": 119
+   },
+   {
+    "component": "My",
+    "k": 28,
+    "n_edges": 232,
+    "i_lo": 8,
+    "i_hi": 239,
+    "j_lo": 179,
+    "j_hi": 179
+   },
+   {
+    "component": "My",
+    "k": 33,
+    "n_edges": 44,
+    "i_lo": 112,
+    "i_hi": 155,
+    "j_lo": 119,
+    "j_hi": 119
+   }
+  ]
+ }
+}

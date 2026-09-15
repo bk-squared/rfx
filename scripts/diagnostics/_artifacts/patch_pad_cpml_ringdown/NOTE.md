@@ -18,7 +18,7 @@ PR #1047 (CPML ψ-coefficient) and PR #1057 (absorber-pad material continuation)
 **1. The mechanism cannot fire on this rig.** #1043 needs the E update's permittivity and
 the ψ coefficient's permittivity to disagree, which happens only on the subpixel-smoothed
 lane. The rig calls `sim.run(num_periods=...)` and passes no `subpixel_smoothing`; the
-parameter defaults to `False` (`rfx/api/_execute.py:421`), so `rfx/simulation.py:1481`
+parameter defaults to `False` on the uniform `run()` (`rfx/api/_execute.py:3452`; `:421` is `_run_nonuniform`'s own signature, a different lane — corrected after review), so `rfx/simulation.py:1481`
 calls `apply_cpml_e(..., materials=materials, inv_eps_r_update=None)` and both halves read
 one array. PR #1047's own commit message says the same thing: *"Every other
 `apply_cpml_e` caller runs `update_e` with `materials.eps_r` and has nothing to thread."*
@@ -94,7 +94,7 @@ different realized board:
 |---|---|---|
 | cavity | 983.75 µm, 5 cells | **787.00 µm, 4 cells** |
 | Σ d/ε | 291.05 µm | **232.84 µm** |
-| wall planes | 3935.0 µm | **3935.0, 4131.75, 4918.75, 5115.5 µm** |
+| wall planes | 3935.0, 4918.75 µm (**2**) | **3935.0, 4131.75, 4918.75, 5115.5 µm (4)** |
 | preflight on the ground | *"modelled as a one-cell PEC surface — tangential E is zeroed on it and the normal component survives as surface charge"* | *"realized as a filled slab with walls on BOTH faces (every E edge between the two faces is shorted; lattice ownership contract #931 §1.2)"* |
 
 #931's lattice-ownership contract turned the one-cell PEC ground Box from a sheet into a
@@ -140,6 +140,12 @@ field.** Recorded fa3a99bd vs main `--sheet-conductors`: walls 3934.99992787838 
 vs 3935.0 / 4918.75 µm; cavity 983.75 µm over 5 cells both; `k_gnd` 28, `k_patch` 33 both; patch
 raster 44 × 52 both; **`sum(d/eps)` 291.050286003532 µm on both, to all twelve printed digits.**
 (`n_pec_sheets = 2`, `has_cell_mask = False` — the conductor is read from tangential E edges.)
+
+**Caveat found in review, and it matters:** that raster check reads `mex | mey`, so it is blind
+per component. Measured on main: the sheet board's patch plane spans **Ex 43 i and Ey 51 j**
+while their union spans 44 × 52 — the check passed on a union that hides a one-edge difference
+in each component. The reconstruction is still faithful in eps/sigma/mu and in `Mz`, but
+"field for field" overstated what was verified.
 
 VESSL 369367261209, 7 arms, rc 0, artifacts in `gpu_369367261209/`:
 
@@ -196,30 +202,74 @@ across the boundary max|diff| is 1.571e-02 on a peak of 1.632e-02. The 734-commi
 collapses to one commit; everything before it reproduces the issue exactly and everything
 after it reproduces main exactly.
 
-### Mechanism, one paragraph
+### Mechanism — corrected after independent review, and measured
 
-`a3e4dba4` replaced the rule that decides which E edges a conductor zeroes. The old
-`tangential_edge_masks` selected a component *"iff the body extends >= 2 cells in that
-component's direction"*, so **a one-cell-thick PEC Box selected only its in-plane components
-and left the normal edge through its own cell live**; the new contract is *"an E component is
-PEC iff its own location is inside the closed conductor region"*, which shorts every edge
-between a one-cell Box's two faces. This fixture is two one-cell PEC Boxes — a ground plane
-and a patch — and the ground spans the entire lateral domain, so the rule change acts along
-the whole conductor including where it runs into the absorber pads. Its visible consequence on
-this board is the one already recorded above: wall planes 1 -> 4, cavity 983.75 -> 787.00 um.
-But that is *not* the whole of it, and the H4 arm is what proves it: declaring the same board
-as SHEETs on main reproduces the old raster field-for-field (walls, cavity, `sum(d/eps)` to
-twelve digits) and still settles at -52.78 dB. So within `a3e4dba4` the operative difference
-for the ring-down is in the **realized edge set**, not in the wall planes it moved — which
-edge, exactly, is a diff-level question this lane did not open.
+The first version of this paragraph named the wrong half of the rule change (the live normal
+edge). The reviewer measured the edge sets; every number below is reproduced here
+(`edge_set_comparison.json`, no FDTD).
+
+`a3e4dba4` replaced `tangential_edge_masks` — a component is PEC iff the body has an occupied
+neighbour along **that component's own axis**, so a one-cell-thick Box selects only its in-plane
+components — with `_volume_edge_masks`, *"an edge is PEC iff it is incident to an occupied
+cell"*. On this fixture:
+
+| edge set | Mx | My | Mz | total |
+|---|---|---|---|---|
+| pre-#931 rule, volume declaration (**grows**) | 42192 | 42192 | **0** | 84384 |
+| `a3e4dba4`+ volume declaration (settles) | 84936 | 84832 | 42694 | 212462 |
+| main, SHEET declaration = the H4 arm (settles) | 41968 | 41916 | **0** | 83884 |
+
+**The live normal edge is not the seed.** `Mz ≡ 0` both in the arm that grows and in the H4 arm
+that settles; only the board that settles has `Mz = 42694`. So "the old rule left the normal edge
+live" is true and irrelevant.
+
+**The discriminator is a ring of TANGENTIAL edges.** The pre-#931 set is a strict *superset* of
+the H4 set — 500 edges only in pre-#931, **0** only in H4 — and all 500 sit one node past each
+conductor's hi-face footprint: Ex at k=28, i=239, j=8…179 (172); Ey at k=28, j=179, i=8…239
+(232); Ex at k=33, i=155, j=68…119 (52); Ey at k=33, j=119, i=112…155 (44). That is a
+one-edge-wide overhang ring on the +x and +y rims of the ground and of the patch — the
+"far face missing" asymmetry `a3e4dba4`'s own contract battery was written to close. Clearing
+exactly those 500 edges and nothing else turns the growing arm into −52.78 dB, the H4 number, on
+every probe (reviewer's measurement; this lane reproduces the edge accounting and the direction,
+see the gate below).
+
+**It is the same rule this workspace already had a name for.** `rfx-known-issues.md:942`
+records it as *"1-cell PEC sheet leaves its Ez edge LIVE"*. Same pre-#931 rule, different
+symptom — a live normal edge there, a tangential overhang ring here — and `a3e4dba4` ended both.
+
+**Two things the earlier version got wrong and are withdrawn.** (i) *"where it runs into the
+absorber pads"* is false: **zero** PEC edges lie inside the lateral pads on any of the three
+boards; the ground abuts the absorber flush on x-lo/y-lo and stops 2 and 1 cells short on
+x-hi/y-hi, so the rule acts up to the absorber boundary, not inside it. (ii) The H4-based
+inference does not carry: H4 restores the *raster* but it also restores the *edge set* (it
+removes exactly the 500 overhang edges), so it could never have isolated one from the other.
+H4 is consistent with the overhang ring; it is not evidence for it. The 500-edge comparison is.
+
+### A transient this lane could not have seen
+
+At `a3e4dba4` itself the preflight still describes the **pre-#931** board — *"node-to-node
+983.8 µm"*, *"sum(d/eps) mesh 291.1 µm"* — while the solver realizes 787.00 µm and steps it
+(that commit is bit-identical to main). The preflight caught up later in the #931 stack; on main
+the same finding reads *"walls at 3.935 mm and 4.132 mm"*. This lane ran the bisect with
+`--no-raster`, so the window where the advisory and the solver disagreed was invisible to it —
+found by the reviewer, recorded here because a preflight that describes a different board than
+the one being stepped is exactly the class this repo treats as unreviewable.
 
 ### What this makes #801
 
-Not a CPML-parameterisation ticket, and not #1043. The growth was a property of the pre-#931
-PEC edge rule on a board whose conductors reach the absorber, and #931 stage A ended it — as a
-side effect of a contract change made for other reasons, with no test pinning the ring-down.
-The 8/12/16/24-layer ladder the issue proposed would not have found this: the layer count was
-never what moved.
+Not a CPML-parameterisation ticket, and not #1043. The growth needed **two** things together —
+the pre-#931 overhang ring **and** the thin absorber — and removing either one removes it.
+#931 stage A removed the first, as a side effect of a contract change made for other reasons,
+with no test pinning the ring-down.
+
+**Corrected after review:** "the layer count was never what moved" is true only of the
+*tree-to-tree* comparison. On the pre-#931 board the layer count did control it — 8 cells grows,
+16 settles, which is this issue's own table — so the 8/12/16/24-layer ladder would have mapped a
+real boundary; it just would not have identified the cause. And the ladder's negative result on
+main means **this fixture no longer excites the instability**, not that a 2n-cell absorber is
+proven safe. Measured here while building the gate: at **n = 2, +10h, `cpml_layers = 2n = 4`, the
+arm grows on main as well** (settling 0.00 dB, block-max envelope up 507× from its minimum),
+under the current edge rule. A thin absorber remains outside the supported envelope.
 
 ## A second, separate defect found on the way (not the growth)
 
@@ -304,6 +354,7 @@ closed on `a3e4dba4` with a documentation-only parent as its control.
 | the ULP falsifier | `pad_facet_rounding.py`, `.json` |
 | why #627a under-reaches | `pad_facet_why_627a_underreaches.py`, `.json` (filed as #1070) |
 | figure | `.../runs/patch-pad-cpml-ringdown-20260915T131410Z-834a43e7/ringdown_envelopes.png` (see below) |
+| edge-set comparison (the mechanism) | `edge_set_comparison.py`, `.json` |
 | ladder job | `scripts/vessl_patch_pad_cpml_ringdown_ladder.yaml`, VESSL 369367261205, arms in `gpu_369367261205/` |
 | restored-board job | `scripts/vessl_patch_pad_cpml_ringdown_sheet.yaml`, VESSL 369367261209, arms in `gpu_369367261209/` |
 | bisect job | `scripts/vessl_patch_pad_cpml_ringdown_bisect.yaml` + `patch_pad_cpml_ringdown_bisect_step.sh`, VESSL 369367261218, trace and landing diff in `gpu_369367261218/` |

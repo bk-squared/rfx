@@ -185,6 +185,12 @@ def raster(sim, geom):
     ks = np.flatnonzero(cond[ic, jc, :])
     k_patch = int(ks.max()); k_gnd = int(ks.min())
     ii = np.flatnonzero(cond[:, jc, k_patch]); jj = np.flatnonzero(cond[ic, :, k_patch])
+    # PER-COMPONENT spans as well as the union.  ``cond`` above is ``mex | mey`` on a sheet
+    # board, and a union hides a one-edge difference in either component: measured on this
+    # fixture, the sheet patch plane spans Ex 43 i and Ey 51 j while the union spans 44 x 52.
+    # The union check below is kept (it is the rig's own), and these are recorded beside it so
+    # "the raster matches" cannot be read as a per-component claim.
+    ex_i = np.flatnonzero(mex[:, jc, k_patch]); ey_j = np.flatnonzero(mey[ic, :, k_patch])
     walls = np.flatnonzero(mex[ic, jc, :] | mey[ic, jc, :])
     lo = walls[walls <= k_gnd + 1].max(); hi = walls[walls >= k_patch - 1].min()
     out = dict(k_patch=k_patch, k_gnd=k_gnd, i_lo=int(ii.min()), i_hi=int(ii.max()),
@@ -197,6 +203,8 @@ def raster(sim, geom):
                cavity_um=float((z[hi] - z[lo]) * 1e6), cavity_cells=int(hi - lo),
                eps_in_cavity=[float(eps[ic, jc, lo:hi].min()), float(eps[ic, jc, lo:hi].max())],
                sum_d_over_eps_um=float(np.sum(dx / eps[ic, jc, lo:hi]) * 1e6),
+               n_cells_x_ex_only=int(ex_i.size), n_cells_y_ey_only=int(ey_j.size),
+               raster_check_is_union_not_per_component=True,
                edge_mask_api=_edge_api)
     # #801-specific: what the SOLVED permittivity array holds in the lateral CPML pads.
     ncp = int(geom["cpml_layers"])
@@ -308,7 +316,14 @@ def envelope_report(ts, dt, decimate=64):
         y = bm[:, p]
         ok = y > 0
         rates.append(float(np.polyfit(tt[ok], np.log(y[ok]), 1)[0]) if ok.sum() > 2 else None)
-    dec = env[::decimate]
+    # Block MAXIMA, not env[::decimate].  Plain striding samples one step in every
+    # `decimate` of a signal oscillating at ~f0, so the stored trace aliases: whether a
+    # block's peak survives depends on where the stride lands in the cycle, and a growing
+    # envelope can be plotted as a flat or falling one.  Block maxima are what the growth
+    # rate is already fitted on, so the stored curve and the number now agree.
+    nb = env.shape[0] // decimate
+    dec = (env[:nb * decimate].reshape(nb, decimate, env.shape[1]).max(axis=1)
+           if nb else env.max(axis=0, keepdims=True))
     return dict(
         n_steps=int(nsteps), dt_s=float(dt),
         peak=[float(v) for v in peak], tail95=[float(v) for v in tail],
@@ -320,6 +335,7 @@ def envelope_report(ts, dt, decimate=64):
         nonfinite_first_step=(int(np.argmax(~finite_rows)) if not bool(finite_rows.all())
                               else None),
         envelope_decimate=decimate,
+        envelope_reduction="block maximum over `envelope_decimate` steps",
         envelope_trace=[[float(v) for v in row] for row in dec],
     )
 
