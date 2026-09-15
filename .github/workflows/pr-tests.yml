@@ -13,6 +13,14 @@ on:
     branches: [main]
   pull_request:
 
+# Superseded runs on the same PR/branch are cancelled: a force-push or a
+# stacked-leg rebase used to leave the previous run queued, and on a busy day
+# (2026-09-15: six branches × 21 jobs against the plan's concurrent-job limit)
+# that held every PR for an hour. Pushes to main are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -95,7 +103,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11"]
+        # 3.11 is the non-required duplicate lane. It runs on pushes to main
+        # (every merge is still exercised on both interpreters) but not on
+        # pull_request events, where it doubled a PR's job count (21 → 15)
+        # for a lane branch protection never reads. A branch that needs the
+        # 3.11 witness before merging can trigger it by pushing to main via
+        # the merge itself,.
+        python-version: ${{ github.event_name == 'push' && fromJSON('["3.10", "3.11"]') || fromJSON('["3.10"]') }}
         group: [1, 2, 3, 4, 5, 6]
     steps:
       - name: Check out repository
