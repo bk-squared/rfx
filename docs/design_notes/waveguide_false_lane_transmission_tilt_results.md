@@ -16,6 +16,13 @@ produced by `scripts/diagnostics/waveguide_false_lane_transmission_tilt.py`. Att
 `suspects.json` in the same directory is a record of a port that no longer exists; it is
 neither read nor overwritten.
 
+The artifact's `provenance.commit` reads `427fc97a`, which is this branch's PRE-REBASE
+second commit — the tree the FDTD stages actually ran on. The branch was later rebased onto
+`ac3010fd` to clear a `REQUIRED_SITES` conflict with PR #1080, so the field does not match
+the branch's current head. It is left as recorded rather than re-pointed: it names the tree
+that produced the numbers, which is what a provenance field is for, and `rfx/` is identical
+across that rebase.
+
 ## 0. Provenance and the reproduce-gate
 
 Section 1 reads the frozen artifact
@@ -85,7 +92,9 @@ frequency-dependent transfer factors of the measurement. With `q = Z_u·α_I/(Z_
 
 `extract_waveguide_s_matrix` divides `b_2` by `a_1`, and `_extract_port_waves` relabels a
 `-x` port so that BOTH are the same combination `(V + Z·I)/2` — the global `+x` wave
-(`rfx/sources/waveguide_port.py` L1656, L2111). The two ports of this thru carry the same
+(`rfx/sources/waveguide_port.py:1600-1601` forms them, `:1667-1669` relabels for a `-x`
+port, `:2227` takes `a_drive` and `:2239` divides by it; `:1106-1113` is the centred H
+average and `:1727-1728` the plane shift, which is a unit-modulus phase). The two ports of this thru carry the same
 `f_cutoff`, `dx`, `dt`, aperture and profiles, so `g` and `Γ` are the same at both, and
 with `F₂ = F₁e^{-jθ}`, `B₁ = B₂e^{-jθ}`, `θ = β·L` real:
 
@@ -93,16 +102,36 @@ with `F₂ = F₁e^{-jθ}`, `B₁ = B₂e^{-jθ}`, `θ = β·L` real:
     S11 = (Γ + w·u)/(1 + P·u)
 
 `g` cancels. Hence `| |S21|² − 1 | ≤ 4|P| ≤ 2(|Γ|² + |w|²)`, and since `w·u` turns more
-than a full cycle across this band (θ sweeps 8.98 → 16.39 rad), the band mean of
-`|S11|² = |Γ + w·u|²` is `|Γ|² + |w|²`. So
+than a full cycle across this band (θ sweeps 8.98 → 16.39 rad, 1.18 cycles), the band mean
+of `|S11|² = |Γ + w·u|²` is `|Γ|² + |w|²`. So
 
-**`max_bin | column power − 1 | ≤ ~2 · mean_bin |S11|²` for any complex `Γ` and any `w`.**
+**`max_bin | |S21|² − 1 | ≤ ~2 · mean_bin |S11|²` for any complex `Γ` and any `w`.**
 
-| rung | `2·mean\|S11\|²` (the bound) | measured `max\|colpow−1\|` | violation |
-|---|---|---|---|
-| coarse | 1.347e-3 | 6.135e-3 | **4.55×** |
-| mid | 1.869e-4 | 1.161e-3 | **6.21×** |
-| fine | 3.404e-5 | 2.724e-4 | **8.00×** |
+The bounded quantity is the TRANSMISSION term, not the column-power excess. An earlier
+draft of this table compared the bound against `max|colpow−1|`, which is `|S11|² + (|S21|²
+− 1)` and so is not what the algebra above governs; the pairing is corrected here (PR #1081
+review). The verdict does not change, but the fine rung's factor moves the most, and it
+moves UP: the largest `||S21|²−1|` there is at bin 0, −3.098e-4, bigger than that rung's
+largest `|colpow−1|` of 2.724e-4 because at bin 0 the reflection term partly cancels the
+transmission term.
+
+| rung | `2·mean\|S11\|²` (the bound) | measured `max\|\|S21\|²−1\|` | at bin | violation |
+|---|---|---|---|---|
+| coarse | 1.347e-3 | 5.454e-3 | 16 | **4.05×** |
+| mid | 1.869e-4 | 1.087e-3 | 16 | **5.81×** |
+| fine | 3.404e-5 | 3.098e-4 | 0 | **9.10×** |
+
+(The artifact's `read.per_rung.*.bound_violation_factor` still carries the old pairing,
+4.553 / 6.213 / 8.002 — it divides the bound into `max|colpow−1|`. It is left as measured
+rather than silently re-pointed; the numbers above are recomputed from the two artifact
+fields cited in section 7, `bound_2_mean_s11_mag2` and `s21_mag2_minus_1`.)
+
+**Finite-band slack.** The step `mean_bin |Γ + w·u|² = |Γ|² + |w|²` drops a cross term
+`2·Re(Γ·w̄·ū)`, which vanishes only if `e^{jθ}` averages to zero over the band. Across 17
+bins it does not quite: `|mean_bin e^{jθ}|` = 0.178 / 0.176 / 0.175, so the cross term can
+move the bound by at most **~17.8 %** of itself. Even inflated by that, the bound is
+1.587e-3 / 2.201e-4 / 4.010e-5 and the violations are 3.44× / 4.94× / 7.72×. The verdict does
+not depend on the slack.
 
 Violated at every rung, and the violation **grows** as the mesh refines. That disposes of
 four pre-declared candidates in one step, because each of them is only a recipe for `Γ`:
@@ -126,8 +155,11 @@ four pre-declared candidates in one step, because each of them is only a recipe 
   whose measured band-mean `|S11|` is 0.024.
 
 **D (`a₁` nominal rather than measured)** was excluded before any arithmetic, by code
-reading: `extract_waveguide_s_matrix` (L2111) sets
-`a_drive = extract_waveguide_port_waves(final_cfgs[drive_idx])`, which decomposes
+reading: `extract_waveguide_s_matrix` sets
+`a_drive = extract_waveguide_port_waves(final_cfgs[drive_idx])` at
+`rfx/sources/waveguide_port.py:2227` and divides by it at `:2239`
+(`col_slices.append(b_recv / safe_a)`) — the two lines that do the work, rather than the
+`def` at L2111. It decomposes
 `cfg.v_ref_t` / `cfg.i_ref_t` — port 1's own recorded modal V and I. The pre-declaration
 said this would also be confirmed numerically; the exclusion turned out to be structural
 and a grep settles it more completely than a number would. `v_inc_t` is read in exactly
@@ -158,10 +190,26 @@ at bin 16 (11.6 GHz, the worst bin):
 | receiving probe | 83.82 | 71.12 | −4.196e-5 | −1.228e-5 | −4.590e-6 |
 | receiving reference | 101.60 | 88.90 | 0 (reference) | 0 | 0 |
 
-The three planes at 25 mm and beyond agree with each other to 1e-4 relative or better. The
-plane at 7.62 mm from the driven source is off by the size of the whole excess, with the
-sign that makes `a₁` too small and therefore `|S21| = |b₂/a₁|` too large. Its ladder —
-5.070e-3 / 1.073e-3 / 2.454e-4, ratios 4.7 and 4.4 — is the tilt's ladder.
+The three planes at 25 mm and beyond stay within **8.2e-4** of each other (coarse; 1.7e-4
+mid, 3.9e-5 fine) — an order below the driven plane's 5.1e-3, not the 1e-4 an earlier draft
+claimed, which the table above already contradicted (PR #1081 review). The plane at 7.62 mm
+from the driven source carries most of the excess, with the sign that makes `a₁` too small
+and therefore `|S21| = |b₂/a₁|` too large.
+
+**How much of it, stated rather than implied.** At bin 16 the driven plane's offset is
+**82.6 % / 92.4 % / 96.9 %** of that rung's column-power excess. Per bin at the coarse rung
+the ratio `−drive_ref/(colpow−1)` is not flat — it runs
+
+```
+2.08 2.43 2.46 2.44 2.07 1.63 1.37 1.20 1.12 1.24 0.34 0.68 0.73 0.75 0.77 0.79 0.83
+```
+
+so at the bottom of the band the driven plane's offset is about **2.4×** the excess (the
+two disagree in how much each carries, and the reflection term makes up the difference),
+it passes through 0.34 at bin 10 where the excess crosses zero and the ratio is a
+division by a near-zero, and it settles near 0.8 at the top. Quoting the bin-16 share
+alone would hide that. The driven plane's ladder — 5.070e-3 / 1.073e-3 / 2.454e-4, ratios
+4.7 and 4.4 — is still the tilt's ladder.
 
 Two controls make this a statement about the **active source** and not about geometry:
 
@@ -171,11 +219,20 @@ Two controls make this a statement about the **active source** and not about geo
   17.78 mm away, to 4e-5 — the same hop over which the driven port's pair disagrees by
   5.9e-3. A plane 7.62 mm from an INACTIVE port plane is clean; the same distance
   from an ACTIVE one is off by 5e-3.
-* **The decay length is physical, the amplitude is numerical.** Over the first hop
-  (7.62 → 25.40 mm) the offset falls by **6.15× / 6.25× / 6.30×** — the same factor at all
-  three rungs to 2.5 % — while its amplitude falls 4.7× and 4.4× per dx halving. That is
-  the signature of a non-propagating near field whose decay length is set by the guide and
-  whose amplitude is set by the discretization.
+* **The first hop is mesh-independent; the amplitude is not.** Over the first hop
+  (7.62 → 25.40 mm) the offset falls by **6.15× / 6.25× / 6.29×** — the same factor at all
+  three rungs to 2.5 % — while its amplitude falls 4.7× and 4.4× per dx halving. So the
+  falloff over that hop is a property of the geometry and the amplitude is a property of
+  the mesh.
+
+  **This is NOT a measured decay length, and the earlier draft's "decay length is set by
+  the guide" is withdrawn** (PR #1081 review). Three planes cannot support it and in fact
+  contradict it: the offsets ALTERNATE in sign (−5.07e-3, +8.25e-4, −4.20e-5 at the coarse
+  rung), which is interference, not monotone decay; and the two hops give different rates —
+  0.102 /mm on hop 1 at every rung, but 0.065 / 0.058 / 0.047 /mm on hop 2, a 28 % drift
+  across the ladder where a fixed physical decay length would give none. Whether the
+  contaminating content decays exponentially at all is unmeasured here. The defensible
+  statement is the one above: mesh-independent first-hop ratio, mesh-dependent amplitude.
 
 Reading the same recorded fields at the probe planes instead of the reference planes
 (45.72 mm of guide between them instead of 81.28 mm; on a lossless empty guide `|S21|` is
@@ -191,13 +248,23 @@ The excess falls 4.0× / 4.8× / 5.9× while the reflection moves by under 5 %.
 
 **What this does and does not establish.** It establishes, from measurement, that the
 excess is carried by the incident-wave measurement at the driven port's own reference
-plane, that the contaminating content decays over a mesh-independent physical length, and
-that its amplitude is second order in dx. It does **not** establish what that content is.
+plane, that the offset there falls by a mesh-independent factor over the first hop, and
+that its amplitude is second order in dx. It does **not** establish what that content is,
+nor that it decays exponentially at all — the sign alternation and the two inconsistent
+hop rates are in the bullet above.
 Nothing here instruments the transverse composition of the field at that plane, so no mode
-is named. Section 4 tested the one candidate the code reading offered for it, and refuted
-it.
+is named. Section 4 tested the one candidate the code reading offered for it — a post-hoc one,
+labelled as such there — and refuted it.
 
-## 4. Falsifier (pre-declaration section 5) — refuted
+## 4. A post-hoc candidate and its run — refuted
+
+**Labelled post-hoc, deliberately.** The candidate this section tests — that the TFSF
+pair injects mismatched E and H TRANSVERSE profiles — is not one of A-G. It was reached
+for after section 3's plane measurement, i.e. after the numbers. It is therefore not
+the pre-declaration's section-5 falsifier, and an earlier draft that titled it that way
+claimed a discipline this run did not have (PR #1081 review). What the run below is:
+one post-hoc hypothesis, given a prediction in advance of its own execution, and
+refuted by it. Only one such run was made, and no second correction followed it.
 
 The code reading offered one concrete source of a non-modal launch. The TFSF pair injects
 its E-side correction with the transverse shape of `cfg.hy_profile` and its H-side with
@@ -269,6 +336,27 @@ would otherwise be the obvious suspect, and because this is a different mechanis
 #894's record-length class rather than another instance of it.
 
 ## 6. Verdict and envelope
+
+**Two deviations from the pre-declaration, recorded before the verdict.**
+
+1. *The section-4 run is post-hoc.* The pre-declaration's section 5 authorises a
+   falsifier only on branch (i), for a candidate that closed. Nothing closed, so no
+   section-5 falsifier was owed or run. The `h_offset` run tests a candidate outside
+   A-G that was reached for after section 3's measurement. It is reported as a
+   post-hoc hypothesis with a prediction fixed before its own execution — which is
+   weaker than the pre-declared article, and is labelled so in section 4.
+2. *Branch (iii)'s prescribed outputs were not produced as prescribed.* Branch (iii)
+   asks for the inverted `Γ` and `w` of section 3-E and the residual ladder of
+   section 3-G. Neither is in this note or the artifact. The section-2 bound replaced
+   them, for a reason that only became visible once the inversion was attempted: with
+   `θ` known, (†) has two complex unknowns and two complex measurements per bin, so it
+   is EXACTLY determined and reproduces any `S11`, `S21` pair to machine precision. An
+   inversion that always fits is not a test, and a ladder built from it would state a
+   fitted parameter as a measurement. The bound is the falsifiable statement the same
+   algebra supports, and it is what section 2 reports. Section 3-G's residual ladder
+   was superseded outright: `G` is refuted by reciprocity, so there is no per-port
+   gain residual to tabulate. The pre-declaration is left unedited; this paragraph is
+   the record of the divergence.
 
 **Branch (iii): DOES NOT CLOSE.** Candidates A, C and D are excluded by derivation and
 code reading; B and E by the section-2 bound; G by reciprocity; F by the record-length run;
@@ -371,3 +459,11 @@ moves without the note moving reds this gate.
 `tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::record.coarse__np40.settling_db[0] = -84.8904`,
 `tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::record.coarse__np160.settling_db[0] = -108.112`.
 
+**The corrected bound pairing and the driven-plane shares (sections 2 and 3, added in the PR #1081 review).**
+
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.s21_mag2_minus_1[16] = 0.00545432`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.mid.s21_mag2_minus_1[16] = 0.00108650`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.fine.s21_mag2_minus_1[0] = -0.000309791`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.coarse.remeasured_column_power_minus_1_col0[16] = 0.00613463`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.mid.remeasured_column_power_minus_1_col0[16] = 0.00116134`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.fine.remeasured_column_power_minus_1_col0[16] = 0.000253081`.

@@ -439,13 +439,17 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # bend arms' actual extents).
     (CV01_CPML_NOTE, "Numeric provenance, after #1057"): 40,
     # 2026-09-16 (#873 attempt 2): the transmission-tilt note's verdict rests on
-    # five groups of measured numbers -- the observable and its ladder, the bound
+    # six groups of measured numbers -- the observable and its ladder, the bound
     # that retires four candidates, the four-plane measurement that locates the
-    # error, the profile mismatch and its falsifier, and the record-length run.
-    # The floor is the reproduced count (45), not a round number: a rewrite that
-    # drops citations would leave a DOES-NOT-CLOSE verdict with nothing behind it,
-    # and a negative result is exactly the kind whose numbers nobody re-derives.
-    (TILT_RESULTS, "7. Numeric provenance"): 45,
+    # error, the profile mismatch and the post-hoc run against it, the
+    # record-length run, and the PR #1081 review's corrected bound pairing. The
+    # floor is the reproduced count (51, raised from 45 by that review, which
+    # found the bound compared against the wrong quantity and required the
+    # replacement numbers to be artifact-backed too). Not a round number: a
+    # rewrite that drops citations would leave a DOES-NOT-CLOSE verdict with
+    # nothing behind it, and a negative result is exactly the kind whose numbers
+    # nobody re-derives.
+    (TILT_RESULTS, "7. Numeric provenance"): 51,
     (MANIFEST, "11_waveguide_port_wr90"): 4,
     (MANIFEST, "15_patch_antenna_rt5880"): 3,
     (MANIFEST, "17_dielectric_sphere_mie"): 2,
