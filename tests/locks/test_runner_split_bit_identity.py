@@ -841,6 +841,12 @@ _SHARED_HELPER_BINDINGS = (
     ("split_array_x", "rfx.runners.distributed", "split_array_x"),
     ("gather_array_x", "rfx.runners.distributed", "gather_array_x"),
     ("gather_array_x", "rfx.runners.distributed_v2", "gather_array_x"),
+    # #1038 leg 2 (b) -- the final-state gather. The two copies differed in the
+    # trim bound (``sharded_grid.nx`` in the NU runner, the enclosing ``nx`` in
+    # v2) and in the assert message; the bound is now an explicit argument each
+    # caller supplies, so neither call site's expression moved.
+    ("unstack_and_gather", "rfx.runners.distributed_nu", "unstack_and_gather"),
+    ("unstack_and_gather", "rfx.runners.distributed_v2", "unstack_and_gather"),
 )
 
 

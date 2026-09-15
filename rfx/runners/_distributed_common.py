@@ -36,6 +36,7 @@ __all__ = [
     "cpml_coeff_h_vacuum",
     "split_array_x",
     "gather_array_x",
+    "unstack_and_gather",
     "zeros_psi_stacked",
     "exchange_component_shmap",
     "shard_stacked",
@@ -133,6 +134,53 @@ def gather_array_x(slabs, ghost=1):
     ny = inner.shape[2]
     nz = inner.shape[3]
     return inner.reshape(n_devices * nx_per, ny, nz)
+
+
+def unstack_and_gather(sharded_arr, n_devices, nx_local, ghost, pad_x, nx):
+    """Flatten a sharded x-slab array back to one full-domain array.
+
+    The shard_map runners hold fields as ``(n_devices * nx_local, ny, nz)``
+    -- rank slabs concatenated along x, each still carrying its ghost cells.
+    This reshapes that into ``(n_devices, nx_local, ny, nz)``, hands it to
+    :func:`gather_array_x` (which strips the ghosts and merges the rank and x
+    axes), and trims the high-x PEC padding cells that were added to make
+    ``nx`` divisible by ``n_devices``.
+
+    Parameters
+    ----------
+    sharded_arr : jax array, shape ``(n_devices * nx_local, ny, nz)``
+    n_devices, nx_local, ghost, pad_x : int
+        The slab decomposition the array was built with.
+    nx : int
+        Trim bound: the UNPADDED global x cell count. ``distributed_v2``
+        passes its local ``nx`` (``grid.shape[0]``); ``distributed_nu``
+        passes ``sharded_grid.nx``. Those are the same quantity -- both
+        equal ``n_devices * (nx_local - 2 * ghost) - pad_x``, i.e. the
+        gathered length less the padding -- which is why the two runners'
+        copies of this body could merge; see the #1038 leg 2b commit
+        message for the binding-by-binding derivation. It stays an explicit
+        parameter rather than being recomputed here so that neither caller's
+        expression changes.
+
+    Must remain pure JAX: callers wrap the runners in ``jax.grad`` to drive
+    an objective from the gathered ``final_state``, and an earlier
+    ``np.array(sharded_arr)`` host-pull here raised
+    ``TracerArrayConversionError``. Guarded by
+    tests/unit/runners/test_distributed_v2_gather_traceable.py.
+    """
+    total_x = sharded_arr.shape[0]
+    assert total_x == n_devices * nx_local, (
+        f"unstack: total_x={total_x} != n_devices*nx_local={n_devices * nx_local}"
+    )
+    stacked = jnp.reshape(
+        sharded_arr,
+        (n_devices, nx_local) + tuple(sharded_arr.shape[1:]),
+    )
+    gathered = gather_array_x(stacked, ghost)
+    # Trim padding cells if nx was padded
+    if pad_x > 0:
+        gathered = gathered[:nx]
+    return gathered
 
 
 # ---------------------------------------------------------------------------

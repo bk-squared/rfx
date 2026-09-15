@@ -73,6 +73,7 @@ from rfx.runners._distributed_common import (
     sample_probes_shmap,
     shard_stacked,
     shard_stacked_psi,
+    unstack_and_gather,
 )
 
 
@@ -1402,18 +1403,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # in ``jax.grad`` to drive an objective from the gathered
         # ``final_state``. Pure JAX reshape + ``gather_array_x`` (already
         # JAX-friendly) keeps the gather in the trace. Mirrors the
-        # already-correct ``distributed_nu.py::_unstack_and_gather``.
-        total_x = sharded_arr.shape[0]
-        assert total_x == n_devices * nx_local
-        stacked = jnp.reshape(
-            sharded_arr,
-            (n_devices, nx_local) + tuple(sharded_arr.shape[1:]),
+        # already-correct ``distributed_nu.py::_unstack_and_gather`` -- as of
+        # #1038 leg 2b it IS that function, shared.
+        return unstack_and_gather(
+            sharded_arr, n_devices, nx_local, ghost, pad_x, nx,
         )
-        gathered = gather_array_x(stacked, ghost)
-        # Trim padding cells if nx was padded
-        if pad_x > 0:
-            gathered = gathered[:nx]
-        return gathered
 
     final_state = FDTDState(
         ex=_unstack_and_gather(final_state_sharded.ex),
