@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from functools import partial
 
+import jax
 import jax.numpy as jnp
 from jax import lax
 from jax.experimental.shard_map import shard_map
@@ -34,6 +35,9 @@ __all__ = [
     "cpml_coeff_e_vacuum",
     "cpml_coeff_h_vacuum",
     "exchange_component_shmap",
+    "shard_stacked",
+    "shard_stacked_poles",
+    "shard_stacked_psi",
 ]
 
 
@@ -133,3 +137,76 @@ def exchange_component_shmap(field, mesh, n_devices):
         return f
 
     return _exchange(field)
+
+
+# ---------------------------------------------------------------------------
+# Device-axis merge + x-slab sharding (host side, eager)
+# ---------------------------------------------------------------------------
+#
+# These three take an array whose leading axis is the DEVICE axis, fold that
+# axis into the next one, and ``jax.device_put`` the result onto an
+# x-sharding.  They run at setup time, outside any ``jit``/``shard_map``
+# trace, so lifting them out of their enclosing closures cannot change a
+# jaxpr -- the only thing that moved into the signature is ``shd``, a
+# ``NamedSharding`` the caller already had in hand (#1038 leg 1).
+#
+# The bodies are the pre-move bodies verbatim.  They are three FUNCTIONS and
+# not one, on purpose: ``shard_stacked``'s generic ``*rest`` form would
+# numerically subsume the other two, but that would be an algebra change on a
+# leg whose whole contract is byte-identical motion.  Merging them is a later
+# decision with its own evidence, not a side effect of de-duplication.
+
+
+def shard_stacked(arr, shd):
+    """Merge the device axis into x, then shard.
+
+    ``(n_devices, nx_local, ny, nz) -> (n_devices*nx_local, ny, nz)``.
+
+    Extracted verbatim from four byte-identical copies that carried two
+    different names: ``distributed_nu.py::shard_debye_coeffs_x_slab._shard_3d``,
+    ``distributed_nu.py::shard_lorentz_coeffs_x_slab._shard_3d``,
+    ``distributed_nu.py::run_nonuniform_distributed_pec._shard_stacked`` and
+    ``distributed_v2.py::run_distributed._shard_stacked``.  All four bodies
+    hashed ``ab71430ea8cb``.
+    """
+    n_dev = arr.shape[0]
+    rest = arr.shape[1:]
+    return jax.device_put(arr.reshape(n_dev * rest[0], *rest[1:]), shd)
+
+
+def shard_stacked_poles(arr, shd):
+    """Merge the device axis into the pole axis, then shard.
+
+    ``(n_devices, n_poles, nx_local, ny, nz) ->``
+    ``(n_devices*n_poles, nx_local, ny, nz)``, so ``P("x")`` hands each
+    device ``(n_poles, nx_local, ny, nz)``.
+
+    Extracted verbatim from the four ``_shard_4d`` copies in
+    ``distributed_nu.py`` (``shard_debye_coeffs_x_slab``,
+    ``shard_debye_state_x_slab``, ``shard_lorentz_coeffs_x_slab``,
+    ``shard_lorentz_state_x_slab``), body ``2883a7c93bd2`` on all four.
+
+    NOT the same text as ``distributed_v2.py::_shard_stacked_5d``, which
+    computes the same thing through a named intermediate; that copy is
+    outside this leg's byte-identical set and is deliberately left alone.
+    """
+    n_dev, n_poles, nx_loc, ny_a, nz_a = arr.shape
+    return jax.device_put(
+        arr.reshape(n_dev * n_poles, nx_loc, ny_a, nz_a), shd,
+    )
+
+
+def shard_stacked_psi(arr, shd):
+    """Merge the device axis into the CPML-depth axis, then shard.
+
+    ``arr``: ``(n_devices, n_cpml, d1, d2)`` -- re-interpreted as
+    ``(n_devices * n_cpml, d1, d2)`` so x-sharding distributes the first
+    axis across devices correctly.  Each device owns ``n_cpml`` rows.
+
+    Extracted verbatim from ``distributed_nu.py::shard_cpml_state_x_slab.
+    _shard_psi`` and ``distributed_v2.py::_init_cpml_sharded._shard_psi``,
+    body ``6ae90bb58fb5`` on both (the copies differed only in comments).
+    """
+    n_dev, n_c, d1, d2 = arr.shape
+    merged = arr.reshape(n_dev * n_c, d1, d2)
+    return jax.device_put(merged, shd)

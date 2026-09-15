@@ -802,6 +802,16 @@ _SHARED_HELPER_BINDINGS = (
      "_exchange_component_shmap"),
     ("exchange_component_shmap", "rfx.runners.distributed_nu",
      "_exchange_component_nu_shmap"),
+    # #1038 leg 1 -- the x-slab sharding helpers. These were NESTED closures
+    # over ``shd`` at every site, so the shared form takes ``shd`` explicitly
+    # and each site keeps a same-named forwarder; the module-level import is
+    # what this guard pins.
+    ("shard_stacked", "rfx.runners.distributed_nu", "shard_stacked"),
+    ("shard_stacked", "rfx.runners.distributed_v2", "shard_stacked"),
+    ("shard_stacked_poles", "rfx.runners.distributed_nu",
+     "shard_stacked_poles"),
+    ("shard_stacked_psi", "rfx.runners.distributed_nu", "shard_stacked_psi"),
+    ("shard_stacked_psi", "rfx.runners.distributed_v2", "shard_stacked_psi"),
 )
 
 

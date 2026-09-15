@@ -67,7 +67,11 @@ from rfx.runners.distributed import (
     _apply_cpml_e_distributed,
     _apply_cpml_h_distributed,
 )
-from rfx.runners._distributed_common import exchange_component_shmap
+from rfx.runners._distributed_common import (
+    exchange_component_shmap,
+    shard_stacked,
+    shard_stacked_psi,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -495,9 +499,7 @@ def _init_cpml_sharded(grid, nx_local, n_devices, mesh):
         # arr: (n_devices, n_cpml, d1, d2) — merge device+cpml dims then shard
         # Re-interpret as (n_devices * n_cpml, d1, d2) so x-sharding distributes
         # the first axis across devices correctly.  Each device owns n_cpml rows.
-        n_dev, n_c, d1, d2 = arr.shape
-        merged = arr.reshape(n_dev * n_c, d1, d2)
-        return jax.device_put(merged, shd)
+        return shard_stacked_psi(arr, shd)
 
     def _shard_psi_field(arr):
         # arr: (n_devices, n_cpml, d1, d2) same as above
@@ -902,9 +904,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
 
     def _shard_stacked(arr):
         """Merge device axis into x, then shard."""
-        n_dev = arr.shape[0]
-        rest = arr.shape[1:]
-        return jax.device_put(arr.reshape(n_dev * rest[0], *rest[1:]), shd)
+        return shard_stacked(arr, shd)
 
     def _shard_stacked_5d(arr):
         """(n_devices, n_poles, nx_local, ny, nz) -> shard along device dim.

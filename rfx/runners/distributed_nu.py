@@ -50,6 +50,9 @@ from rfx.runners._distributed_common import (
     cpml_coeff_e_vacuum,
     cpml_coeff_h_vacuum,
     exchange_component_shmap,
+    shard_stacked,
+    shard_stacked_poles,
+    shard_stacked_psi,
 )
 
 
@@ -1093,9 +1096,7 @@ def shard_cpml_state_x_slab(cpml_state_stacked, sharded_grid: ShardedNUGrid,
     shd = NamedSharding(mesh, _P("x"))
 
     def _shard_psi(arr):
-        n_dev, n_c, d1, d2 = arr.shape
-        merged = arr.reshape(n_dev * n_c, d1, d2)
-        return jax.device_put(merged, shd)
+        return shard_stacked_psi(arr, shd)
 
     return CPMLState(
         psi_ex_ylo=_shard_psi(cpml_state_stacked.psi_ex_ylo),
@@ -1200,17 +1201,12 @@ def shard_debye_coeffs_x_slab(debye_coeffs, sharded_grid: ShardedNUGrid,
 
     def _shard_3d(arr):
         # (n_devices, nx_local, ny, nz) -> (n_devices*nx_local, ny, nz)
-        n_dev = arr.shape[0]
-        rest = arr.shape[1:]
-        return jax.device_put(arr.reshape(n_dev * rest[0], *rest[1:]), shd)
+        return shard_stacked(arr, shd)
 
     def _shard_4d(arr):
         # (n_devices, n_poles, nx_local, ny, nz) ->
         # (n_devices*n_poles, nx_local, ny, nz)
-        n_dev, n_poles, nx_loc, ny_a, nz_a = arr.shape
-        return jax.device_put(
-            arr.reshape(n_dev * n_poles, nx_loc, ny_a, nz_a), shd,
-        )
+        return shard_stacked_poles(arr, shd)
 
     return DebyeCoeffs(
         ca=_shard_3d(coeffs_slabs.ca),
@@ -1254,10 +1250,7 @@ def shard_debye_state_x_slab(debye_state, sharded_grid: ShardedNUGrid,
     shd = NamedSharding(mesh, _P("x"))
 
     def _shard_4d(arr):
-        n_dev, n_poles, nx_loc, ny_a, nz_a = arr.shape
-        return jax.device_put(
-            arr.reshape(n_dev * n_poles, nx_loc, ny_a, nz_a), shd,
-        )
+        return shard_stacked_poles(arr, shd)
 
     return DebyeState(
         px=_shard_4d(state_slabs.px),
@@ -1313,15 +1306,10 @@ def shard_lorentz_coeffs_x_slab(lorentz_coeffs, sharded_grid: ShardedNUGrid,
     shd = NamedSharding(mesh, _P("x"))
 
     def _shard_3d(arr):
-        n_dev = arr.shape[0]
-        rest = arr.shape[1:]
-        return jax.device_put(arr.reshape(n_dev * rest[0], *rest[1:]), shd)
+        return shard_stacked(arr, shd)
 
     def _shard_4d(arr):
-        n_dev, n_poles, nx_loc, ny_a, nz_a = arr.shape
-        return jax.device_put(
-            arr.reshape(n_dev * n_poles, nx_loc, ny_a, nz_a), shd,
-        )
+        return shard_stacked_poles(arr, shd)
 
     return LorentzCoeffs(
         ca=_shard_3d(coeffs_slabs.ca),
@@ -1370,10 +1358,7 @@ def shard_lorentz_state_x_slab(lorentz_state, sharded_grid: ShardedNUGrid,
     shd = NamedSharding(mesh, _P("x"))
 
     def _shard_4d(arr):
-        n_dev, n_poles, nx_loc, ny_a, nz_a = arr.shape
-        return jax.device_put(
-            arr.reshape(n_dev * n_poles, nx_loc, ny_a, nz_a), shd,
-        )
+        return shard_stacked_poles(arr, shd)
 
     return LorentzState(
         px=_shard_4d(state_slabs.px),
@@ -2252,9 +2237,7 @@ def run_nonuniform_distributed_pec(
     state_slabs = _split_state(full_state, n_devices, ghost)
 
     def _shard_stacked(arr):
-        n_dev = arr.shape[0]
-        rest = arr.shape[1:]
-        return jax.device_put(arr.reshape(n_dev * rest[0], *rest[1:]), shd)
+        return shard_stacked(arr, shd)
 
     sharded_state = FDTDState(
         ex=_shard_stacked(state_slabs.ex),
