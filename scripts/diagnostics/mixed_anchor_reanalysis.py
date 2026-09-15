@@ -549,7 +549,25 @@ def section3_flux(meas: dict, sec1: dict) -> dict:
     print("      the nearest open precedent for 'a constant in a port "
           "normalization', not a proven cause.")
     print()
-    print("  (E) CONSEQUENCE FOR THE PROPOSED WIDER-BOX RUN: it must NOT be "
+    print("  (E) DTYPE WITNESS (R5). Every surface above was recorded twice "
+          "by the driver, in the")
+    print("      lane default and in exact_f64. Max relative spread between "
+          "the two:")
+    for lbl, fl in (("lw ", lw), ("msl", ml)):
+        spread = {k: float(np.max(np.abs(g(fl, k, False) - g(fl, k))
+                                  / np.abs(g(fl, k))))
+                  for k in ("box_net", "plane_msl", "plane_px_2p56mm",
+                            "plane_mx_1p44mm")}
+        print("        %s  " % lbl + "  ".join("%s %.2e" % (k, v)
+                                               for k, v in spread.items()))
+    print("      The two large surfaces are tight to <= 5e-05. plane_mx on the "
+          "MSL drive spreads by")
+    print("      2.2e-02, but it carries only ~1% of the slab budget, so it "
+          "moves that budget by")
+    print("      ~0.02% — two orders below the 1.31% violation in (B). The "
+          "findings do not rest on it.")
+    print()
+    print("  (F) CONSEQUENCE FOR THE PROPOSED WIDER-BOX RUN: it must NOT be "
           "launched as designed.")
     print("      Net flux through a CLOSED surface in a source-free lossless "
           "region is invariant to")

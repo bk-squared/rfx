@@ -193,7 +193,15 @@
       ~1.3% box-vs-plane and a ~1.2% plane-vs-plane POYNTING inconsistency. #838 remains
       the nearest open precedent for 'a constant in a port normalization', not a proven cause.
 
-  (E) CONSEQUENCE FOR THE PROPOSED WIDER-BOX RUN: it must NOT be launched as designed.
+  (E) DTYPE WITNESS (R5). Every surface above was recorded twice by the driver, in the
+      lane default and in exact_f64. Max relative spread between the two:
+        lw   box_net 6.18e-08  plane_msl 2.34e-07  plane_px_2p56mm 2.79e-07  plane_mx_1p44mm 2.24e-06
+        msl  box_net 5.36e-08  plane_msl 4.55e-05  plane_px_2p56mm 4.50e-05  plane_mx_1p44mm 2.16e-02
+      The two large surfaces are tight to <= 5e-05. plane_mx on the MSL drive spreads by
+      2.2e-02, but it carries only ~1% of the slab budget, so it moves that budget by
+      ~0.02% — two orders below the 1.31% violation in (B). The findings do not rest on it.
+
+  (F) CONSEQUENCE FOR THE PROPOSED WIDER-BOX RUN: it must NOT be launched as designed.
       Net flux through a CLOSED surface in a source-free lossless region is invariant to
       widening it, which is exactly what a 2% two-box agreement gate asserts; and the
       under-capture mechanism has the wrong sign for both (A) and (D). A box run is
