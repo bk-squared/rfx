@@ -3,7 +3,7 @@
   [PREFLIGHT] dielectric 'wg' on y: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
   [PREFLIGHT] dielectric 'wg' on z: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
   [PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
-    mean_self = 0.987618 (47.9s)
+    mean_self = 0.987618 (48.3s)
 --- cpml_layers=10: aperture ---
   [PREFLIGHT] dielectric 'wg' on x: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
   [PREFLIGHT] dielectric 'wg' on y: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
@@ -11,14 +11,14 @@
   [PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
   [FLUX REGION] Flux monitor 'input', x plane requested 4e-06 m, realized 4e-06 m: y: requested [7e-06, 9e-06] m, realized [7e-06, 9e-06] m; z: requested [0, 1e-07] m, realized [0, 1e-07] m Interior cells; endpoint snapping is included in the reported bounds.
   [FLUX REGION] Flux monitor 'output', x plane requested 1.45e-05 m, realized 1.45e-05 m: y: requested [7e-06, 9e-06] m, realized [7e-06, 9e-06] m; z: requested [0, 1e-07] m, realized [0, 1e-07] m Interior cells; endpoint snapping is included in the reported bounds.
-    mean_self = 1.001047 (37.2s)
+    mean_self = 1.001047 (39.6s)
     outside-aperture fraction = +0.9443 %   grid=[181, 181, 1] readable=True
 --- cpml_layers=16: full ---
   [PREFLIGHT] dielectric 'wg' on x: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
   [PREFLIGHT] dielectric 'wg' on y: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
   [PREFLIGHT] dielectric 'wg' on z: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
   [PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
-    mean_self = 0.989020 (47.3s)
+    mean_self = 0.989020 (50.4s)
 --- cpml_layers=16: aperture ---
   [PREFLIGHT] dielectric 'wg' on x: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
   [PREFLIGHT] dielectric 'wg' on y: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
@@ -26,14 +26,14 @@
   [PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
   [FLUX REGION] Flux monitor 'input', x plane requested 4e-06 m, realized 4e-06 m: y: requested [7e-06, 9e-06] m, realized [7e-06, 9e-06] m; z: requested [0, 1e-07] m, realized [0, 1e-07] m Interior cells; endpoint snapping is included in the reported bounds.
   [FLUX REGION] Flux monitor 'output', x plane requested 1.45e-05 m, realized 1.45e-05 m: y: requested [7e-06, 9e-06] m, realized [7e-06, 9e-06] m; z: requested [0, 1e-07] m, realized [0, 1e-07] m Interior cells; endpoint snapping is included in the reported bounds.
-    mean_self = 1.000520 (38.7s)
+    mean_self = 1.000520 (41.2s)
     outside-aperture fraction = +0.9209 %   grid=[193, 193, 1] readable=True
 --- cpml_layers=20: full ---
   [PREFLIGHT] dielectric 'wg' on x: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
   [PREFLIGHT] dielectric 'wg' on y: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
   [PREFLIGHT] dielectric 'wg' on z: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
   [PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
-    mean_self = 0.989431 (52.6s)
+    mean_self = 0.989431 (49.0s)
 --- cpml_layers=20: aperture ---
   [PREFLIGHT] dielectric 'wg' on x: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
   [PREFLIGHT] dielectric 'wg' on y: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
@@ -41,14 +41,14 @@
   [PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
   [FLUX REGION] Flux monitor 'input', x plane requested 4e-06 m, realized 4e-06 m: y: requested [7e-06, 9e-06] m, realized [7e-06, 9e-06] m; z: requested [0, 1e-07] m, realized [0, 1e-07] m Interior cells; endpoint snapping is included in the reported bounds.
   [FLUX REGION] Flux monitor 'output', x plane requested 1.45e-05 m, realized 1.45e-05 m: y: requested [7e-06, 9e-06] m, realized [7e-06, 9e-06] m; z: requested [0, 1e-07] m, realized [0, 1e-07] m Interior cells; endpoint snapping is included in the reported bounds.
-    mean_self = 1.000446 (41.0s)
+    mean_self = 1.000446 (43.6s)
     outside-aperture fraction = +0.9223 %   grid=[201, 201, 1] readable=True
 --- cpml_layers=40: full ---
   [PREFLIGHT] dielectric 'wg' on x: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
   [PREFLIGHT] dielectric 'wg' on y: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
   [PREFLIGHT] dielectric 'wg' on z: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
   [PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
-    mean_self = 0.988931 (116.3s)
+    mean_self = 0.988931 (76.1s)
 --- cpml_layers=40: aperture ---
   [PREFLIGHT] dielectric 'wg' on x: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
   [PREFLIGHT] dielectric 'wg' on y: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
@@ -56,10 +56,10 @@
   [PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
   [FLUX REGION] Flux monitor 'input', x plane requested 4e-06 m, realized 4e-06 m: y: requested [7e-06, 9e-06] m, realized [7e-06, 9e-06] m; z: requested [0, 1e-07] m, realized [0, 1e-07] m Interior cells; endpoint snapping is included in the reported bounds.
   [FLUX REGION] Flux monitor 'output', x plane requested 1.45e-05 m, realized 1.45e-05 m: y: requested [7e-06, 9e-06] m, realized [7e-06, 9e-06] m; z: requested [0, 1e-07] m, realized [0, 1e-07] m Interior cells; endpoint snapping is included in the reported bounds.
-    mean_self = 1.000495 (72.3s)
+    mean_self = 1.000495 (66.5s)
     outside-aperture fraction = +0.9804 %   grid=[241, 241, 1] readable=True
 
-wrote /root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a125c1f0daf970e55/scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep_r2.json
+wrote /tmp/claude-0/-root-workspace-byungkwan-workspace-research-rfx/44efb5ea-44e2-4413-9da7-9514386aba06/scratchpad/fin_layer_sweep.json
 layers             grid   mean_self   outside %  readable
     10    [181, 181, 1]    0.987618     +0.9443  True
     16    [193, 193, 1]    0.989020     +0.9209  True

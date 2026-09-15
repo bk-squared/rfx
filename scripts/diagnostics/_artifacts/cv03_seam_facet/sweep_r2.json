@@ -4,17 +4,17 @@
   "predeclaration": "docs/design_notes/issue831_far_end_return_predeclaration.md",
   "runs_fdtd": true,
   "provenance": {
-    "commit": "541f703f3f1fc37194fb135d65c9df4d6e21a18a",
+    "commit": "55deac07c50400fbef901be17edb5c242e172b04",
     "branch": "fix/1043-pad-material-in-smoothed-arrays",
-    "dirty": true,
+    "dirty": false,
     "case_sha": "3a807f24f31fd314ccd978b89511d0a9346e51ec",
     "python": "3.10.12",
     "argv": [
-      "scripts/diagnostics/cv03_seam_facet/seam_facet.py",
+      "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a125c1f0daf970e55/scripts/diagnostics/cv03_seam_facet/seam_facet.py",
       "--stage",
       "sweep",
       "--output",
-      "/tmp/claude-0/-root-workspace-byungkwan-workspace-research-rfx/44efb5ea-44e2-4413-9da7-9514386aba06/scratchpad/1043B_cv03_sweep_after.json"
+      "/tmp/claude-0/-root-workspace-byungkwan-workspace-research-rfx/44efb5ea-44e2-4413-9da7-9514386aba06/scratchpad/fin_cv03_sweep.json"
     ]
   },
   "rfx_provenance_check": {
@@ -862,7 +862,7 @@
         "pad_extension_forced_off": false,
         "why": "Arm A: cv03 recipe, boundary=upml, absorber 20 cells",
         "exit_code": 2,
-        "wall_s": 22.9,
+        "wall_s": 20.8,
         "edits": [
           [
             "cpml_n = int(dpml * resolution)",
@@ -1787,7 +1787,7 @@
         "pad_extension_forced_off": false,
         "why": "Arm A: cv03 recipe, boundary=upml, absorber 40 cells",
         "exit_code": 2,
-        "wall_s": 22.9,
+        "wall_s": 23.3,
         "edits": [
           [
             "cpml_n = int(dpml * resolution)",
@@ -2792,7 +2792,7 @@
         "pad_extension_forced_off": false,
         "why": "Arm A: cv03 recipe, boundary=upml, absorber 60 cells",
         "exit_code": 2,
-        "wall_s": 22.1,
+        "wall_s": 23.8,
         "edits": [
           [
             "cpml_n = int(dpml * resolution)",
@@ -3637,7 +3637,7 @@
         "pad_extension_forced_off": false,
         "why": "Arm A: cv03 recipe, boundary=cpml, absorber 20 cells",
         "exit_code": 2,
-        "wall_s": 24.2,
+        "wall_s": 26.7,
         "edits": [
           [
             "cpml_n = int(dpml * resolution)",
@@ -4566,7 +4566,7 @@
         "pad_extension_forced_off": false,
         "why": "Arm A: cv03 recipe, boundary=cpml, absorber 40 cells",
         "exit_code": 2,
-        "wall_s": 29.9,
+        "wall_s": 30.6,
         "edits": [
           [
             "cpml_n = int(dpml * resolution)",
@@ -5575,7 +5575,7 @@
         "pad_extension_forced_off": false,
         "why": "Arm A: cv03 recipe, boundary=cpml, absorber 60 cells",
         "exit_code": 2,
-        "wall_s": 38.0,
+        "wall_s": 37.1,
         "edits": [
           [
             "cpml_n = int(dpml * resolution)",

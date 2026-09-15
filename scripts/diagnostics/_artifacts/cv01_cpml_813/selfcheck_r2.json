@@ -22,8 +22,9 @@
     "mean_self_smoothed_over_band": 0.9891610388008335
   },
   "provenance": {
-    "utc": "2026-09-15T06:57:44+00:00",
-    "commit": "dadb5ce709115a5f5a06a9df899c8c9da4fd2f5d",
+    "utc": "2026-09-15T08:42:14+00:00",
+    "commit": "55deac07c50400fbef901be17edb5c242e172b04",
+    "dirty": false,
     "rfx_version": "1.8.0",
     "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a125c1f0daf970e55/rfx/__init__.py",
     "jax_version": "0.6.2",
@@ -1318,7 +1319,7 @@
         },
         "dx_m": 1e-07
       },
-      "wall_s": 39.6
+      "wall_s": 40.0
     },
     "cpml_full": {
       "boundary": "cpml",
@@ -2605,7 +2606,7 @@
         },
         "dx_m": 1e-07
       },
-      "wall_s": 42.6
+      "wall_s": 44.5
     },
     "upml_interior": {
       "boundary": "upml",
@@ -4130,7 +4131,7 @@
         },
         "dx_m": 1e-07
       },
-      "wall_s": 34.1
+      "wall_s": 34.2
     },
     "cpml_interior": {
       "boundary": "cpml",
@@ -5655,7 +5656,7 @@
         },
         "dx_m": 1e-07
       },
-      "wall_s": 41.6
+      "wall_s": 42.7
     },
     "cpml_aperture": {
       "boundary": "cpml",
@@ -7180,7 +7181,7 @@
         },
         "dx_m": 1e-07
       },
-      "wall_s": 36.6
+      "wall_s": 34.3
     },
     "upml_aperture": {
       "boundary": "upml",
@@ -8705,7 +8706,7 @@
         },
         "dx_m": 1e-07
       },
-      "wall_s": 25.5
+      "wall_s": 21.6
     }
   },
   "control_reproduces_committed_run": {
