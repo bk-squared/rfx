@@ -136,7 +136,11 @@ lead-minus-tail difference. The fixture is eligible.
 h 1.6e-2..1.25e-1) and **1.989** (L2s, 5 points), FD inside its bar on both
 (3B/|g| 6.7e-4 and 7.5e-3). E6's "structurally unavailable" was the
 fixture's symmetry, not the gradient — moving the probe to the source side
-is all it took.
+is all it took. For the record: AD-Q's own judge, which keeps an upper R1
+edge at 2.2, would have FIRED L1 `x_c` on that upper side (R1 2.233 in a
+4-point window, the same class as AD-Q's `h_air`); the lane-2b rule
+dropped that edge before any arm ran (above), and the L2s window (5 points,
+R1 1.989) sits inside both rules.
 
 **Recorded FIRED, not a gradient signal**: `w` on L1 fires the lane order
 rule on the R0 bound alone — R0 = 0.899689 (fit standard error 0.0253)
