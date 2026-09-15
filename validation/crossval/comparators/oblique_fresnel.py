@@ -1426,12 +1426,42 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, spec: dict, dt: float, *, tail: dict, or
                                      dx=dx, dt=dt, ideal_absorber=True, pec=spec.get("pec", False), aux="plane")
         lat_cpml_only = yee_lattice_full(f, spec["ky"], cells, eps_slab=spec["eps_slab_rfx"], mu_slab=spec["mu_slab_rfx"],
                                          dx=dx, dt=dt, n_cpml=n_cpml, pec=spec.get("pec", False), aux="plane")
-        dRl = np.abs(R_rfx - lat["R"]); dTl = np.abs(T_rfx - lat["T"])
         # The term the section-3 budget does NOT model, per bin: the reference's
         # own dependence on the two absorbers this rig carries inside its record
         # (#1015).  It is a property of the REFERENCE -- no rfx number enters it.
         absorber_R = np.abs(lat["R"] - lat_ideal["R"])
         absorber_T = np.abs(lat["T"] - lat_ideal["T"])
+        # WHICH reference the witness is judged against, decided by ARRIVAL
+        # (#1015, standard section 14).  This is the SAME test section 3 (Z1)
+        # and section 13.3 already use to declare the family's absorber terms
+        # zero by construction, applied here to the arm's own record instead of
+        # assumed away.  Both inputs are GEOMETRY -- derive_record's CPML round
+        # trip and aux_echo_arrival_report's flight-minus-lead -- so no
+        # residual, window or breach count decides the reference.
+        #
+        # An arm whose two echoes are outside its record by arrival CANNOT have
+        # measured them, so judging it against a lattice that carries them
+        # manufactures a disagreement the record cannot contain.  Five of
+        # cv26's twelve witness entries are in that class (te_00, tm_00, te_30
+        # and both settle-60 rungs) and were being judged against the realized
+        # lattice; on those five the absorber-free reference takes GL1's
+        # all-bin breach count 302 -> 0, worst |dR|/W 3.06 -> 0.25, and moves
+        # no window by more than 0.008 %.  The arms that DO admit an echo by
+        # amplitude are untouched: the same swap makes every one of them
+        # markedly worse, which is why this is a reference defect and not a
+        # looser reference.
+        arrival_safe = False
+        aux_arrival_steps = None
+        if record is not None and "t_safe_cpml_steps" in record and "n_steps" in record:
+            _n_rec = int(record["n_steps"])
+            aux_arrival_steps = float(aux_echo_arrival_report(
+                spec, cells, dx=dx, dt=dt, n_steps=_n_rec)["arrival_steps"])
+            arrival_safe = LW.reference_is_absorber_free(
+                record["t_safe_cpml_steps"], aux_arrival_steps, _n_rec)
+        ref = lat_ideal if arrival_safe else lat
+        ref_alt = lat if arrival_safe else lat_ideal
+        dRl = np.abs(R_rfx - ref["R"]); dTl = np.abs(T_rfx - ref["T"])
+        dRl_alt = np.abs(R_rfx - ref_alt["R"]); dTl_alt = np.abs(T_rfx - ref_alt["T"])
         out["lattice"] = {
             "R_lattice": lat["R"].tolist(), "T_lattice": lat["T"].tolist(),
             "R_lattice_ideal_absorber": lat_ideal["R"].tolist(), "T_lattice_ideal_absorber": lat_ideal["T"].tolist(),
@@ -1444,6 +1474,34 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, spec: dict, dt: float, *, tail: dict, or
             "absorber_term_T_gated_max": float(absorber_T[g].max()),
             "cpml3d_term_R_gated_max": float(np.abs(lat_cpml_only["R"] - lat_ideal["R"])[g].max()),
             "aux_echo_term_R_gated_max": float(np.abs(lat["R"] - lat_cpml_only["R"])[g].max()),
+            # #1015 section 14: which reference the witness above is measured
+            # against, the geometry that chose it, and what the OTHER reference
+            # would have given -- so a reader never has to take the choice on
+            # trust.  ``R_lattice`` / ``T_lattice`` stay the REALIZED lattice on
+            # every arm, and so do ``W_lat_*`` (lattice vs Fresnel), which are a
+            # different reported quantity and do not move here.
+            "witness_reference": ("absorber_free_by_arrival" if arrival_safe else "realized_absorbers"),
+            "witness_reference_arrival_safe": bool(arrival_safe),
+            "witness_reference_inputs": {
+                "n_steps": (int(record["n_steps"]) if record is not None and "n_steps" in record else None),
+                "t_safe_cpml_steps": (record.get("t_safe_cpml_steps") if record is not None else None),
+                "aux_echo_arrival_steps": aux_arrival_steps,
+            },
+            "witness_reference_reason": (
+                "BOTH absorber echoes are outside this record by ARRIVAL "
+                "(t_safe_cpml_steps >= n_steps and the #892 aux-echo arrival > n_steps), which is "
+                "the standard's own section 3 (Z1) test, so the reference is the ABSORBER-FREE "
+                "lattice -- the slab family's construction -- and the unmodelled term is zero BY "
+                "ARRIVAL, not by amplitude. A record that cannot have measured an echo must not be "
+                "judged against a reference that carries one."
+                if arrival_safe else
+                "an absorber echo is INSIDE this record (t_safe_cpml_steps < n_steps or the #892 "
+                "aux-echo arrival <= n_steps, or no record was supplied), so the reference carries "
+                "the realized absorbers and the case must supply U(f): 'domain_R' / 'domain_T' "
+                "report where the section-3 window is a valid bound at all. This is cv26's "
+                "amplitude-capped regime and nothing about it changed in #1015 section 14."),
+            "mean_dR_lattice_gated_alt": float(dRl_alt[g].mean()),
+            "mean_dT_lattice_gated_alt": float(dTl_alt[g].mean()),
         }
         # The DERIVED bound on that witness (pre-declaration section 19). GL2, the
         # band mean, is the gate -- it is what the retired 3e-4 literal was also a
@@ -1452,8 +1510,7 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, spec: dict, dt: float, *, tail: dict, or
         # the scattered-amplitude error, and it is built from record truncation,
         # incident truncation and float32 only -- it does NOT model the absorber /
         # auxiliary-echo term an oblique rig carries inside its record and measures
-        # separately. Five of the seven primary arms breach it, and the two that do
-        # not are exactly the two whose absorber term sits far inside their window.
+        # separately -- ON THE ARMS THAT ACTUALLY CARRY IT INSIDE THEIR RECORD.
         # Carrying the exact second-order term was tried and FALSIFIED (58 -> 54 and
         # 110 -> 109 breaches), so the per-bin bound is reported as not established
         # here rather than quietly widened. An earlier revision blamed a reflection
@@ -1466,6 +1523,16 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, spec: dict, dt: float, *, tail: dict, or
         # the window was measured and REJECTED -- it flips tm_60's reported GL2_R
         # failure to a pass, still leaves 41 R breaches on that arm, and widens
         # graze_te's window 152x in R and 788x in T. No window here moved.
+        # THEN #1015 section 14 found that the premise did not hold on every arm.
+        # 'the absorber term an oblique rig carries inside its record' is a
+        # statement about te_45 / te_60 / tm_45 / tm_60 and the three compact
+        # boxes. te_00, tm_00, te_30 and both settle-60 rungs have BOTH echoes
+        # outside their records by ARRIVAL and were being judged against a lattice
+        # carrying absorbers they cannot have measured; that manufactured 302
+        # all-bin and 62 in-domain GL1 breaches, and selecting the reference by
+        # the arrival test above takes them to zero. What is left is 73 in-domain
+        # breaches on the four amplitude-capped oblique arms, which the paragraph
+        # above still describes correctly and for which no mechanism is proposed.
         # The budget needs SOME decay assumption for the truncation sum (the
         # standard names this as its one non-rigorous input). The two grazing
         # arms with no slab etalon have no ring-down rate at all -- graze_vac is
@@ -1481,7 +1548,12 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, spec: dict, dt: float, *, tail: dict, or
                     "to bound it. The arm is judged on its own G6 / G7 witness."),
             })
         elif inc_amp_rel is not None and record is not None:
-            lw = lattice_witness_windows(f, inc_amp_rel, lat["R"], lat["T"],
+            # the window closes like sqrt(R_lat) of the CHOSEN reference, so it is
+            # built from the same lattice the residual is measured against (#1015
+            # section 14).  On the arrival-safe arms that moves mean W_R by at most
+            # 0.008 % -- te_30 6.48049e-04 -> 6.48057e-04 (+0.0012 %) -- so the
+            # window is not what buys the breach count; the reference is.
+            lw = lattice_witness_windows(f, inc_amp_rel, ref["R"], ref["T"],
                                          dt=dt, n_steps=int(record["n_steps"]),
                                          tail=tail, record=record)
             wR, wT = lw["W_witness_R"], lw["W_witness_T"]
@@ -1501,26 +1573,42 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, spec: dict, dt: float, *, tail: dict, or
                 # how the breaches split across that line. The domain is the
                 # standard's own precondition (note section 13), evaluated with
                 # its primitive, not a second implementation of it.
-                "domain_R": LW.domain_report(wR, dRl, absorber_R, gated=g),
-                "domain_T": LW.domain_report(wT, dTl, absorber_T, gated=g),
+                # #1015 section 14: on an arrival-safe arm the reference is the
+                # absorber-free lattice, so U is zero BY ARRIVAL and the domain is
+                # every gated bin -- the same statement the slab family makes.  The
+                # absorber magnitude is still REPORTED through ``report_term`` so
+                # ``max_unmodelled_over_window_gated`` and
+                # ``mean_unmodelled_over_mean_window_gated`` do not silently vanish
+                # from those entries; there they measure what the chosen reference
+                # EXCLUDES, not what the window omits.
+                "domain_R": (LW.domain_report(wR, dRl, None, gated=g, report_term=absorber_R)
+                             if arrival_safe else LW.domain_report(wR, dRl, absorber_R, gated=g)),
+                "domain_T": (LW.domain_report(wT, dTl, None, gated=g, report_term=absorber_T)
+                             if arrival_safe else LW.domain_report(wT, dTl, absorber_T, gated=g)),
                 "GL1_gated": False,
                 "W_witness_defined": True,
                 "GL1_not_gated_reason": (
-                    "per-bin bound not established on this rig. The standard's section 3 window "
-                    "bounds record truncation, incident-reference truncation and float32, and "
-                    "declares the absorber echo ZERO BY CONSTRUCTION by putting it outside the "
-                    "record by ARRIVAL. This rig admits it inside the record by AMPLITUDE instead "
-                    "(e_absorber / absorber_ok), so that construction does not hold here and the "
-                    "reference carries an absorber of its own. Note section 13 (#1015) defines "
-                    "GL1's validity domain as the bins where that unmodelled term sits inside the "
-                    "window that omits it; 'domain_R' / 'domain_T' report the coverage and the "
-                    "in-domain / out-of-domain split of the breaches. The domain is NECESSARY, "
-                    "not sufficient -- 89.5 % of this case's breaches fall outside it and the rest "
-                    "do not -- so GL1 stays REPORTED here and GL2 is the gate (PI decision "
-                    "2026-09-14, close note section 10.4). The exact second-order term was tried "
-                    "and does not close it (58 -> 54, 110 -> 109). An earlier revision attributed "
-                    "the breaches to a reflection null; that reading is WITHDRAWN -- it fits tm_45 "
-                    "alone, while te_60 breaches at R_lattice 0.318-0.448."),
+                    "per-bin bound not established on this CASE, and after #1015 section 14 that "
+                    "sentence is about the four amplitude-capped oblique arms, not about every arm. "
+                    "The standard's section 3 window bounds record truncation, incident-reference "
+                    "truncation and float32, and declares the absorber echo ZERO BY CONSTRUCTION by "
+                    "putting it outside the record by ARRIVAL. Section 14 (#1015) applies that same "
+                    "arrival test PER ENTRY and picks the reference from it: see "
+                    "'witness_reference'. On an arrival-safe entry (te_00, tm_00, te_30 and both "
+                    "settle-60 rungs) the reference is the absorber-free lattice, the unmodelled "
+                    "term is zero BY ARRIVAL, the domain is the whole gated band and GL1 has zero "
+                    "breaches -- judging those against the realized lattice was a comparator "
+                    "defect and is what section 14 corrects (302 all-bin breaches -> 0). On an "
+                    "entry that admits an echo INSIDE the record by AMPLITUDE (te_45, te_60, "
+                    "tm_45, tm_60, graze_te; e_absorber / absorber_ok) the reference does carry an "
+                    "absorber of its own, section 13's validity domain applies unchanged, and 73 "
+                    "in-domain GL1 breaches remain across those arms with no mechanism proposed "
+                    "for them. GL1 therefore stays REPORTED and NOT GATED on this case and GL2 is "
+                    "the gate (PI decision 2026-09-14, close note section 10.4, unchanged). The "
+                    "exact second-order term was tried and does not close it (58 -> 54, "
+                    "110 -> 109). An earlier revision attributed the breaches to a reflection "
+                    "null; that reading is WITHDRAWN -- it fits tm_45 alone, while te_60 breaches "
+                    "at R_lattice 0.318-0.448."),
             })
     return out
 

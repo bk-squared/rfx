@@ -687,6 +687,17 @@ CLASSIFICATION: dict[str, str] = {
     # measured value at all; the measurements live in section 13 of the
     # lattice-witness standard, which IS gated.
     "docs/design_notes/20260914_lattice_witness_gl1_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-15 (#1015 section 14): `parses` is empty -- the note cites no
+    # `path.json::key` span at all, and its only `::`-free code spans are a
+    # python expression and a dotted module path. It DOES quote measured values,
+    # unlike the 2026-09-14 note above, and every one of them is reproduced with
+    # its key in section 14 of the lattice-witness standard, which IS gated, or
+    # in `validation/crossval/_26_oblique_results/lattice_witness_replay.json`.
+    # One number in it deliberately has no artifact to resolve against: the
+    # ~1.78e-09 drift between a fresh regeneration of that replay and the
+    # committed copy, which is a statement ABOUT the artifact's reproducibility
+    # and cannot be a key inside it.
+    "docs/design_notes/20260915_lattice_witness_reference_selection_predeclaration.md": NO_ARTIFACT_REFERENCE,
     # 2026-09-13 (#717 crossval lane decision): `parses` is empty -- the note
     # cites no artifact key at all. Its five `::` spans are pytest node ids
     # (`test_crossval_comprehensive.py::TestPECCavity::test_rfx_vs_analytical`

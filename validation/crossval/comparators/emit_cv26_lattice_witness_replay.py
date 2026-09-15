@@ -110,6 +110,15 @@ def replay_one(doc: dict, arm: str) -> dict:
         "aux_echo_term_R_gated_max": lat["aux_echo_term_R_gated_max"],
         "absorber_term_over_window_R": (lat["absorber_term_R_gated_max"]
                                         / lat["mean_W_witness_R_gated"]),
+        # #1015 section 14: WHICH lattice this entry's witness is judged against,
+        # the geometry that chose it, and what the other reference would have
+        # given. Carried so a reader can check the choice instead of trusting it.
+        "witness_reference": lat["witness_reference"],
+        "witness_reference_arrival_safe": lat["witness_reference_arrival_safe"],
+        "witness_reference_inputs": lat["witness_reference_inputs"],
+        "witness_reference_reason": lat["witness_reference_reason"],
+        "mean_dR_lattice_gated_alt": lat["mean_dR_lattice_gated_alt"],
+        "mean_dT_lattice_gated_alt": lat["mean_dT_lattice_gated_alt"],
         # #1015: where the window is a valid bound at all, and how the breaches
         # split across that line. Per bin, from the standard's own primitive.
         "domain_R": lat["domain_R"], "domain_T": lat["domain_T"],
@@ -129,6 +138,8 @@ def build() -> dict:
         e["source_record"] = f"validation/crossval/{O.RESULTS_DIRNAME}/{fname}"
         entries[key] = e
     judged = {k: v for k, v in entries.items() if v.get("W_witness_defined")}
+    ref_free = sorted(k for k, v in entries.items() if v.get("witness_reference_arrival_safe"))
+    ref_real = sorted(k for k in entries if k not in ref_free)
     gl2_fail = sorted(k for k, v in judged.items() if not (v["GL2_R"] and v["GL2_T"]))
     brch_in = sum(v[k]["n_bins_beyond_in_domain"] for v in judged.values()
                   for k in ("domain_R", "domain_T"))
@@ -155,6 +166,20 @@ def build() -> dict:
         "replay_commit": _commit(),
         "date_utc": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
         "arms": entries,
+        "gl1_reference_note": (
+            "#1015 section 14. WHICH lattice each entry's witness is judged against is decided by "
+            "ARRIVAL, the same test standard section 3 (Z1) uses: an entry whose 3-D CPML round "
+            "trip and whose #892 auxiliary-echo arrival are BOTH outside its record cannot have "
+            "measured either echo, so it is judged against the ABSORBER-FREE lattice -- the slab "
+            "family's own construction -- and its unmodelled term is zero BY ARRIVAL. cv26 was "
+            "judging all ten entries against the lattice WITH the realized absorbers; on the five "
+            "arrival-safe entries (te_00, tm_00, te_30, te_00__settle60, tm_00__settle60) that "
+            "manufactured 302 all-bin and 62 in-domain GL1 breaches against content the record "
+            "cannot contain, and correcting it takes them to zero with no window moved by more "
+            "than 0.008 %. The five amplitude-capped entries are UNCHANGED: the same swap makes "
+            "each of them markedly worse (mean|dR| 1.09x to 1.72x, and 321x / 472x on the compact "
+            "grazing boxes), which is the evidence that this is a reference defect and not a "
+            "looser reference. 'witness_reference' per entry, with both residuals beside it."),
         "gl1_domain_note": (
             "#1015. GL1's validity domain (standard section 13) is the bins where the term the "
             "section-3 budget does not model -- the reference's own dependence on the absorbers "
@@ -170,6 +195,8 @@ def build() -> dict:
             "gl1_gated": False,
             "gl1_breaches_in_domain": brch_in,
             "gl1_breaches_outside_domain": brch_out,
+            "witness_reference_absorber_free_by_arrival": ref_free,
+            "witness_reference_realized_absorbers": ref_real,
         },
     }
 
@@ -186,7 +213,8 @@ def main(argv=None) -> int:
         if not v.get("W_witness_defined"):
             print(f"  {k:18s} window UNDEFINED ({v['W_witness_undefined_reason'][:48]}...)")
             continue
-        print(f"  {k:18s} W_R {v['mean_W_witness_R_gated']:.4e} vs |dR| {v['mean_dR_lattice_gated']:.4e} "
+        print(f"  {k:18s} [{'abs-free' if v['witness_reference_arrival_safe'] else 'realized'}] "
+              f"W_R {v['mean_W_witness_R_gated']:.4e} vs |dR| {v['mean_dR_lattice_gated']:.4e} "
               f"GL2_R {str(v['GL2_R']):5s} GL1_R {v['GL1_R_bins_beyond']:4d}  "
               f"absorber/W {v['absorber_term_over_window_R']:6.2f}x  "
               f"domain {100 * v['domain_R']['domain_fraction']:5.1f}% "
@@ -196,6 +224,9 @@ def main(argv=None) -> int:
     print(f"  GL1 breaches (R+T) inside the validity domain "
           f"{doc['verdict']['gl1_breaches_in_domain']}, outside "
           f"{doc['verdict']['gl1_breaches_outside_domain']}")
+    print(f"  witness reference: absorber-free by arrival "
+          f"{doc['verdict']['witness_reference_absorber_free_by_arrival']}; realized absorbers "
+          f"{doc['verdict']['witness_reference_realized_absorbers']}")
     return 0
 
 
