@@ -104,6 +104,65 @@ the correct statement is *this fixture no longer excites the instability on main
 *the instability is fixed*. `main_cpml8` also clears the −40 dB bar by only 3.4 dB, 2.5 dB
 less margin than its own 16-layer sibling.
 
+## The lateral-pad ladder on main's board (H3, pre-declared in Addendum C)
+
+Because "settles on main" was a statement about a different board, the issue's own
+discriminator was re-run on main's board. VESSL 369367261205, 8 arms, rc 0, artifacts in
+`gpu_369367261205/`.
+
+| lateral pad | cpml 8 (= 2n) | cpml 16 |
+|---|---|---|
+| +6h | −45.26 | — |
+| +8h | −44.22 | — |
+| +10h | −43.37 | −45.83 (from 369367261204) |
+| +12h | −43.42 | — |
+| +14h | −43.37 | −46.00 |
+| +16h | **−42.95** | −44.97 |
+
+**Every arm settles.** Residual `max(−42.95 + 40, 0) = 0`, so the growth is **not
+reproducible on main's board** anywhere in +6h…+16h — past the +10h and +12h where the old
+board grew, and past the range this issue explored. The ladder's own falsifier held: +6h and
++8h were comfortably stable on the old board and are comfortably stable here.
+
+Margin does erode monotonically with clearance (−45.26 → −42.95 dB from +6h to +16h) and the
+whole family sits 6–8 dB shallower than the old board's stable arms (−50 … −51.6 dB), which
+is the shorter cavity, not the absorber.
+
+## The pre-#931 board restored on main (H4, pre-declared in Addendum D)
+
+If the board changing is what stopped the growth, restoring it should bring the growth back.
+`--sheet-conductors` declares the ground and the patch as zero-thickness Boxes — SHEETs, one
+node plane each with the normal E edge live — which is what the preflight now advises for foil
+and what these declarations realized before #931.
+
+**Reconstruction falsifier, run before any solve and again inside the GPU run: PASSED on every
+field.** Recorded fa3a99bd vs main `--sheet-conductors`: walls 3934.99992787838 / 4918.749909847975
+vs 3935.0 / 4918.75 µm; cavity 983.75 µm over 5 cells both; `k_gnd` 28, `k_patch` 33 both; patch
+raster 44 × 52 both; **`sum(d/eps)` 291.050286003532 µm on both, to all twelve printed digits.**
+(`n_pec_sheets = 2`, `has_cell_mask = False` — the conductor is read from tangential E edges.)
+
+VESSL 369367261209, 7 arms, rc 0, artifacts in `gpu_369367261209/`:
+
+| arm | cpml | settling dB | settled | recorded on the same board at fa3a99bd |
+|---|---|---|---|---|
+| n4 +6h | 8 | −57.28 | yes | −51.39 |
+| n4 +8h | 8 | −55.26 | yes | −50.09 |
+| **n4 +10h** | **8** | **−52.78** | **yes** | **0.00, +4.39e-4/step** |
+| n4 +12h | 8 | −54.25 | yes | −25.54, +1.75e-4/step |
+| n4 +10h | 16 | −56.87 | yes | −51.60 |
+| n4 +10h | 32 | −58.26 | yes | — |
+| **n3 +10h** | **6** | **−47.56** | **yes** | **0.00, +1.27e-3/step** |
+
+**H4 REFUTED**, residual `max(−47.56 + 40, 0) = 0`. Every arm settles, including the n = 3 arm
+that grew hardest of all on the old board. Restoring the board does **not** restore the growth.
+
+Addendum D declared what that reading means before it was taken: the reconstruction matched the
+raster field for field and the arm still settles, so the change responsible is **neither #931's
+board change nor #1047/#1057**, and the next step is a bisect rather than another mechanism
+hypothesis. Note also that every sheet-board arm is 4–6 dB deeper than its fa3a99bd twin
+(−57.28 vs −51.39 at +6h, where both are comfortably stable), so the dynamics differ across the
+whole family and not only at the arm that used to grow.
+
 ## A second, separate defect found on the way (not the growth)
 
 At +10h the entire +x absorber pad is solved as **vacuum** while the substrate continues
@@ -131,16 +190,43 @@ is exactly the invariance the rig was built to test.
 
 ## Verdict
 
-* **Same class as #1043? No.** Three witnesses: the lane cannot reach the defect, the
-  amplification model reads ρ = 1 for this arm's ε pair and is layer-count-flat when it
-  does fire, and the two trees are bit-identical.
-* **Does the arm still grow on main? No** — but for an unrelated reason (#931 changed the
-  board), so the mechanism is untested rather than shown absent. `PREDECLARATION.md`
-  Addendum C pre-declares the lateral-pad ladder on main's board to settle that.
-* **Rig/solver split.** Nothing here asks for a solver change. The vacuum-pad facet is a
-  solver-side surprise (grid sizing feeding the pad continuation) with a rig-side trigger
-  (a domain length that is not an exact multiple of `dx`); either side can own the fix and
-  it is a separate ticket.
+* **Same class as #1043? No.** Three witnesses: the lane cannot reach the defect; the
+  amplification model reads ρ = 1 for this arm's ε pair and is layer-count-flat when it does
+  fire; the two trees are bit-identical.
+* **Does the arm still grow on main? No** — and not at any lateral pad from +6h to +16h, and
+  not with the pre-#931 board restored, and not on the n = 3 arm that grew hardest.
+* **What removed it is still unidentified.** It is not #1047/#1057 (bit-identical) and not
+  #931's board change alone (restoring the board field-for-field does not restore the growth).
+  22 arms across three GPU jobs decay; the recorded arms grew. Something else in the 734
+  commits between `fa3a99bd` and `fc7f7202` is responsible.
+* **Rig/solver split.** Nothing here asks for a CPML change. The vacuum-pad facet is a
+  solver-side surprise (grid sizing feeding the pad continuation) with a rig-side trigger (a
+  domain length that is not an exact multiple of `dx`); either side can own it, as its own
+  ticket.
+
+## What to do next — a bisect, pre-sized
+
+The next step is localization, not another mechanism hypothesis, and Addendum D committed to
+that reading before the measurement was taken. It is cheap: `fa3a99bd..fc7f7202` is 734
+commits, so a `git bisect` is 10 steps, and an arm is 26 s of rtx4090 — about 10 minutes of GPU
+plus fetch overhead.
+
+* **Arm**: `--n 4 --pad 10 --periods 150` with the rig's own default absorber (`2n = 8`), the
+  board AS DECLARED (no `--sheet-conductors`) — the configuration that grew.
+* **Criterion**: `bad` (grows) iff `settling_db > -40 dB`; `good` iff it settles.
+* **Known endpoints**: `fa3a99bd` bad (0.00 dB), `fc7f7202` good (−43.37 dB).
+* **Portability note for whoever runs it**: `raster()` in this lane's driver spans the #931
+  rename (`tangential_edge_masks` → `realized_pec_edge_masks`) and the sheet-collector
+  signature change in `_assemble_materials`, but intermediate commits may break other
+  reporting calls. Add a `--no-raster` escape before starting rather than discovering it at
+  bisect step 6.
+
+Two candidate areas to look at first, from `git log fa3a99bd..fc7f7202 -- rfx/boundaries/
+rfx/simulation.py rfx/geometry/` (≈ 37 commits): the #931 lattice-ownership stack (a3e4dba4
+through f112f7bb — the board change is only one of its effects; it also rewrote how every lane
+realizes and applies PEC edges) and `a65c6626` *"never promote a pole-carrying column's statics
+into a hi-face pad"*, which is a CPML-pad materials change on the same face family this lane
+found the vacuum facet on.
 
 ## R2 accounting
 
@@ -148,8 +234,13 @@ is exactly the invariance the rig was built to test.
   `r_ref = max(|S_main − S_pre| − 1.0, 0) = 0` in its strongest form (bit-identical).
 * H2 (the vacuum pad facet is the growth) — attempt 1, **CLOSED REFUTED**, residual
   `r_H2 = max(0.07 − 3.0, 0) = 0`.
-* H3 (does the instability still exist on main's board at some clearance) — attempt 1 in
-  flight, pre-declared in Addendum C.
+* H3 (does it still exist on main's board at some clearance) — attempt 1, **CLOSED: not
+  reproducible**, residual `max(−42.95 + 40, 0) = 0`.
+* H4 (does restoring the pre-#931 board restore it) — attempt 1, **CLOSED REFUTED**, residual
+  `max(−47.56 + 40, 0) = 0`.
+
+Four hypotheses, four closures, no repeats. The next action is a bisect, which is localization
+under a criterion already fixed, not a fifth mechanism attempt.
 
 ## Artifacts
 
@@ -165,7 +256,8 @@ is exactly the invariance the rig was built to test.
 | pad material map | `pad_material_map.py`, `padmap_*.json` |
 | the ULP falsifier | `pad_facet_rounding.py`, `.json` |
 | figure | `.../runs/patch-pad-cpml-ringdown-20260915T131410Z-834a43e7/ringdown_envelopes.png` (see below) |
-| ladder job | `scripts/vessl_patch_pad_cpml_ringdown_ladder.yaml`, VESSL 369367261205 |
+| ladder job | `scripts/vessl_patch_pad_cpml_ringdown_ladder.yaml`, VESSL 369367261205, arms in `gpu_369367261205/` |
+| restored-board job | `scripts/vessl_patch_pad_cpml_ringdown_sheet.yaml`, VESSL 369367261209, arms in `gpu_369367261209/` |
 
 Raw probe series (`*_ts.npz`, 427 KB per arm) stay on NFS at
 `/root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-ringdown-20260915T131410Z-834a43e7/`;

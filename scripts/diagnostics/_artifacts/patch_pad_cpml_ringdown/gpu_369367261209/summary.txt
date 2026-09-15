@@ -1,0 +1,19 @@
+arm                      cpml subpx             grid  steps  settle dB settled   growth    NaN@  wall s
+-------------------------------------------------------------------------------------------------------
+sheet_n3_pad10_cpml6        6 False   [188, 142, 61]  19994     -47.56    True    0.661    None       8
+sheet_n4_pad10_cpml16      16 False   [266, 205, 97]  26659     -56.87    True    0.363    None      40
+sheet_n4_pad10_cpml32      32 False  [298, 237, 129]  26659     -58.26    True    0.364    None      81
+sheet_n4_pad10_cpml8        8 False   [250, 189, 81]  26659     -52.78    True    0.378    None      26
+sheet_n4_pad12_cpml8        8 False   [265, 206, 81]  26659     -54.25    True    0.379    None      34
+sheet_n4_pad6_cpml8         8 False   [217, 157, 81]  26659     -57.28    True    0.374    None      20
+sheet_n4_pad8_cpml8         8 False   [233, 174, 81]  26659     -55.26    True    0.377    None      25
+
+sheet_n3_pad10_cpml6     rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=174.00000000000003 domy/dx=129.0
+sheet_n4_pad10_cpml16    rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=232.00000000000003 domy/dx=172.0
+sheet_n4_pad10_cpml32    rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=232.00000000000003 domy/dx=172.0
+sheet_n4_pad10_cpml8     rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=232.00000000000003 domy/dx=172.0
+sheet_n4_pad12_cpml8     rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=248.0 domy/dx=188.00000000000003
+sheet_n4_pad6_cpml8      rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=200.0 domy/dx=140.0
+sheet_n4_pad8_cpml8      rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=216.0 domy/dx=156.00000000000003
+
+summary written: /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b/summary.json

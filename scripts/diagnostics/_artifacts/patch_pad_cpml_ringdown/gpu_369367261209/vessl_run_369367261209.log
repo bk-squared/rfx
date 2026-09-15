@@ -1,0 +1,485 @@
+Organization: remilab
+Project: byungkwan
+Displayed last 482 lines of #369367261209.
+[13:29:46.898804] workload awaiting to start
+[13:29:46.898905] Workload status changed to pending
+[13:29:50.586246] Event Reason: FailedScheduling, Event Note: 0/14 nodes are available: pod has unbound immediate PersistentVolumeClaims. preemption: 0/14 nodes are available: 14 Preemption is not helpful for scheduling.
+[13:29:50.586246] Workload is in queue for scheduling. Please wait...
+[13:29:57.720796] Event Reason: FailedScheduling, Event Note: 0/14 nodes are available: pod has unbound immediate PersistentVolumeClaims. preemption: 0/14 nodes are available: 14 Preemption is not helpful for scheduling.
+[13:29:57.720796] Workload is in queue for scheduling. Please wait...
+[13:29:59.980399] VESSL Workload assigned successfully. Starting soon.
+[13:30:00.000000] Container image "quay.io/vessl-ai/kernels-toolbox:0.1.188" already present on machine
+[13:30:00.000000] Created container vops-init
+[13:30:00.000000] Started container vops-init
+[13:30:02.000000] Started container run-sidecar
+[13:30:02.000000] Creating VESSL Workload...
+[13:30:02.000000] Created container vops-sidecar
+[13:30:02.000000] Created container ttyd-sidecar
+[13:30:02.000000] Starting VESSL Workload...
+[13:30:02.000000] Started container vops-sidecar
+[13:30:02.000000] Created container run-exec
+[13:30:02.000000] Container image "quay.io/vessl-ai/kernels-toolbox:0.1.188" already present on machine
+[13:30:02.000000] Started container run-exec
+[13:30:02.000000] Container image "nvcr.io/nvidia/jax:24.10-py3" already present on machine
+[13:30:02.000000] Container image "quay.io/vessl-ai/fluent-bit:2.1.6" already present on machine
+[13:30:02.000000] Container image "quay.io/vessl-ai/sidecar:v0.0.3" already present on machine
+[13:30:02.000000] Created container run-sidecar
+[13:30:02.001000] Container image "nvcr.io/nvidia/jax:24.10-py3" already present on machine
+[13:30:02.842208] Installing VESSL CLI...
+[13:30:03.705159] workload reported alive as pod run-execution-yz26wxmxml2g-0
+[13:30:03.705260] Workload status changed to initializing
+[13:30:04.813270] + set +x
+[13:30:07.932783] vessl, version 0.1.199
+[13:30:09.948462] workload reported alive as pod run-execution-yz26wxmxml2g-0
+[13:30:09.948562] Workload status changed to running
+[13:30:10.033222] + mkdir -p /root
+[13:30:10.035235] + cd /root
+[13:30:10.035911] + set -eu
+[13:30:10.035945] + echo '=== rfx #801 H4: the pre-#931 board restored on main ==='
+[13:30:10.035951] === rfx #801 H4: the pre-#931 board restored on main ===
+[13:30:10.035955] + date
+[13:30:10.037520] Tue Sep 15 13:30:10 UTC 2026
+[13:30:10.037778] driver commit: 2112af0bf89e6da8580c448aa641e3136ca4fab0
+[13:30:10.037806] tree main: fc7f7202567e2cf78a65ab90a709e4ff45b185f1
+[13:30:10.037847] + '[' 2112af0bf89e6da8580c448aa641e3136ca4fab0 '=' FILL_AFTER_PUSH ]
+[13:30:10.037883] + echo 'driver commit: 2112af0bf89e6da8580c448aa641e3136ca4fab0'
+[13:30:10.037889] + echo 'tree main: fc7f7202567e2cf78a65ab90a709e4ff45b185f1'
+[13:30:10.037894] + command -v git
+[13:30:10.037910] + git config --global --add safe.directory '*'
+[13:30:10.040411] + rm -rf /tmp/rfx-801s-driver /tmp/rfx-801s-main
+[13:30:10.042109] + fetch_sha /tmp/rfx-801s-driver 2112af0bf89e6da8580c448aa641e3136ca4fab0
+[13:30:10.042118] + git init -q /tmp/rfx-801s-driver
+[13:30:10.046612] + cd /tmp/rfx-801s-driver
+[13:30:10.046643] + git fetch -q --depth 1 https://github.com/bk-squared/rfx.git 2112af0bf89e6da8580c448aa641e3136ca4fab0
+[13:30:15.817735] + git checkout -q FETCH_HEAD
+[13:30:16.340313] + git rev-parse HEAD
+[13:30:16.341000] + got=2112af0bf89e6da8580c448aa641e3136ca4fab0
+[13:30:16.341010] + '[' 2112af0bf89e6da8580c448aa641e3136ca4fab0 '!=' 2112af0bf89e6da8580c448aa641e3136ca4fab0 ]
+[13:30:16.341011] + echo 'fetched 2112af0bf89e6da8580c448aa641e3136ca4fab0 into /tmp/rfx-801s-driver'
+[13:30:16.341012] + cd /
+[13:30:16.341013] + fetch_sha /tmp/rfx-801s-main fc7f7202567e2cf78a65ab90a709e4ff45b185f1
+[13:30:16.341014] + git init -q /tmp/rfx-801s-main
+[13:30:16.341019] fetched 2112af0bf89e6da8580c448aa641e3136ca4fab0 into /tmp/rfx-801s-driver
+[13:30:16.347046] + cd /tmp/rfx-801s-main
+[13:30:16.347053] + git fetch -q --depth 1 https://github.com/bk-squared/rfx.git fc7f7202567e2cf78a65ab90a709e4ff45b185f1
+[13:30:24.533392] + git checkout -q FETCH_HEAD
+[13:30:25.051319] + git rev-parse HEAD
+[13:30:25.051913] fetched fc7f7202567e2cf78a65ab90a709e4ff45b185f1 into /tmp/rfx-801s-main
+[13:30:25.051922] + got=fc7f7202567e2cf78a65ab90a709e4ff45b185f1
+[13:30:25.051924] + '[' fc7f7202567e2cf78a65ab90a709e4ff45b185f1 '!=' fc7f7202567e2cf78a65ab90a709e4ff45b185f1 ]
+[13:30:25.051926] + echo 'fetched fc7f7202567e2cf78a65ab90a709e4ff45b185f1 into /tmp/rfx-801s-main'
+[13:30:25.051928] + cd /
+[13:30:25.051930] + DRVDIR=/tmp/rfx-801s-driver/scripts/diagnostics
+[13:30:25.051931] + test -f /tmp/rfx-801s-driver/scripts/diagnostics/patch_pad_cpml_ringdown.py
+[13:30:25.051933] + test -f /tmp/rfx-801s-driver/scripts/diagnostics/patch_pad_cpml_ringdown_summary.py
+[13:30:25.051936] + test -f /tmp/rfx-801s-driver/scripts/diagnostics/_artifacts/patch_pad_cpml_ringdown/PREDECLARATION.md
+[13:30:25.051938] + cp /tmp/rfx-801s-driver/scripts/diagnostics/patch_pad_cpml_ringdown.py /tmp/rfx-801s-main/scripts/diagnostics/
+[13:30:25.052625] === runtime deps ===
+[13:30:25.052632] + echo '=== runtime deps ==='
+[13:30:25.052634] + python -m pip install -q 'scipy>=1.11' 'h5py>=3.8' 'matplotlib>=3.7'
+[13:30:28.651882] WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+[13:30:29.205571] + python -c 'import jax; print('"'"'probe ok | jax'"'"', jax.__version__, '"'"'| backend'"'"', jax.default_backend(), '"'"'| devices'"'"', jax.devices(), '"'"'| x64'"'"', jax.config.x64_enabled)'
+[13:30:29.463485] probe ok | jax 0.4.33.dev20241023+e3c6d6430 | backend gpu | devices [CudaDevice(id=0)] | x64 False
+[13:30:29.507244] + echo 2112af0bf89e6da8580c448aa641e3136ca4fab0
+[13:30:29.507267] + cut -c1-8
+[13:30:29.507828] + SHORT=2112af0b
+[13:30:29.507896] + date -u '+%Y%m%dT%H%M%SZ'
+[13:30:29.508419] + OUT=/root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b
+[13:30:29.508424] + mkdir -p /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b
+[13:30:29.515093] + echo 'artifacts: /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b'
+[13:30:29.515117] artifacts: /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b
+[13:30:29.516443] + echo 2112af0bf89e6da8580c448aa641e3136ca4fab0
+[13:30:29.518823] + echo fc7f7202567e2cf78a65ab90a709e4ff45b185f1
+[13:30:29.520180] + cp /tmp/rfx-801s-driver/scripts/diagnostics/_artifacts/patch_pad_cpml_ringdown/PREDECLARATION.md /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b/
+[13:30:29.526424] + ARMS='sheet_n4_pad6_cpml8:4:6:8
+[13:30:29.526441]       sheet_n4_pad8_cpml8:4:8:8
+[13:30:29.526451]       sheet_n4_pad10_cpml8:4:10:8
+[13:30:29.526460]       sheet_n4_pad12_cpml8:4:12:8
+[13:30:29.526468]       sheet_n4_pad10_cpml16:4:10:16
+[13:30:29.526479]       sheet_n4_pad10_cpml32:4:10:32
+[13:30:29.526487]       sheet_n3_pad10_cpml6:3:10:6'
+[13:30:29.526510] + cd /tmp/rfx-801s-main
+[13:30:29.526525] + PYTHONPATH=/tmp/rfx-801s-main
+[13:30:29.526533] + export PYTHONPATH
+[13:30:29.526541] + fails=0
+[13:30:29.526894] + echo sheet_n4_pad6_cpml8:4:6:8
+[13:30:29.527011] + cut -d: -f1
+[13:30:29.528563] + TAG=sheet_n4_pad6_cpml8
+[13:30:29.528886] + echo sheet_n4_pad6_cpml8:4:6:8
+[13:30:29.529023] + cut -d: -f2
+[13:30:29.530515] + N=4
+[13:30:29.530897] + echo sheet_n4_pad6_cpml8:4:6:8
+[13:30:29.531060] + cut -d: -f3
+[13:30:29.532600] + PAD=6
+[13:30:29.532897] + echo sheet_n4_pad6_cpml8:4:6:8
+[13:30:29.532994] + cut -d: -f4
+[13:30:29.534482] + CPML=8
+[13:30:29.534497] ===== arm sheet_n4_pad6_cpml8 (n 4, pad 6h, cpml 8, sheet board) =====
+[13:30:29.534501] + echo '===== arm sheet_n4_pad6_cpml8 (n 4, pad 6h, cpml 8, sheet board) ====='
+[13:30:29.534531] + date
+[13:30:29.535941] Tue Sep 15 13:30:29 UTC 2026
+[13:30:29.536340] + timeout 7200 python -u scripts/diagnostics/patch_pad_cpml_ringdown.py --n 4 --pad 6 --periods 150 --cpml 8 --sheet-conductors --tag sheet_n4_pad6_cpml8 --out-dir /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b --rfx-tree-sha fc7f7202567e2cf78a65ab90a709e4ff45b185f1 --expect-rfx-root /tmp/rfx-801s-main
+[13:30:29.536433] + tee /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b/sheet_n4_pad6_cpml8.log
+[13:30:30.503298] [sheet_n4_pad6_cpml8] rfx from /tmp/rfx-801s-main/rfx/__init__.py (tree fc7f7202567e2cf78a65ab90a709e4ff45b185f1); driver fc7f7202567e2cf78a65ab90a709e4ff45b185f1 dirty=True; jax {'version': '0.4.33.dev20241023+e3c6d6430', 'backend': 'gpu', 'devices': ['cuda:0'], 'x64_enabled': False}
+[13:30:31.342293] [sheet_n4_pad6_cpml8] grid [217, 157, 81] patch 44x52 cells; cpml 8; pad eps x-lo row [3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918]
+[13:30:31.396818]   [PREFLIGHT] Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:30:31.396836]   [PREFLIGHT] all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:30:31.396841]   [PREFLIGHT] 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 28 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 33 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:30:31.396843] [sheet_n4_pad6_cpml8] preflight (3), quoted verbatim:
+[13:30:31.396845]    ! Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:30:31.396846]    ! all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:30:31.396847]    ! 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 28 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 33 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:30:31.407243]   [PREFLIGHT] Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:30:31.407251]   [PREFLIGHT] all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:30:31.407253]   [PREFLIGHT] 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 28 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 33 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:30:31.407367] /tmp/rfx-801s-main/scripts/diagnostics/patch_pad_cpml_ringdown.py:397: UserWarning: [run] preflight found 3 advisory issue(s) - pass skip_preflight=True to suppress:
+[13:30:31.407369]   - Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:30:31.407370]   - all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:30:31.407371]   - 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 28 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 33 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:30:31.407378]   res = sim.run(num_periods=a.periods, **kw)
+[13:30:51.381646] [sheet_n4_pad6_cpml8] 26659 steps in 0.33 min; settling per probe [-60.67, -57.28, -57.45, -59.97] dB (bar -40.0) -> SETTLED; last-30% growth [0.337, 0.337, 0.374, 0.345]
+[13:30:51.381691] [RESULT] {"tag": "sheet_n4_pad6_cpml8", "n": 4, "dx_um": 196.75, "periods": 150.0, "pad_h": 6, "cpml_layers": 8, "subpixel_smoothing": false, "sheet_conductors": true, "L_mm": 8.657, "W_mm": 10.231, "status": "ran", "wall_s": 19.94970440864563, "n_steps": 26659, "dt_s": 3.751186055802254e-13, "peak": [0.016320811584591866, 0.010758264921605587, 0.01172841340303421, 0.01449583563953638], "tail95": [1.5109947526070755e-05, 1.4709738934470806e-05, 1.57238664542092e-05, 1.454955963708926e-05], "nonfinite_per_probe": [false, false, false, false], "settling_db_per_probe": [-60.669575899698515, -57.282745390571066, -57.45359837915434, -59.96786814285856], "settling_db": -57.282745390571066, "settled": true, "last30_growth_ratio": [0.33691154341710317, 0.3366417982824907, 0.37367063071888973, 0.3447585029712985], "last30_growth_ratio_worst": 0.37367063071888973, "last30_log_rate_per_step": [-0.00022231772297028418, -0.00028592988874620947, -0.000221969203765244, -0.00028297990243771753], "nonfinite_first_step": null, "envelope_decimate": 64}
+[13:30:51.558024] + echo 0
+[13:30:51.560939] + cat /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b/sheet_n4_pad6_cpml8.rc
+[13:30:51.562418] arm sheet_n4_pad6_cpml8 rc=0
+[13:30:51.562418] + rc=0
+[13:30:51.562426] + echo 'arm sheet_n4_pad6_cpml8 rc=0'
+[13:30:51.562428] + '[' 0 -ne 0 ]
+[13:30:51.562531] + echo sheet_n4_pad8_cpml8:4:8:8
+[13:30:51.562537] + cut -d: -f1
+[13:30:51.562850] + TAG=sheet_n4_pad8_cpml8
+[13:30:51.562865] + echo sheet_n4_pad8_cpml8:4:8:8
+[13:30:51.562871] + cut -d: -f2
+[13:30:51.563319] + N=4
+[13:30:51.563328] + echo sheet_n4_pad8_cpml8:4:8:8
+[13:30:51.563330] + cut -d: -f3
+[13:30:51.563656] + PAD=8
+[13:30:51.563745] + echo sheet_n4_pad8_cpml8:4:8:8
+[13:30:51.563751] + cut -d: -f4
+[13:30:51.564056] + CPML=8
+[13:30:51.564057] ===== arm sheet_n4_pad8_cpml8 (n 4, pad 8h, cpml 8, sheet board) =====
+[13:30:51.564067] + echo '===== arm sheet_n4_pad8_cpml8 (n 4, pad 8h, cpml 8, sheet board) ====='
+[13:30:51.564070] + date
+[13:30:51.564379] Tue Sep 15 13:30:51 UTC 2026
+[13:30:51.564462] + tee /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b/sheet_n4_pad8_cpml8.log
+[13:30:51.564523] + timeout 7200 python -u scripts/diagnostics/patch_pad_cpml_ringdown.py --n 4 --pad 8 --periods 150 --cpml 8 --sheet-conductors --tag sheet_n4_pad8_cpml8 --out-dir /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b --rfx-tree-sha fc7f7202567e2cf78a65ab90a709e4ff45b185f1 --expect-rfx-root /tmp/rfx-801s-main
+[13:30:52.273760] [sheet_n4_pad8_cpml8] rfx from /tmp/rfx-801s-main/rfx/__init__.py (tree fc7f7202567e2cf78a65ab90a709e4ff45b185f1); driver fc7f7202567e2cf78a65ab90a709e4ff45b185f1 dirty=True; jax {'version': '0.4.33.dev20241023+e3c6d6430', 'backend': 'gpu', 'devices': ['cuda:0'], 'x64_enabled': False}
+[13:30:53.120558] [sheet_n4_pad8_cpml8] grid [233, 174, 81] patch 44x52 cells; cpml 8; pad eps x-lo row [3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918]
+[13:30:53.179788]   [PREFLIGHT] Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:30:53.179810]   [PREFLIGHT] all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:30:53.179812]   [PREFLIGHT] 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 28 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 33 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:30:53.179814] [sheet_n4_pad8_cpml8] preflight (3), quoted verbatim:
+[13:30:53.179816]    ! Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:30:53.179817]    ! all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:30:53.179819]    ! 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 28 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 33 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:30:53.190774]   [PREFLIGHT] Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:30:53.190784]   [PREFLIGHT] all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:30:53.190786]   [PREFLIGHT] 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 28 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 33 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:30:53.190970] /tmp/rfx-801s-main/scripts/diagnostics/patch_pad_cpml_ringdown.py:397: UserWarning: [run] preflight found 3 advisory issue(s) - pass skip_preflight=True to suppress:
+[13:30:53.190980]   - Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:30:53.190981]   - all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:30:53.190982]   - 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 28 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 33 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:30:53.190992]   res = sim.run(num_periods=a.periods, **kw)
+[13:31:18.624997] [sheet_n4_pad8_cpml8] 26659 steps in 0.42 min; settling per probe [-59.24, -55.74, -55.26, -58.09] dB (bar -40.0) -> SETTLED; last-30% growth [0.34, 0.349, 0.377, 0.336]
+[13:31:18.625074] [RESULT] {"tag": "sheet_n4_pad8_cpml8", "n": 4, "dx_um": 196.75, "periods": 150.0, "pad_h": 8, "cpml_layers": 8, "subpixel_smoothing": false, "sheet_conductors": true, "L_mm": 8.657, "W_mm": 10.231, "status": "ran", "wall_s": 25.308159589767456, "n_steps": 26659, "dt_s": 3.751186055802254e-13, "peak": [0.016320811584591866, 0.010663239285349846, 0.011575384065508842, 0.01446470245718956], "tail95": [1.7812442820286378e-05, 1.741153209877666e-05, 1.9978147975052707e-05, 1.8021612049778923e-05], "nonfinite_per_probe": [false, false, false, false], "settling_db_per_probe": [-59.24036535758782, -55.741043343163874, -55.25960368095882, -58.090317362004775], "settling_db": -55.25960368095882, "settled": true, "last30_growth_ratio": [0.3400278671645324, 0.3487341709742559, 0.3768509929829709, 0.3357999819202806], "last30_growth_ratio_worst": 0.3768509929829709, "last30_log_rate_per_step": [-0.00021037853853116007, -0.00027051204391277163, -0.00021106629926096138, -0.00027339746855744494], "nonfinite_first_step": null, "envelope_decimate": 64}
+[13:31:18.801017] + echo 0
+[13:31:18.804724] + cat /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b/sheet_n4_pad8_cpml8.rc
+[13:31:18.806604] arm sheet_n4_pad8_cpml8 rc=0
+[13:31:18.806630] + rc=0
+[13:31:18.806647] + echo 'arm sheet_n4_pad8_cpml8 rc=0'
+[13:31:18.806650] + '[' 0 -ne 0 ]
+[13:31:18.806854] + echo sheet_n4_pad10_cpml8:4:10:8
+[13:31:18.806864] + cut -d: -f1
+[13:31:18.807559] + TAG=sheet_n4_pad10_cpml8
+[13:31:18.807669] + echo sheet_n4_pad10_cpml8:4:10:8
+[13:31:18.807770] + cut -d: -f2
+[13:31:18.808405] + N=4
+[13:31:18.808594] + echo sheet_n4_pad10_cpml8:4:10:8
+[13:31:18.808623] + cut -d: -f3
+[13:31:18.809331] + PAD=10
+[13:31:18.809528] + echo sheet_n4_pad10_cpml8:4:10:8
+[13:31:18.809548] + cut -d: -f4
+[13:31:18.810271] + CPML=8
+[13:31:18.810287] + echo '===== arm sheet_n4_pad10_cpml8 (n 4, pad 10h, cpml 8, sheet board) ====='
+[13:31:18.810296] + date
+[13:31:18.810313] ===== arm sheet_n4_pad10_cpml8 (n 4, pad 10h, cpml 8, sheet board) =====
+[13:31:18.811071] Tue Sep 15 13:31:18 UTC 2026
+[13:31:18.811242] + timeout 7200 python -u scripts/diagnostics/patch_pad_cpml_ringdown.py --n 4 --pad 10 --periods 150 --cpml 8 --sheet-conductors --tag sheet_n4_pad10_cpml8 --out-dir /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b+  --rfx-tree-shatee fc7f7202567e2cf78a65ab90a709e4ff45b185f1 /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b/sheet_n4_pad10_cpml8.log --expect-rfx-root
+[13:31:18.811256]  /tmp/rfx-801s-main
+[13:31:19.463344] [sheet_n4_pad10_cpml8] rfx from /tmp/rfx-801s-main/rfx/__init__.py (tree fc7f7202567e2cf78a65ab90a709e4ff45b185f1); driver fc7f7202567e2cf78a65ab90a709e4ff45b185f1 dirty=True; jax {'version': '0.4.33.dev20241023+e3c6d6430', 'backend': 'gpu', 'devices': ['cuda:0'], 'x64_enabled': False}
+[13:31:20.312703] [sheet_n4_pad10_cpml8] grid [250, 189, 81] patch 44x52 cells; cpml 8; pad eps x-lo row [3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918]
+[13:31:20.380899]   [PREFLIGHT] Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:31:20.380920]   [PREFLIGHT] all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:31:20.380925]   [PREFLIGHT] 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 28 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 33 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:31:20.380927] [sheet_n4_pad10_cpml8] preflight (3), quoted verbatim:
+[13:31:20.380930]    ! Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:31:20.380931]    ! all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:31:20.380933]    ! 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 28 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 33 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:31:20.393012]   [PREFLIGHT] Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:31:20.393030]   [PREFLIGHT] all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:31:20.393033]   [PREFLIGHT] 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 28 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 33 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:31:20.393144] /tmp/rfx-801s-main/scripts/diagnostics/patch_pad_cpml_ringdown.py:397: UserWarning: [run] preflight found 3 advisory issue(s) - pass skip_preflight=True to suppress:
+[13:31:20.393150]   - Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:31:20.393151]   - all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:31:20.393153]   - 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 28 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 33 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:31:20.393161]   res = sim.run(num_periods=a.periods, **kw)
+[13:31:46.319146] [sheet_n4_pad10_cpml8] 26659 steps in 0.43 min; settling per probe [-57.69, -52.78, -53.45, -56.28] dB (bar -40.0) -> SETTLED; last-30% growth [0.352, 0.368, 0.378, 0.332]
+[13:31:46.319189] [RESULT] {"tag": "sheet_n4_pad10_cpml8", "n": 4, "dx_um": 196.75, "periods": 150.0, "pad_h": 10, "cpml_layers": 8, "subpixel_smoothing": false, "sheet_conductors": true, "L_mm": 8.657, "W_mm": 10.231, "status": "ran", "wall_s": 25.907643795013428, "n_steps": 26659, "dt_s": 3.751186055802254e-13, "peak": [0.016320811584591866, 0.010599778033792973, 0.011561290360987186, 0.014483851380646229], "tail95": [2.1287958588800393e-05, 2.4338516595889814e-05, 2.4579125238233246e-05, 2.2219766833586618e-05], "nonfinite_per_probe": [false, false, false, false], "settling_db_per_probe": [-57.69215468778378, -52.780053319851106, -53.4487977229869, -56.282891251204326], "settling_db": -52.780053319851106, "settled": true, "last30_growth_ratio": [0.3523676553351139, 0.36849299683038855, 0.37781504757996354, 0.332414759139997], "last30_growth_ratio_worst": 0.37781504757996354, "last30_log_rate_per_step": [-0.00019977228120072126, -0.0002509337607078124, -0.0002074545917412989, -0.00027019440601636416], "nonfinite_first_step": null, "envelope_decimate": 64}
+[13:31:46.495593] + echo 0
+[13:31:46.498541] + cat /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b/sheet_n4_pad10_cpml8.rc
+[13:31:46.499740] + rc=0
+[13:31:46.499743] + echo 'arm sheet_n4_pad10_cpml8 rc=0'
+[13:31:46.499750] arm sheet_n4_pad10_cpml8 rc=0
+[13:31:46.499753] + '[' 0 -ne 0 ]
+[13:31:46.499871] + echo sheet_n4_pad12_cpml8:4:12:8
+[13:31:46.499943] + cut -d: -f1
+[13:31:46.500367] + TAG=sheet_n4_pad12_cpml8
+[13:31:46.500514] + echo sheet_n4_pad12_cpml8:4:12:8
+[13:31:46.500515] + cut -d: -f2
+[13:31:46.501017] + N=4
+[13:31:46.501166] + cut+  -d: -f3echo
+[13:31:46.501169]  sheet_n4_pad12_cpml8:4:12:8
+[13:31:46.501629] + PAD=12
+[13:31:46.501739] + echo sheet_n4_pad12_cpml8:4:12:8
+[13:31:46.501742] + cut -d: -f4
+[13:31:46.502216] ===== arm sheet_n4_pad12_cpml8 (n 4, pad 12h, cpml 8, sheet board) =====
+[13:31:46.502220] + CPML=8
+[13:31:46.502222] + echo '===== arm sheet_n4_pad12_cpml8 (n 4, pad 12h, cpml 8, sheet board) ====='
+[13:31:46.502223] + date
+[13:31:46.502627] Tue Sep 15 13:31:46 UTC 2026
+[13:31:46.502707] + timeout 7200 python -u scripts/diagnostics/patch_pad_cpml_ringdown.py --n 4 --pad 12 --periods 150 --cpml 8 --sheet-conductors --tag sheet_n4_pad12_cpml8 --out-dir /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b --rfx-tree-sha fc7f7202567e2cf78a65ab90a709e4ff45b185f1 --expect-rfx-root /tmp/rfx-801s-main
+[13:31:46.502712] + tee /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b/sheet_n4_pad12_cpml8.log
+[13:31:47.162333] [sheet_n4_pad12_cpml8] rfx from /tmp/rfx-801s-main/rfx/__init__.py (tree fc7f7202567e2cf78a65ab90a709e4ff45b185f1); driver fc7f7202567e2cf78a65ab90a709e4ff45b185f1 dirty=True; jax {'version': '0.4.33.dev20241023+e3c6d6430', 'backend': 'gpu', 'devices': ['cuda:0'], 'x64_enabled': False}
+[13:31:48.070713] [sheet_n4_pad12_cpml8] grid [265, 206, 81] patch 44x52 cells; cpml 8; pad eps x-lo row [3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918]
+[13:31:48.153636]   [PREFLIGHT] Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:31:48.153647]   [PREFLIGHT] all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:31:48.153650]   [PREFLIGHT] 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 28 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 33 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:31:48.153651] [sheet_n4_pad12_cpml8] preflight (3), quoted verbatim:
+[13:31:48.153653]    ! Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:31:48.153654]    ! all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:31:48.153655]    ! 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 28 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 33 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:31:48.173603]   [PREFLIGHT] Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:31:48.173611]   [PREFLIGHT] all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:31:48.173616]   [PREFLIGHT] 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 28 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 33 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:31:48.173751] /tmp/rfx-801s-main/scripts/diagnostics/patch_pad_cpml_ringdown.py:397: UserWarning: [run] preflight found 3 advisory issue(s) - pass skip_preflight=True to suppress:
+[13:31:48.173763]   - Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:31:48.173764]   - all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:31:48.173767]   - 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 28 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 33 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:31:48.173776]   res = sim.run(num_periods=a.periods, **kw)
+[13:32:22.102957] [sheet_n4_pad12_cpml8] 26659 steps in 0.57 min; settling per probe [-58.42, -55.16, -54.25, -56.62] dB (bar -40.0) -> SETTLED; last-30% growth [0.346, 0.379, 0.366, 0.344]
+[13:32:22.102998] [RESULT] {"tag": "sheet_n4_pad12_cpml8", "n": 4, "dx_um": 196.75, "periods": 150.0, "pad_h": 12, "cpml_layers": 8, "subpixel_smoothing": false, "sheet_conductors": true, "L_mm": 8.657, "W_mm": 10.231, "status": "ran", "wall_s": 33.91229486465454, "n_steps": 26659, "dt_s": 3.751186055802254e-13, "peak": [0.016320811584591866, 0.010752188041806221, 0.011683493852615356, 0.014481828548014164], "tail95": [1.9582594177336432e-05, 1.876431269920431e-05, 2.2641868781647645e-05, 2.1363692212617025e-05], "nonfinite_per_probe": [false, false, false, false], "settling_db_per_probe": [-58.41743054521924, -55.1632837871285, -54.253209304496735, -56.6229417813227], "settling_db": -54.253209304496735, "settled": true, "last30_growth_ratio": [0.34628642462748244, 0.3787695240130704, 0.3658648022438685, 0.3444763366798804], "last30_growth_ratio_worst": 0.3787695240130704, "last30_log_rate_per_step": [-0.0002342489625664289, -0.0002447903491283313, -0.0002330116680942866, -0.0002450638561902046], "nonfinite_first_step": null, "envelope_decimate": 64}
+[13:32:22.284435] + echo 0
+[13:32:22.286152] + cat /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b/sheet_n4_pad12_cpml8.rc
+[13:32:22.287362] + rc=0
+[13:32:22.287369] arm sheet_n4_pad12_cpml8 rc=0
+[13:32:22.287370] + echo 'arm sheet_n4_pad12_cpml8 rc=0'
+[13:32:22.287383] + '[' 0 -ne 0 ]
+[13:32:22.287462] + echo sheet_n4_pad10_cpml16:4:10:16
+[13:32:22.287486] + cut -d: -f1
+[13:32:22.287824] + TAG=sheet_n4_pad10_cpml16
+[13:32:22.287919] + echo sheet_n4_pad10_cpml16:4:10:16
+[13:32:22.287929] + cut -d: -f2
+[13:32:22.288245] + N=4
+[13:32:22.288310] + echo sheet_n4_pad10_cpml16:4:10:16
+[13:32:22.288387] + cut -d: -f3
+[13:32:22.288707] + PAD=10
+[13:32:22.288762] + echo sheet_n4_pad10_cpml16:4:10:16
+[13:32:22.288794] + cut -d: -f4
+[13:32:22.289120] + CPML=16
+[13:32:22.289124] + echo '===== arm sheet_n4_pad10_cpml16 (n 4, pad 10h, cpml 16, sheet board) ====='
+[13:32:22.289125] ===== arm sheet_n4_pad10_cpml16 (n 4, pad 10h, cpml 16, sheet board) =====
+[13:32:22.289126] + date
+[13:32:22.289408] Tue Sep 15 13:32:22 UTC 2026
+[13:32:22.289486] + timeout 7200 python -u scripts/diagnostics/patch_pad_cpml_ringdown.py --n 4 --pad 10 --periods 150 --cpml 16 --sheet-conductors --tag sheet_n4_pad10_cpml16 --out-dir /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b --rfx-tree-sha fc7f7202567e2cf78a65ab90a709e4ff45b185f1 --expect-rfx-root /tmp/rfx-801s-main
+[13:32:22.289497] + tee /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b/sheet_n4_pad10_cpml16.log
+[13:32:22.963920] [sheet_n4_pad10_cpml16] rfx from /tmp/rfx-801s-main/rfx/__init__.py (tree fc7f7202567e2cf78a65ab90a709e4ff45b185f1); driver fc7f7202567e2cf78a65ab90a709e4ff45b185f1 dirty=True; jax {'version': '0.4.33.dev20241023+e3c6d6430', 'backend': 'gpu', 'devices': ['cuda:0'], 'x64_enabled': False}
+[13:32:23.844428] [sheet_n4_pad10_cpml16] grid [266, 205, 97] patch 44x52 cells; cpml 16; pad eps x-lo row [3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918]
+[13:32:23.946690]   [PREFLIGHT] Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:32:23.946712]   [PREFLIGHT] all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:32:23.946717]   [PREFLIGHT] 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 36 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 41 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:32:23.946720] [sheet_n4_pad10_cpml16] preflight (3), quoted verbatim:
+[13:32:23.946722]    ! Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:32:23.946724]    ! all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:32:23.946726]    ! 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 36 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 41 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:32:23.965018]   [PREFLIGHT] Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:32:23.965045]   [PREFLIGHT] all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:32:23.965049]   [PREFLIGHT] 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 36 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 41 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:32:23.965060] /tmp/rfx-801s-main/scripts/diagnostics/patch_pad_cpml_ringdown.py:397: UserWarning: [run] preflight found 3 advisory issue(s) - pass skip_preflight=True to suppress:
+[13:32:23.965063]   - Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:32:23.965065]   - all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:32:23.965067]   - 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 36 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 41 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:32:23.965082]   res = sim.run(num_periods=a.periods, **kw)
+[13:33:04.116223] [sheet_n4_pad10_cpml16] 26659 steps in 0.67 min; settling per probe [-59.79, -56.87, -57.46, -59.65] dB (bar -40.0) -> SETTLED; last-30% growth [0.336, 0.355, 0.363, 0.353]
+[13:33:04.116269] [RESULT] {"tag": "sheet_n4_pad10_cpml16", "n": 4, "dx_um": 196.75, "periods": 150.0, "pad_h": 10, "cpml_layers": 16, "subpixel_smoothing": false, "sheet_conductors": true, "L_mm": 8.657, "W_mm": 10.231, "status": "ran", "wall_s": 40.13668394088745, "n_steps": 26659, "dt_s": 3.751186055802254e-13, "peak": [0.016320811584591866, 0.010453273542225361, 0.011400219053030014, 0.014400445856153965], "tail95": [1.6725085515645333e-05, 1.4983573237259407e-05, 1.5267445633071475e-05, 1.4999712220742367e-05], "nonfinite_per_probe": [false, false, false, false], "settling_db_per_probe": [-59.78746808210289, -56.87273840504573, -57.46293628282855, -59.64586023402277], "settling_db": -56.87273840504573, "settled": true, "last30_growth_ratio": [0.33609433881437045, 0.3551002083287595, 0.36263246218938566, 0.3531371407045446], "last30_growth_ratio_worst": 0.36263246218938566, "last30_log_rate_per_step": [-0.0002665655442686236, -0.00024715020774217607, -0.00026543916310286115, -0.00024443501543468656], "nonfinite_first_step": null, "envelope_decimate": 64}
+[13:33:04.305805] + echo 0
+[13:33:04.309894] + cat /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b/sheet_n4_pad10_cpml16.rc
+[13:33:04.311336] arm sheet_n4_pad10_cpml16 rc=0
+[13:33:04.311353] + rc=0
+[13:33:04.311356] + echo 'arm sheet_n4_pad10_cpml16 rc=0'
+[13:33:04.311357] + '[' 0 -ne 0 ]
+[13:33:04.311381] + cut -d: -f1
+[13:33:04.311413] + echo sheet_n4_pad10_cpml32:4:10:32
+[13:33:04.311702] + TAG=sheet_n4_pad10_cpml32
+[13:33:04.311859] + echo sheet_n4_pad10_cpml32:4:10:32
+[13:33:04.311870] + cut -d: -f2
+[13:33:04.312218] + N=4
+[13:33:04.312353] + echo sheet_n4_pad10_cpml32:4:10:32
+[13:33:04.312360] + cut -d: -f3
+[13:33:04.312738] + PAD=10
+[13:33:04.312876] + echo sheet_n4_pad10_cpml32:4:10:32
+[13:33:04.312883] + cut -d: -f4
+[13:33:04.313259] ===== arm sheet_n4_pad10_cpml32 (n 4, pad 10h, cpml 32, sheet board) =====
+[13:33:04.313259] + CPML=32
+[13:33:04.313267] + echo '===== arm sheet_n4_pad10_cpml32 (n 4, pad 10h, cpml 32, sheet board) ====='
+[13:33:04.313271] + date
+[13:33:04.313577] Tue Sep 15 13:33:04 UTC 2026
+[13:33:04.313622] + timeout 7200 python -u scripts/diagnostics/patch_pad_cpml_ringdown.py --n 4 --pad 10 --periods 150+  --cpmltee 32 /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b/sheet_n4_pad10_cpml32.log --sheet-conductors
+[13:33:04.313629]  --tag sheet_n4_pad10_cpml32 --out-dir /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b --rfx-tree-sha fc7f7202567e2cf78a65ab90a709e4ff45b185f1 --expect-rfx-root /tmp/rfx-801s-main
+[13:33:04.968978] [sheet_n4_pad10_cpml32] rfx from /tmp/rfx-801s-main/rfx/__init__.py (tree fc7f7202567e2cf78a65ab90a709e4ff45b185f1); driver fc7f7202567e2cf78a65ab90a709e4ff45b185f1 dirty=True; jax {'version': '0.4.33.dev20241023+e3c6d6430', 'backend': 'gpu', 'devices': ['cuda:0'], 'x64_enabled': False}
+[13:33:05.855953] [sheet_n4_pad10_cpml32] grid [298, 237, 129] patch 44x52 cells; cpml 32; pad eps x-lo row [3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918]
+[13:33:05.983917]   [PREFLIGHT] Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:33:05.983941]   [PREFLIGHT] all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:33:05.983944]   [PREFLIGHT] 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 52 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 57 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:33:05.983947] [sheet_n4_pad10_cpml32] preflight (3), quoted verbatim:
+[13:33:05.983950]    ! Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:33:05.983952]    ! all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:33:05.983956]    ! 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 52 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 57 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:33:06.018811]   [PREFLIGHT] Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:33:06.018835]   [PREFLIGHT] all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:33:06.018839]   [PREFLIGHT] 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 52 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 57 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:33:06.018898] /tmp/rfx-801s-main/scripts/diagnostics/patch_pad_cpml_ringdown.py:397: UserWarning: [run] preflight found 3 advisory issue(s) - pass skip_preflight=True to suppress:
+[13:33:06.018902]   - Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -19.68µm is 19.68µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 19.68µm to 19.68µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:33:06.018905]   - all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:33:06.018912]   - 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.915mm, realized node plane 52 at 3.935mm (offset +0.100 cell = 19.68µm); geometry[2] 'pec' normal z: declared mid-plane 4.899mm, realized node plane 57 at 4.919mm (offset +0.100 cell = 19.68µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:33:06.018925]   res = sim.run(num_periods=a.periods, **kw)
+[13:34:27.220147] [sheet_n4_pad10_cpml32] 26659 steps in 1.35 min; settling per probe [-60.93, -58.26, -58.7, -61.2] dB (bar -40.0) -> SETTLED; last-30% growth [0.325, 0.363, 0.338, 0.364]
+[13:34:27.220192] [RESULT] {"tag": "sheet_n4_pad10_cpml32", "n": 4, "dx_um": 196.75, "periods": 150.0, "pad_h": 10, "cpml_layers": 32, "subpixel_smoothing": false, "sheet_conductors": true, "L_mm": 8.657, "W_mm": 10.231, "status": "ran", "wall_s": 81.19657945632935, "n_steps": 26659, "dt_s": 3.751186055802254e-13, "peak": [0.016320811584591866, 0.01038987748324871, 0.011328309774398804, 0.01435877475887537], "tail95": [1.4662954527011607e-05, 1.2688029528362677e-05, 1.3151012353773694e-05, 1.2503516700235195e-05], "nonfinite_per_probe": [false, false, false, false], "settling_db_per_probe": [-60.93040526745038, -58.26432491447796, -58.704118612501695, -61.20170408853242], "settling_db": -58.26432491447796, "settled": true, "last30_growth_ratio": [0.32548536673060935, 0.36262895259033395, 0.3380371895901449, 0.36434740741308], "last30_growth_ratio_worst": 0.36434740741308, "last30_log_rate_per_step": [-0.00028638023904915025, -0.00023551991863222048, -0.0002908033056524446, -0.00023402865751972717], "nonfinite_first_step": null, "envelope_decimate": 64}
+[13:34:27.408868] + echo 0
+[13:34:27.412531] + cat /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b/sheet_n4_pad10_cpml32.rc
+[13:34:27.414011] + rc=0
+[13:34:27.414014] + echo 'arm sheet_n4_pad10_cpml32 rc=0'
+[13:34:27.414015] + '[' 0 -ne 0 ]
+[13:34:27.414023] arm sheet_n4_pad10_cpml32 rc=0
+[13:34:27.414101] + echo sheet_n3_pad10_cpml6:3:10:6
+[13:34:27.414118] + cut -d: -f1
+[13:34:27.414458] + TAG=sheet_n3_pad10_cpml6
+[13:34:27.414560] + echo sheet_n3_pad10_cpml6:3:10:6
+[13:34:27.414587] + cut -d: -f2
+[13:34:27.414913] + N=3
+[13:34:27.414990] + echo sheet_n3_pad10_cpml6:3:10:6
+[13:34:27.415011] + cut -d: -f3
+[13:34:27.415329] + PAD=10
+[13:34:27.415389] + echo sheet_n3_pad10_cpml6:3:10:6
+[13:34:27.415416] + cut -d: -f4
+[13:34:27.415735] + CPML=6
+[13:34:27.415736] + echo '===== arm sheet_n3_pad10_cpml6 (n 3, pad 10h, cpml 6, sheet board) ====='
+[13:34:27.415739] + date
+[13:34:27.415742] ===== arm sheet_n3_pad10_cpml6 (n 3, pad 10h, cpml 6, sheet board) =====
+[13:34:27.416022] Tue Sep 15 13:34:27 UTC 2026
+[13:34:27.416105] + timeout 7200 python -u scripts/diagnostics/patch_pad_cpml_ringdown.py --n 3 --pad 10 --periods 150 --cpml 6 --sheet-conductors --tag sheet_n3_pad10_cpml6 --out-dir /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b --rfx-tree-sha fc7f7202567e2cf78a65ab90a709e4ff45b185f1 --expect-rfx-root+  /tmp/rfx-801s-main
+[13:34:27.416112] tee /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b/sheet_n3_pad10_cpml6.log
+[13:34:28.060403] [sheet_n3_pad10_cpml6] rfx from /tmp/rfx-801s-main/rfx/__init__.py (tree fc7f7202567e2cf78a65ab90a709e4ff45b185f1); driver fc7f7202567e2cf78a65ab90a709e4ff45b185f1 dirty=True; jax {'version': '0.4.33.dev20241023+e3c6d6430', 'backend': 'gpu', 'devices': ['cuda:0'], 'x64_enabled': False}
+[13:34:28.910530] [sheet_n3_pad10_cpml6] grid [188, 142, 61] patch 33x39 cells; cpml 6; pad eps x-lo row [3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918, 3.380000114440918]
+[13:34:28.955174]   [PREFLIGHT] Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -26.23µm is 26.23µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 26.23µm to 26.23µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:34:28.955197]   [PREFLIGHT] all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:34:28.955201]   [PREFLIGHT] 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.909mm, realized node plane 21 at 3.935mm (offset +0.100 cell = 26.23µm); geometry[2] 'pec' normal z: declared mid-plane 4.958mm, realized node plane 25 at 4.984mm (offset +0.100 cell = 26.23µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:34:28.955204] [sheet_n3_pad10_cpml6] preflight (3), quoted verbatim:
+[13:34:28.955207]    ! Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -26.23µm is 26.23µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 26.23µm to 26.23µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:34:28.955209]    ! all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:34:28.955211]    ! 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.909mm, realized node plane 21 at 3.935mm (offset +0.100 cell = 26.23µm); geometry[2] 'pec' normal z: declared mid-plane 4.958mm, realized node plane 25 at 4.984mm (offset +0.100 cell = 26.23µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:34:28.964003]   [PREFLIGHT] Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -26.23µm is 26.23µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 26.23µm to 26.23µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:34:28.964015]   [PREFLIGHT] all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:34:28.964019]   [PREFLIGHT] 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.909mm, realized node plane 21 at 3.935mm (offset +0.100 cell = 26.23µm); geometry[2] 'pec' normal z: declared mid-plane 4.958mm, realized node plane 25 at 4.984mm (offset +0.100 cell = 26.23µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:34:28.964127] /tmp/rfx-801s-main/scripts/diagnostics/patch_pad_cpml_ringdown.py:397: UserWarning: [run] preflight found 3 advisory issue(s) - pass skip_preflight=True to suppress:
+[13:34:28.964134]   - Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -26.23µm is 26.23µm past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 26.23µm to 26.23µm); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates — geometry inside the absorber is physically meaningless (issue #61).
+[13:34:28.964139]   - all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+[13:34:28.964141]   - 2 PEC sheet(s) realized (lattice ownership contract #931 §1.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: geometry[0] 'pec' normal z: declared mid-plane 3.909mm, realized node plane 21 at 3.935mm (offset +0.100 cell = 26.23µm); geometry[2] 'pec' normal z: declared mid-plane 4.958mm, realized node plane 25 at 4.984mm (offset +0.100 cell = 26.23µm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane — a laminate face, a ground level — is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.
+[13:34:28.964150]   res = sim.run(num_periods=a.periods, **kw)
+[13:34:37.447487] [sheet_n3_pad10_cpml6] 19994 steps in 0.14 min; settling per probe [-52.57, -48.72, -47.56, -51.96] dB (bar -40.0) -> SETTLED; last-30% growth [0.603, 0.585, 0.661, 0.544]
+[13:34:37.447565] [RESULT] {"tag": "sheet_n3_pad10_cpml6", "n": 3, "dx_um": 262.3333333333333, "periods": 150.0, "pad_h": 10, "cpml_layers": 6, "subpixel_smoothing": false, "sheet_conductors": true, "L_mm": 8.657, "W_mm": 10.231, "status": "ran", "wall_s": 8.45718789100647, "n_steps": 19994, "dt_s": 5.001581407736339e-13, "peak": [0.03574298694729805, 0.017977172508835793, 0.019588546827435493, 0.025007909163832664], "tail95": [8.409225847572088e-05, 6.588463293155655e-05, 8.206826896639541e-05, 6.313511403277516e-05], "nonfinite_per_probe": [false, false, false, false], "settling_db_per_probe": [-52.56869651995207, -48.718745105415294, -47.55653892039331, -51.95612827953869], "settling_db": -47.55653892039331, "settled": true, "last30_growth_ratio": [0.6025546938836862, 0.5852146253226956, 0.6613923360226764, 0.544449386079721], "last30_growth_ratio_worst": 0.6613923360226764, "last30_log_rate_per_step": [-7.468456142555479e-05, -0.0001471962739142755, -6.700974413448632e-05, -0.00019489531060141524], "nonfinite_first_step": null, "envelope_decimate": 64}
+[13:34:37.629755] + echo 0
+[13:34:37.632612] + cat /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b/sheet_n3_pad10_cpml6.rc
+[13:34:37.633698] + rc=0
+[13:34:37.633701] + echo 'arm sheet_n3_pad10_cpml6 rc=0'
+[13:34:37.633706] arm sheet_n3_pad10_cpml6 rc=0
+[13:34:37.633709] + '[' 0 -ne 0 ]
+[13:34:37.633718] + echo '===== per-arm numbers (quoted from the JSONs; no verdict here) ====='
+[13:34:37.633720] ===== per-arm numbers (quoted from the JSONs; no verdict here) =====
+[13:34:37.633724] + cd /tmp/rfx-801s-driver
+[13:34:37.633784] + python -u scripts/diagnostics/patch_pad_cpml_ringdown_summary.py --dir /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b --json-out /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b/summary.json
+[13:34:37.633865] + tee /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b/summary.txt
+[13:34:37.662946] arm                      cpml subpx             grid  steps  settle dB settled   growth    NaN@  wall s
+[13:34:37.662950] -------------------------------------------------------------------------------------------------------
+[13:34:37.662951] sheet_n3_pad10_cpml6        6 False   [188, 142, 61]  19994     -47.56    True    0.661    None       8
+[13:34:37.662952] sheet_n4_pad10_cpml16      16 False   [266, 205, 97]  26659     -56.87    True    0.363    None      40
+[13:34:37.662953] sheet_n4_pad10_cpml32      32 False  [298, 237, 129]  26659     -58.26    True    0.364    None      81
+[13:34:37.662954] sheet_n4_pad10_cpml8        8 False   [250, 189, 81]  26659     -52.78    True    0.378    None      26
+[13:34:37.662955] sheet_n4_pad12_cpml8        8 False   [265, 206, 81]  26659     -54.25    True    0.379    None      34
+[13:34:37.662956] sheet_n4_pad8_cpml8         8 False   [233, 174, 81]  26659     -55.26    True    0.377    None      25
+[13:34:37.662956] sheet_n4_pad6_cpml8         8 False   [217, 157, 81]  26659     -57.28    True    0.374    None      20
+[13:34:37.662957] 
+[13:34:37.662961] sheet_n3_pad10_cpml6     rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=174.00000000000003 domy/dx=129.0
+[13:34:37.662967] sheet_n4_pad10_cpml16    rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=232.00000000000003 domy/dx=172.0
+[13:34:37.662968] sheet_n4_pad10_cpml32    rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=232.00000000000003 domy/dx=172.0
+[13:34:37.662973] sheet_n4_pad10_cpml8     rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=232.00000000000003 domy/dx=172.0
+[13:34:37.662974] sheet_n4_pad12_cpml8     rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=248.0 domy/dx=188.00000000000003
+[13:34:37.662975] sheet_n4_pad6_cpml8      rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=200.0 domy/dx=140.0
+[13:34:37.662976] sheet_n4_pad8_cpml8      rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=216.0 domy/dx=156.00000000000003
+[13:34:37.666582] 
+[13:34:37.666585] summary written: /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b/summary.json
+[13:34:37.669803] + ls -la /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b
+[13:34:37.671813] total 3468
+[13:34:37.671816] drwxr-xr-x   2 nobody nogroup   4096 Sep 15 13:34 .
+[13:34:37.671817] drwxrwxrwx 348 nobody nogroup  40960 Sep 15 13:30 ..
+[13:34:37.671819] -rw-r--r--   1 nobody nogroup  15098 Sep 15 13:30 PREDECLARATION.md
+[13:34:37.671820] -rw-r--r--   1 nobody nogroup     41 Sep 15 13:30 driver_commit.txt
+[13:34:37.671821] -rw-r--r--   1 nobody nogroup     13 Sep 15 13:30 run_id.txt
+[13:34:37.671821] -rw-r--r--   1 nobody nogroup  42307 Sep 15 13:34 sheet_n3_pad10_cpml6.json
+[13:34:37.671822] -rw-r--r--   1 nobody nogroup   9223 Sep 15 13:34 sheet_n3_pad10_cpml6.log
+[13:34:37.671823] -rw-r--r--   1 nobody nogroup      2 Sep 15 13:34 sheet_n3_pad10_cpml6.rc
+[13:34:37.671824] -rw-r--r--   1 nobody nogroup 320406 Sep 15 13:34 sheet_n3_pad10_cpml6_ts.npz
+[13:34:37.671825] -rw-r--r--   1 nobody nogroup  55380 Sep 15 13:33 sheet_n4_pad10_cpml16.json
+[13:34:37.671826] -rw-r--r--   1 nobody nogroup   9420 Sep 15 13:33 sheet_n4_pad10_cpml16.log
+[13:34:37.671826] -rw-r--r--   1 nobody nogroup      2 Sep 15 13:33 sheet_n4_pad10_cpml16.rc
+[13:34:37.671827] -rw-r--r--   1 nobody nogroup 427046 Sep 15 13:33 sheet_n4_pad10_cpml16_ts.npz
+[13:34:37.671828] -rw-r--r--   1 nobody nogroup  57262 Sep 15 13:34 sheet_n4_pad10_cpml32.json
+[13:34:37.671829] -rw-r--r--   1 nobody nogroup      2 Sep 15 13:34 sheet_n4_pad10_cpml32.rc
+[13:34:37.671829] -rw-r--r--   1 nobody nogroup   9717 Sep 15 13:34 sheet_n4_pad10_cpml32.log
+[13:34:37.671830] -rw-r--r--   1 nobody nogroup 427046 Sep 15 13:34 sheet_n4_pad10_cpml32_ts.npz
+[13:34:37.671831] -rw-r--r--   1 nobody nogroup  54413 Sep 15 13:31 sheet_n4_pad10_cpml8.json
+[13:34:37.671832] -rw-r--r--   1 nobody nogroup   9262 Sep 15 13:31 sheet_n4_pad10_cpml8.log
+[13:34:37.671833] -rw-r--r--   1 nobody nogroup      2 Sep 15 13:31 sheet_n4_pad10_cpml8.rc
+[13:34:37.671834] -rw-r--r--   1 nobody nogroup 427046 Sep 15 13:31 sheet_n4_pad10_cpml8_ts.npz
+[13:34:37.671836] -rw-r--r--   1 nobody nogroup  54422 Sep 15 13:32 sheet_n4_pad12_cpml8.json
+[13:34:37.671837] -rw-r--r--   1 nobody nogroup   9255 Sep 15 13:32 sheet_n4_pad12_cpml8.log
+[13:34:37.671838] -rw-r--r--   1 nobody nogroup      2 Sep 15 13:32 sheet_n4_pad12_cpml8.rc
+[13:34:37.671839] -rw-r--r--   1 nobody nogroup 427046 Sep 15 13:32 sheet_n4_pad12_cpml8_ts.npz
+[13:34:37.671839] -rw-r--r--   1 nobody nogroup  54592 Sep 15 13:30 sheet_n4_pad6_cpml8.json
+[13:34:37.671840] -rw-r--r--   1 nobody nogroup   9252 Sep 15 13:30 sheet_n4_pad6_cpml8.log
+[13:34:37.671841] -rw-r--r--   1 nobody nogroup      2 Sep 15 13:30 sheet_n4_pad6_cpml8.rc
+[13:34:37.671842] -rw-r--r--   1 nobody nogroup 427046 Sep 15 13:30 sheet_n4_pad6_cpml8_ts.npz
+[13:34:37.671843] -rw-r--r--   1 nobody nogroup   9253 Sep 15 13:31 sheet_n4_pad8_cpml8.log
+[13:34:37.671843] -rw-r--r--   1 nobody nogroup  54431 Sep 15 13:31 sheet_n4_pad8_cpml8.json
+[13:34:37.671844] -rw-r--r--   1 nobody nogroup      2 Sep 15 13:31 sheet_n4_pad8_cpml8.rc
+[13:34:37.671845] -rw-r--r--   1 nobody nogroup 427046 Sep 15 13:31 sheet_n4_pad8_cpml8_ts.npz
+[13:34:37.671846] -rw-r--r--   1 nobody nogroup   2192 Sep 15 13:34 summary.txt
+[13:34:37.671846] -rw-r--r--   1 nobody nogroup  58856 Sep 15 13:34 summary.json
+[13:34:37.671847] -rw-r--r--   1 nobody nogroup     41 Sep 15 13:30 tree_main_commit.txt
+[13:34:37.671904] artifacts persisted (mounted, survives teardown): /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b
+[13:34:37.671908] + echo 'artifacts persisted (mounted, survives teardown): /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-20260915T133029Z-2112af0b'
+[13:34:37.671912] patch_pad_cpml_sheet_failed_arms=0
+[13:34:37.671915] + echo 'patch_pad_cpml_sheet_failed_arms=0'
+[13:34:37.671916] + '[' 0 -eq 0 ]
+[13:34:37.690390] workload reported done
+[13:34:37.690490] Workload status changed to stopping
+[13:34:46.082355] + set +x
+[13:34:51.113717] workload reported done
+[13:34:51.113817] Workload status changed to waitToBeKilled
+[13:34:53.000000] Stopping container vops-sidecar
+[13:34:53.000000] Stopping container run-sidecar
+[13:34:53.000000] Stopping container run-exec
+[13:34:53.000000] Terminating VESSL Workload...
+[13:34:53.000000] Stopping container ttyd-sidecar
+[13:34:53.000000] Stopping container fluentbit
+[13:34:53.699277] workload completed
+[13:34:53.699378] Workload status changed to completed

@@ -13,7 +13,7 @@ env:
   MPLBACKEND: "Agg"
   JAX_ENABLE_X64: "0"
   RFX_DRIVER_BRANCH: "diag/801-patch-ringdown-padding"
-  RFX_DRIVER_SHA: "FILL_AFTER_PUSH"
+  RFX_DRIVER_SHA: "2112af0bf89e6da8580c448aa641e3136ca4fab0"
   RFX_TREE_MAIN: "fc7f7202567e2cf78a65ab90a709e4ff45b185f1"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
