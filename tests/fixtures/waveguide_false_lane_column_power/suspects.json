@@ -5,6 +5,7 @@
  "source_fixture": "tests/fixtures/waveguide_chain_battery/fixture.json",
  "source_run_id": "369367257823",
  "source_commit": "ca168584e35b145fcbeb86dc11350a7304daf024",
+ "rfx_code_tree": "0cd2ab4aa36cb29ed763cca34668619ce0c0a5c6",
  "freqs_hz": [
   8400000000.0,
   8600000000.0,

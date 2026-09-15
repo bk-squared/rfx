@@ -7,6 +7,7 @@
   "source_record": {
     "path": "validation/crossval/_02_ring_resonator_results/crossval.json",
     "commit": "296cabada23343eede7beb05a0a4f98f7bb64adf",
+    "rfx_code_tree": "f74a17ce0386afcf88c4f23b7b540a0e209a5157",
     "date_utc": "2026-09-06T17:07:57Z"
   },
   "signal": {
