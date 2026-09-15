@@ -911,6 +911,12 @@ _SHARED_HELPER_BINDINGS = (
     # re-exports both at their old position, so these rows are what says the
     # re-export is the same object and not a resurrected copy.
     ("split_array_x", "rfx.runners.distributed", "split_array_x"),
+    # #1053 leg 1 -- v2's second importer of the same primitive. It shards the
+    # realized-PEC cell mask with it, and the whole point of reusing this
+    # function rather than distributed_nu's shard_pec_mask_x_slab is that the
+    # two produce bit-identical slabs; this row is what says v2 is calling the
+    # shared one and not a resurrected copy.
+    ("split_array_x", "rfx.runners.distributed_v2", "split_array_x"),
     ("gather_array_x", "rfx.runners.distributed", "gather_array_x"),
     ("gather_array_x", "rfx.runners.distributed_v2", "gather_array_x"),
     # #1038 leg 2 (b) -- the final-state gather. The two copies differed in the

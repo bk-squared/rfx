@@ -75,6 +75,7 @@ from rfx.runners._distributed_common import (
     sample_probes_shmap,
     shard_stacked,
     shard_stacked_psi,
+    split_array_x,
     unstack_and_gather,
     update_e_nu_shmap,
     update_h_nu_shmap,
@@ -756,6 +757,30 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     state_slabs = _split_state(full_state, n_devices, ghost)
     materials_slabs = _split_materials(materials, n_devices, ghost)
 
+    # #1053 leg 1: carry the realized-PEC cell mask into the sharded world.
+    # ``pec_mask`` is the full-domain primal-cell occupancy of every declared
+    # PEC VOLUME, already padded to ``nx_padded`` above (with ``True``, the
+    # high-x alignment convention ``shard_pec_mask_x_slab`` also uses). Until
+    # now this lane built it and dropped it on the floor.
+    #
+    # ``pad_value=False`` fills the PHYSICAL-boundary ghost rows -- device 0's
+    # left ghost and device N-1's right ghost. It must be False and not True:
+    # a True there puts a spurious PEC wall on the whole x_lo / x_hi node
+    # plane of the outer ranks and shorts a CPML face (#689/#931, recorded at
+    # distributed_nu.py:538-547). Interior ghost rows get the seam
+    # neighbour's real value from the slicing, which is what lets a rank's
+    # first/last real cell see its true x neighbour under the four-incident-
+    # cell rule.
+    #
+    # ``split_array_x`` + ``shard_stacked`` reproduce
+    # ``distributed_nu.shard_pec_mask_x_slab`` BIT-IDENTICALLY -- verified on
+    # (nx, pad_x) in {(8,0), (7,1), (16,0)}, ny=nz=6, n_devices=2, random
+    # masks, jnp.array_equal True on every case. So this lane needs no sharder
+    # of its own, and the two lanes cannot disagree about slab layout.
+    pec_mask_slabs = (
+        None if pec_mask is None
+        else split_array_x(pec_mask, n_devices, ghost, pad_value=False))
+
     # Shard the stacked slabs: shape (n_devices, nx_local, ny, nz) ->
     # each device owns nx_local rows of the sharded (n_devices*nx_local, ny, nz) array.
     shd = _x_sharding(mesh)
@@ -821,6 +846,16 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     mat_mu_r  = _shard_stacked(materials_slabs.mu_r)
     sharded_materials = MaterialArrays(
         eps_r=mat_eps_r, sigma=mat_sigma, mu_r=mat_mu_r)
+
+    # #1053 leg 1. ``None`` whenever the model declares no PEC volume, which
+    # is every fixture of the #1038 bit-identity lock -- so the stage leg 2
+    # hooks on this is a no-op branch there and the lock stays 15/15. The step
+    # bodies read this as a CLOSURE VARIABLE, next to ``sharded_materials``,
+    # not through ``run_distributed``'s ``**kwargs``: that kwargs bag is
+    # forwarded only on the ``n_devices == 1`` fast path and is silently
+    # discarded at exactly the device counts this stage exists for.
+    sharded_pec_mask = (  # noqa: F841  -- consumed by the stage in leg 2
+        None if pec_mask_slabs is None else _shard_stacked(pec_mask_slabs))
 
     # ------------------------------------------------------------------
     # Dispersive materials
