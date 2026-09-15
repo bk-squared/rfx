@@ -34,6 +34,44 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   `rfx.runners._distributed_common` (which only `distributed.py` imported
   eagerly). Both still import on demand by full path.
 
+### Fixed — both distributed runners inject sources BEFORE the E ghost exchange (#1041, #1055)
+
+- A soft source in rank *d*'s **first real cell** was up to **18.6 %** of peak
+  off the same model run on one device. Both distributed step bodies exchanged
+  the E ghost rows before injecting, so the neighbour's right ghost held a
+  pre-injection E plane for one step and rank *d−1*'s H update at its last real
+  cell consumed it. `distributed_nu` had fixed this in `ac782d4f` (#931 T3);
+  #1041 measured it on `distributed_v2` and #1055 on `rfx.runners.distributed`,
+  the legacy `jax.pmap` lane, which reproduced v2's error **to four digits**.
+  All three lanes now exchange the E ghosts as the LAST stage of the E
+  half-step, so a ghost row is always a copy of the owner's finished real row.
+- Measured against the SAME model on one device (uniform 31×15×15 cells at
+  dx = 1 mm, nx = 32, 2 ranks, seam at global node 16, 300 steps,
+  `max|multi − single| / peak(|single|)`, probe 4 cells into the neighbouring
+  rank; `scripts/diagnostics/issue1041_v2_step_order.py` and its #1055 sibling
+  `issue1055_v1_step_order.py`):
+
+  | lane | boundary | before | after | lane floor (interior source) |
+  |---|---|---|---|---|
+  | v2 (`shard_map`) | pec | 1.859e-01 | 4.858e-06 | 5.100e-06 |
+  | v2 | cpml | 1.653e-01 | 1.894e-06 | 1.629e-06 |
+  | v1 (`pmap`) | pec | 1.859e-01 | **0.000e+00** | 0.000e+00 |
+  | v1 | cpml | 1.653e-01 | 1.579e-06 | 2.417e-06 |
+
+  The corrected seam sits at each lane's own floor; on v1's PEC body that floor
+  is exactly zero, i.e. bit-identical to the single-device lane.
+- **Who is affected.** On v2 this is the production path — any
+  `sim.run(devices=[...])` with a source within one cell of a rank boundary.
+  v1 is reachable only by full-path import (#1049) and as v2's `n_devices == 1`
+  fast path, where there is no seam and the defect cannot fire, so no
+  production result changes on that lane.
+- The defect is **one-sided**: only the right E ghost is live, so a source in a
+  rank's *last* real cell was never wrong. Every distributed fixture of the
+  #1038 bit-identity lock puts its source there, so the lock stays green
+  through both changes with no re-bless. Gate:
+  `tests/unit/runners/test_distributed_v2_seam_source_order.py` (1e-3,
+  parametrised over both runners, proven red on each pre-fix body).
+
 ### Added — `sim.run(devices=...)` realizes declared PEC volumes (#1053)
 
 - The `shard_map` distributed lane (`rfx.runners.distributed_v2`) now realizes a

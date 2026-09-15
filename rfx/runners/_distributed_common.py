@@ -414,6 +414,11 @@ def apply_pec_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
     x_lo / x_hi faces act on rank 0's first and rank N-1's last real cell,
     whose exchanged copies the receiving rank discards. What was NOT inert
     was the ``exchange``/``source`` half, and the exchange moved for that.
+
+    The legacy pmap lane does not call this function -- it has its own
+    ``distributed.py::_apply_pec_local`` -- but since #1055 that one sits at
+    the same point in its step body, for the same measured reason. All three
+    lanes now agree on the hook point.
     """
 
     @partial(
