@@ -1005,6 +1005,15 @@ def main() -> int:
         "commit": subprocess.run(
             ["git", "-C", str(REPO), "rev-parse", "HEAD"],
             capture_output=True, text=True, check=True).stdout.strip(),
+        # Round-1 review of the #1043 stage-B PR: the commit alone is not
+        # provenance. An artifact stamped with a clean sha from a tree with
+        # uncommitted edits names code that does not exist anywhere, and that
+        # is exactly how the first re-stamp of this lane's sibling artifact
+        # misled -- it read `dirty: true` and the sha was innocent. `git
+        # status --porcelain` is the cheapest thing that tells them apart.
+        "dirty": bool(subprocess.run(
+            ["git", "-C", str(REPO), "status", "--porcelain"],
+            capture_output=True, text=True, check=True).stdout.strip()),
         "rfx_version": getattr(rfx, "__version__", "unknown"),
         "rfx_file": rfx.__file__,
         "jax_version": jax.__version__,
