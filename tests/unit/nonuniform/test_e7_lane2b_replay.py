@@ -144,7 +144,8 @@ def test_revert_proof_has_power_against_the_dt_path(arm):
         rv = rec["revert"]
         assert rv["forward_identical"] is True, label
         assert rv["lane_order_verdict"] == "FIRED" or rv["fd_verdict"] == "FIRED", label
-        assert rv["dt_share"] is not None and rv["dt_share"] > 0.05, label
+        # zsmooth's share is negative (dt path and geometry path of opposite sign)
+        assert rv["dt_share"] is not None and abs(rv["dt_share"]) > 0.05, label
 
 
 def test_y_width_gradient_verified_on_second_inplane_axis():
@@ -189,6 +190,62 @@ def test_pos_position_gradient_order_verified():
     assert l1["verdict"] == "FIRED" and l1["R1"]["slope"] > 2.2 and l1["points"] == 4
     l2 = d["losses"]["l2s"]["controls"]["x_c"]["order"]
     assert l2["verdict"] == "HELD" and l2["points"] == 5
+
+
+def test_zsmooth_thin_thickness_verified_on_smooth_spectral_loss():
+    """Recorded: AD-Q's "L2 thickness NOT verified" is closed on the Hann+comb
+    observable -- h_thin order HELD with FD inside its bar on the 8000-step z
+    stack (floor well under AD-Q's 14-44 ulp), and the dt revert-proof fires."""
+    d = _load("zsmooth")
+    rec = d["losses"]["l2s"]
+    t = rec["controls"]["h_thin"]
+    assert t["lane_order_verdict"] == "HELD" and t["fd"]["verdict"] == "HELD"
+    assert 1.9 <= t["order"]["R1"]["slope"] <= 2.1 and t["order"]["points"] >= 6
+    assert t["floor"]["sigma_in_ulp"] < 14.0
+    for nm in ("h_core_left", "h_air"):
+        assert rec["controls"][nm]["lane_order_verdict"] == "HELD", nm
+    assert rec["revert"]["control"] == "h_thin" and rec["revert"]["order"]["R1"]["slope"] < 1.3
+    assert d["fixture"]["n2"] == 8000 and len(d["fixture"]["comb_hz"]) == 21
+
+
+def test_zsmooth_core_right_fire_is_the_one_sided_cubic_asymmetry():
+    """Recorded FIRED (h_core_right R1 1.721), re-derived from the ladders: the
+    direction is the exact negative of h_core_left's; the two ladders agree to
+    a few ulp; the one-sided R1 lands on opposite sides of 2 at the two ends of
+    the line while the even remainder (cubic term cancelled) fits ~2 for every
+    control; and the central remainder falls as h^3, which bounds any gradient
+    error along the line. A judge property, recorded -- not a rule change."""
+    d = _load("zsmooth")
+    rec = d["losses"]["l2s"]
+    loss0, u = rec["loss0"], adq.ulp(rec["loss0"])
+    L, R = rec["controls"]["h_core_left"], rec["controls"]["h_core_right"]
+    assert np.array_equal(adq.A[:, 2], -adq.A[:, 0]) and L["ad_relative"] == -R["ad_relative"]
+    assert R["lane_order_verdict"] == "FIRED" and R["fd"]["verdict"] == "HELD" and R["order"]["R1"]["slope"] < e7.R1_MIN
+    assert L["lane_order_verdict"] == "HELD" and L["order"]["R1"]["slope"] > 2.1
+    for pl, pr in zip(L["points"], R["points"]):
+        assert abs(pr["loss_plus"] - pl["loss_minus"]) <= 16 * u and abs(pr["loss_minus"] - pl["loss_plus"]) <= 16 * u
+    idx = L["order"]["indices"]
+    assert idx == R["order"]["indices"] and len(idx) == 7
+
+    def slope(hs, y):
+        return float(np.polyfit(np.log(hs), np.log(y), 1)[0])
+
+    for nm, r in rec["controls"].items():
+        pts, g, ii = r["points"], r["ad_relative"], r["order"]["indices"]
+        hs = np.array([pts[i]["h"] for i in ii])
+        plus = [abs(pts[i]["loss_plus"] - loss0 - pts[i]["h"] * g) for i in ii]
+        minus = [abs(pts[i]["loss_minus"] - loss0 + pts[i]["h"] * g) for i in ii]
+        even = [abs(0.5 * (pts[i]["loss_plus"] + pts[i]["loss_minus"]) - loss0) for i in ii]
+        assert abs(slope(hs, plus) - r["order"]["R1"]["slope"]) <= 1e-12, nm   # R1 is the one-sided plus remainder
+        assert abs(slope(hs, even) - 2.0) <= 0.05, nm
+        if nm == "h_core_left":
+            assert slope(hs, minus) < e7.R1_MIN and abs(slope(hs, minus) - R["order"]["R1"]["slope"]) < 0.02
+        # central remainder |L+ - L- - 2 h g.v|: h^3 above 32 sigma, no linear floor
+        h = np.array([p["h"] for p in pts])
+        cen = np.array([abs(p["loss_plus"] - p["loss_minus"] - 2 * p["h"] * g) for p in pts])
+        ok = np.flatnonzero(cen > 32 * r["floor"]["sigma"])
+        assert len(ok) >= 3 and slope(h[ok], cen[ok]) > 2.6, nm
+        assert cen[ok[0]] / (2 * h[ok[0]]) / abs(g) < 1e-3, nm   # |delta| / |g.v| bound
 
 
 def test_pos_l1_w_fire_is_on_the_r0_edge():
