@@ -116,3 +116,34 @@ the in-plane width gradient is now verified on both in-plane axes, dt path
 included. `y_c` is INCONCLUSIVE on order for the same reason as E6's `x_c`
 (source and probe on opposite sides of the strip; the fixture, not the
 gradient) — which is exactly what the `pos` arm is for.
+
+
+### Arm pos — position control with the probe on the source side (run once on d0fab837; `e7_pos.json`)
+
+Eligibility pre-check (declared ≥ 0.5): cancellation ratio **1.0** on both
+losses — `g_lead` and `g_tail` now carry the SAME sign (L1: 5.264 and 0.175;
+L2s: 4.53e-22 and 3.89e-22), so the x_c direction is no longer a
+lead-minus-tail difference. The fixture is eligible.
+
+| loss | control | R0 | R1 | pts | order (lane rule) | FD | narrowest 3B/\|g\| | floor |
+|---|---|---|---|---|---|---|---|---|
+| l1 | w | 0.8997 | 2.025 | 5 | FIRED | HELD | 2.3e-03 | 2.3 ulp |
+| l1 | x_c | 0.9950 | 2.233 | 4 | HELD | HELD | 6.7e-04 | 1.9 ulp |
+| l2s | w | 0.9501 | 1.962 | 6 | HELD | HELD | 7.2e-04 | 14.6 ulp |
+| l2s | x_c | 1.0105 | 1.989 | 5 | HELD | HELD | 7.5e-03 | 1.9 ulp |
+
+**Band POSITION is now order-verified**: `x_c` R1 = 2.233 (L1, 4 points,
+h 1.6e-2..1.25e-1) and **1.989** (L2s, 5 points), FD inside its bar on both
+(3B/|g| 6.7e-4 and 7.5e-3). E6's "structurally unavailable" was the
+fixture's symmetry, not the gradient — moving the probe to the source side
+is all it took.
+
+**Recorded FIRED, not a gradient signal**: `w` on L1 fires the lane order
+rule on the R0 bound alone — R0 = 0.899689 (fit standard error 0.0253)
+against the frozen lower edge 0.9, while its R1 = 2.025 (the correctness
+statistic) and its FD gate (3B/|g| 2.3e-3) both hold, as they did on E6-x
+(R1 1.945) and on arm y (1.943). R0 is the slope of the FIRST difference
+`|L(x+hv) − L(x)|`, a sanity check that the ladder is in the linear regime;
+a wrong gradient does not move it. The rule is kept as declared; the
+verified-coverage figure for L1 (0.174) therefore excludes `w` by rule,
+while the same control is verified on L2s (coverage 0.675).
