@@ -123,6 +123,33 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   the MSL and mixed lanes run preflight automatically, the waveguide and
   coaxial lanes do not. Routing through `compute_s_matrix` adds none.
 
+### Fixed — the rendered API reference listed no method `Simulation` inherits from its mixins (#1019)
+
+- The pdoc-rendered reference (`docs/api`, built by the `api-reference` CI job)
+  contained **17 of 49** public `Simulation` methods short: every one defined on
+  a private mixin — `run`, `forward`, `preflight`, `preflight_sparameters`,
+  `compute_s_matrix`, `compute_waveguide_s_matrix`, `compute_msl_s_matrix`, the
+  rest of the `compute_*` family, `s_matrix_lane`, `conductor_mask`,
+  `export_scene`, `export_artifact_bundle`, `artifact_report`. Only the builder
+  side (`add_*`, mesh, AD-memory) rendered. This had been true since the Part B
+  mixin split.
+- Cause: pdoc renders a class's own members in full and reduces inherited ones
+  to a link list, then drops that list when the base's **module** is not itself
+  documented. `Simulation`'s mixins live in `rfx.api._execute`, `rfx.api._sparams`
+  … which pdoc never documents, so the block was dropped whole. The base class
+  names being private is not the trigger; the module is.
+- Fix: `docs/pdoc_templates/module.html.jinja2` (a pdoc template override, now
+  used by CI via `-t docs/pdoc_templates`) renders members inherited from an
+  undocumented module of the same package as full class attributes. Simulation
+  anchors 34 → 52, none lost. No library behaviour changed.
+- The gate that missed it is fixed too: `scripts/check_api_reference.py
+  --html-dir` checked only three module-level substrings of the HTML and
+  otherwise inspected the *live* class. It now requires an
+  `id="Simulation.<name>"` anchor for every public method on the live class.
+- Known limit: pdoc builds its search index in Python from each class's own
+  members, which no template can reach, so these methods render on the page but
+  are not found by the reference's search box.
+
 ### Fixed — a dielectric touching the domain boundary was solved with vacuum in the absorber pad whenever subpixel smoothing was on (#1043, #831)
 
 - The CPML/UPML pad material extension — on by default, and there "so that

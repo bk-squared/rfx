@@ -17,6 +17,11 @@ Usage:
         # additionally assert the rendered HTML contains the required symbols
         # AND an anchor for every public Simulation method (issue #1019)
 
+The rendered tree must be built with the repo's pdoc template override,
+which is what makes Simulation's mixin-inherited methods render at all:
+
+    python -m pdoc -t docs/pdoc_templates -o docs/api rfx '!rfx.dashboard'
+
 Exit codes: 0 ok, 1 drift/gate failure.
 """
 
@@ -91,7 +96,8 @@ def build_inventory() -> dict:
             "Public API surface pinned by scripts/check_api_reference.py. "
             "Regenerate with: python scripts/check_api_reference.py --write "
             "(and rebuild docs/api with pdoc: "
-            "python -m pdoc -o docs/api rfx '!rfx.dashboard')."
+            "python -m pdoc -t docs/pdoc_templates -o docs/api rfx "
+            "'!rfx.dashboard')."
         ),
         "rfx_exports": exports,
         "simulation_methods": dict(sorted(methods.items())),
@@ -136,7 +142,9 @@ def check_html(html_dir: Path, inv: dict) -> list[str]:
             f"{len(missing)}/{len(methods)} public method(s): "
             + ", ".join(missing)
             + " — pdoc dropped them (members Simulation inherits from the "
-            "private mixins are not rendered)."
+            "private mixins are not rendered without the repo's template "
+            "override). Rebuild with: python -m pdoc -t docs/pdoc_templates "
+            "-o docs/api rfx '!rfx.dashboard'"
         )
     return errors
 
