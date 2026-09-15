@@ -1,0 +1,1830 @@
+{
+ "what": "Study V: the GPU sparse-direct backend, and the spiral levels it buys.",
+ "generated_utc": "2026-09-15T06:57:46Z",
+ "backend": {
+  "backends": [
+   "superlu",
+   "cudss",
+   "cusolver"
+  ],
+  "default": "superlu",
+  "env_override": "RFX_FDFD_BACKEND",
+  "transposed_solve": "cuDSS has no transposed solve, so the adjoint system factorises A^T as a second problem inside the same factor object: a gradient costs two cuDSS factorisations and two device-resident factors against SuperLU's one of each",
+  "environment": {
+   "python": "3.10.13",
+   "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
+   "numpy": "2.2.6",
+   "scipy": "1.15.3",
+   "jax": "0.6.2",
+   "jax_platforms_env": "cpu",
+   "jax_devices": [
+    "TFRT_CPU_0"
+   ],
+   "jax_default_backend": "cpu",
+   "default_backend": "superlu",
+   "env_backend": "superlu",
+   "cudss_hybrid_memory": false,
+   "cudss_free_forward": false,
+   "backends": {
+    "cudss": {
+     "backend": "cudss",
+     "available": true,
+     "reason": null,
+     "nvmath_version": "1.0.0",
+     "cupy_version": "14.2.0",
+     "device_count": 1,
+     "device_name": "NVIDIA GeForce RTX 4090",
+     "device_arrays": true,
+     "min_cudss": "0.4.0",
+     "threading_lib": "/opt/conda/lib/python3.10/site-packages/nvidia/cu12/lib/libcudss_mtlayer_gomp.so.0",
+     "host_nthreads": 16
+    },
+    "cusolver": {
+     "backend": "cusolver",
+     "available": true,
+     "reason": null,
+     "cupy_version": "14.2.0",
+     "device_count": 1,
+     "device_name": "NVIDIA GeForce RTX 4090"
+    }
+   },
+   "device_memory_gb": {
+    "used": 0.38232421875,
+    "free": 23.26739501953125,
+    "total": 23.64971923828125,
+    "pool_used": 0.0,
+    "pool_total": 0.0
+   },
+   "cpu_count": 32,
+   "omp_num_threads": "16",
+   "nvmath_version": "1.0.0",
+   "cupy_version": "14.2.0",
+   "nvidia_smi": "NVIDIA GeForce RTX 4090, 24564 MiB, 391 MiB, 535.288.01"
+  }
+ },
+ "lanes": {
+  "j0": {
+   "dir": "fdfd-gpu-j0-20260915T055136Z",
+   "file": "validation/vessl/runs/fdfd-gpu-j0-20260915T055136Z/j0_probe.json",
+   "seconds": 596.9431509971619,
+   "started_utc": "2026-09-15T05:54:23Z",
+   "finished_utc": "2026-09-15T06:04:20Z",
+   "config": null,
+   "blocked": null
+  },
+  "j1": {
+   "dir": "fdfd-gpu-j1-20260915T060541Z",
+   "file": "validation/vessl/runs/fdfd-gpu-j1-20260915T060541Z/j1_scale.json",
+   "seconds": 287.46308612823486,
+   "started_utc": "2026-09-15T06:06:43Z",
+   "finished_utc": "2026-09-15T06:11:30Z",
+   "config": {
+    "backend": "cudss",
+    "divs": [
+     4.0,
+     6.0
+    ],
+    "grad": true,
+    "grad_max_div": 1000000000.0,
+    "pec": true,
+    "fd_div": "4",
+    "fd_param": 2,
+    "deadline_seconds": 5400.0,
+    "factor_cache_size": 1,
+    "hybrid_memory": false,
+    "free_forward": true
+   },
+   "blocked": null
+  },
+  "j2": {
+   "dir": "fdfd-gpu-j2-20260915T061323Z",
+   "file": "validation/vessl/runs/fdfd-gpu-j2-20260915T061323Z/j2_paper.json",
+   "seconds": 95.91093039512634,
+   "started_utc": "2026-09-15T06:14:24Z",
+   "finished_utc": "2026-09-15T06:16:00Z",
+   "config": {
+    "backend": "cudss",
+    "divs": [
+     1.0,
+     3.0
+    ],
+    "plan_divs": [
+     3.0
+    ],
+    "factor_cache_size": 1,
+    "hybrid_memory": false,
+    "free_forward": true,
+    "deadline_seconds": 5400.0
+   },
+   "blocked": null
+  }
+ },
+ "runs": [
+  {
+   "id": "369367261091",
+   "name": "rfx-fdfd-gpu-j0probe",
+   "lane": "probe",
+   "state": "terminated",
+   "submitted_utc": "2026-09-15T05:31:56Z",
+   "wall_minutes": 0.5,
+   "artifacts": "none (terminated during initialization)",
+   "note": "submission probe: mount: {/root/upload/: volume://vessl-storage/<vol>} is rejected by the API, so this variant dropped the mount to prove the mount was the rejected part. Accidentally submitted twice (the first vessl run create was filtered by a grep and looked like it had failed)."
+  },
+  {
+   "id": "369367261092",
+   "name": "rfx-fdfd-gpu-j0probe",
+   "lane": "probe",
+   "state": "terminated",
+   "submitted_utc": "2026-09-15T05:32:03Z",
+   "wall_minutes": 0.5,
+   "artifacts": "none (terminated during initialization)",
+   "note": "the duplicate of 369367261091"
+  },
+  {
+   "id": "369367261095",
+   "name": "rfx-fdfd-gpu-j0imp",
+   "lane": "probe",
+   "state": "terminated",
+   "submitted_utc": "2026-09-15T05:32:53Z",
+   "wall_minutes": 0.6,
+   "artifacts": "none (terminated while pending)",
+   "note": "import: {/root/upload/: volume://...} IS accepted; terminated too early on the transient \"pod has unbound immediate PersistentVolumeClaims\" message, which every run here shows for a few seconds. This is the mechanism the lanes now use."
+  },
+  {
+   "id": "369367261100",
+   "name": "rfx-fdfd-gpu-j0",
+   "lane": "j0",
+   "state": "failed",
+   "submitted_utc": "2026-09-15T05:39:06Z",
+   "wall_minutes": 3.6,
+   "artifacts": "validation/vessl/runs/fdfd-gpu-j0-20260915T053936Z/",
+   "note": "first real J0. cuDSS + cuSOLVER both available (nvmath 1.0.0, cupy 14.2.0, RTX 4090); _cudss.selftest passed at unit scale; the lane then died in build_level because shapely was not in the pip pins, and 3 hplane tests failed because validation/crossval/comparators was not in the tarball. Both fixed for the next submission."
+  },
+  {
+   "id": "369367261102",
+   "name": "rfx-fdfd-gpu-j0",
+   "lane": "j0",
+   "state": "terminated",
+   "submitted_utc": "2026-09-15T05:44:57Z",
+   "wall_minutes": 6.2,
+   "artifacts": "validation/vessl/runs/fdfd-gpu-j0-20260915T054539Z/",
+   "note": "second J0: shapely and the comparators fixed, cuDSS threading layer auto-found (libcudss_mtlayer_gomp.so.0, host_nthreads 16), selftest cross-thread now passes on a roundoff criterion. Terminated on purpose two minutes into the W/3 comparison: the lane was about to run the (108898, 2) system through cuSOLVER QR as well (8 one-shot sparse QRs), which would have eaten the 40-minute budget before the gate arithmetic. The heavy blocks are now SuperLU + cuDSS only. Its pytest run also found a real test bug: test_repeated_jitted_solves_do_not_grow_the_resident_set drives the solve from a worker thread, and on jax 0.6.2 (where jax.experimental.enable_x64 still exists and is THREAD-LOCAL) the worker saw no x64; fixed in tests/test_fdfd_linear_solve.py."
+  },
+  {
+   "id": "369367261104",
+   "name": "rfx-fdfd-gpu-j0",
+   "lane": "j0",
+   "state": "failed (exit 1 = gate G1 not passed; every measurement complete)",
+   "submitted_utc": "2026-09-15T05:51:07Z",
+   "wall_minutes": 13.4,
+   "artifacts": "validation/vessl/runs/fdfd-gpu-j0-20260915T055136Z/",
+   "note": "the J0 of record. cuDSS + cuSOLVER available; selftest clean; G1 measured on the real W/3 DUT system (N=108898): SuperLU 139.23 s / residual 1.787e-08, cuDSS 0.95 s / residual 3.841e-09, solutions differing 2.395e-03, value_and_grad L_dut 300.5577 pH both (rel 9.2e-10) and gradients to 2.29e-08 worst; plan estimates 1.38/2.43/5.68 GB at W/3/W/4/W/6; value_and_grad 432.9 s (SuperLU) vs 6.9 s (cuDSS). Exit 1 because the lane returns the G1 verdict, which fails its own 1e-8 thresholds -- reported failing, not widened."
+  },
+  {
+   "id": "369367261110",
+   "name": "rfx-fdfd-gpu-j1",
+   "lane": "j1",
+   "state": "completed",
+   "submitted_utc": "2026-09-15T06:05:22Z",
+   "wall_minutes": 6.5,
+   "artifacts": "validation/vessl/runs/fdfd-gpu-j1-20260915T060541Z/",
+   "note": "the scale lane. IR sweep at W/3 (residual 3.858e-09 -> 1.310e-09 in one step, saturating; the 2.4e-03 difference from SuperLUs solution does not move); L_dut at W/3 through cuDSS vs the recorded CPU level to 1.541e-10 with ir=2; W/4 (N=172747) value_and_grad 20.9 s, L_dut 302.2169 pH, L_pec 275.5668 pH, peak device 5.75 GB; W/6 (N=352536) value_and_grad 38.1 s, L_dut 301.5538 pH, L_pec 275.7962 pH, peak device 12.72 GB; FD4 on width at W/4 through cuDSS 9.99e-08 from the AD gradient (21 s for four solves)."
+  },
+  {
+   "id": "369367261113",
+   "name": "rfx-fdfd-gpu-j2",
+   "lane": "j2",
+   "state": "completed",
+   "submitted_utc": "2026-09-15T06:12:46Z",
+   "wall_minutes": 3.4,
+   "artifacts": "validation/vessl/runs/fdfd-gpu-j2-20260915T061323Z/",
+   "note": "paper geometry (study H, imported unmodified). W/1 (N=85785, 2 cells across W): L_diff 3.0897438686515622e-09 H in 7.3 s against study H own CPU SuperLU value 3.089743866717694e-09 in 219.4 s -- 6.26e-10 relative, 30x faster. W/3 (N=509580, 6 cells across W), the level study H could only BUILD: cuDSS plan estimate 8.63 GB permanent device memory in 1.2 s, solved in 22.5 s, L_diff 2.9991813030337047e-09, gap -15.76 % against the bridge-corrected referee 3.560367678486085e-09 (W/1 is -13.22 %), so refining in plane moves AWAY from the referee here too. cuSOLVER probe on the W/1 system, one rhs column: 20.7 s / residual 1.505e-08 against cuDSS 0.7 s / 8.061e-09."
+  }
+ ],
+ "levels": {
+  "1": {
+   "div": 1.0,
+   "base_dx": 1e-05,
+   "n_unknowns": 23062,
+   "L_dut": 2.624392626623466e-10,
+   "grad": [
+    9.960315883655651e-06,
+    -9.955068907479151e-06,
+    -2.0744805581785236e-05
+   ],
+   "L_pec": 2.4487657670982894e-10,
+   "value_and_grad_seconds": 20.472824096679688,
+   "backend": "superlu",
+   "source": "cpu:spiral_convergence.json"
+  },
+  "2": {
+   "div": 2.0,
+   "base_dx": 5e-06,
+   "n_unknowns": 56408,
+   "L_dut": 2.9300470303288545e-10,
+   "grad": [
+    1.0793423389994091e-05,
+    -1.0377039425254427e-05,
+    -2.151402236610647e-05
+   ],
+   "L_pec": 2.6636406683059196e-10,
+   "value_and_grad_seconds": 99.95538187026978,
+   "backend": "superlu",
+   "source": "cpu:spiral_convergence.json"
+  },
+  "3": {
+   "div": 3.0,
+   "base_dx": 3.3333333333333337e-06,
+   "n_unknowns": 108898,
+   "L_dut": 3.005576903387643e-10,
+   "grad": [
+    1.0944483131605359e-05,
+    -1.0188592910094729e-05,
+    -2.2422482362389336e-05
+   ],
+   "L_pec": 2.7335773063273004e-10,
+   "value_and_grad_seconds": 347.0937809944153,
+   "backend": "superlu",
+   "source": "cpu:spiral_convergence.json"
+  },
+  "4": {
+   "div": 4.0,
+   "base_dx": 2.5e-06,
+   "n_unknowns": 172747,
+   "L_dut": 3.0221694077890034e-10,
+   "grad": [
+    1.0834353319757008e-05,
+    -9.961494134096606e-06,
+    -2.2749617084871722e-05
+   ],
+   "L_pec": 2.755667590982038e-10,
+   "value_and_grad_seconds": 20.949076175689697,
+   "solve_seconds": null,
+   "device_memory_gb_peak_after": {
+    "used": 5.74951171875,
+    "free": 17.90020751953125,
+    "total": 23.64971923828125,
+    "pool_used": 0.0463862419128418,
+    "pool_total": 0.2974734306335449
+   },
+   "stats": {
+    "AT": {
+     "device_memory_gb": 5.74951171875
+    }
+   },
+   "backend": "cudss",
+   "source": "gpu:validation/vessl/runs/fdfd-gpu-j1-20260915T060541Z/j1_scale.json"
+  },
+  "6": {
+   "div": 6.0,
+   "base_dx": 1.6666666666666669e-06,
+   "n_unknowns": 352536,
+   "L_dut": 3.015537615381723e-10,
+   "grad": [
+    1.0470891898209066e-05,
+    -9.676079476885134e-06,
+    -2.2950851071146244e-05
+   ],
+   "L_pec": 2.757962285989051e-10,
+   "value_and_grad_seconds": 38.10807490348816,
+   "solve_seconds": null,
+   "device_memory_gb_peak_after": {
+    "used": 12.72412109375,
+    "free": 10.92559814453125,
+    "total": 23.64971923828125,
+    "pool_used": 0.09491539001464844,
+    "pool_total": 0.6630992889404297
+   },
+   "stats": {
+    "AT": {
+     "device_memory_gb": 12.72412109375
+    }
+   },
+   "backend": "cudss",
+   "source": "gpu:validation/vessl/runs/fdfd-gpu-j1-20260915T060541Z/j1_scale.json"
+  }
+ },
+ "extended": {
+  "levels": [
+   "1",
+   "2",
+   "3",
+   "4",
+   "6"
+  ],
+  "cells_across_width": [
+   1.0,
+   2.0,
+   3.0,
+   4.0,
+   6.0
+  ],
+  "n_unknowns": [
+   23062,
+   56408,
+   108898,
+   172747,
+   352536
+  ],
+  "backend": [
+   "superlu",
+   "superlu",
+   "superlu",
+   "cudss",
+   "cudss"
+  ],
+  "h": [
+   1e-05,
+   5e-06,
+   3.3333333333333337e-06,
+   2.5e-06,
+   1.6666666666666669e-06
+  ],
+  "L_dut": [
+   2.624392626623466e-10,
+   2.9300470303288545e-10,
+   3.005576903387643e-10,
+   3.0221694077890034e-10,
+   3.015537615381723e-10
+  ],
+  "per_level_gap": {
+   "W/1": -0.21202451007372947,
+   "W/2": -0.12025158857388896,
+   "W/3": -0.09757369803121485,
+   "W/4": -0.09259178844492433,
+   "W/6": -0.09458298816793964
+  },
+  "richardson": {
+   "h": [
+    1e-05,
+    5e-06,
+    3.3333333333333337e-06,
+    2.5e-06,
+    1.6666666666666669e-06
+   ],
+   "values": [
+    2.624392626623466e-10,
+    2.9300470303288545e-10,
+    3.005576903387643e-10,
+    3.0221694077890034e-10,
+    3.015537615381723e-10
+   ],
+   "observed_order": null,
+   "estimates": {
+    "p1_finest_pair": 3.002274030567162e-10,
+    "p2_finest_pair": 3.0102321814558983e-10
+   },
+   "range": [
+    3.002274030567162e-10,
+    3.0102321814558983e-10
+   ]
+  },
+  "referee_deembedded": 3.3305510896906523e-10,
+  "rel_range": [
+   -0.09856538761397027,
+   -0.09617594794635198
+  ],
+  "cpu_only_richardson": {
+   "h": [
+    1e-05,
+    5e-06,
+    3.3333333333333337e-06
+   ],
+   "values": [
+    2.624392626623466e-10,
+    2.9300470303288545e-10,
+    3.005576903387643e-10
+   ],
+   "observed_order": 1.5144236756242244,
+   "estimates": {
+    "p1_finest_pair": 3.1566366495052205e-10,
+    "p2_finest_pair": 3.066000801834674e-10,
+    "observed_order": 3.094656411597025e-10
+   },
+   "range": [
+    3.066000801834674e-10,
+    3.1566366495052205e-10
+   ]
+  },
+  "cpu_only_rel_range": [
+   -0.07943138559707552,
+   -0.05221791694586653
+  ],
+  "backend_note": {
+   "what": "the W/3 level solved by both backends: the seam the mixed ladder introduces, against the change the verdict rests on",
+   "w3_L_dut_cross_backend_rel": {
+    "j0_value_and_grad": 6.164563687749999e-10,
+    "j1_l_dut_vs_ir_best": 1.54114178198517e-10,
+    "j1_l_dut_vs_ir_worst": 4.6234236258601697e-10
+   },
+   "finest_pair_change_rel": 0.002194381423552377,
+   "finest_pair_change_pH": -0.6631792407280477,
+   "change_over_seam_ratio": 3559670.2941247458,
+   "reading": "the W/4 -> W/6 turn-down that decides G4 is 2.194e-03 relative (-0.66 pH); the largest cross-backend disagreement on the same level is 6.165e-10, i.e. 3.56e+06 times smaller. The seam cannot produce the verdict."
+  },
+  "fixture": {
+   "freq": 100000000.0,
+   "n_turns": 2,
+   "r_out": 5.2e-05,
+   "spacing": 1e-05,
+   "width": 1e-05,
+   "lead": 1.5000000000000002e-05,
+   "margin": 1e-05,
+   "base_dz": 1e-05,
+   "metal_cells": 2,
+   "pad_cells": 4,
+   "pad_ratio": 1.5,
+   "sigma_volumetric": 3000000.0,
+   "ground_height": 2.6000000000000005e-05,
+   "underpass_depth": 4e-06,
+   "reference_plane_shift": 5e-06,
+   "eps_dielectrics": 1.0,
+   "stack": {
+    "t_si": 2e-05,
+    "t_ox_low": 1e-06,
+    "t_m1": 2e-06,
+    "t_via": 2e-06,
+    "t_m2": 2e-06,
+    "t_ox_high": 3e-06,
+    "t_air": 1e-05
+   },
+   "fd_step_rel": 0.01
+  },
+  "fixture_lane_vs_cpu": {
+   "what": "every fixture field of the GPU lane against the CPU study's, so the five levels are one series by construction and not by assertion",
+   "fields": 18,
+   "differences": {},
+   "identical": true
+  }
+ },
+ "referee": {
+  "greenhouse": {
+   "total": 3.4513331839248287e-10,
+   "self_sum": 3.820185019855248e-10,
+   "mutual_sum": 1.6771423928419256e-11,
+   "image_sum": -5.365660752146119e-11,
+   "worst_error": 1.6987008291362725e-11
+  },
+  "area_exact": {
+   "total": 3.493712871350631e-10,
+   "self_sum": 3.8201850198552487e-10,
+   "mutual_sum": 2.2122402297898177e-11,
+   "image_sum": -5.476961714835996e-11,
+   "worst_error": 1.584583900319699e-11
+  },
+  "corner_systematic": 0.012279222308409166,
+  "free_space_area_exact": 4.0414090428342306e-10,
+  "reference_plane": {
+   "column_centre": 3.493712871350631e-10,
+   "port_line": 3.5445635319414497e-10,
+   "far_edge": 3.442673925095764e-10
+  },
+  "reference_plane_sensitivity": [
+   0.014554905472572655,
+   -0.014608798185277383
+  ],
+  "deembedded": {
+   "total": 3.3305510896906523e-10,
+   "strip": 3.493712871350631e-10,
+   "bridge": 1.6316178165997864e-11,
+   "bridge_split_on_m2": 0.5,
+   "bridge_worst_error": 1.846497501877589e-13,
+   "per_plane": {
+    "port_line": {
+     "strip": 3.5445635319414497e-10,
+     "bridge": 2.1657400761150003e-11,
+     "deembedded": 3.32798952432995e-10
+    },
+    "column_centre": {
+     "strip": 3.493712871350631e-10,
+     "bridge": 1.6316178165997864e-11,
+     "deembedded": 3.3305510896906523e-10
+    },
+    "far_edge": {
+     "strip": 3.442673925095764e-10,
+     "bridge": 1.1164059770455161e-11,
+     "deembedded": 3.3310333273912124e-10
+    }
+   },
+   "per_split": {
+    "0": 3.324753353368699e-10,
+    "0.25": 3.329078468750609e-10,
+    "0.5": 3.3305510896906523e-10,
+    "0.75": 3.3315932626416044e-10,
+    "1": 3.3295612627415584e-10
+   },
+   "reference_plane_spread": 0.000913903729231006,
+   "reference_plane_spread_strip_only": 0.029163703657849954,
+   "split_spread": 0.002053686939100734
+  },
+  "gradient_deembedded_fd4": [
+   1.1916676450311244e-05,
+   -1.0886319762768954e-05,
+   -2.5465919025242603e-05
+  ],
+  "gradient_area_exact_fd4": [
+   1.1916676450311285e-05,
+   -9.833734864394427e-06,
+   -2.5000975026649162e-05
+  ],
+  "gradient_greenhouse_fd4": [
+   1.1998138208620537e-05,
+   -1.0029757751470544e-05,
+   -2.5608013418059798e-05
+  ]
+ },
+ "cpu_study": {
+  "levels": {
+   "1": {
+    "L_dut": 2.624392626623466e-10,
+    "grad": [
+     9.960315883655651e-06,
+     -9.955068907479151e-06,
+     -2.0744805581785236e-05
+    ],
+    "n_unknowns": 23062
+   },
+   "2": {
+    "L_dut": 2.9300470303288545e-10,
+    "grad": [
+     1.0793423389994091e-05,
+     -1.0377039425254427e-05,
+     -2.151402236610647e-05
+    ],
+    "n_unknowns": 56408
+   },
+   "3": {
+    "L_dut": 3.005576903387643e-10,
+    "grad": [
+     1.0944483131605359e-05,
+     -1.0188592910094729e-05,
+     -2.2422482362389336e-05
+    ],
+    "n_unknowns": 108898
+   }
+  },
+  "richardson": {
+   "h": [
+    1e-05,
+    5e-06,
+    3.3333333333333337e-06
+   ],
+   "values": [
+    2.624392626623466e-10,
+    2.9300470303288545e-10,
+    3.005576903387643e-10
+   ],
+   "observed_order": 1.5144236756242244,
+   "estimates": {
+    "p1_finest_pair": 3.1566366495052205e-10,
+    "p2_finest_pair": 3.066000801834674e-10,
+    "observed_order": 3.094656411597025e-10
+   },
+   "range": [
+    3.066000801834674e-10,
+    3.1566366495052205e-10
+   ]
+  },
+  "V1": {
+   "rel_range": [
+    -0.07943138559707552,
+    -0.05221791694586653
+   ],
+   "passed": false
+  },
+  "V4": {
+   "dL_dwidth": [
+    -2.0744805581785236e-05,
+    -2.151402236610647e-05,
+    -2.2422482362389336e-05
+   ],
+   "level_to_level_change": [
+    7.692167843212331e-07,
+    9.084599962828675e-07
+   ],
+   "passed": false
+  }
+ },
+ "paper_geometry": {
+  "what": "study H's paper-derived square spiral (3 turns, r_out 218 um, W 30 um, S 14 um, TopMetal2 3 um) at 100 MHz under D2's uniform-current protocol, solved through cuDSS",
+  "fixture": {
+   "n_turns": 3,
+   "r_out": 0.000218,
+   "spacing": 1.4e-05,
+   "width": 3e-05,
+   "lead": 4.5e-05,
+   "margin": 3e-05,
+   "t_m2": 3e-06,
+   "t_m1": 2e-06,
+   "t_via": 2e-06,
+   "t_si": 0.00012,
+   "t_ox_low": 6.04e-06,
+   "t_ox_high": 1.5e-06,
+   "t_air": 6e-05,
+   "base_dz": 6e-05,
+   "metal_cells": 2,
+   "pad_cells": 4,
+   "pad_cells_z": 3,
+   "pad_ratio": 1.5,
+   "freq": 100000000.0,
+   "sigma_volumetric": 3000000.0,
+   "eps_dielectrics": "vacuum (eps=False), part A's protocol",
+   "source": "validation/fdfd/rfic_spiral.py (study H), imported unmodified"
+  },
+  "referee_deembedded": 3.560367678486085e-09,
+  "levels": {
+   "1": {
+    "div": 1.0,
+    "base_dx": 3e-05,
+    "L_diff": 3.0897438686515622e-09,
+    "L_raw": 3.20435457677813e-09,
+    "Q_diff": 0.13497635373714886,
+    "gap": -0.13218404736070355,
+    "solve_seconds": 7.268714427947998,
+    "error": null,
+    "skipped": null,
+    "n_unknowns": 85785,
+    "cells_across_width": 2,
+    "device_gb": 2.10888671875
+   },
+   "3": {
+    "div": 3.0,
+    "base_dx": 1e-05,
+    "L_diff": 2.9991813030337047e-09,
+    "L_raw": 3.1076591492818262e-09,
+    "Q_diff": 0.1344161373776527,
+    "gap": -0.15762034321438512,
+    "solve_seconds": 22.534517765045166,
+    "error": null,
+    "skipped": null,
+    "n_unknowns": 509580,
+    "cells_across_width": 6,
+    "device_gb": 9.98583984375
+   }
+  },
+  "plan_estimates": {
+   "3": {
+    "n": 509580,
+    "nnz": 6448572,
+    "hybrid_memory": false,
+    "plan_seconds": 1.1716833114624023,
+    "permanent_device_memory_gb": 8.62579307332635,
+    "peak_device_memory_gb": 8.62579307332635,
+    "permanent_host_memory_gb": 0.04980252683162689,
+    "peak_host_memory_gb": 0.10225708782672882,
+    "hybrid_min_device_memory_gb": 1.7226967252790928,
+    "hybrid_max_device_memory_gb": 7.937818601727486,
+    "device_memory_gb": {
+     "used": 1.56982421875,
+     "free": 22.07989501953125,
+     "total": 23.64971923828125,
+     "pool_used": 0.13719987869262695,
+     "pool_total": 0.5678491592407227
+    },
+    "grid": {
+     "shape": [
+      104,
+      110,
+      14
+     ],
+     "n_unknowns": 509580,
+     "base_dx": 1e-05,
+     "dx_min": 4.8749999999999965e-06,
+     "dx_max": 2.5312500000000053e-05,
+     "cells_across_width": 6,
+     "wall_x": [
+      -0.0003089375000000002,
+      0.0003089374999999962
+     ],
+     "wall_y": [
+      -0.00033893750000000015,
+      0.0003089374999999902
+     ],
+     "lid_z": 0.0006220399999999999,
+     "n_z_lines": 15,
+     "dz": [
+      6e-05,
+      6e-05,
+      6.040000000000003e-06,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      1.4999999999999823e-06,
+      1.5000000000000094e-06,
+      1.5000000000000094e-06,
+      5.9999999999999995e-05,
+      9.000000000000002e-05,
+      0.00013499999999999997,
+      0.00020249999999999993
+     ],
+     "t_si": 0.00012,
+     "pad_cells": 4,
+     "pad_cells_z": 3,
+     "port_gap_m": 6e-05,
+     "build_seconds": 1.0314505100250244
+    }
+   }
+  },
+  "cusolver_probe": {
+   "div": 1.0,
+   "backend": "cusolver",
+   "what": "one (n, 1) solve of the paper geometry's DUT system through cuSOLVER csrlsvqr, against cuDSS on the same system",
+   "n": 85785,
+   "nnz": 1076673,
+   "cudss": {
+    "seconds": 0.7081811428070068,
+    "residual": 8.061294693243466e-09,
+    "device_memory_gb": {
+     "used": 9.98583984375,
+     "free": 13.66387939453125,
+     "total": 23.64971923828125,
+     "pool_used": 0.02165365219116211,
+     "pool_total": 0.5678491592407227
+    }
+   },
+   "cusolver": {
+    "seconds": 20.68759250640869,
+    "residual": 1.505438262033441e-08,
+    "device_memory_gb": {
+     "used": 9.98583984375,
+     "free": 13.66387939453125,
+     "total": 23.64971923828125,
+     "pool_used": 0.02037525177001953,
+     "pool_total": 0.5678491592407227
+    }
+   }
+  },
+  "cpu_study_H": {
+   "1": {
+    "freq": 100000000.0,
+    "theta": [
+     0.000218,
+     1.4e-05,
+     3e-05
+    ],
+    "L_diff": 3.089743866717694e-09,
+    "Q_diff": 0.13497635364991545,
+    "L_se": 3.087444555361174e-09,
+    "Q_se": 0.1348722122997095,
+    "L_z11_open": -8.052478796649837e-05,
+    "L_raw": 3.204354574543181e-09,
+    "seconds_per_fixture": {
+     "dut": 74.1622359752655,
+     "open": 73.07540488243103,
+     "short": 72.18958711624146
+    },
+    "seconds": 219.427227973938,
+    "z_dut": [
+     [
+      3.5689169549580666,
+      -50595.216461485405
+     ],
+     [
+      -2.1867437269920424,
+      -50596.00174883128
+     ],
+     [
+      -2.1867359737684575,
+      -50596.001752734235
+     ],
+     [
+      6.440443553953237,
+      -50594.84569675348
+     ]
+    ],
+    "s": {
+     "dut": [
+      [
+       0.12756966149758603,
+       0.014687865551059932
+      ],
+      [
+       0.8724323857971878,
+       -0.015944453978955934
+      ],
+      [
+       0.872432385870557,
+       -0.01594445385721438
+      ],
+      [
+       0.12756399403310725,
+       0.014738844422087916
+      ]
+     ],
+     "open": [
+      [
+       0.9999999602241559,
+       -0.00028047704094226716
+      ],
+      [
+       8.615269922904727e-09,
+       3.147115164067265e-05
+      ],
+      [
+       8.633405783481445e-09,
+       3.147106542948998e-05
+      ],
+      [
+       0.9999999635499774,
+       -0.000268203679282817
+      ]
+     ],
+     "short": [
+      [
+       -0.995077933832909,
+       0.0015260620206835544
+      ],
+      [
+       0.0006044281788201621,
+       6.964224590142778e-05
+      ],
+      [
+       0.0006044281788204315,
+       6.964224590144516e-05
+      ],
+      [
+       -0.9955798997988006,
+       0.0014949370373265047
+      ]
+     ],
+     "deembedded": [
+      [
+       0.12599733537948435,
+       0.014314624408486236
+      ],
+      [
+       0.8740049175641633,
+       -0.01532771166672653
+      ],
+      [
+       0.8740049176339257,
+       -0.01532771153403782
+      ],
+      [
+       0.1259917984798805,
+       0.014364339784117795
+      ]
+     ]
+    },
+    "s_stats": {
+     "dut": {
+      "reciprocity": 1.4214093535342077e-10,
+      "max_singular_value": 0.9999999739480394
+     },
+     "open": {
+      "reciprocity": 8.809811267086605e-11,
+      "max_singular_value": 1.0000000000811409
+     },
+     "short": {
+      "reciprocity": 2.699838674986725e-16,
+      "max_singular_value": 0.9959844242861453
+     },
+     "deembedded": {
+      "reciprocity": 1.4991026957813808e-10,
+      "max_singular_value": 0.999999975279481
+     }
+    },
+    "mem": {
+     "rss_gb": 7.54547119140625,
+     "vms_gb": 423.9071502685547,
+     "footprint_gb": 7.4123141542077065,
+     "tag": "solve_split",
+     "t": 220.64429807662964,
+     "solves": 0
+    },
+    "reciprocity_worst_solved": 1.4214093535342077e-10,
+    "passivity_worst_solved": 1.0000000000811409,
+    "grid": {
+     "shape": [
+      43,
+      44,
+      14
+     ],
+     "n_unknowns": 85785,
+     "base_dx": 3e-05,
+     "dx_min": 1.299999999999999e-05,
+     "dx_max": 7.593750000000048e-05,
+     "cells_across_width": 2,
+     "wall_x": [
+      -0.0004308124999999999,
+      0.00043081250000000113
+     ],
+     "wall_y": [
+      -0.00046081250000000056,
+      0.0004308124999999999
+     ],
+     "lid_z": 0.0006220399999999999,
+     "n_z_lines": 15,
+     "dz": [
+      6e-05,
+      6e-05,
+      6.040000000000003e-06,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      1.4999999999999823e-06,
+      1.5000000000000094e-06,
+      1.5000000000000094e-06,
+      5.9999999999999995e-05,
+      9.000000000000002e-05,
+      0.00013499999999999997,
+      0.00020249999999999993
+     ],
+     "t_si": 0.00012,
+     "pad_cells": 4,
+     "pad_cells_z": 3,
+     "port_gap_m": 6e-05,
+     "build_seconds": 0.2441258430480957
+    },
+    "referee_deembedded": 3.560367678485986e-09,
+    "gap": -0.13218404790384464,
+    "referee_strip_only": 3.6239351399278993e-09,
+    "gap_strip_only": -0.14740641114808506,
+    "d2_same_cells_across_width": -0.12025158857388896
+   },
+   "2": {
+    "freq": 100000000.0,
+    "theta": [
+     0.000218,
+     1.4e-05,
+     3e-05
+    ],
+    "L_diff": 3.0883016662366103e-09,
+    "Q_diff": 0.13504902964618265,
+    "L_se": 3.0860103438586822e-09,
+    "Q_se": 0.13494514025169135,
+    "L_z11_open": -8.052934321196215e-05,
+    "L_raw": 3.2029410680385555e-09,
+    "seconds_per_fixture": {
+     "dut": 84.39923477172852,
+     "open": 81.60679030418396,
+     "short": 82.65437483787537
+    },
+    "seconds": 248.66039991378784,
+    "z_dut": [
+     [
+      3.5747215996444814,
+      -50598.078606622264
+     ],
+     [
+      -2.181095659540369,
+      -50598.8638850571
+     ],
+     [
+      -2.1810987774263655,
+      -50598.86388619474
+     ],
+     [
+      6.431474246735475,
+      -50597.70872746423
+     ]
+    ],
+    "s": {
+     "dut": [
+      [
+       0.12745782048579188,
+       0.014685159258282395
+      ],
+      [
+       0.8725442205127696,
+       -0.015941635312158656
+      ],
+      [
+       0.8725442205331572,
+       -0.015941635376613215
+      ],
+      [
+       0.12745216545397675,
+       0.014735853721130381
+      ]
+     ],
+     "open": [
+      [
+       0.999999960153801,
+       -0.0002804799125568614
+      ],
+      [
+       8.638618111438155e-09,
+       3.149771172937285e-05
+      ],
+      [
+       8.642573944973684e-09,
+       3.1497630203521685e-05
+      ],
+      [
+       0.9999999634793125,
+       -0.0002684255866228804
+      ]
+     ],
+     "short": [
+      [
+       -0.9950779327973693,
+       0.001526049289561902
+      ],
+      [
+       0.000604556670956564,
+       7.025968817590002e-05
+      ],
+      [
+       0.0006045566709564658,
+       7.025968817581781e-05
+      ],
+      [
+       -0.9955881875771248,
+       0.0014968943089111622
+      ]
+     ],
+     "deembedded": [
+      [
+       0.12588673185015786,
+       0.014311607279069239
+      ],
+      [
+       0.874115516053231,
+       -0.015324512514090241
+      ],
+      [
+       0.8741155160719426,
+       -0.015324512568289518
+      ],
+      [
+       0.1258812051123585,
+       0.014361070602669543
+      ]
+     ]
+    },
+    "s_stats": {
+     "dut": {
+      "reciprocity": 6.760209842221099e-11,
+      "max_singular_value": 0.9999999738523819
+     },
+     "open": {
+      "reciprocity": 8.162176809845412e-11,
+      "max_singular_value": 1.000000000034779
+     },
+     "short": {
+      "reciprocity": 1.2809099901885294e-16,
+      "max_singular_value": 0.9959902878093689
+     },
+     "deembedded": {
+      "reciprocity": 5.73383392487098e-11,
+      "max_singular_value": 0.9999999752166869
+     }
+    },
+    "mem": {
+     "rss_gb": 7.605682373046875,
+     "vms_gb": 425.3087921142578,
+     "footprint_gb": 8.916526585817337,
+     "tag": "solve_split",
+     "t": 249.90476489067078,
+     "solves": 0
+    },
+    "reciprocity_worst_solved": 8.162176809845412e-11,
+    "passivity_worst_solved": 1.000000000034779,
+    "grid": {
+     "shape": [
+      42,
+      44,
+      14
+     ],
+     "n_unknowns": 83820,
+     "base_dx": 1.5e-05,
+     "dx_min": 1.399999999999996e-05,
+     "dx_max": 7.593749999999994e-05,
+     "cells_across_width": 2,
+     "wall_x": [
+      -0.0004308124999999999,
+      0.0004308124999999999
+     ],
+     "wall_y": [
+      -0.00046081250000000056,
+      0.0004308124999999999
+     ],
+     "lid_z": 0.0006220399999999999,
+     "n_z_lines": 15,
+     "dz": [
+      6e-05,
+      6e-05,
+      6.040000000000003e-06,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      1.4999999999999823e-06,
+      1.5000000000000094e-06,
+      1.5000000000000094e-06,
+      5.9999999999999995e-05,
+      9.000000000000002e-05,
+      0.00013499999999999997,
+      0.00020249999999999993
+     ],
+     "t_si": 0.00012,
+     "pad_cells": 4,
+     "pad_cells_z": 3,
+     "port_gap_m": 6e-05,
+     "build_seconds": 0.24574995040893555
+    },
+    "referee_deembedded": 3.560367678485986e-09,
+    "gap": -0.13258911856264166,
+    "referee_strip_only": 3.6239351399278993e-09,
+    "gap_strip_only": -0.1478043764607624,
+    "d2_same_cells_across_width": -0.12025158857388896
+   }
+  }
+ },
+ "gates": {
+  "G1": {
+   "what": "same (data, rows, cols, b) of the W/3 DUT fixture solved by every backend: each residual at roundoff, the solutions equal there too, and value_and_grad of L_dut equal to 1e-8 relative",
+   "n": 108898,
+   "nnz": 1370206,
+   "residuals": {
+    "superlu": 1.786580204714393e-08,
+    "cudss": 3.841250078308936e-09
+   },
+   "rel_diff_vs_superlu": {
+    "cudss": 0.0023952156766566296
+   },
+   "residual_tolerance": 1e-09,
+   "solution_diff_tolerance": 1e-08,
+   "value_and_grad_equality": {
+    "cudss": {
+     "L_dut_rel": 9.246847248870199e-10,
+     "grad_rel": [
+      4.107258674428316e-09,
+      1.6683134852389856e-08,
+      2.285858655023917e-08
+     ],
+     "worst": 2.285858655023917e-08
+    }
+   },
+   "value_and_grad_tolerance": 1e-08,
+   "passed": false,
+   "per_backend_timing": {
+    "superlu": {
+     "cold_seconds": 139.23373174667358,
+     "warm_seconds": 0.5384750366210938,
+     "factor_seconds": 138.6952567100525,
+     "solve_seconds": 0.5384750366210938,
+     "residual": 1.786580204714393e-08,
+     "stats": null
+    },
+    "cudss": {
+     "cold_seconds": 0.9463479518890381,
+     "warm_seconds": 0.07966184616088867,
+     "factor_seconds": 0.8666861057281494,
+     "solve_seconds": 0.07966184616088867,
+     "residual": 3.841250078308936e-09,
+     "stats": {
+      "A": {
+       "device_memory_gb": 2.04248046875
+      }
+     }
+    }
+   },
+   "selftest": {
+    "cudss": {
+     "backend": "cudss",
+     "n": 400,
+     "m": 3,
+     "residual_N_gpu": 3.755449887486665e-16,
+     "residual_N_superlu": 6.648593153127695e-16,
+     "diff_N": 1.3971736026426796e-15,
+     "residual_T_gpu": 3.9413650585103953e-16,
+     "residual_T_superlu": 6.935839636479757e-16,
+     "diff_T": 1.2262799001161374e-15,
+     "cross_thread_diff": 1.6653345369377348e-16,
+     "cross_thread_rel": 1.6014977790328834e-16,
+     "cross_thread_ok": true,
+     "factorizations": 2,
+     "replans": 0,
+     "freed_forward": 0,
+     "hybrid_memory": false,
+     "free_forward": false,
+     "threading_lib": "/opt/conda/lib/python3.10/site-packages/nvidia/cu12/lib/libcudss_mtlayer_gomp.so.0",
+     "host_nthreads": 16,
+     "solves": 4,
+     "stats": {
+      "A": {
+       "plan_permanent_device_gb": 0.002933356910943985,
+       "plan_peak_device_gb": 0.002933356910943985,
+       "lu_nnz": 83108,
+       "npivots": 0,
+       "device_memory_gb": 0.46435546875
+      },
+      "AT": {
+       "plan_permanent_device_gb": 0.002933356910943985,
+       "plan_peak_device_gb": 0.002933356910943985,
+       "lu_nnz": 83108,
+       "npivots": 0,
+       "device_memory_gb": 0.47216796875
+      }
+     },
+     "device_memory_gb": {
+      "used": 0.47216796875,
+      "free": 23.17755126953125,
+      "total": 23.64971923828125,
+      "pool_used": 0.00017547607421875,
+      "pool_total": 0.0004420280456542969
+     },
+     "seconds": 0.20671868324279785
+    },
+    "cusolver": {
+     "backend": "cusolver",
+     "n": 400,
+     "m": 3,
+     "residual_N_gpu": 1.2152846461954048e-15,
+     "residual_N_superlu": 6.648593153127695e-16,
+     "diff_N": 2.746126388872213e-15,
+     "residual_T_gpu": 1.25228996476324e-15,
+     "residual_T_superlu": 6.935839636479757e-16,
+     "diff_T": 2.7742699101848566e-15,
+     "cross_thread_diff": 0.0,
+     "cross_thread_rel": 0.0,
+     "cross_thread_ok": true,
+     "factorizations": 12,
+     "replans": 0,
+     "freed_forward": 0,
+     "hybrid_memory": false,
+     "free_forward": false,
+     "threading_lib": "/opt/conda/lib/python3.10/site-packages/nvidia/cu12/lib/libcudss_mtlayer_gomp.so.0",
+     "host_nthreads": 16,
+     "solves": 4,
+     "stats": {
+      "A": {
+       "nnz": 3597,
+       "device_memory_gb": 0.45654296875
+      },
+      "AT": {
+       "nnz": 3597,
+       "device_memory_gb": 0.46435546875
+      }
+     },
+     "device_memory_gb": {
+      "used": 0.46435546875,
+      "free": 23.18536376953125,
+      "total": 23.64971923828125,
+      "pool_used": 0.0001392364501953125,
+      "pool_total": 0.0004420280456542969
+     },
+     "seconds": 0.13489246368408203
+    }
+   },
+   "value_and_grad_equality_vs_recorded_cpu": {
+    "cudss": {
+     "L_dut_rel": 6.164563687749999e-10,
+     "grad_rel": [
+      2.2164203545595128e-09,
+      1.813579193975299e-08,
+      1.692506365768599e-08
+     ],
+     "worst": 1.813579193975299e-08,
+     "cpu_L_dut": 3.005576903387643e-10,
+     "cpu_grad": [
+      1.0944483131605359e-05,
+      -1.0188592910094729e-05,
+      -2.2422482362389336e-05
+     ],
+     "gpu_L_dut": 3.005576901534836e-10,
+     "gpu_grad": [
+      1.0944483107347784e-05,
+      -1.0188592725316528e-05,
+      -2.2422481982887395e-05
+     ],
+     "what": "cuDSS on the RTX 4090 lane (jax 0.6.2, scipy 1.15.3, python 3.10) against the recorded CPU level (jax 0.11.1, scipy 1.18.1, python 3.12, SuperLU)"
+    }
+   },
+   "conditioning": {
+    "ir_sweep": {
+     "reference": "superlu",
+     "reference_residual": 1.786580204714393e-08,
+     "reference_seconds": 143.26274013519287,
+     "per_step": {
+      "0": {
+       "ir_num_steps": 0,
+       "residual": 3.858128233662566e-09,
+       "rel_diff_vs_reference": 0.002396221124006362,
+       "rel_l2_diff_vs_reference": 0.0002616464864492345,
+       "seconds": 3.7800605297088623
+      },
+      "1": {
+       "ir_num_steps": 1,
+       "residual": 1.310411742881999e-09,
+       "rel_diff_vs_reference": 0.002391528860745324,
+       "rel_l2_diff_vs_reference": 0.000259839761277897,
+       "seconds": 0.8524272441864014
+      },
+      "2": {
+       "ir_num_steps": 2,
+       "residual": 1.3151777909334155e-09,
+       "rel_diff_vs_reference": 0.0023946899562022634,
+       "rel_l2_diff_vs_reference": 0.0002598859140238485,
+       "seconds": 0.8514597415924072
+      },
+      "4": {
+       "ir_num_steps": 4,
+       "residual": 1.3167537075322057e-09,
+       "rel_diff_vs_reference": 0.0023989006385295875,
+       "rel_l2_diff_vs_reference": 0.00025990470837800646,
+       "seconds": 0.8633310794830322
+      }
+     },
+     "residual_span": [
+      1.310411742881999e-09,
+      3.858128233662566e-09
+     ],
+     "diff_span": [
+      0.002391528860745324,
+      0.0023989006385295875
+     ],
+     "refinement_moves_the_solution_like_the_backend_gap": false
+    },
+    "l_dut_vs_ir": {
+     "div": 3.0,
+     "cpu": {
+      "L_dut": 3.005576903387643e-10,
+      "grad": [
+       1.0944483131605359e-05,
+       -1.0188592910094729e-05,
+       -2.2422482362389336e-05
+      ],
+      "fd": [
+       1.0944483299844529e-05,
+       -1.0188592905442761e-05,
+       -2.2422480282079162e-05
+      ]
+     },
+     "per_step": {
+      "0": {
+       "L_dut": 3.0055769019980376e-10,
+       "L_dut_rel_vs_cpu": 4.6234236258601697e-10,
+       "grad_rel_vs_cpu": [
+        1.7143778243992662e-09,
+        1.9225025224671337e-08,
+        1.612995444182777e-08
+       ],
+       "worst_vs_cpu": 1.9225025224671337e-08,
+       "seconds": 15.238715648651123
+      },
+      "2": {
+       "L_dut": 3.005576903850845e-10,
+       "L_dut_rel_vs_cpu": 1.54114178198517e-10,
+       "grad_rel_vs_cpu": [
+        6.249339697998528e-10,
+        1.3691821336369762e-08,
+        1.4788687471529125e-08
+       ],
+       "worst_vs_cpu": 1.4788687471529125e-08,
+       "seconds": 6.598495721817017
+      },
+      "4": {
+       "L_dut": 3.005576903850845e-10,
+       "L_dut_rel_vs_cpu": 1.54114178198517e-10,
+       "grad_rel_vs_cpu": [
+        1.0553759659135474e-09,
+        1.5518844392311315e-08,
+        1.5430050557520887e-08
+       ],
+       "worst_vs_cpu": 1.5518844392311315e-08,
+       "seconds": 6.788207054138184
+      }
+     },
+     "L_dut_span_over_ir": [
+      3.0055769019980376e-10,
+      3.005576903850845e-10
+     ],
+     "worst_vs_cpu": 1.9225025224671337e-08,
+     "best_vs_cpu": 1.4788687471529125e-08,
+     "L_dut_rel_span": [
+      1.54114178198517e-10,
+      4.6234236258601697e-10
+     ]
+    }
+   },
+   "functional_worst_vs_cpu": 1.9225025224671337e-08,
+   "functional_best_vs_cpu": 1.4788687471529125e-08,
+   "functional_L_dut_rel_span": [
+    1.54114178198517e-10,
+    4.6234236258601697e-10
+   ],
+   "functional_note": "worst and best over the ir_num_steps sweep; L_dut itself agrees to 1.5e-10 with refinement on, and the number that misses 1e-8 is the worst GRADIENT component -- which sits an order below the study's own AD-vs-FD4 floor at this level (9.28e-08, spiral_convergence.json levels.3.grad_vs_fd_rel)",
+   "passed_functional": false,
+   "same_backend_control": {
+    "what": "host SuperLU against itself on the same systems -- different fill-reducing orderings, a random permutation of the equations, and a diagonal rescaling of the unknowns, all with the same exact solution",
+    "source": "validation/vessl/controls/superlu_ordering_control.json",
+    "host": {
+     "python": "3.12.14",
+     "machine": "Darwin arm64"
+    },
+    "per_level": {
+     "W/1": {
+      "n": 23062,
+      "nnz": 285826,
+      "reference": "COLAMD",
+      "cases": {
+       "COLAMD": {
+        "permc_spec": "COLAMD",
+        "variant": null,
+        "seconds": 4.964833974838257,
+        "residual": 5.119778852550105e-09,
+        "rel_diff_vs_reference": 0.0,
+        "rel_l2_diff_vs_reference": 0.0,
+        "error": null
+       },
+       "MMD_ATA": {
+        "permc_spec": "MMD_ATA",
+        "variant": null,
+        "seconds": 7.910527944564819,
+        "residual": 5.336733683053943e-09,
+        "rel_diff_vs_reference": 0.0001733572701039834,
+        "rel_l2_diff_vs_reference": 4.296599897023092e-05,
+        "error": null
+       },
+       "MMD_AT_PLUS_A": {
+        "permc_spec": "MMD_AT_PLUS_A",
+        "variant": null,
+        "seconds": 83.89331722259521,
+        "residual": 6.103347803568304e-09,
+        "rel_diff_vs_reference": 0.00012780517233570608,
+        "rel_l2_diff_vs_reference": 4.243077069727699e-05,
+        "error": null
+       },
+       "NATURAL": {
+        "permc_spec": "NATURAL",
+        "variant": null,
+        "seconds": 174.11623811721802,
+        "residual": 6.213215907424467e-09,
+        "rel_diff_vs_reference": 0.00013375703925887518,
+        "rel_l2_diff_vs_reference": 3.6142425002060224e-05,
+        "error": null
+       },
+       "row_permuted": {
+        "permc_spec": "COLAMD",
+        "variant": "row_permuted",
+        "seconds": 5.669842958450317,
+        "residual": 6.100365297559642e-09,
+        "rel_diff_vs_reference": 0.00024318411873236841,
+        "rel_l2_diff_vs_reference": 5.282996092456304e-05,
+        "error": null
+       },
+       "col_scaled": {
+        "permc_spec": "COLAMD",
+        "variant": "col_scaled",
+        "seconds": 4.814702987670898,
+        "residual": 6.050789636810482e-09,
+        "rel_diff_vs_reference": 0.00021966227947205205,
+        "rel_l2_diff_vs_reference": 4.4074939127893004e-05,
+        "error": null
+       }
+      },
+      "residual_span": [
+       5.119778852550105e-09,
+       6.213215907424467e-09
+      ],
+      "rel_diff_span": [
+       0.00012780517233570608,
+       0.00024318411873236841
+      ],
+      "worst_rel_diff": 0.00024318411873236841,
+      "cond_1_estimate": 14276705736367.316
+     },
+     "W/3": {
+      "n": 108898,
+      "nnz": 1370206,
+      "reference": "COLAMD",
+      "cases": {
+       "COLAMD": {
+        "permc_spec": "COLAMD",
+        "variant": null,
+        "seconds": 102.81612491607666,
+        "residual": 1.911456861180975e-08,
+        "rel_diff_vs_reference": 0.0,
+        "rel_l2_diff_vs_reference": 0.0,
+        "error": null
+       },
+       "MMD_ATA": {
+        "permc_spec": "MMD_ATA",
+        "variant": null,
+        "seconds": 174.7742829322815,
+        "residual": 1.1505370606284141e-08,
+        "rel_diff_vs_reference": 0.0028734683180482593,
+        "rel_l2_diff_vs_reference": 0.0003274532758695308,
+        "error": null
+       },
+       "row_permuted": {
+        "permc_spec": "COLAMD",
+        "variant": "row_permuted",
+        "seconds": 114.06612610816956,
+        "residual": 1.2691325053425029e-08,
+        "rel_diff_vs_reference": 0.0032615310643615046,
+        "rel_l2_diff_vs_reference": 0.00034736900147039546,
+        "error": null
+       },
+       "col_scaled": {
+        "permc_spec": "COLAMD",
+        "variant": "col_scaled",
+        "seconds": 103.53386497497559,
+        "residual": 1.943565012098737e-08,
+        "rel_diff_vs_reference": 0.0036819068104838094,
+        "rel_l2_diff_vs_reference": 0.00036264883988218943,
+        "error": null
+       }
+      },
+      "residual_span": [
+       1.1505370606284141e-08,
+       1.943565012098737e-08
+      ],
+      "rel_diff_span": [
+       0.0028734683180482593,
+       0.0036819068104838094
+      ],
+      "worst_rel_diff": 0.0036819068104838094,
+      "cond_1_estimate": 30458992953402.996
+     }
+    },
+    "worst_same_backend_rel_diff": 0.0036819068104838094,
+    "gate_tolerance": 1e-08,
+    "bounds_the_gate": true,
+    "at_the_gates_own_level": {
+     "n": 108898,
+     "worst_rel_diff": 0.0036819068104838094,
+     "residual_span": [
+      1.1505370606284141e-08,
+      1.943565012098737e-08
+     ],
+     "cond_1_estimate": 30458992953402.996
+    },
+    "cudss_gap_vs_same_backend_spread": {
+     "cudss": {
+      "cross_backend_rel_diff": 0.0023952156766566296,
+      "same_backend_rel_diff_span": [
+       0.0028734683180482593,
+       0.0036819068104838094
+      ],
+      "ratio_to_worst_same_backend": 0.6505367462958396,
+      "ratio_to_closest_same_backend": 0.8335625841469265,
+      "where": "below every same-backend pair",
+      "not_worse_than_same_backend": true
+     }
+    },
+    "this_host_vs_the_lane": {
+     "superlu_colamd_residual_here": 1.911456861180975e-08,
+     "superlu_colamd_residual_on_the_lane": 1.786580204714393e-08,
+     "ratio": 1.0698970335264322,
+     "what": "the same system and the same solver on the two machines: the control's reference solve against G1's SuperLU half"
+    },
+    "reading": "host SuperLU disagrees with ITSELF by up to 3.682e-03 in G1's norm on these systems, 368191x the gate's 1e-8, so that clause cannot be met by any pair of direct solves of this operator (cond_1 ~ 3.05e+13 at the gate's level) and its failure is a property of the operator, not of cuDSS. At the gate's own level the cudss-vs-SuperLU difference is 2.395e-03, against 2.873e-03..3.682e-03 between SuperLU's own elimination paths -- below every same-backend pair. It is a control, not a licence: the tolerance stays at 1e-8 and G1 is still reported failing."
+   }
+  },
+  "G2": {
+   "what": "AD through cudss vs FD4, one parameter",
+   "tolerance": 0.0001,
+   "instances": {
+    "W3_vs_recorded_cpu_fd4": {
+     "what": "cuDSS AD gradient vs the CPU study's recorded FD4 gradient at the same level, same 1 % steps",
+     "ad": [
+      1.0944483107347784e-05,
+      -1.0188592725316528e-05,
+      -2.2422481982887395e-05
+     ],
+     "fd4": [
+      1.0944483299844529e-05,
+      -1.0188592905442761e-05,
+      -2.2422480282079162e-05
+     ],
+     "rel": [
+      1.7588472620283177e-08,
+      1.7679206071069735e-08,
+      7.585281428845218e-08
+     ],
+     "worst": 7.585281428845218e-08,
+     "tolerance": 0.0001,
+     "passed": true
+    },
+    "W4_fresh_fd4_through_cudss": {
+     "backend": "cudss",
+     "parameter": 2,
+     "step": 1.0000000000000001e-07,
+     "fd_order": 4,
+     "fd": -2.274961481162941e-05,
+     "fd_seconds": 20.617881298065186,
+     "ad": -2.2749617084871722e-05,
+     "rel": 9.992443079281324e-08
+    }
+   },
+   "worst": 9.992443079281324e-08,
+   "passed": true
+  },
+  "G3": {
+   "what": "N, factorisation s, solve s and device GB per level, against the CPU W/3 reference",
+   "cpu_reference": {
+    "case": "W/3 value_and_grad, superlu, this Mac",
+    "n": 108898,
+    "value_and_grad_seconds": 304.0,
+    "value_and_grad_seconds_recorded": 347.0937809944153,
+    "host_gb": 5.0
+   },
+   "rows": [
+    {
+     "case": "W/3 DUT fixture, one system, superlu",
+     "n": 108898,
+     "factor_seconds": 138.6952567100525,
+     "solve_seconds": 0.5384750366210938,
+     "device_gb": 0.46435546875,
+     "lu_nnz": null,
+     "device_gb_is_the_backends_own": false
+    },
+    {
+     "case": "W/3 DUT fixture, one system, cudss",
+     "n": 108898,
+     "factor_seconds": 0.8666861057281494,
+     "solve_seconds": 0.07966184616088867,
+     "device_gb": 2.04248046875,
+     "lu_nnz": null,
+     "device_gb_is_the_backends_own": true
+    },
+    {
+     "case": "J0 W/3 value_and_grad, superlu",
+     "n": 108898,
+     "value_and_grad_seconds": 432.922723531723,
+     "device_gb": 2.47216796875,
+     "factorizations": null
+    },
+    {
+     "case": "J0 W/3 value_and_grad, cudss",
+     "n": 108898,
+     "value_and_grad_seconds": 6.916724443435669,
+     "device_gb": 9.42529296875,
+     "factorizations": 2
+    },
+    {
+     "case": "W/4 value_and_grad, cudss",
+     "n": 172747,
+     "value_and_grad_seconds": 20.949076175689697,
+     "solve_seconds": null,
+     "device_gb": 5.74951171875,
+     "lu_nnz": null
+    },
+    {
+     "case": "W/6 value_and_grad, cudss",
+     "n": 352536,
+     "value_and_grad_seconds": 38.10807490348816,
+     "solve_seconds": null,
+     "device_gb": 12.72412109375,
+     "lu_nnz": null
+    },
+    {
+     "case": "paper geometry W/1.0, cudss",
+     "n": 85785,
+     "solve_seconds": 7.268714427947998,
+     "device_gb": 2.10888671875,
+     "L_diff": 3.0897438686515622e-09,
+     "gap": -0.13218404736070355
+    },
+    {
+     "case": "paper geometry W/3.0, cudss",
+     "n": 509580,
+     "solve_seconds": 22.534517765045166,
+     "device_gb": 9.98583984375,
+     "L_diff": 2.9991813030337047e-09,
+     "gap": -0.15762034321438512
+    }
+   ],
+   "cudss_plan_estimates": {
+    "J0:W/3": {
+     "n": 108898,
+     "permanent_device_gb": 1.3775691725313663,
+     "peak_device_gb": 1.3775691725313663,
+     "plan_seconds": 0.2823922634124756,
+     "error": null
+    },
+    "J0:W/4": {
+     "n": 172747,
+     "permanent_device_gb": 2.42871405556798,
+     "peak_device_gb": 2.42871405556798,
+     "plan_seconds": 0.44884204864501953,
+     "error": null
+    },
+    "J0:W/6": {
+     "n": 352536,
+     "permanent_device_gb": 5.679288167506456,
+     "peak_device_gb": 5.679288167506456,
+     "plan_seconds": 0.8209822177886963,
+     "error": null
+    },
+    "J2:W/3": {
+     "n": 509580,
+     "permanent_device_gb": 8.62579307332635,
+     "peak_device_gb": 8.62579307332635,
+     "plan_seconds": 1.1716833114624023,
+     "error": null
+    }
+   },
+   "passed": true,
+   "reason": null
+  },
+  "G4": {
+   "what": "the extended Richardson: per-level gap, observed order over the finest three levels, extrapolated range vs the bridge-corrected referee",
+   "n_levels": 5,
+   "levels": [
+    "W/1",
+    "W/2",
+    "W/3",
+    "W/4",
+    "W/6"
+   ],
+   "per_level_gap": {
+    "W/1": -0.21202451007372947,
+    "W/2": -0.12025158857388896,
+    "W/3": -0.09757369803121485,
+    "W/4": -0.09259178844492433,
+    "W/6": -0.09458298816793964
+   },
+   "observed_order": null,
+   "L_extrapolated_estimates": {
+    "p1_finest_pair": 3.002274030567162e-10,
+    "p2_finest_pair": 3.0102321814558983e-10
+   },
+   "L_extrapolated_range": [
+    3.002274030567162e-10,
+    3.0102321814558983e-10
+   ],
+   "referee_deembedded": 3.3305510896906523e-10,
+   "rel_range": [
+    -0.09856538761397027,
+    -0.09617594794635198
+   ],
+   "cpu_only_rel_range": [
+    -0.07943138559707552,
+    -0.05221791694586653
+   ],
+   "tolerance": 0.05,
+   "enough_levels": true,
+   "passed": false
+  },
+  "G5": {
+   "what": "V4 on the extended levels: the level-to-level change of dL/dwidth must keep decreasing. Same definition as the CPU study's V4 (every consecutive step smaller than the one before), applied to the longer ladder, plus the same question asked of the FINEST three steps alone -- which is the one that speaks about the limit. The CPU verdict already failed on its first pair (7.692e-07 then 9.085e-07, W/1->W/2->W/3): the coarsest level is not in the asymptotic regime, and no number of finer levels can retroactively put it there.",
+   "levels": [
+    "W/1",
+    "W/2",
+    "W/3",
+    "W/4",
+    "W/6"
+   ],
+   "dL_dwidth": [
+    -2.0744805581785236e-05,
+    -2.151402236610647e-05,
+    -2.2422482362389336e-05,
+    -2.2749617084871722e-05,
+    -2.2950851071146244e-05
+   ],
+   "level_to_level_change": [
+    7.692167843212331e-07,
+    9.084599962828675e-07,
+    3.2713472248238544e-07,
+    2.0123398627452265e-07
+   ],
+   "decreasing_all_steps": false,
+   "decreasing_finest_three_steps": true,
+   "finest_three_steps": [
+    9.084599962828675e-07,
+    3.2713472248238544e-07,
+    2.0123398627452265e-07
+   ],
+   "n_levels": 5,
+   "cpu_verdict_was": "failed (its first pair already increased)",
+   "passed": false
+  },
+  "G6": {
+   "what": "every run accounted for: completed or terminated, none left running",
+   "n_runs": 8,
+   "states": {
+    "369367261091": "terminated",
+    "369367261092": "terminated",
+    "369367261095": "terminated",
+    "369367261100": "failed",
+    "369367261102": "terminated",
+    "369367261104": "failed (exit 1 = gate G1 not passed; every measurement complete)",
+    "369367261110": "completed",
+    "369367261113": "completed"
+   },
+   "still_running": [],
+   "passed": true,
+   "reason": null
+  }
+ },
+ "verdict": {
+  "backend": "cuDSS through nvmath-python works on this operator and is 147x faster on one factorisation (139.23 s -> 0.95 s at N = 108898) and 63x on a whole three-fixture value_and_grad (432.9 s -> 6.9 s), with 1.38 GB of device memory per factor there and 12.72 GB peak at N = 352536. It agrees with SuperLU on L_dut to 1.5e-10 and on the gradient to 1.5e-08, and DISAGREES on the raw solution vector by 2.4e-03 -- which is the operator, not the solver: on the SAME system host SuperLU disagrees with itself by 2.9e-03..3.7e-03 over its own orderings and elimination paths (gates.G1.same_backend_control, cond_1 3.05e+13), and cuDSS's difference from it sits INSIDE that spread. G1 is still reported failing: its 1e-8 solution clause is unreachable for any pair of direct solves here.",
+  "physics": "The three CPU levels rose monotonically towards the referee (-21.20, -12.03, -9.76 %) and their Richardson extrapolation projected -7.9..-5.2 %. The two GPU levels do NOT continue that: W/4 is -9.26 % and W/6 is -9.46 %, i.e. the sequence flattens and then turns back, and the extrapolation from the finest pair lands at -9.86..-9.62 %. In-plane refinement is therefore EXHAUSTED by W/3-W/4 at this fixture's vertical resolution, and the remaining ~9.4 % is not in-plane discretisation error. The same thing happens on the paper geometry: -13.22 % at 2 cells across the strip and -15.76 % at 6.",
+  "caveat": "The levels are not a NESTED refinement. base_dx caps the cell size where the geometry leaves it free, every polygon edge is a mandatory grid line and the walls are graded (rfx.fdfd.gds.mesh_lines), so each level is its own mesh; base_dz and metal_cells are held fixed, so the vertical error is common to all five and cancels out of this comparison rather than being measured by it. spiral_convergence.json's own vertical_budget puts that term at +1.9..+2.5 % with the sign that would close the gap, and its post-short correction has the sign that would widen it; neither is applied here.",
+  "per_level_gap_percent": [
+   -21.202451007372947,
+   -12.025158857388895,
+   -9.757369803121485,
+   -9.259178844492432,
+   -9.458298816793963
+  ]
+ },
+ "seconds": 0.002293825149536133
+}

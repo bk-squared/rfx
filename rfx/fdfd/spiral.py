@@ -131,6 +131,48 @@ end. ``validation/fdfd/straight_bar_convergence.py`` reports the gap
 against ``l``, ``l - W`` and ``l - W - 2 base_dx`` and uses the
 length DIFFERENTIAL, in which the plane cancels, as its primary gate.
 
+The right-angle bend DUT (``dut_kind = "bend"``)
+-----------------------------------------------
+``SpiralSpec(dut_kind="bend", bend_l1=l1, bend_l2=l2)`` swaps the spiral for
+ONE L-shaped strip with a single right angle on the TOP metal: a leg of
+length ``l1`` in ``+y`` (the direction in which the DUT current leaves the
+OUTER lead column, i.e. the spiral's lead direction), the corner, then a
+leg of length ``l2`` in ``-x``. ``l1`` and ``l2`` are centre-to-centre
+lengths -- outer footprint centre ``(l2/2, -l1/2)``, corner
+``(l2/2, l1/2)``, inner footprint centre ``(-l2/2, l1/2)`` -- so the
+conductor between the two reference planes is exactly ``l1 + l2`` long and
+the drawn (mitred) strip is ``l1 + l2 + W``, overhanging each footprint
+centre by ``W/2`` as the bar does. ``theta = (l1, l2, width)``; the
+breakpoints come from :func:`bend_edge_coordinates` (``+-(l2 +- W)/2`` on x,
+``+-(l1 +- W)/2`` on y) and the geometry from :func:`bend_geometry`. Both
+terminals are on M2; ``n_turns``, ``r_out``, ``spacing``, ``lead`` and
+``bar_length`` are unused.
+
+The two lead columns differ in BOTH x and y -- unlike the bar's (collinear)
+and the spiral's (one shared port line) -- and that is the only thing the
+build needed generalising for: each column's terminal row is taken from its
+OWN port, the short standard's bar runs on each column's own row, and the
+grounded post spans the UNION of the two rows. For the spiral and the bar
+the two rows coincide and the result is bit-identical to the single-row
+construction. The short standard is therefore, in cell indices with
+``outer`` the ``+x`` column:
+
+* post: ``i in [inner.i1 + 1, outer.i0 - 1)`` (one isolating cell on each
+  side, which the port's own Ez edges require), ``j`` over the union of the
+  two terminal rows, ``z`` from the ground up through the metal levels;
+* outer arm: ``i in [post_i0, outer.i1)`` on the outer row; inner arm:
+  ``i in [inner.i0, post_i1)`` on the inner row. Both overlap the post's x
+  range on their own row, which is what connects them.
+
+Driven differentially the post carries no current, so the de-embedded
+quantity is ``L(strip between the planes) - L(the two arms)`` and each arm
+is ``W/2 + one cell`` long, x-directed. That is perpendicular to the DUT
+current at the outer column (as for the spiral) and collinear with it at
+the inner column (as for the bar).
+``validation/fdfd/corner_convergence.py`` is the study this was added for:
+it compares the bend against the straight bar of the same total length
+``l1 + l2`` to isolate ONE right-angle corner.
+
 Scope fence. Closed PEC box (no PML; fine below the first box resonance);
 staircase PEC or Leontovich metal, no finite-thickness skin effect (see
 above for the frequency floor that implies); grid resolution is a cost
@@ -160,12 +202,13 @@ from rfx.fdfd import yee3d as y
 __all__ = [
     "SmallStack", "SpiralSpec", "SpiralModel", "SpiralResult", "LineMap",
     "rect_spiral_edge_coordinates", "straight_bar_edge_coordinates", "straight_bar_geometry",
+    "bend_edge_coordinates", "bend_geometry",
     "build_spiral", "pad_lines", "spiral_lines", "breakpoint_gaps",
     "check_feasible", "solve_spiral", "nominal_record", "skin_depth", "leontovich_validity",
     "KEY_M2", "KEY_M1", "KEY_VIA", "DUT_KINDS",
 ]
 
-DUT_KINDS = ("spiral", "bar")
+DUT_KINDS = ("spiral", "bar", "bend")
 
 KEY_M2 = (134, 0)      # top metal: the spiral strip (rect_spiral default ``layer``)
 KEY_M1 = (126, 0)      # lower metal: the underpass
@@ -300,6 +343,8 @@ class SpiralSpec:
     pad_ratio: float = 1.5
     dut_kind: str = "spiral"
     bar_length: float = 0.0
+    bend_l1: float = 0.0
+    bend_l2: float = 0.0
 
     @property
     def pml(self) -> tuple[int, int, int, int, int, int]:
@@ -319,9 +364,12 @@ class SpiralSpec:
         ``dut_kind="spiral"``, ``(bar_length, width)`` for
         ``dut_kind="bar"`` (the straight-bar DUT has no spacing; the tuple
         is two long, NOT a three-tuple with an ignored entry, so that
-        ``jax.grad`` returns exactly the two derivatives that exist)."""
+        ``jax.grad`` returns exactly the two derivatives that exist) and
+        ``(bend_l1, bend_l2, width)`` for ``dut_kind="bend"``."""
         if self.dut_kind == "bar":
             return (float(self.bar_length), float(self.width))
+        if self.dut_kind == "bend":
+            return (float(self.bend_l1), float(self.bend_l2), float(self.width))
         return (float(self.r_out), float(self.spacing), float(self.width))
 
     @property
@@ -426,12 +474,89 @@ def straight_bar_geometry(l_bar: float, width: float, layer=KEY_M2) -> gds.Spira
                       ports=((hl, -hw), (-hl, -hw)))
 
 
+# ----------------------------------------------------------------------------
+# right-angle bend DUT (``dut_kind = "bend"``): the SAME fixture with the
+# spiral replaced by ONE L-shaped strip with a single right angle
+
+def _bend_edge_coordinates_unsorted(theta):
+    """Unsorted breakpoints ``(x (4,), y (4,))`` of the L-shaped bend in a
+    FIXED analytic order; ``theta = (l1, l2, width)``."""
+    theta = jnp.asarray(theta, dtype=jnp.float64)
+    l1, l2, width = theta[0], theta[1], theta[2]
+    hw = 0.5 * width
+    x = jnp.stack([-(0.5 * l2 + hw), -(0.5 * l2 - hw), 0.5 * l2 - hw, 0.5 * l2 + hw])
+    yv = jnp.stack([-(0.5 * l1 + hw), -(0.5 * l1 - hw), 0.5 * l1 - hw, 0.5 * l1 + hw])
+    return x, yv
+
+
+def bend_edge_coordinates(theta):
+    """Sorted x and y coordinates of every axis-aligned polygon edge of the
+    right-angle bend DUT for ``theta = (l1, l2, width)``, as ``jax.numpy``
+    functions of ``theta``.
+
+    The bend is one L-shaped strip on the TOP metal (``KEY_M2``) whose
+    centreline runs ``(l2/2, -(l1+W)/2) -> (l2/2, l1/2) -> (-(l2+W)/2,
+    l1/2)``: a leg of length ``l1`` in ``+y`` (the LEAD direction of the
+    spiral fixture, i.e. the direction in which the DUT current leaves the
+    outer lead column), one right angle at ``(l2/2, l1/2)``, and a leg of
+    length ``l2`` in ``-x``. ``l1`` and ``l2`` are CENTRE-TO-CENTRE lengths:
+    from the outer lead-column footprint centre ``(l2/2, -l1/2)`` to the
+    corner and from the corner to the inner footprint centre
+    ``(-l2/2, l1/2)``, so the de-embedded centreline length is exactly
+    ``l1 + l2`` and the drawn strip is ``l1 + l2 + W`` long (it overhangs
+    each footprint centre by ``W/2``, exactly as the straight bar does).
+    The two ``W x W`` footprint squares are the legs' end squares, so the
+    four x breakpoints are ``+-(l2 +- W)/2`` and the four y breakpoints
+    ``+-(l1 +- W)/2`` -- the legs' two edges plus each footprint's DUT-side
+    edge -- which makes both footprints grid-exact at every ``base_dx``.
+    Returns ``(x (4,), y (4,))``."""
+    x, yv = _bend_edge_coordinates_unsorted(theta)
+    return jnp.sort(x), jnp.sort(yv)
+
+
+def bend_geometry(l1: float, l2: float, width: float, layer=KEY_M2) -> gds.Spiral:
+    """Host-numpy geometry of the right-angle bend DUT in the shape
+    :func:`build_spiral` consumes (a :class:`rfx.fdfd.gds.Spiral` record):
+    the mitred L polygon (:func:`rfx.fdfd.gds.offset_polyline` of the
+    three-point centreline, so its area is exactly ``width x`` centreline
+    length and the corner square is drawn once) AND the two
+    column-footprint squares on ``layer`` (overlapping polygons on one
+    layer, unioned by :func:`rfx.fdfd.gds.fill_fractions`; they only add
+    their edges to :func:`rfx.fdfd.gds.mesh_lines`), no underpass, no via.
+    ``ports`` are ``((l2/2, -(l1+W)/2), (-l2/2, (l1-W)/2))`` in the
+    ``(x centre, y LOW edge)`` convention :func:`build_spiral` reads them
+    in -- the ``+x`` one first, so it plays the role of the spiral's OUTER
+    terminal (the one that must be right of the other). The two footprints
+    therefore differ in BOTH x and y: unlike the bar's, these two lead
+    columns are not collinear (see the module doc for the short standard
+    that follows)."""
+    if width <= 0:
+        raise ValueError("width must be > 0")
+    if l1 <= width or l2 <= width:
+        raise ValueError("bend_l1 and bend_l2 must exceed width (the legs must clear the "
+                         "footprint squares and leave the corner one full width)")
+    hw = 0.5 * width
+    x_o, y_c1 = 0.5 * l2, -0.5 * l1
+    y_c2, x_i = 0.5 * l1, -0.5 * l2
+    centre = np.array([[x_o, y_c1 - hw], [x_o, y_c2], [x_i - hw, y_c2]], dtype=np.float64)
+    strip = gds.offset_polyline(centre, width)
+    foot_o = gds.rect_from_bounds(x_o - hw, y_c1 - hw, x_o + hw, y_c1 + hw)
+    foot_i = gds.rect_from_bounds(x_i - hw, y_c2 - hw, x_i + hw, y_c2 + hw)
+    seg = np.array([l1 + hw, l2 + hw], dtype=np.float64)
+    return gds.Spiral(polygons={layer: [strip, foot_o, foot_i]}, centreline=centre,
+                      segment_lengths=seg, length=float(l1 + l2 + width),
+                      underpass_length=0.0,
+                      ports=((x_o, y_c1 - hw), (x_i, y_c2 - hw)))
+
+
 def _edge_coordinates_for(spec: "SpiralSpec", theta):
     """Unsorted breakpoints of whichever DUT ``spec`` describes (the single
     dispatch point of the ``dut_kind`` hook; everything downstream -- line
     maps, traced grid, fixtures, de-embedding -- is shared)."""
     if spec.dut_kind == "bar":
         return _bar_edge_coordinates_unsorted(theta)
+    if spec.dut_kind == "bend":
+        return _bend_edge_coordinates_unsorted(theta)
     if spec.dut_kind != "spiral":
         raise ValueError(f"unknown dut_kind {spec.dut_kind!r} (one of {DUT_KINDS})")
     return _edge_coordinates_unsorted(theta, spec.n_turns, spec.lead)
@@ -593,6 +718,8 @@ def build_spiral(spec: SpiralSpec) -> SpiralModel:
     stack = st.layer_stack()
     if spec.dut_kind == "bar":
         sp = straight_bar_geometry(spec.bar_length, spec.width)
+    elif spec.dut_kind == "bend":
+        sp = bend_geometry(spec.bend_l1, spec.bend_l2, spec.width)
     elif spec.dut_kind == "spiral":
         sp = gds.rect_spiral(spec.n_turns, spec.r_out, spec.width, spec.spacing, spec.lead,
                              layer=KEY_M2, underpass_layer=KEY_M1, via_layer=KEY_VIA)
@@ -636,7 +763,6 @@ def build_spiral(spec: SpiralSpec) -> SpiralModel:
 
     # lead columns and ports
     hw = 0.5 * spec.width
-    y_port = sp.ports[0][1]
     k_m1 = _z_cell_range(z, st.z_m1, st.z_m1 + st.t_m1)
     k_m2 = _z_cell_range(z, st.z_m2, st.z_m2 + st.t_m2)
     gap = spec.port_gap_cells
@@ -645,16 +771,22 @@ def build_spiral(spec: SpiralSpec) -> SpiralModel:
     stub_cells = np.zeros((nx, ny, nz), dtype=bool)
     # the metal level each terminal sits on: the spiral's inner terminal is on
     # the underpass (M1), the straight bar has both terminals on M2
-    metal_ks = (k_m2, k_m2) if spec.dut_kind == "bar" else (k_m2, k_m1)
-    for (xc, _yc), k_metal in zip(sp.ports, metal_ks):
+    metal_ks = (k_m2, k_m2) if spec.dut_kind in ("bar", "bend") else (k_m2, k_m1)
+    terminal_rows: list[tuple[int, int]] = []
+    # each port carries its own ``(x centre, y LOW edge)``; for the spiral and
+    # the bar both ports sit on the SAME y line (the port line / the bar row)
+    # and this loop is bit-identical to reading it once, but the bend's two
+    # terminals differ in y as well as in x
+    for (xc, yc), k_metal in zip(sp.ports, metal_ks):
         i0, i1 = _footprint(x_nom, xc - hw, xc + hw)
-        jt0, jt1 = _footprint(y_nom, y_port, y_port + spec.width)     # terminal cell(s)
+        jt0, jt1 = _footprint(y_nom, yc, yc + spec.width)              # terminal cell(s)
         if gap >= k_metal[0]:
             raise ValueError("port gap reaches the metal layer; fewer port_gap_cells")
         j0, j1 = jt0 - stub, jt1 - stub
         if j0 < 1:
             raise ValueError("lead_stub_cells exceeds the margin cells below the port line")
         cols.append(Column(i0, i1, j0, j1, gap, k_metal[0]))
+        terminal_rows.append((jt0, jt1))
         if stub:
             stub_cells[i0:i1, j0:jt0, k_metal[0]:k_metal[1]] = True
     columns = (cols[0], cols[1])
@@ -679,13 +811,18 @@ def build_spiral(spec: SpiralSpec) -> SpiralModel:
     if post_i1 <= post_i0:
         raise ValueError("no room for the short's ground post between the lead columns "
                          "(need >= 3 cells between them); larger n_turns * pitch or finer base_dx")
-    jb0 = max(outer.j0, jt0 - 1)                 # bar row: the DUT-side end of the lead
-    jb1 = jb0 + (outer.j1 - outer.j0)
+    # bar row of each column: the DUT-side end of ITS OWN lead. For the spiral
+    # and the bar the two rows coincide (both terminals on the port line) and
+    # this is the single row of the original code; for the bend they differ and
+    # the post spans their union so that both arms reach it.
+    rows = [(max(c.j0, jt - 1), max(c.j0, jt - 1) + (c.j1 - c.j0))
+            for c, (jt, _) in zip(columns, terminal_rows)]
+    jp0, jp1 = min(r[0] for r in rows), max(r[1] for r in rows)
     bar_cells = np.zeros((nx, ny, nz), dtype=bool)
-    bar_cells[post_i0:outer.i1, jb0:jb1, metal_ks[0][0]:metal_ks[0][1]] = True
-    bar_cells[inner.i0:post_i1, jb0:jb1, metal_ks[1][0]:metal_ks[1][1]] = True
+    bar_cells[post_i0:outer.i1, rows[0][0]:rows[0][1], metal_ks[0][0]:metal_ks[0][1]] = True
+    bar_cells[inner.i0:post_i1, rows[1][0]:rows[1][1], metal_ks[1][0]:metal_ks[1][1]] = True
     post_cells = np.zeros((nx, ny, nz), dtype=bool)
-    post_cells[post_i0:post_i1, jb0:jb1, 0:max(metal_ks[0][1], metal_ks[1][1])] = True
+    post_cells[post_i0:post_i1, jp0:jp1, 0:max(metal_ks[0][1], metal_ks[1][1])] = True
 
     cells = {
         "dut": spiral_cells | col_cells,
@@ -750,6 +887,17 @@ def check_feasible(model: SpiralModel, theta) -> None:
         gaps_b = np.asarray(breakpoint_gaps(model, np.asarray(theta, dtype=np.float64)))
         if np.any(gaps_b <= 0):
             raise ValueError(f"infeasible: breakpoint order violated (min gap {gaps_b.min():.3g} m)")
+        return
+    if model.spec.dut_kind == "bend":
+        l1, l2, width = (float(v) for v in np.asarray(theta, dtype=np.float64))
+        if min(l1, l2, width) <= 0:
+            raise ValueError("bend_l1, bend_l2, width must be > 0")
+        if min(l1, l2) <= width:
+            raise ValueError("infeasible: a bend leg is shorter than the width "
+                             "(the footprint squares would swallow the corner)")
+        gaps_n = np.asarray(breakpoint_gaps(model, np.asarray(theta, dtype=np.float64)))
+        if np.any(gaps_n <= 0):
+            raise ValueError(f"infeasible: breakpoint order violated (min gap {gaps_n.min():.3g} m)")
         return
     r_out, spacing, width = (float(v) for v in np.asarray(theta, dtype=np.float64))
     if min(r_out, spacing, width) <= 0:
@@ -890,8 +1038,12 @@ def _c2(a) -> list:
 def nominal_record(model: SpiralModel, res: SpiralResult, extra: dict[str, Any] | None = None) -> dict[str, Any]:
     """JSON-serialisable summary of a solve (theta, grid, N, L, Q, S)."""
     th = model.theta_nominal
-    theta_rec = ({"bar_length": th[0], "width": th[1]} if model.spec.dut_kind == "bar"
-                 else {"r_out": th[0], "spacing": th[1], "width": th[2]})
+    if model.spec.dut_kind == "bar":
+        theta_rec: dict[str, float] = {"bar_length": th[0], "width": th[1]}
+    elif model.spec.dut_kind == "bend":
+        theta_rec = {"bend_l1": th[0], "bend_l2": th[1], "width": th[2]}
+    else:
+        theta_rec = {"r_out": th[0], "spacing": th[1], "width": th[2]}
     rec: dict[str, Any] = {
         "theta": theta_rec, "dut_kind": model.spec.dut_kind,
         "n_turns": model.spec.n_turns, "lead": model.spec.lead, "base_dx": model.spec.dx,

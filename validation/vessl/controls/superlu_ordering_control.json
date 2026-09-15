@@ -1,0 +1,156 @@
+{
+ "what": "gate G1's same-backend control: host SuperLU, several elimination paths, one system -- measured on this Mac",
+ "levels": {
+  "1": {
+   "what": "one backend (host SuperLU), several elimination paths on the same system: the control for G1's solution-difference clause",
+   "backend": "superlu",
+   "n": 23062,
+   "nnz": 285826,
+   "rhs_shape": [
+    23062,
+    2
+   ],
+   "reference": "COLAMD",
+   "seed": 20260915,
+   "diff_norm": "max|x - x_ref| / max|x_ref|, the same norm G1 gates on",
+   "cases": {
+    "COLAMD": {
+     "permc_spec": "COLAMD",
+     "variant": null,
+     "seconds": 4.964833974838257,
+     "residual": 5.119778852550105e-09,
+     "rel_diff_vs_reference": 0.0,
+     "rel_l2_diff_vs_reference": 0.0
+    },
+    "MMD_ATA": {
+     "permc_spec": "MMD_ATA",
+     "variant": null,
+     "seconds": 7.910527944564819,
+     "residual": 5.336733683053943e-09,
+     "rel_diff_vs_reference": 0.0001733572701039834,
+     "rel_l2_diff_vs_reference": 4.296599897023092e-05
+    },
+    "MMD_AT_PLUS_A": {
+     "permc_spec": "MMD_AT_PLUS_A",
+     "variant": null,
+     "seconds": 83.89331722259521,
+     "residual": 6.103347803568304e-09,
+     "rel_diff_vs_reference": 0.00012780517233570608,
+     "rel_l2_diff_vs_reference": 4.243077069727699e-05
+    },
+    "NATURAL": {
+     "permc_spec": "NATURAL",
+     "variant": null,
+     "seconds": 174.11623811721802,
+     "residual": 6.213215907424467e-09,
+     "rel_diff_vs_reference": 0.00013375703925887518,
+     "rel_l2_diff_vs_reference": 3.6142425002060224e-05
+    },
+    "row_permuted": {
+     "permc_spec": "COLAMD",
+     "variant": "row_permuted",
+     "seconds": 5.669842958450317,
+     "residual": 6.100365297559642e-09,
+     "rel_diff_vs_reference": 0.00024318411873236841,
+     "rel_l2_diff_vs_reference": 5.282996092456304e-05
+    },
+    "col_scaled": {
+     "permc_spec": "COLAMD",
+     "variant": "col_scaled",
+     "seconds": 4.814702987670898,
+     "residual": 6.050789636810482e-09,
+     "rel_diff_vs_reference": 0.00021966227947205205,
+     "rel_l2_diff_vs_reference": 4.4074939127893004e-05
+    }
+   },
+   "cond_1_estimate": {
+    "norm_1_A": 4613064621710.745,
+    "norm_1_A_inverse": 3.094841912505624,
+    "cond_1": 14276705736367.316,
+    "seconds": 5.020618200302124,
+    "method": "scipy.sparse.linalg.onenormest of A and of a SuperLU-backed inverse operator"
+   },
+   "rel_diff_span": [
+    0.00012780517233570608,
+    0.00024318411873236841
+   ],
+   "worst_rel_diff": 0.00024318411873236841,
+   "residual_span": [
+    5.119778852550105e-09,
+    6.213215907424467e-09
+   ],
+   "div": 1.0,
+   "base_dx": 1e-05
+  },
+  "3": {
+   "what": "one backend (host SuperLU), several elimination paths on the same system: the control for G1's solution-difference clause",
+   "backend": "superlu",
+   "n": 108898,
+   "nnz": 1370206,
+   "rhs_shape": [
+    108898,
+    2
+   ],
+   "reference": "COLAMD",
+   "seed": 20260915,
+   "diff_norm": "max|x - x_ref| / max|x_ref|, the same norm G1 gates on",
+   "cases": {
+    "COLAMD": {
+     "permc_spec": "COLAMD",
+     "variant": null,
+     "seconds": 102.81612491607666,
+     "residual": 1.911456861180975e-08,
+     "rel_diff_vs_reference": 0.0,
+     "rel_l2_diff_vs_reference": 0.0
+    },
+    "MMD_ATA": {
+     "permc_spec": "MMD_ATA",
+     "variant": null,
+     "seconds": 174.7742829322815,
+     "residual": 1.1505370606284141e-08,
+     "rel_diff_vs_reference": 0.0028734683180482593,
+     "rel_l2_diff_vs_reference": 0.0003274532758695308
+    },
+    "row_permuted": {
+     "permc_spec": "COLAMD",
+     "variant": "row_permuted",
+     "seconds": 114.06612610816956,
+     "residual": 1.2691325053425029e-08,
+     "rel_diff_vs_reference": 0.0032615310643615046,
+     "rel_l2_diff_vs_reference": 0.00034736900147039546
+    },
+    "col_scaled": {
+     "permc_spec": "COLAMD",
+     "variant": "col_scaled",
+     "seconds": 103.53386497497559,
+     "residual": 1.943565012098737e-08,
+     "rel_diff_vs_reference": 0.0036819068104838094,
+     "rel_l2_diff_vs_reference": 0.00036264883988218943
+    }
+   },
+   "cond_1_estimate": {
+    "norm_1_A": 6038596806829.1,
+    "norm_1_A_inverse": 5.0440514456863,
+    "cond_1": 30458992953402.996,
+    "seconds": 104.0535900592804,
+    "method": "scipy.sparse.linalg.onenormest of A and of a SuperLU-backed inverse operator"
+   },
+   "rel_diff_span": [
+    0.0028734683180482593,
+    0.0036819068104838094
+   ],
+   "worst_rel_diff": 0.0036819068104838094,
+   "residual_span": [
+    1.1505370606284141e-08,
+    1.943565012098737e-08
+   ],
+   "div": 3.0,
+   "base_dx": 3.3333333333333337e-06
+  }
+ },
+ "host": {
+  "python": "3.12.14",
+  "machine": "Darwin arm64"
+ },
+ "generated_utc": "2026-09-15T06:53:54Z"
+}

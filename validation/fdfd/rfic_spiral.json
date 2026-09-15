@@ -1,0 +1,3687 @@
+{
+ "meta": {
+  "paper": {
+   "ref": "arXiv 2607.08852, 2.4 GHz LC-VCO, IHP SG13G2",
+   "geometry": "3-turn SYMMETRIC OCTAGONAL spiral, r_out 218 um, W 30 um, S 14 um, TopMetal2 with a TopMetal1 underpass",
+   "reported": {
+    "L_diff": 4e-09,
+    "Q_diff": 16.8,
+    "freq": 2450000000.0
+   },
+   "status": "CONTEXT ONLY -- no gate in this study compares to it"
+  },
+  "deviations": [
+   {
+    "what": "square spiral instead of the paper's octagon",
+    "why": "the differentiable body-fitted metric of rfx.fdfd.spiral is built on axis-aligned breakpoints (rect_spiral); gds.octagonal_spiral exists but spiral.py has no breakpoint map for it",
+    "effect": "a square of the same r_out has more metal and a longer conductor than the inscribed octagon, so its L is HIGHER at equal r_out; it is a different device, not a discretisation of the paper's"
+   },
+   {
+    "what": "single-ended spiral with an underpass instead of a symmetric (two-winding) differential inductor",
+    "why": "rect_spiral builds one winding; SpiralSpec has no symmetric topology",
+    "effect": "L_diff here is the series inductance of one winding between two terminals, not the differential inductance of two interleaved ones"
+   },
+   {
+    "what": "silicon 120 um thick over a PEC ground instead of ~190 um",
+    "why": "the vertical grid is layer-uniform (gds.z_lines) and every 60 um silicon cell costs 3 x 43 x 44 unknowns",
+    "effect": "MEASURED, both by the FDFD (two thicknesses at the coarse level) and by the referee's ground image at 60/120/190/300 um: see B.t_si_sensitivity"
+   },
+   {
+    "what": "TopVia2 widened from ~0.85 um to 2 um",
+    "why": "leontovich_validity divides the skin depth by the THINNEST metal slab; at 0.85 um the via, a 30 um square carrying the series current between the layers, would set that number instead of the 2 um underpass",
+    "effect": "the M2-M1 centre separation becomes 4.5 um instead of 3.35 um (+34 %), slightly changing the underpass mutual"
+   },
+   {
+    "what": "passivation permittivity lumped into the oxide's 4.1 (public 6.6)",
+    "why": "SmallStack has one oxide permittivity for the whole back end",
+    "effect": "a 1.5 um layer directly above the strip is 4.1 instead of 6.6: the strip's shunt capacitance to the air side is slightly low, which raises the self-resonance a little"
+   },
+   {
+    "what": "the Leontovich sheet is used outside its delta << t range",
+    "why": "the pipeline has no finite-thickness skin-effect metal model",
+    "effect": "absolute Q at 2.45 GHz is not a validated number: see B.leontovich for delta/t"
+   }
+  ],
+  "calibration": {
+   "what": "the measurement that forced linear_solve.factor_cache_size(1)",
+   "n_unknowns": 85785,
+   "shape": [
+    43,
+    44,
+    14
+   ],
+   "three_fixture_solve_seconds": 216.7266721725464,
+   "peak_footprint_gb_with_default_cache_of_4": 15.287808179855347,
+   "L_diff_pH_at_100MHz_t_si_60um": 2624.9959446102694,
+   "note": "t_si = 60 um configuration, run once before the study to size it; with three LU factors live the footprint is 15.3 GB, which is why every solve in the study keeps ONE"
+  },
+  "protocol_source": "validation/fdfd/spiral_convergence.py (study D2): uniform-current volumetric metal sigma = 3e6 at 100 MHz, vacuum dielectrics, pad_cells = 4 graded wall cells, area-exact corner convention, primary referee L(strip) - L(short's bridge)",
+  "python": "3.12.14"
+ },
+ "fixture": {
+  "dut": "SQUARE 3-turn spiral (rfx.fdfd.gds.rect_spiral) on TopMetal2 with a TopMetal1 underpass -- NOT the paper's octagon, see the module doc",
+  "n_turns": 3,
+  "r_out": 0.000218,
+  "spacing": 1.4e-05,
+  "width": 3e-05,
+  "lead": 4.5e-05,
+  "margin": 3e-05,
+  "theta0": [
+   0.000218,
+   1.4e-05,
+   3e-05
+  ],
+  "params": [
+   "r_out",
+   "spacing",
+   "width"
+  ],
+  "a_in": 7.099999999999999e-05,
+  "feasibility_margin": 5.6000000000000006e-05,
+  "stack": {
+   "t_si": 0.00012,
+   "t_si_alt": 6e-05,
+   "t_si_real_die": 0.00019,
+   "t_ox_low": 6.04e-06,
+   "t_m1": 2e-06,
+   "t_via": 2e-06,
+   "t_m2": 3e-06,
+   "t_ox_high": 1.5e-06,
+   "t_air": 6e-05,
+   "base_dz": 6e-05,
+   "metal_cells": 2,
+   "eps_si": 11.9,
+   "eps_ox": 4.1,
+   "ground_height_to_m2_centre": 0.00013154,
+   "dz_underpass": 4.5e-06
+  },
+  "grid": {
+   "pad_cells": 4,
+   "pad_cells_z": 3,
+   "pad_ratio": 1.5,
+   "port_gap_cells": 1,
+   "divs_run": [
+    1.0,
+    2.0
+   ],
+   "div_reported_only": 3.0
+  },
+  "part_a": {
+   "freq": 100000000.0,
+   "sigma_volumetric": 3000000.0,
+   "dielectrics": "vacuum"
+  },
+  "part_b": {
+   "freq": 2450000000.0,
+   "sigma_metal": 30500000.0,
+   "sigma_si": 2.0,
+   "sweep_freqs": [
+    500000000.0,
+    1000000000.0,
+    2450000000.0,
+    4000000000.0,
+    6000000000.0
+   ]
+  },
+  "fd_step_rel": 0.01
+ },
+ "seconds": 4258.963344097137,
+ "seconds_prior": 4258.963340044022,
+ "solve_units_prior": 13,
+ "referee": {
+  "what": "Greenhouse partial inductance with a PEC ground image; PRIMARY convention L(strip) - L(short's bridge), area-exact corners, reference plane at the lead-column footprint centre (D2's protocol, bridge construction reused)",
+  "ground_height": 0.00013154,
+  "dz_underpass": 4.5e-06,
+  "reference_plane_shift": 1.5e-05,
+  "bridge_split_on_m2": 0.5,
+  "strip": 3.6239351399278993e-09,
+  "bridge": 6.356746144191331e-11,
+  "deembedded": 3.560367678485986e-09,
+  "bridge_over_strip": 0.017541004181211156,
+  "strip_worst_quadrature_error": 2.8009361458899115e-10,
+  "bridge_worst_quadrature_error": 1.5262186839564525e-12,
+  "greenhouse_corner_convention_strip": 3.6062095125180104e-09,
+  "strip_no_ground": 4.0243187038949206e-09,
+  "per_plane": {
+   "port_line": {
+    "strip": 3.641803050903294e-09,
+    "bridge": 8.252102147867945e-11,
+    "deembedded": 3.5592820294246147e-09
+   },
+   "column_centre": {
+    "strip": 3.6239351399278993e-09,
+    "bridge": 6.356746144191331e-11,
+    "deembedded": 3.560367678485986e-09
+   },
+   "far_edge": {
+    "strip": 3.6058762209989216e-09,
+    "bridge": 4.5366400303716083e-11,
+    "deembedded": 3.5605098206952054e-09
+   }
+  },
+  "reference_plane_spread": 0.0003448495721410342,
+  "reference_plane_spread_strip_only": 0.009913761840971407,
+  "per_split": {
+   "0": 3.560406321050305e-09,
+   "0.25": 3.5605073612874077e-09,
+   "0.5": 3.560367678485986e-09,
+   "0.75": 3.5602094908648873e-09,
+   "1": 3.5598195970060252e-09
+  },
+  "split_spread": 0.00019317226294868545,
+  "ground_image_curve": {
+   "60": {
+    "t_si": 6e-05,
+    "ground_height": 7.153999999999998e-05,
+    "deembedded": 3.0159988497747595e-09,
+    "rel_to_chosen": -0.1528968010805879
+   },
+   "120": {
+    "t_si": 0.00012,
+    "ground_height": 0.00013154,
+    "deembedded": 3.560367678485986e-09,
+    "rel_to_chosen": 0.0
+   },
+   "190": {
+    "t_si": 0.00019,
+    "ground_height": 0.00020154,
+    "deembedded": 3.782074710947943e-09,
+    "rel_to_chosen": 0.06227082494924696
+   },
+   "300": {
+    "t_si": 0.0003,
+    "ground_height": 0.00031153999999999996,
+    "deembedded": 3.892250745450201e-09,
+    "rel_to_chosen": 0.09321595322013088
+   }
+  },
+  "mohan_wheeler": {
+   "what": "SECONDARY sanity number: Mohan's modified-Wheeler fit for a SQUARE spiral (Mohan et al., JSSC 34(10) 1999, eq. 2; 2-3 % typical and ~8 % worst-case error against field solvers). The fit has NO ground plane, so the number to read it against is the referee's free-space strip, not the ground-imaged one.",
+   "n_turns": 3,
+   "d_out": 0.000436,
+   "d_in": 0.0002,
+   "d_in_definition": "inner edge of the innermost complete turn (the inner extension to the via sits inside the hole and is not a turn)",
+   "L": 4.16532927655346e-09,
+   "over_referee_no_ground_minus_1": 0.035039613667293024,
+   "over_referee_deembedded_minus_1": 0.1699154842133408
+  },
+  "area_gate": {
+   "strip_polygon_area": 1.154100000000001e-07,
+   "area_exact": {
+    "n_bars": 14,
+    "sum_of_areas": 1.1541000000000009e-07,
+    "union_area": 1.1541000000000003e-07,
+    "sum_over_polygon_minus_1": -1.1102230246251565e-16,
+    "union_over_polygon_minus_1": -6.661338147750939e-16,
+    "union_over_sum_minus_1": -5.551115123125783e-16,
+    "underpass_area_over_polygon_minus_1": 6.661338147750939e-16,
+    "total_centreline_length": 0.003847
+   },
+   "greenhouse": {
+    "n_bars": 14,
+    "sum_of_areas": 1.1541000000000009e-07,
+    "union_area": 1.1271000000000014e-07,
+    "sum_over_polygon_minus_1": -1.1102230246251565e-16,
+    "union_over_polygon_minus_1": -0.0233948531323106,
+    "union_over_sum_minus_1": -0.02339485313231049,
+    "underpass_area_over_polygon_minus_1": 6.661338147750939e-16,
+    "total_centreline_length": 0.003847
+   }
+  },
+  "gradient_fd4": [
+   3.0618680966731e-05,
+   -6.243707380442818e-05,
+   -9.688617037645568e-05
+  ],
+  "gradient_fd4_params": [
+   "r_out",
+   "spacing",
+   "width"
+  ]
+ },
+ "gates": {
+  "R1": {
+   "quantity": "FDFD de-embedded L_diff at 100 MHz vs the PRIMARY referee L(strip) - L(short's bridge) on the same square geometry; no FDFD-side correction applied",
+   "referee_deembedded": 3.560367678485986e-09,
+   "referee_strip_only": 3.6239351399278993e-09,
+   "per_level_gap": {
+    "W/1": -0.13218404790384464,
+    "W/2": -0.13258911856264166
+   },
+   "per_level_cells_across_width": {
+    "W/1": 2,
+    "W/2": 2
+   },
+   "d2_small_spiral_gaps": {
+    "W/1": -0.21202451007372947,
+    "W/2": -0.12025158857388896,
+    "W/3": -0.09757369803121485
+   },
+   "criterion": "the W/2 gap must be within 3 points of D2's small-spiral W/2 gap (-0.1203), i.e. the deficit at RFIC scale is the known strip cross-section discretisation bias and nothing new",
+   "tolerance_points": 0.03,
+   "d2_w2_gap": -0.12025158857388896,
+   "wall_correction": {
+    "what": "the same W/1 model under part A's protocol with the four side walls pushed from 4 to 8 graded cells (431 -> 1356 um from the axis; the PEC lid is pinned at 3 padding cells in both). D2's wall gate on the 104 um spiral moved L by +0.114 % for pad 4 -> 8; this device is four times larger inside the same margin + padding, so the residual is larger and it is measured here rather than assumed.",
+    "pad_cells": [
+     4,
+     8
+    ],
+    "n_unknowns": [
+     85785,
+     119689
+    ],
+    "L_diff": [
+     3.089743866717694e-09,
+     3.121038925848151e-09
+    ],
+    "rel_change_L": 0.010128690428861553,
+    "gap_at_pad_4": -0.13218404790384464,
+    "gap_at_pad_8": -0.12339420877583496,
+    "d2_w2_gap": -0.12025158857388896,
+    "gap_at_pad_8_minus_d2": -0.0031426202019460003
+   },
+   "w2_gap": -0.13258911856264166,
+   "w2_gap_minus_d2": -0.012337529988752705,
+   "passed": true
+  },
+  "R2": {
+   "n_solves_checked": 12,
+   "reciprocity_worst": 1.9704589366182672e-10,
+   "reciprocity_tolerance": 1e-08,
+   "passivity_worst": 1.000000000107069,
+   "passivity_tolerance": 1.00000001,
+   "per_solve_reciprocity": {
+    "A.levels.1": 1.4214093535342077e-10,
+    "A.levels.2": 8.162176809845412e-11,
+    "B.levels.1": 1.6692163264852137e-11,
+    "B.levels.2": 2.4497805857927212e-11,
+    "B.sweep.0.5": 3.3358937246113046e-11,
+    "B.sweep.1": 1.2440485862620723e-11,
+    "B.sweep.4": 1.0904258517163626e-11,
+    "B.sweep.6": 4.792888020425736e-12,
+    "A.wall.8": 1.9704589366182672e-10,
+    "B.wall.8": 9.459585115304727e-12,
+    "B.wall.6": 1.4922468246293866e-11,
+    "B.t_si.alt": 7.0604159307553325e-12
+   },
+   "per_solve_passivity": {
+    "A.levels.1": 1.0000000000811409,
+    "A.levels.2": 1.000000000034779,
+    "B.levels.1": 0.9982715321107835,
+    "B.levels.2": 0.9982725037010636,
+    "B.sweep.0.5": 0.9992862567989532,
+    "B.sweep.1": 0.9989455509125673,
+    "B.sweep.4": 0.9977401596849766,
+    "B.sweep.6": 0.9971758293617758,
+    "A.wall.8": 1.000000000107069,
+    "B.wall.8": 0.9982590430812074,
+    "B.wall.6": 0.9982605317568171,
+    "B.t_si.alt": 0.9991149178596521
+   },
+   "deembedded_note": "reciprocity and passivity are gated on the three SOLVED S-matrices (dut, open, short). The de-embedded S is a post-processing construct (Y_short - Y_open inverted), not a solver output, so its singular values are REPORTED, not gated.",
+   "deembedded_passivity_worst": 0.9999999769262246,
+   "deembedded_reciprocity_worst": 1.4991026957813808e-10,
+   "wall_pads": [
+    4,
+    6,
+    8
+   ],
+   "wall_tolerance": 0.01,
+   "wall_rel_change_L": 0.010245359246944474,
+   "wall_rel_change_Q": 0.0007148607774618565,
+   "wall_ladder": {
+    "what": "least squares of L (and Q) against 1/wall_distance over the three pads: the intercept is the wall-free limit",
+    "pads": [
+     4,
+     6,
+     8
+    ],
+    "wall_distance": [
+     0.00043081250000000113,
+     0.0007155781250000029,
+     0.0013563007812500067
+    ],
+    "L_diff": [
+     3.043329885586503e-09,
+     3.073253341089888e-09,
+     3.074509893571299e-09
+    ],
+    "Q_diff": [
+     20.64536530369604,
+     20.658700357090513,
+     20.660123865588023
+    ],
+    "L_inf": 3.0941472611590656e-09,
+    "slope_L": -2.050030319731975e-14,
+    "Q_inf": 20.669057233194685,
+    "slope_Q": -9.645982236876943e-06,
+    "L_inf_over_pad0_minus_1": 0.016697951744645945,
+    "L_inf_over_padlast_minus_1": 0.006387153812328794,
+    "Q_inf_over_pad0_minus_1": 0.0011475664949558428,
+    "residual_L": 0.0025480866875767978
+   },
+   "wall_consecutive_steps_L": {
+    "4->6": 0.009832471874017035,
+    "6->8": 0.0004088671977056091
+   },
+   "wall_last_step_L": 0.0004088671977056091,
+   "wall_interpretation": "pad 4 -> 6 moves L by +0.983 %, pad 6 -> 8 by +0.041 %: the box is converged from pad 6 on, so the wall-free L is the pad-8 value to about 0.04 % and the pad-4 model used by parts A, B and C is 1.02 % LOW from the side walls alone. The 1/distance fit over all three points has a 0.25 % residual and is reported only for completeness.",
+   "passed_reciprocity": true,
+   "passed_passivity": true,
+   "passed_wall": false,
+   "sub_verdicts": {
+    "reciprocity": true,
+    "passivity": true,
+    "wall": false
+   },
+   "passed": false
+  },
+  "R3": {
+   "tolerance": 0.0001,
+   "fd_order": 4,
+   "fd_step_rel": 0.01,
+   "checked": {
+    "dL_dr_out": {
+     "ad": 3.0691174789948176e-05,
+     "fd4": 3.069117522024597e-05,
+     "rel": 1.4020244881791309e-08
+    },
+    "dQ_dwidth": {
+     "ad": -27415.20057001323,
+     "fd4": -27415.198994548755,
+     "rel": 5.7466826121904616e-08
+    }
+   },
+   "note": "jax.grad of the FDFD metric against a 4th-order central difference of the SAME discrete model; 1 %% steps move L by ~1 %% and Q by ~1 %%, far above the ~1e-9 LU noise floor",
+   "all_available": {
+    "dL_dr_out": {
+     "ad": 3.0691174789948176e-05,
+     "fd4": 3.069117522024597e-05,
+     "rel": 1.4020244881791309e-08
+    },
+    "dQ_dr_out": {
+     "ad": -368.2402311146761,
+     "fd4": -368.22359893151696,
+     "rel": 4.5168705122049825e-05
+    },
+    "dL_dwidth": {
+     "ad": -0.00010061385631192287,
+     "fd4": -0.00010061385625484278,
+     "rel": 5.673183472657828e-10
+    },
+    "dQ_dwidth": {
+     "ad": -27415.20057001323,
+     "fd4": -27415.198994548755,
+     "rel": 5.7466826121904616e-08
+    }
+   },
+   "worst_rel": 5.7466826121904616e-08,
+   "passed": true
+  },
+  "R4": {
+   "L_target": 4e-09,
+   "band": 0.02,
+   "paper_context": {
+    "L_diff": 4e-09,
+    "Q_diff": 16.8,
+    "what": "arXiv 2607.08852, a 3-turn SYMMETRIC OCTAGONAL spiral; CONTEXT ONLY, never a gate (this DUT is a square, single-ended spiral on a 120 um substrate over a PEC ground)"
+   },
+   "complete": false,
+   "passed": null
+  },
+  "R5": {
+   "what": "largest N, per-fixture factorisation+solve wall time, peak memory per process; every level actually run. Wall times are UPPER BOUNDS: this machine ran a second agent throughout.",
+   "rows": [
+    {
+     "name": "A.levels.1",
+     "n_unknowns": 85785,
+     "shape": [
+      43,
+      44,
+      14
+     ],
+     "cells_across_width": 2,
+     "seconds_total": 219.427227973938,
+     "seconds_per_fixture": {
+      "dut": 74.1622359752655,
+      "open": 73.07540488243103,
+      "short": 72.18958711624146
+     },
+     "rss_gb": 7.54547119140625,
+     "footprint_gb": 7.4123141542077065
+    },
+    {
+     "name": "A.levels.2",
+     "n_unknowns": 83820,
+     "shape": [
+      42,
+      44,
+      14
+     ],
+     "cells_across_width": 2,
+     "seconds_total": 248.66039991378784,
+     "seconds_per_fixture": {
+      "dut": 84.39923477172852,
+      "open": 81.60679030418396,
+      "short": 82.65437483787537
+     },
+     "rss_gb": 7.605682373046875,
+     "footprint_gb": 8.916526585817337
+    },
+    {
+     "name": "B.levels.1",
+     "n_unknowns": 85785,
+     "shape": [
+      43,
+      44,
+      14
+     ],
+     "cells_across_width": 2,
+     "seconds_total": 217.52284693717957,
+     "seconds_per_fixture": {
+      "dut": 75.43240809440613,
+      "open": 71.59734177589417,
+      "short": 70.49309706687927
+     },
+     "rss_gb": 7.8471527099609375,
+     "footprint_gb": 7.720770753920078
+    },
+    {
+     "name": "B.levels.2",
+     "n_unknowns": 83820,
+     "shape": [
+      42,
+      44,
+      14
+     ],
+     "cells_across_width": 2,
+     "seconds_total": 246.41176772117615,
+     "seconds_per_fixture": {
+      "dut": 82.69238781929016,
+      "open": 81.51105284690857,
+      "short": 82.20832705497742
+     },
+     "rss_gb": 5.1838836669921875,
+     "footprint_gb": 5.050068713724613
+    },
+    {
+     "name": "B.sweep.0.5",
+     "n_unknowns": 85785,
+     "shape": [
+      43,
+      44,
+      14
+     ],
+     "cells_across_width": 2,
+     "seconds_total": 222.58227396011353,
+     "seconds_per_fixture": {
+      "dut": 76.48269391059875,
+      "open": 73.00224590301514,
+      "short": 73.09733414649963
+     },
+     "rss_gb": 7.237335205078125,
+     "footprint_gb": 7.102713033556938
+    },
+    {
+     "name": "B.sweep.1",
+     "n_unknowns": 85785,
+     "shape": [
+      43,
+      44,
+      14
+     ],
+     "cells_across_width": 2,
+     "seconds_total": 225.882493019104,
+     "seconds_per_fixture": {
+      "dut": 76.90024876594543,
+      "open": 75.6129400730133,
+      "short": 73.36930418014526
+     },
+     "rss_gb": 7.4876861572265625,
+     "footprint_gb": 7.488745450973511
+    },
+    {
+     "name": "B.sweep.4",
+     "n_unknowns": 85785,
+     "shape": [
+      43,
+      44,
+      14
+     ],
+     "cells_across_width": 2,
+     "seconds_total": 226.76460933685303,
+     "seconds_per_fixture": {
+      "dut": 78.76368618011475,
+      "open": 74.59304118156433,
+      "short": 73.40788197517395
+     },
+     "rss_gb": 6.840179443359375,
+     "footprint_gb": 7.0831208154559135
+    },
+    {
+     "name": "B.sweep.6",
+     "n_unknowns": 85785,
+     "shape": [
+      43,
+      44,
+      14
+     ],
+     "cells_across_width": 2,
+     "seconds_total": 226.11215233802795,
+     "seconds_per_fixture": {
+      "dut": 77.71470808982849,
+      "open": 73.82076811790466,
+      "short": 74.5766761302948
+     },
+     "rss_gb": 7.4852752685546875,
+     "footprint_gb": 7.93381405621767
+    },
+    {
+     "name": "A.wall.8",
+     "n_unknowns": 119689,
+     "shape": [
+      51,
+      52,
+      14
+     ],
+     "cells_across_width": 2,
+     "seconds_total": 386.4822940826416,
+     "seconds_per_fixture": {
+      "dut": 134.04763174057007,
+      "open": 126.81459522247314,
+      "short": 125.62006711959839
+     },
+     "rss_gb": 6.0159912109375,
+     "footprint_gb": 6.2122399508953094
+    },
+    {
+     "name": "B.wall.8",
+     "n_unknowns": 119689,
+     "shape": [
+      51,
+      52,
+      14
+     ],
+     "cells_across_width": 2,
+     "seconds_total": 383.9322862625122,
+     "seconds_per_fixture": {
+      "dut": 130.25774121284485,
+      "open": 128.5138599872589,
+      "short": 125.16068506240845
+     },
+     "rss_gb": 6.608673095703125,
+     "footprint_gb": 6.829488977789879
+    },
+    {
+     "name": "B.wall.6",
+     "n_unknowns": 102033,
+     "shape": [
+      47,
+      48,
+      14
+     ],
+     "cells_across_width": 2,
+     "seconds_total": 312.970205783844,
+     "seconds_per_fixture": {
+      "dut": 107.01322412490845,
+      "open": 106.18302798271179,
+      "short": 99.77395367622375
+     },
+     "rss_gb": 5.51116943359375,
+     "footprint_gb": 5.706960074603558
+    },
+    {
+     "name": "B.t_si.alt",
+     "n_unknowns": 79934,
+     "shape": [
+      43,
+      44,
+      13
+     ],
+     "cells_across_width": 2,
+     "seconds_total": 137.73909783363342,
+     "seconds_per_fixture": {
+      "dut": 48.43420600891113,
+      "open": 44.62319493293762,
+      "short": 44.68169689178467
+     },
+     "rss_gb": 3.909454345703125,
+     "footprint_gb": 3.7753638178110123
+    }
+   ],
+   "largest_n_unknowns": 119689,
+   "largest_n_unknowns_where": "A.wall.8",
+   "seconds_per_fixture_min": 44.62319493293762,
+   "seconds_per_fixture_max": 134.04763174057007,
+   "seconds_per_fixture_median": 76.6914713382721,
+   "peak_footprint_gb": 8.916526585817337,
+   "peak_rss_gb": 7.8471527099609375,
+   "gradient_seconds": {
+    "L": 467.5099723339081,
+    "Q": 466.0251889228821
+   },
+   "loop_eval_seconds_median": null,
+   "factor_cache_size": 1,
+   "w3_projection": {
+    "shape": [
+     104,
+     110,
+     14
+    ],
+    "n_unknowns": 509580,
+    "base_dx": 1e-05,
+    "dx_min": 4.8749999999999965e-06,
+    "dx_max": 2.5312500000000053e-05,
+    "cells_across_width": 6,
+    "wall_x": [
+     -0.0003089375000000002,
+     0.0003089374999999962
+    ],
+    "wall_y": [
+     -0.00033893750000000015,
+     0.0003089374999999902
+    ],
+    "lid_z": 0.0006220399999999999,
+    "n_z_lines": 15,
+    "dz": [
+     6e-05,
+     6e-05,
+     6.040000000000003e-06,
+     9.999999999999972e-07,
+     9.999999999999972e-07,
+     9.999999999999972e-07,
+     9.999999999999972e-07,
+     1.4999999999999823e-06,
+     1.5000000000000094e-06,
+     1.5000000000000094e-06,
+     5.9999999999999995e-05,
+     9.000000000000002e-05,
+     0.00013499999999999997,
+     0.00020249999999999993
+    ],
+    "t_si": 0.00012,
+    "pad_cells": 4,
+    "pad_cells_z": 3,
+    "port_gap_m": 6e-05,
+    "build_seconds": 0.6509621143341064
+   },
+   "solve_units_used": 0,
+   "scaling": {
+    "what": "single-fixture (DUT only) solve time and factor memory against N on one geometry, N moved by the wall padding alone; the fit is the basis of the W/3 cost projection",
+    "points": {
+     "0": {
+      "pad_cells": 0,
+      "n_unknowns": 45744,
+      "shape": [
+       35,
+       36,
+       11
+      ],
+      "seconds": 21.862323760986328,
+      "footprint_before_gb": 0.2592783719301224,
+      "footprint_after_gb": 2.152804061770439,
+      "footprint_increment_gb": 1.8935256898403168,
+      "rss_after_gb": 2.075531005859375
+     },
+     "1": {
+      "pad_cells": 1,
+      "n_unknowns": 55315,
+      "shape": [
+       37,
+       38,
+       12
+      ],
+      "seconds": 32.72894287109375,
+      "footprint_before_gb": 2.2247950732707977,
+      "footprint_after_gb": 2.6677885726094246,
+      "footprint_increment_gb": 0.44299349933862686,
+      "rss_after_gb": 2.5001983642578125
+     },
+     "2": {
+      "pad_cells": 2,
+      "n_unknowns": 66106,
+      "shape": [
+       39,
+       40,
+       13
+      ],
+      "seconds": 42.65558695793152,
+      "footprint_before_gb": 2.7423278465867043,
+      "footprint_after_gb": 4.189518228173256,
+      "footprint_increment_gb": 1.4471903815865517,
+      "rss_after_gb": 3.297271728515625
+     },
+     "3": {
+      "pad_cells": 3,
+      "n_unknowns": 78189,
+      "shape": [
+       41,
+       42,
+       14
+      ],
+      "seconds": 66.68859100341797,
+      "footprint_before_gb": 4.278232894837856,
+      "footprint_after_gb": 6.724630691111088,
+      "footprint_increment_gb": 2.4463977962732315,
+      "rss_after_gb": 6.163726806640625
+     },
+     "4": {
+      "pad_cells": 4,
+      "n_unknowns": 85785,
+      "shape": [
+       43,
+       44,
+       14
+      ],
+      "seconds": 79.10962700843811,
+      "footprint_before_gb": 6.809225417673588,
+      "footprint_after_gb": 7.410956211388111,
+      "footprint_increment_gb": 0.6017307937145233,
+      "rss_after_gb": 5.0719451904296875
+     }
+    },
+    "memory_increments_usable": true,
+    "exponent_time": 2.0426487819870385,
+    "exponent_memory": 2.117600971507289,
+    "memory_basis": "footprint_after_gb",
+    "fit_note": "least squares on log N over N = 45744..85785 (5 points): seconds ~ N^2.04, peak process footprint ~ N^2.12",
+    "footprint_after_gb": [
+     2.152804061770439,
+     2.6677885726094246,
+     4.189518228173256,
+     6.724630691111088,
+     7.410956211388111
+    ],
+    "seconds": [
+     21.862323760986328,
+     32.72894287109375,
+     42.65558695793152,
+     66.68859100341797,
+     79.10962700843811
+    ],
+    "n_unknowns": [
+     45744.0,
+     55315.0,
+     66106.0,
+     78189.0,
+     85785.0
+    ]
+   },
+   "passed": true,
+   "single_call_path": {
+    "what": "one spiral.solve_spiral call for all three fixtures (forward_point: the FD stencils, and the same path the design loop's value_and_grad takes) against solve_split's three single-fixture calls. The metrics are BITWISE the same (gated in tests/test_fdfd_rfic_spiral.py); the peak memory is not, because the three fixtures' assembled operators are live in one XLA program.",
+    "n_unknowns": 85785,
+    "n_points": 8,
+    "rows": [
+     {
+      "name": "B.fd.r_out:-2",
+      "seconds": 224.4068500995636,
+      "footprint_gb": 12.031046032905579,
+      "rss_gb": 12.15673828125
+     },
+     {
+      "name": "B.fd.r_out:-1",
+      "seconds": 223.87027406692505,
+      "footprint_gb": 11.662912331521511,
+      "rss_gb": 11.791168212890625
+     },
+     {
+      "name": "B.fd.r_out:1",
+      "seconds": 225.7245171070099,
+      "footprint_gb": 10.867364197969437,
+      "rss_gb": 5.6960906982421875
+     },
+     {
+      "name": "B.fd.r_out:2",
+      "seconds": 224.46689677238464,
+      "footprint_gb": 10.356621697545052,
+      "rss_gb": 5.4069061279296875
+     },
+     {
+      "name": "B.fd.width:-2",
+      "seconds": 225.62280559539795,
+      "footprint_gb": 12.444864749908447,
+      "rss_gb": 10.53857421875
+     },
+     {
+      "name": "B.fd.width:-1",
+      "seconds": 234.86465501785278,
+      "footprint_gb": 8.086722627282143,
+      "rss_gb": 4.089385986328125
+     },
+     {
+      "name": "B.fd.width:1",
+      "seconds": 239.60726499557495,
+      "footprint_gb": 8.01740188151598,
+      "rss_gb": 3.91937255859375
+     },
+     {
+      "name": "B.fd.width:2",
+      "seconds": 241.9900679588318,
+      "footprint_gb": 6.459157943725586,
+      "rss_gb": 3.948822021484375
+     }
+    ],
+    "peak_footprint_gb": 12.444864749908447,
+    "seconds_min": 223.87027406692505,
+    "seconds_max": 241.9900679588318
+   },
+   "peak_footprint_gb_any_path": 12.444864749908447,
+   "w3_cost_projection": {
+    "what": "extrapolation, NOT a measurement: the W/3 model is built (N exact) but never solved on this machine",
+    "n_unknowns": 509580,
+    "n_unknowns_ratio": 5.940199335548173,
+    "anchor": {
+     "n_unknowns": 85785,
+     "seconds_per_fixture": 79.10962700843811,
+     "peak_footprint_gb": 7.410956211388111,
+     "memory_basis": "footprint_after_gb"
+    },
+    "measured_law": {
+     "exponent_time": 2.0426487819870385,
+     "exponent_memory": 2.117600971507289,
+     "seconds_per_fixture": 3011.8479665383798,
+     "seconds_three_fixtures": 9035.543899615139,
+     "peak_footprint_gb": 322.4601387301264
+    },
+    "textbook_law": {
+     "exponent_time": 2.0,
+     "exponent_memory": 1.3333333333333333,
+     "seconds_per_fixture": 2791.459778665403,
+     "seconds_three_fixtures": 8374.37933599621,
+     "peak_footprint_gb": 79.72764554034978
+    },
+    "machine_ram_gb": 38.0
+   }
+  }
+ },
+ "solve_units_used_total": 13,
+ "A": {
+  "what": "absolute L at 100 MHz under D2's validated protocol (uniform-current volumetric metal sigma = 3e6, vacuum dielectrics, pad_cells = 4, area-exact corners) against the PRIMARY referee L(strip) - L(bridge); no FDFD-side correction applied",
+  "freq": 100000000.0,
+  "sigma_volumetric": 3000000.0,
+  "levels": {
+   "1": {
+    "freq": 100000000.0,
+    "theta": [
+     0.000218,
+     1.4e-05,
+     3e-05
+    ],
+    "L_diff": 3.089743866717694e-09,
+    "Q_diff": 0.13497635364991545,
+    "L_se": 3.087444555361174e-09,
+    "Q_se": 0.1348722122997095,
+    "L_z11_open": -8.052478796649837e-05,
+    "L_raw": 3.204354574543181e-09,
+    "seconds_per_fixture": {
+     "dut": 74.1622359752655,
+     "open": 73.07540488243103,
+     "short": 72.18958711624146
+    },
+    "seconds": 219.427227973938,
+    "z_dut": [
+     [
+      3.5689169549580666,
+      -50595.216461485405
+     ],
+     [
+      -2.1867437269920424,
+      -50596.00174883128
+     ],
+     [
+      -2.1867359737684575,
+      -50596.001752734235
+     ],
+     [
+      6.440443553953237,
+      -50594.84569675348
+     ]
+    ],
+    "s": {
+     "dut": [
+      [
+       0.12756966149758603,
+       0.014687865551059932
+      ],
+      [
+       0.8724323857971878,
+       -0.015944453978955934
+      ],
+      [
+       0.872432385870557,
+       -0.01594445385721438
+      ],
+      [
+       0.12756399403310725,
+       0.014738844422087916
+      ]
+     ],
+     "open": [
+      [
+       0.9999999602241559,
+       -0.00028047704094226716
+      ],
+      [
+       8.615269922904727e-09,
+       3.147115164067265e-05
+      ],
+      [
+       8.633405783481445e-09,
+       3.147106542948998e-05
+      ],
+      [
+       0.9999999635499774,
+       -0.000268203679282817
+      ]
+     ],
+     "short": [
+      [
+       -0.995077933832909,
+       0.0015260620206835544
+      ],
+      [
+       0.0006044281788201621,
+       6.964224590142778e-05
+      ],
+      [
+       0.0006044281788204315,
+       6.964224590144516e-05
+      ],
+      [
+       -0.9955798997988006,
+       0.0014949370373265047
+      ]
+     ],
+     "deembedded": [
+      [
+       0.12599733537948435,
+       0.014314624408486236
+      ],
+      [
+       0.8740049175641633,
+       -0.01532771166672653
+      ],
+      [
+       0.8740049176339257,
+       -0.01532771153403782
+      ],
+      [
+       0.1259917984798805,
+       0.014364339784117795
+      ]
+     ]
+    },
+    "s_stats": {
+     "dut": {
+      "reciprocity": 1.4214093535342077e-10,
+      "max_singular_value": 0.9999999739480394
+     },
+     "open": {
+      "reciprocity": 8.809811267086605e-11,
+      "max_singular_value": 1.0000000000811409
+     },
+     "short": {
+      "reciprocity": 2.699838674986725e-16,
+      "max_singular_value": 0.9959844242861453
+     },
+     "deembedded": {
+      "reciprocity": 1.4991026957813808e-10,
+      "max_singular_value": 0.999999975279481
+     }
+    },
+    "mem": {
+     "rss_gb": 7.54547119140625,
+     "vms_gb": 423.9071502685547,
+     "footprint_gb": 7.4123141542077065,
+     "tag": "solve_split",
+     "t": 220.64429807662964,
+     "solves": 0
+    },
+    "reciprocity_worst_solved": 1.4214093535342077e-10,
+    "passivity_worst_solved": 1.0000000000811409,
+    "grid": {
+     "shape": [
+      43,
+      44,
+      14
+     ],
+     "n_unknowns": 85785,
+     "base_dx": 3e-05,
+     "dx_min": 1.299999999999999e-05,
+     "dx_max": 7.593750000000048e-05,
+     "cells_across_width": 2,
+     "wall_x": [
+      -0.0004308124999999999,
+      0.00043081250000000113
+     ],
+     "wall_y": [
+      -0.00046081250000000056,
+      0.0004308124999999999
+     ],
+     "lid_z": 0.0006220399999999999,
+     "n_z_lines": 15,
+     "dz": [
+      6e-05,
+      6e-05,
+      6.040000000000003e-06,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      1.4999999999999823e-06,
+      1.5000000000000094e-06,
+      1.5000000000000094e-06,
+      5.9999999999999995e-05,
+      9.000000000000002e-05,
+      0.00013499999999999997,
+      0.00020249999999999993
+     ],
+     "t_si": 0.00012,
+     "pad_cells": 4,
+     "pad_cells_z": 3,
+     "port_gap_m": 6e-05,
+     "build_seconds": 0.2441258430480957
+    },
+    "referee_deembedded": 3.560367678485986e-09,
+    "gap": -0.13218404790384464,
+    "referee_strip_only": 3.6239351399278993e-09,
+    "gap_strip_only": -0.14740641114808506,
+    "d2_same_cells_across_width": -0.12025158857388896
+   },
+   "2": {
+    "freq": 100000000.0,
+    "theta": [
+     0.000218,
+     1.4e-05,
+     3e-05
+    ],
+    "L_diff": 3.0883016662366103e-09,
+    "Q_diff": 0.13504902964618265,
+    "L_se": 3.0860103438586822e-09,
+    "Q_se": 0.13494514025169135,
+    "L_z11_open": -8.052934321196215e-05,
+    "L_raw": 3.2029410680385555e-09,
+    "seconds_per_fixture": {
+     "dut": 84.39923477172852,
+     "open": 81.60679030418396,
+     "short": 82.65437483787537
+    },
+    "seconds": 248.66039991378784,
+    "z_dut": [
+     [
+      3.5747215996444814,
+      -50598.078606622264
+     ],
+     [
+      -2.181095659540369,
+      -50598.8638850571
+     ],
+     [
+      -2.1810987774263655,
+      -50598.86388619474
+     ],
+     [
+      6.431474246735475,
+      -50597.70872746423
+     ]
+    ],
+    "s": {
+     "dut": [
+      [
+       0.12745782048579188,
+       0.014685159258282395
+      ],
+      [
+       0.8725442205127696,
+       -0.015941635312158656
+      ],
+      [
+       0.8725442205331572,
+       -0.015941635376613215
+      ],
+      [
+       0.12745216545397675,
+       0.014735853721130381
+      ]
+     ],
+     "open": [
+      [
+       0.999999960153801,
+       -0.0002804799125568614
+      ],
+      [
+       8.638618111438155e-09,
+       3.149771172937285e-05
+      ],
+      [
+       8.642573944973684e-09,
+       3.1497630203521685e-05
+      ],
+      [
+       0.9999999634793125,
+       -0.0002684255866228804
+      ]
+     ],
+     "short": [
+      [
+       -0.9950779327973693,
+       0.001526049289561902
+      ],
+      [
+       0.000604556670956564,
+       7.025968817590002e-05
+      ],
+      [
+       0.0006045566709564658,
+       7.025968817581781e-05
+      ],
+      [
+       -0.9955881875771248,
+       0.0014968943089111622
+      ]
+     ],
+     "deembedded": [
+      [
+       0.12588673185015786,
+       0.014311607279069239
+      ],
+      [
+       0.874115516053231,
+       -0.015324512514090241
+      ],
+      [
+       0.8741155160719426,
+       -0.015324512568289518
+      ],
+      [
+       0.1258812051123585,
+       0.014361070602669543
+      ]
+     ]
+    },
+    "s_stats": {
+     "dut": {
+      "reciprocity": 6.760209842221099e-11,
+      "max_singular_value": 0.9999999738523819
+     },
+     "open": {
+      "reciprocity": 8.162176809845412e-11,
+      "max_singular_value": 1.000000000034779
+     },
+     "short": {
+      "reciprocity": 1.2809099901885294e-16,
+      "max_singular_value": 0.9959902878093689
+     },
+     "deembedded": {
+      "reciprocity": 5.73383392487098e-11,
+      "max_singular_value": 0.9999999752166869
+     }
+    },
+    "mem": {
+     "rss_gb": 7.605682373046875,
+     "vms_gb": 425.3087921142578,
+     "footprint_gb": 8.916526585817337,
+     "tag": "solve_split",
+     "t": 249.90476489067078,
+     "solves": 0
+    },
+    "reciprocity_worst_solved": 8.162176809845412e-11,
+    "passivity_worst_solved": 1.000000000034779,
+    "grid": {
+     "shape": [
+      42,
+      44,
+      14
+     ],
+     "n_unknowns": 83820,
+     "base_dx": 1.5e-05,
+     "dx_min": 1.399999999999996e-05,
+     "dx_max": 7.593749999999994e-05,
+     "cells_across_width": 2,
+     "wall_x": [
+      -0.0004308124999999999,
+      0.0004308124999999999
+     ],
+     "wall_y": [
+      -0.00046081250000000056,
+      0.0004308124999999999
+     ],
+     "lid_z": 0.0006220399999999999,
+     "n_z_lines": 15,
+     "dz": [
+      6e-05,
+      6e-05,
+      6.040000000000003e-06,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      1.4999999999999823e-06,
+      1.5000000000000094e-06,
+      1.5000000000000094e-06,
+      5.9999999999999995e-05,
+      9.000000000000002e-05,
+      0.00013499999999999997,
+      0.00020249999999999993
+     ],
+     "t_si": 0.00012,
+     "pad_cells": 4,
+     "pad_cells_z": 3,
+     "port_gap_m": 6e-05,
+     "build_seconds": 0.24574995040893555
+    },
+    "referee_deembedded": 3.560367678485986e-09,
+    "gap": -0.13258911856264166,
+    "referee_strip_only": 3.6239351399278993e-09,
+    "gap_strip_only": -0.1478043764607624,
+    "d2_same_cells_across_width": -0.12025158857388896
+   }
+  },
+  "w3_projection": {
+   "what": "the level the bar study called the 2 % point (3+ cells across W): built but NOT solved -- N and the extrapolated cost only",
+   "grid": {
+    "shape": [
+     104,
+     110,
+     14
+    ],
+    "n_unknowns": 509580,
+    "base_dx": 1e-05,
+    "dx_min": 4.8749999999999965e-06,
+    "dx_max": 2.5312500000000053e-05,
+    "cells_across_width": 6,
+    "wall_x": [
+     -0.0003089375000000002,
+     0.0003089374999999962
+    ],
+    "wall_y": [
+     -0.00033893750000000015,
+     0.0003089374999999902
+    ],
+    "lid_z": 0.0006220399999999999,
+    "n_z_lines": 15,
+    "dz": [
+     6e-05,
+     6e-05,
+     6.040000000000003e-06,
+     9.999999999999972e-07,
+     9.999999999999972e-07,
+     9.999999999999972e-07,
+     9.999999999999972e-07,
+     1.4999999999999823e-06,
+     1.5000000000000094e-06,
+     1.5000000000000094e-06,
+     5.9999999999999995e-05,
+     9.000000000000002e-05,
+     0.00013499999999999997,
+     0.00020249999999999993
+    ],
+    "t_si": 0.00012,
+    "pad_cells": 4,
+    "pad_cells_z": 3,
+    "port_gap_m": 6e-05,
+    "build_seconds": 0.6509621143341064
+   },
+   "n_unknowns_ratio_to_W1": 5.940199335548173
+  },
+  "wall": {
+   "8": {
+    "freq": 100000000.0,
+    "theta": [
+     0.000218,
+     1.4e-05,
+     3e-05
+    ],
+    "L_diff": 3.121038925848151e-09,
+    "Q_diff": 0.13634439133097997,
+    "L_se": 3.1188573313904807e-09,
+    "Q_se": 0.1362455171781023,
+    "L_z11_open": -8.40261293964821e-05,
+    "L_raw": 3.2367222725554036e-09,
+    "seconds_per_fixture": {
+     "dut": 134.04763174057007,
+     "open": 126.81459522247314,
+     "short": 125.62006711959839
+    },
+    "seconds": 386.4822940826416,
+    "z_dut": [
+     [
+      3.6230696600940426,
+      -52795.174164314696
+     ],
+     [
+      -2.174272556077529,
+      -52795.97593440814
+     ],
+     [
+      -2.174267367177121,
+      -52795.97593281915
+     ],
+     [
+      6.411135266361079,
+      -52794.81669632039
+     ]
+    ],
+    "s": {
+     "dut": [
+      [
+       0.12757519309281215,
+       0.014866507507003562
+      ],
+      [
+       0.8724266866823517,
+       -0.01607713052482468
+      ],
+      [
+       0.8724266866522112,
+       -0.016077130413871106
+      ],
+      [
+       0.12756997177842797,
+       0.014913900529336619
+      ]
+     ],
+     "open": [
+      [
+       0.9999999608057852,
+       -0.0002781367690277368
+      ],
+      [
+       8.927542386157467e-09,
+       3.268943506705242e-05
+      ],
+      [
+       8.90848735131624e-09,
+       3.268963118943731e-05
+      ],
+      [
+       0.9999999638185052,
+       -0.00026699415957188316
+      ]
+     ],
+     "short": [
+      [
+       -0.9950765300794915,
+       0.0015337306483816646
+      ],
+      [
+       0.0006031421947400936,
+       6.317164890164313e-05
+      ],
+      [
+       0.0006031421947398709,
+       6.317164890170187e-05
+      ],
+      [
+       -0.9955786686597491,
+       0.0015011269551570758
+      ]
+     ],
+     "deembedded": [
+      [
+       0.126001528353967,
+       0.014487157109742936
+      ],
+      [
+       0.8740005496409702,
+       -0.015457336975703877
+      ],
+      [
+       0.8740005496161821,
+       -0.015457336889304321
+      ],
+      [
+       0.12599642509129166,
+       0.014533416038352344
+      ]
+     ]
+    },
+    "s_stats": {
+     "dut": {
+      "reciprocity": 1.1497452659463086e-10,
+      "max_singular_value": 0.9999999757009148
+     },
+     "open": {
+      "reciprocity": 1.9704589366182672e-10,
+      "max_singular_value": 1.000000000107069
+     },
+     "short": {
+      "reciprocity": 2.303109064193019e-16,
+      "max_singular_value": 0.9959819708382093
+     },
+     "deembedded": {
+      "reciprocity": 8.988510001600252e-11,
+      "max_singular_value": 0.9999999769262246
+     }
+    },
+    "mem": {
+     "rss_gb": 6.0159912109375,
+     "vms_gb": 422.9469909667969,
+     "footprint_gb": 6.2122399508953094,
+     "tag": "solve_split",
+     "t": 402.00526213645935,
+     "solves": 0
+    },
+    "reciprocity_worst_solved": 1.9704589366182672e-10,
+    "passivity_worst_solved": 1.000000000107069,
+    "grid": {
+     "shape": [
+      51,
+      52,
+      14
+     ],
+     "n_unknowns": 119689,
+     "base_dx": 3e-05,
+     "dx_min": 1.299999999999999e-05,
+     "dx_max": 0.0003844335937500023,
+     "cells_across_width": 2,
+     "wall_x": [
+      -0.0013563007812499991,
+      0.0013563007812500067
+     ],
+     "wall_y": [
+      -0.0013863007812500029,
+      0.0013563007812499991
+     ],
+     "lid_z": 0.0006220399999999999,
+     "n_z_lines": 15,
+     "dz": [
+      6e-05,
+      6e-05,
+      6.040000000000003e-06,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      1.4999999999999823e-06,
+      1.5000000000000094e-06,
+      1.5000000000000094e-06,
+      5.9999999999999995e-05,
+      9.000000000000002e-05,
+      0.00013499999999999997,
+      0.00020249999999999993
+     ],
+     "t_si": 0.00012,
+     "pad_cells": 8,
+     "pad_cells_z": 3,
+     "port_gap_m": 6e-05,
+     "build_seconds": 0.28818678855895996
+    },
+    "gap": -0.12339420877583496
+   }
+  }
+ },
+ "B": {
+  "what": "2.45 GHz with a Leontovich metal sheet (sigma 3.05e7) and lossy silicon (sigma 2 S/m) and the real permittivities (eps_si 11.9, eps_ox 4.1)",
+  "freq": 2450000000.0,
+  "sigma_metal": 30500000.0,
+  "sigma_si": 2.0,
+  "eps_si": 11.9,
+  "eps_ox": 4.1,
+  "levels": {
+   "1": {
+    "freq": 2450000000.0,
+    "theta": [
+     0.000218,
+     1.4e-05,
+     3e-05
+    ],
+    "L_diff": 3.043329885586503e-09,
+    "Q_diff": 20.64536530369604,
+    "L_se": 3.1969727377934128e-09,
+    "Q_se": 13.203014234424503,
+    "L_z11_open": -1.3323585889564979e-08,
+    "L_raw": 3.15927624585483e-09,
+    "seconds_per_fixture": {
+     "dut": 75.43240809440613,
+     "open": 71.59734177589417,
+     "short": 70.49309706687927
+    },
+    "seconds": 217.52284693717957,
+    "z_dut": [
+     [
+      122.06262143264291,
+      -205.10066979563683
+     ],
+     [
+      119.96730524892666,
+      -226.44459632832917
+     ],
+     [
+      119.96730524761219,
+      -226.4445963236786
+     ],
+     [
+      120.14118716646263,
+      -200.9400990824277
+     ]
+    ],
+    "s": {
+     "dut": [
+      [
+       0.13158743267885428,
+       0.27203260892138825
+      ],
+      [
+       0.7109352342563611,
+       -0.4706485831778539
+      ],
+      [
+       0.710935234244557,
+       -0.47064858316605174
+      ],
+      [
+       0.11918500222563462,
+       0.28138938886958703
+      ]
+     ],
+     "open": [
+      [
+       0.9396283575607474,
+       -0.053670657496958166
+      ],
+      [
+       0.005943725140193947,
+       0.005648532977069398
+      ],
+      [
+       0.005943725139970279,
+       0.005648532978508564
+      ],
+      [
+       0.9399073954519247,
+       -0.05299301187399898
+      ]
+     ],
+     "short": [
+      [
+       -0.9976403384882633,
+       0.024998867742671096
+      ],
+      [
+       0.0003312069955589847,
+       0.0019656696404715605
+      ],
+      [
+       0.0003312069955590188,
+       0.0019656696404716035
+      ],
+      [
+       -0.9977210283728797,
+       0.024304106192295748
+      ]
+     ],
+     "deembedded": [
+      [
+       0.14430793815934698,
+       0.28621302267131354
+      ],
+      [
+       0.7540404980104078,
+       -0.4501324898161493
+      ],
+      [
+       0.7540404979982891,
+       -0.45013248980486187
+      ],
+      [
+       0.13128206173571016,
+       0.29498624194211837
+      ]
+     ]
+    },
+    "s_stats": {
+     "dut": {
+      "reciprocity": 1.6692163264852137e-11,
+      "max_singular_value": 0.9494655773490379
+     },
+     "open": {
+      "reciprocity": 1.4564426569361594e-12,
+      "max_singular_value": 0.9469142956407497
+     },
+     "short": {
+      "reciprocity": 5.482743494200399e-17,
+      "max_singular_value": 0.9982715321107835
+     },
+     "deembedded": {
+      "reciprocity": 1.656109476691985e-11,
+      "max_singular_value": 0.9635947258240366
+     }
+    },
+    "mem": {
+     "rss_gb": 7.8471527099609375,
+     "vms_gb": 424.1794891357422,
+     "footprint_gb": 7.720770753920078,
+     "tag": "solve_split",
+     "t": 233.71343803405762,
+     "solves": 0
+    },
+    "reciprocity_worst_solved": 1.6692163264852137e-11,
+    "passivity_worst_solved": 0.9982715321107835,
+    "grid": {
+     "shape": [
+      43,
+      44,
+      14
+     ],
+     "n_unknowns": 85785,
+     "base_dx": 3e-05,
+     "dx_min": 1.299999999999999e-05,
+     "dx_max": 7.593750000000048e-05,
+     "cells_across_width": 2,
+     "wall_x": [
+      -0.0004308124999999999,
+      0.00043081250000000113
+     ],
+     "wall_y": [
+      -0.00046081250000000056,
+      0.0004308124999999999
+     ],
+     "lid_z": 0.0006220399999999999,
+     "n_z_lines": 15,
+     "dz": [
+      6e-05,
+      6e-05,
+      6.040000000000003e-06,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      1.4999999999999823e-06,
+      1.5000000000000094e-06,
+      1.5000000000000094e-06,
+      5.9999999999999995e-05,
+      9.000000000000002e-05,
+      0.00013499999999999997,
+      0.00020249999999999993
+     ],
+     "t_si": 0.00012,
+     "pad_cells": 4,
+     "pad_cells_z": 3,
+     "port_gap_m": 6e-05,
+     "build_seconds": 0.2535519599914551
+    }
+   },
+   "2": {
+    "freq": 2450000000.0,
+    "theta": [
+     0.000218,
+     1.4e-05,
+     3e-05
+    ],
+    "L_diff": 3.042761857507172e-09,
+    "Q_diff": 20.615056799231144,
+    "L_se": 3.1962365973004397e-09,
+    "Q_se": 13.195421775130768,
+    "L_z11_open": -1.3321291985661551e-08,
+    "L_raw": 3.1587608925121715e-09,
+    "seconds_per_fixture": {
+     "dut": 82.69238781929016,
+     "open": 81.51105284690857,
+     "short": 82.20832705497742
+    },
+    "seconds": 246.41176772117615,
+    "z_dut": [
+     [
+      122.07865902958251,
+      -205.0653578885467
+     ],
+     [
+      119.97928260600881,
+      -226.41497114365686
+     ],
+     [
+      119.9792826011302,
+      -226.4149711376034
+     ],
+     [
+      120.1520163209915,
+      -200.9249047316915
+     ]
+    ],
+    "s": {
+     "dut": [
+      [
+       0.13153383177465788,
+       0.2720095837930204
+      ],
+      [
+       0.7109600261576465,
+       -0.4705940191440592
+      ],
+      [
+       0.7109600261347869,
+       -0.4705940191352512
+      ],
+      [
+       0.11914897953039782,
+       0.28130119306668483
+      ]
+     ],
+     "open": [
+      [
+       0.9396281949887324,
+       -0.05367084696145379
+      ],
+      [
+       0.005946297039735262,
+       0.005651423980735819
+      ],
+      [
+       0.005946297038626452,
+       0.005651423977029058
+      ],
+      [
+       0.939906465558144,
+       -0.05300420354797972
+      ]
+     ],
+     "short": [
+      [
+       -0.9976403354922407,
+       0.024998752161115304
+      ],
+      [
+       0.00033176180953497776,
+       0.001971541992886441
+      ],
+      [
+       0.0003317618095349129,
+       0.0019715419928866365
+      ],
+      [
+       -0.9977208066211071,
+       0.024358075779074537
+      ]
+     ],
+     "deembedded": [
+      [
+       0.14424818634500597,
+       0.28618419019578833
+      ],
+      [
+       0.7540679809866022,
+       -0.45006906437288074
+      ],
+      [
+       0.754067980961546,
+       -0.4500690643638181
+      ],
+      [
+       0.13124205509739711,
+       0.294890048238863
+      ]
+     ]
+    },
+    "s_stats": {
+     "dut": {
+      "reciprocity": 2.4497805857927212e-11,
+      "max_singular_value": 0.9494212792941816
+     },
+     "open": {
+      "reciprocity": 3.869047943694865e-12,
+      "max_singular_value": 0.946916455599947
+     },
+     "short": {
+      "reciprocity": 2.060560386170985e-16,
+      "max_singular_value": 0.9982725037010636
+     },
+     "deembedded": {
+      "reciprocity": 2.664476607153442e-11,
+      "max_singular_value": 0.9635467745013644
+     }
+    },
+    "mem": {
+     "rss_gb": 5.1838836669921875,
+     "vms_gb": 421.30517578125,
+     "footprint_gb": 5.050068713724613,
+     "tag": "solve_split",
+     "t": 258.86431789398193,
+     "solves": 0
+    },
+    "reciprocity_worst_solved": 2.4497805857927212e-11,
+    "passivity_worst_solved": 0.9982725037010636,
+    "grid": {
+     "shape": [
+      42,
+      44,
+      14
+     ],
+     "n_unknowns": 83820,
+     "base_dx": 1.5e-05,
+     "dx_min": 1.399999999999996e-05,
+     "dx_max": 7.593749999999994e-05,
+     "cells_across_width": 2,
+     "wall_x": [
+      -0.0004308124999999999,
+      0.0004308124999999999
+     ],
+     "wall_y": [
+      -0.00046081250000000056,
+      0.0004308124999999999
+     ],
+     "lid_z": 0.0006220399999999999,
+     "n_z_lines": 15,
+     "dz": [
+      6e-05,
+      6e-05,
+      6.040000000000003e-06,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      1.4999999999999823e-06,
+      1.5000000000000094e-06,
+      1.5000000000000094e-06,
+      5.9999999999999995e-05,
+      9.000000000000002e-05,
+      0.00013499999999999997,
+      0.00020249999999999993
+     ],
+     "t_si": 0.00012,
+     "pad_cells": 4,
+     "pad_cells_z": 3,
+     "port_gap_m": 6e-05,
+     "build_seconds": 0.18465304374694824
+    }
+   }
+  },
+  "sweep": {
+   "0.5": {
+    "freq": 500000000.0,
+    "theta": [
+     0.000218,
+     1.4e-05,
+     3e-05
+    ],
+    "L_diff": 3.041292600178252e-09,
+    "Q_diff": 14.69156927782213,
+    "L_se": 3.0529072188112575e-09,
+    "Q_se": 14.351436055511417,
+    "L_z11_open": -1.7536136308242866e-07,
+    "L_raw": 3.1226411846467816e-09,
+    "seconds_per_fixture": {
+     "dut": 76.48269391059875,
+     "open": 73.00224590301514,
+     "short": 73.09733414649963
+    },
+    "seconds": 222.58227396011353,
+    "z_dut": [
+     [
+      220.72787667415977,
+      -550.9139699832502
+     ],
+     [
+      220.26534080182225,
+      -555.5607122815311
+     ],
+     [
+      220.26534080850615,
+      -555.5607122668873
+     ],
+     [
+      220.45314407349687,
+      -550.6529520750312
+     ]
+    ],
+    "s": {
+     "dut": [
+      [
+       -0.02600093602600981,
+       0.05534743384200443
+      ],
+      [
+       0.94077543627575,
+       -0.13632107936243473
+      ],
+      [
+       0.9407754362576161,
+       -0.13632107934100351
+      ],
+      [
+       -0.02658248914910146,
+       0.05519771470641088
+      ]
+     ],
+     "open": [
+      [
+       0.9411147912723835,
+       -0.010966372570072103
+      ],
+      [
+       0.0056543379255350685,
+       0.0011518453276754001
+      ],
+      [
+       0.005654337924923482,
+       0.0011518453610287306
+      ],
+      [
+       0.9413563622916347,
+       -0.010827554423160182
+      ]
+     ],
+     "short": [
+      [
+       -0.9991302363669732,
+       0.005625990499543923
+      ],
+      [
+       0.00012896451978653127,
+       0.00047115875689581334
+      ],
+      [
+       0.00012896451978653518,
+       0.00047115875689583887
+      ],
+      [
+       -0.9991572162353444,
+       0.005467718944963632
+      ]
+     ],
+     "deembedded": [
+      [
+       -0.0011235777753216547,
+       0.055802639373075384
+      ],
+      [
+       0.9679125424388977,
+       -0.13123314431046595
+      ],
+      [
+       0.9679125424233896,
+       -0.1312331442892126
+      ],
+      [
+       -0.0017155060015802363,
+       0.05562033408320336
+      ]
+     ]
+    },
+    "s_stats": {
+     "dut": {
+      "reciprocity": 2.8073774904499796e-11,
+      "max_singular_value": 0.9858638163810143
+     },
+     "open": {
+      "reciprocity": 3.3358937246113046e-11,
+      "max_singular_value": 0.9469413387605781
+     },
+     "short": {
+      "reciprocity": 2.5829566633774066e-17,
+      "max_singular_value": 0.9992862567989532
+     },
+     "deembedded": {
+      "reciprocity": 2.6309781487234442e-11,
+      "max_singular_value": 0.9871954933677917
+     }
+    },
+    "mem": {
+     "rss_gb": 7.237335205078125,
+     "vms_gb": 423.74085998535156,
+     "footprint_gb": 7.102713033556938,
+     "tag": "solve_split",
+     "t": 238.44638586044312,
+     "solves": 0
+    },
+    "reciprocity_worst_solved": 3.3358937246113046e-11,
+    "passivity_worst_solved": 0.9992862567989532,
+    "grid": {
+     "shape": [
+      43,
+      44,
+      14
+     ],
+     "n_unknowns": 85785,
+     "base_dx": 3e-05,
+     "dx_min": 1.299999999999999e-05,
+     "dx_max": 7.593750000000048e-05,
+     "cells_across_width": 2,
+     "wall_x": [
+      -0.0004308124999999999,
+      0.00043081250000000113
+     ],
+     "wall_y": [
+      -0.00046081250000000056,
+      0.0004308124999999999
+     ],
+     "lid_z": 0.0006220399999999999,
+     "n_z_lines": 15,
+     "dz": [
+      6e-05,
+      6e-05,
+      6.040000000000003e-06,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      1.4999999999999823e-06,
+      1.5000000000000094e-06,
+      1.5000000000000094e-06,
+      5.9999999999999995e-05,
+      9.000000000000002e-05,
+      0.00013499999999999997,
+      0.00020249999999999993
+     ],
+     "t_si": 0.00012,
+     "pad_cells": 4,
+     "pad_cells_z": 3,
+     "port_gap_m": 6e-05,
+     "build_seconds": 0.23659706115722656
+    }
+   },
+   "1": {
+    "freq": 1000000000.0,
+    "theta": [
+     0.000218,
+     1.4e-05,
+     3e-05
+    ],
+    "L_diff": 2.9916246540216726e-09,
+    "Q_diff": 18.10600947925609,
+    "L_se": 3.0257427805764807e-09,
+    "Q_se": 16.172116100000167,
+    "L_z11_open": -5.207363864065334e-08,
+    "L_raw": 3.074037251113692e-09,
+    "seconds_per_fixture": {
+     "dut": 76.90024876594543,
+     "open": 75.6129400730133,
+     "short": 73.36930418014526
+    },
+    "seconds": 225.882493019104,
+    "z_dut": [
+     [
+      198.63064693336403,
+      -327.18832119833223
+     ],
+     [
+      197.71523176326468,
+      -336.1292144491083
+     ],
+     [
+      197.71523176251438,
+      -336.1292144481374
+     ],
+     [
+      197.83797644162314,
+      -326.2731756281683
+     ]
+    ],
+    "s": {
+     "dut": [
+      [
+       -0.012465452306754249,
+       0.12340389416386763
+      ],
+      [
+       0.8925759290660875,
+       -0.24025978234944345
+      ],
+      [
+       0.8925759290654423,
+       -0.24025978234971226
+      ],
+      [
+       -0.015352710004397467,
+       0.1236841559721812
+      ]
+     ],
+     "open": [
+      [
+       0.9409179877307097,
+       -0.021928108363891825
+      ],
+      [
+       0.005690697764548803,
+       0.0023044720612802505
+      ],
+      [
+       0.005690697764556407,
+       0.002304472048839767
+      ],
+      [
+       0.9411645588423126,
+       -0.021650638421680482
+      ]
+     ],
+     "short": [
+      [
+       -0.9986885191331422,
+       0.01070076780419247
+      ],
+      [
+       0.00018812798755007832,
+       0.0008681465789470398
+      ],
+      [
+       0.00018812798755007281,
+       0.0008681465789470626
+      ],
+      [
+       -0.998730360055086,
+       0.010401391116945321
+      ]
+     ],
+     "deembedded": [
+      [
+       0.009915693915419355,
+       0.12595523247802043
+      ],
+      [
+       0.9216847216014704,
+       -0.22990232488576412
+      ],
+      [
+       0.9216847215985023,
+       -0.2299023248854114
+      ],
+      [
+       0.006972241654755724,
+       0.12613899263909473
+      ]
+     ]
+    },
+    "s_stats": {
+     "dut": {
+      "reciprocity": 6.990156330067398e-13,
+      "max_singular_value": 0.9767658825022518
+     },
+     "open": {
+      "reciprocity": 1.2440485862620723e-11,
+      "max_singular_value": 0.9469337502376391
+     },
+     "short": {
+      "reciprocity": 2.342367606508479e-17,
+      "max_singular_value": 0.9989455509125673
+     },
+     "deembedded": {
+      "reciprocity": 2.9889548004835816e-12,
+      "max_singular_value": 0.9801601331725444
+     }
+    },
+    "mem": {
+     "rss_gb": 7.4876861572265625,
+     "vms_gb": 423.9508514404297,
+     "footprint_gb": 7.488745450973511,
+     "tag": "solve_split",
+     "t": 240.59957885742188,
+     "solves": 0
+    },
+    "reciprocity_worst_solved": 1.2440485862620723e-11,
+    "passivity_worst_solved": 0.9989455509125673,
+    "grid": {
+     "shape": [
+      43,
+      44,
+      14
+     ],
+     "n_unknowns": 85785,
+     "base_dx": 3e-05,
+     "dx_min": 1.299999999999999e-05,
+     "dx_max": 7.593750000000048e-05,
+     "cells_across_width": 2,
+     "wall_x": [
+      -0.0004308124999999999,
+      0.00043081250000000113
+     ],
+     "wall_y": [
+      -0.00046081250000000056,
+      0.0004308124999999999
+     ],
+     "lid_z": 0.0006220399999999999,
+     "n_z_lines": 15,
+     "dz": [
+      6e-05,
+      6e-05,
+      6.040000000000003e-06,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      1.4999999999999823e-06,
+      1.5000000000000094e-06,
+      1.5000000000000094e-06,
+      5.9999999999999995e-05,
+      9.000000000000002e-05,
+      0.00013499999999999997,
+      0.00020249999999999993
+     ],
+     "t_si": 0.00012,
+     "pad_cells": 4,
+     "pad_cells_z": 3,
+     "port_gap_m": 6e-05,
+     "build_seconds": 0.23040413856506348
+    }
+   },
+   "2.45": {
+    "freq": 2450000000.0,
+    "L_diff": 3.043329885586503e-09,
+    "Q_diff": 20.64536530369604,
+    "L_se": 3.1969727377934128e-09,
+    "Q_se": 13.203014234424503,
+    "L_raw": 3.15927624585483e-09,
+    "reciprocity_worst_solved": 1.6692163264852137e-11,
+    "passivity_worst_solved": 0.9982715321107835,
+    "seconds": 217.52284693717957,
+    "from": "levels.1 (same solve)"
+   },
+   "4": {
+    "freq": 4000000000.0,
+    "theta": [
+     0.000218,
+     1.4e-05,
+     3e-05
+    ],
+    "L_diff": 3.270083033515415e-09,
+    "Q_diff": 18.81577097247581,
+    "L_se": 3.74014650282519e-09,
+    "Q_se": 8.705134561770205,
+    "L_z11_open": -5.869053571198737e-09,
+    "L_raw": 3.4800146252041197e-09,
+    "seconds_per_fixture": {
+     "dut": 78.76368618011475,
+     "open": 74.59304118156433,
+     "short": 73.40788197517395
+    },
+    "seconds": 226.76460933685303,
+    "z_dut": [
+     [
+      70.67145158950491,
+      -147.50540466242313
+     ],
+     [
+      67.24176420187545,
+      -184.12574468695215
+     ],
+     [
+      67.24176420243714,
+      -184.12574468949003
+     ],
+     [
+      68.18001639049604,
+      -138.55993403625382
+     ]
+    ],
+    "s": {
+     "dut": [
+      [
+       0.3521337329968836,
+       0.29756629598719975
+      ],
+      [
+       0.46084210426119043,
+       -0.5985876077722581
+      ],
+      [
+       0.4608421042665133,
+       -0.5985876077817749
+      ],
+      [
+       0.33230400821455547,
+       0.32842864709967795
+      ]
+     ],
+     "open": [
+      [
+       0.9370873432199001,
+       -0.08750622042787187
+      ],
+      [
+       0.006465163736989566,
+       0.009203946953385212
+      ],
+      [
+       0.006465163736554193,
+       0.00920394695214446
+      ],
+      [
+       0.9374295590283502,
+       -0.08640455274376733
+      ]
+     ],
+     "short": [
+      [
+       -0.9965226742072018,
+       0.04002827250281989
+      ],
+      [
+       0.0004885166660301537,
+       0.0031063085819753866
+      ],
+      [
+       0.0004885166660301793,
+       0.003106308581975335
+      ],
+      [
+       -0.9966495883299797,
+       0.03891899767086126
+      ]
+     ],
+     "deembedded": [
+      [
+       0.35469985583336483,
+       0.33599644821450575
+      ],
+      [
+       0.5249559211181982,
+       -0.5810754460026529
+      ],
+      [
+       0.524955921124082,
+       -0.5810754460112093
+      ],
+      [
+       0.3320671254007133,
+       0.36538921132974145
+      ]
+     ]
+    },
+    "s_stats": {
+     "dut": {
+      "reciprocity": 1.0904258517163626e-11,
+      "max_singular_value": 0.919516970209634
+     },
+     "open": {
+      "reciprocity": 1.3149205225205862e-12,
+      "max_singular_value": 0.9469225344155541
+     },
+     "short": {
+      "reciprocity": 5.76028767853923e-17,
+      "max_singular_value": 0.9977401596849766
+     },
+     "deembedded": {
+      "reciprocity": 1.0384121229343394e-11,
+      "max_singular_value": 0.9495410015840917
+     }
+    },
+    "mem": {
+     "rss_gb": 6.840179443359375,
+     "vms_gb": 424.2942657470703,
+     "footprint_gb": 7.0831208154559135,
+     "tag": "solve_split",
+     "t": 242.34527111053467,
+     "solves": 0
+    },
+    "reciprocity_worst_solved": 1.0904258517163626e-11,
+    "passivity_worst_solved": 0.9977401596849766,
+    "grid": {
+     "shape": [
+      43,
+      44,
+      14
+     ],
+     "n_unknowns": 85785,
+     "base_dx": 3e-05,
+     "dx_min": 1.299999999999999e-05,
+     "dx_max": 7.593750000000048e-05,
+     "cells_across_width": 2,
+     "wall_x": [
+      -0.0004308124999999999,
+      0.00043081250000000113
+     ],
+     "wall_y": [
+      -0.00046081250000000056,
+      0.0004308124999999999
+     ],
+     "lid_z": 0.0006220399999999999,
+     "n_z_lines": 15,
+     "dz": [
+      6e-05,
+      6e-05,
+      6.040000000000003e-06,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      1.4999999999999823e-06,
+      1.5000000000000094e-06,
+      1.5000000000000094e-06,
+      5.9999999999999995e-05,
+      9.000000000000002e-05,
+      0.00013499999999999997,
+      0.00020249999999999993
+     ],
+     "t_si": 0.00012,
+     "pad_cells": 4,
+     "pad_cells_z": 3,
+     "port_gap_m": 6e-05,
+     "build_seconds": 0.2579216957092285
+    }
+   },
+   "6": {
+    "freq": 6000000000.0,
+    "theta": [
+     0.000218,
+     1.4e-05,
+     3e-05
+    ],
+    "L_diff": 3.915429350731286e-09,
+    "Q_diff": 14.123090820977872,
+    "L_se": 5.778676718254104e-09,
+    "Q_se": 3.9230031049027887,
+    "L_z11_open": -2.440883803203444e-09,
+    "L_raw": 4.457775733978293e-09,
+    "seconds_per_fixture": {
+     "dut": 77.71470808982849,
+     "open": 73.82076811790466,
+     "short": 74.5766761302948
+    },
+    "seconds": 226.11215233802795,
+    "z_dut": [
+     [
+      40.64803199179567,
+      -92.01915149292304
+     ],
+     [
+      34.09433232141082,
+      -156.59253127960523
+     ],
+     [
+      34.09433232097942,
+      -156.59253127799062
+     ],
+     [
+      37.9921840056022,
+      -73.55770205778569
+     ]
+    ],
+    "s": {
+     "dut": [
+      [
+       0.5968313040527801,
+       0.14741727571559646
+      ],
+      [
+       0.15527169533986224,
+       -0.5896479225844212
+      ],
+      [
+       0.15527169533849772,
+       -0.5896479225798267
+      ],
+      [
+       0.5837923769007352,
+       0.21976652272552114
+      ]
+     ],
+     "open": [
+      [
+       0.9320388049388899,
+       -0.13095619154848626
+      ],
+      [
+       0.007514872469640794,
+       0.013723017585722197
+      ],
+      [
+       0.00751487246946888,
+       0.013723017583560024
+      ],
+      [
+       0.9325058565362699,
+       -0.12931522453345723
+      ]
+     ],
+     "short": [
+      [
+       -0.9948925322531488,
+       0.05925208515531256
+      ],
+      [
+       0.0007235682557384116,
+       0.004557634546611549
+      ],
+      [
+       0.0007235682557384022,
+       0.004557634546611773
+      ],
+      [
+       -0.9950925724570827,
+       0.057612945523525166
+      ]
+     ],
+     "deembedded": [
+      [
+       0.6029933282380987,
+       0.23337598203894794
+      ],
+      [
+       0.238236062883513,
+       -0.5977915108596994
+      ],
+      [
+       0.23823606288074042,
+       -0.5977915108535882
+      ],
+      [
+       0.580308095529602,
+       0.3047511412120123
+      ]
+     ]
+    },
+    "s_stats": {
+     "dut": {
+      "reciprocity": 4.792888020425736e-12,
+      "max_singular_value": 0.8883489102124108
+     },
+     "open": {
+      "reciprocity": 2.168996852337027e-12,
+      "max_singular_value": 0.9469714824258634
+     },
+     "short": {
+      "reciprocity": 2.239780368407134e-16,
+      "max_singular_value": 0.9971758293617758
+     },
+     "deembedded": {
+      "reciprocity": 6.710758882663041e-12,
+      "max_singular_value": 0.9371804254342151
+     }
+    },
+    "mem": {
+     "rss_gb": 7.4852752685546875,
+     "vms_gb": 424.9383239746094,
+     "footprint_gb": 7.93381405621767,
+     "tag": "solve_split",
+     "t": 241.09768509864807,
+     "solves": 0
+    },
+    "reciprocity_worst_solved": 4.792888020425736e-12,
+    "passivity_worst_solved": 0.9971758293617758,
+    "grid": {
+     "shape": [
+      43,
+      44,
+      14
+     ],
+     "n_unknowns": 85785,
+     "base_dx": 3e-05,
+     "dx_min": 1.299999999999999e-05,
+     "dx_max": 7.593750000000048e-05,
+     "cells_across_width": 2,
+     "wall_x": [
+      -0.0004308124999999999,
+      0.00043081250000000113
+     ],
+     "wall_y": [
+      -0.00046081250000000056,
+      0.0004308124999999999
+     ],
+     "lid_z": 0.0006220399999999999,
+     "n_z_lines": 15,
+     "dz": [
+      6e-05,
+      6e-05,
+      6.040000000000003e-06,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      1.4999999999999823e-06,
+      1.5000000000000094e-06,
+      1.5000000000000094e-06,
+      5.9999999999999995e-05,
+      9.000000000000002e-05,
+      0.00013499999999999997,
+      0.00020249999999999993
+     ],
+     "t_si": 0.00012,
+     "pad_cells": 4,
+     "pad_cells_z": 3,
+     "port_gap_m": 6e-05,
+     "build_seconds": 0.24831628799438477
+    }
+   }
+  },
+  "t_si_sensitivity": {
+   "what": "L and Q against the substrate thickness at base_dx = W, 2.45 GHz: the fixture's PEC ground sits under the silicon, so the thickness is the ground-image distance and it is bought in whole 60 um cells",
+   "chosen": {
+    "t_si": 0.00012,
+    "n_si_cells": 2,
+    "L_diff": 3.043329885586503e-09,
+    "Q_diff": 20.64536530369604,
+    "L_se": 3.1969727377934128e-09,
+    "Q_se": 13.203014234424503,
+    "n_unknowns": 85785
+   },
+   "alt": {
+    "t_si": 6e-05,
+    "n_si_cells": 1,
+    "L_diff": 2.5534752068251916e-09,
+    "Q_diff": 19.353318920600277,
+    "L_se": 2.7054022144156993e-09,
+    "Q_se": 12.738085022135204,
+    "n_unknowns": 79934,
+    "solve": {
+     "freq": 2450000000.0,
+     "theta": [
+      0.000218,
+      1.4e-05,
+      3e-05
+     ],
+     "L_diff": 2.5534752068251916e-09,
+     "Q_diff": 19.353318920600277,
+     "L_se": 2.7054022144156993e-09,
+     "Q_se": 12.738085022135204,
+     "L_z11_open": -9.501941807783385e-09,
+     "L_raw": 2.6116489072420385e-09,
+     "seconds_per_fixture": {
+      "dut": 48.43420600891113,
+      "open": 44.62319493293762,
+      "short": 44.68169689178467
+     },
+     "seconds": 137.73909783363342,
+     "z_dut": [
+      [
+       69.39488905079398,
+       -146.271029833033
+      ],
+      [
+       67.83011261465026,
+       -165.0202189156473
+      ],
+      [
+       67.8301126150012,
+       -165.02021891734918
+      ],
+      [
+       68.29639333347811,
+       -144.46171114062355
+      ]
+     ],
+     "s": {
+      "dut": [
+       [
+        0.07611555715741615,
+        0.2047999813430026
+       ],
+       [
+        0.7651507413078488,
+        -0.45931531238298084
+       ],
+       [
+        0.7651507413130587,
+        -0.4593153123877459
+       ],
+       [
+        0.06610553649386884,
+        0.20888336348764278
+       ]
+      ],
+      "open": [
+       [
+        0.9807738842253118,
+        -0.024775804082219872
+       ],
+       [
+        0.00027778675102004766,
+        0.0009160079904626583
+       ],
+       [
+        0.0002777867516197349,
+        0.0009160079951574459
+       ],
+       [
+        0.9808555363323583,
+        -0.02392313753330068
+       ]
+      ],
+      "short": [
+       [
+        -0.9988544232902911,
+        0.015326229926792771
+       ],
+       [
+        0.00012095633610587714,
+        0.0008903298373336067
+       ],
+       [
+        0.00012095633610583965,
+        0.0008903298373336381
+       ],
+       [
+        -0.998925912671539,
+        0.014648124204879072
+       ]
+      ],
+      "deembedded": [
+       [
+        0.08042075668322962,
+        0.20863930079417586
+       ],
+       [
+        0.7822632466260118,
+        -0.4471320439331363
+       ],
+       [
+        0.7822632466326903,
+        -0.44713204393882955
+       ],
+       [
+        0.07043007187924069,
+        0.21244102168817056
+       ]
+      ]
+     },
+     "s_stats": {
+      "dut": {
+       "reciprocity": 7.0604159307553325e-12,
+       "max_singular_value": 0.962028905197598
+      },
+      "open": {
+       "reciprocity": 4.732932992493317e-12,
+       "max_singular_value": 0.9813741912351495
+      },
+      "short": {
+       "reciprocity": 4.8926605191132975e-17,
+       "max_singular_value": 0.9991149178596521
+      },
+      "deembedded": {
+       "reciprocity": 8.775863519338794e-12,
+       "max_singular_value": 0.9655034414799885
+      }
+     },
+     "mem": {
+      "rss_gb": 3.909454345703125,
+      "vms_gb": 419.9169921875,
+      "footprint_gb": 3.7753638178110123,
+      "tag": "solve_split",
+      "t": 152.84582495689392,
+      "solves": 0
+     },
+     "reciprocity_worst_solved": 7.0604159307553325e-12,
+     "passivity_worst_solved": 0.9991149178596521,
+     "grid": {
+      "shape": [
+       43,
+       44,
+       13
+      ],
+      "n_unknowns": 79934,
+      "base_dx": 3e-05,
+      "dx_min": 1.299999999999999e-05,
+      "dx_max": 7.593750000000048e-05,
+      "cells_across_width": 2,
+      "wall_x": [
+       -0.0004308124999999999,
+       0.00043081250000000113
+      ],
+      "wall_y": [
+       -0.00046081250000000056,
+       0.0004308124999999999
+      ],
+      "lid_z": 0.0005620400000000001,
+      "n_z_lines": 14,
+      "dz": [
+       6e-05,
+       6.039999999999996e-06,
+       9.999999999999972e-07,
+       9.999999999999972e-07,
+       9.999999999999972e-07,
+       9.999999999999972e-07,
+       1.4999999999999958e-06,
+       1.5000000000000094e-06,
+       1.4999999999999958e-06,
+       6.000000000000001e-05,
+       9.000000000000002e-05,
+       0.00013500000000000003,
+       0.00020250000000000004
+      ],
+      "t_si": 6e-05,
+      "pad_cells": 4,
+      "pad_cells_z": 3,
+      "port_gap_m": 6e-05,
+      "build_seconds": 0.22803616523742676
+     }
+    }
+   },
+   "dL_rel": -0.160960098700213,
+   "dQ_rel": -0.06258287824359565,
+   "referee_curve": {
+    "60": {
+     "t_si": 6e-05,
+     "ground_height": 7.153999999999998e-05,
+     "deembedded": 3.0159988497747595e-09,
+     "rel_to_chosen": -0.1528968010805879
+    },
+    "120": {
+     "t_si": 0.00012,
+     "ground_height": 0.00013154,
+     "deembedded": 3.560367678485986e-09,
+     "rel_to_chosen": 0.0
+    },
+    "190": {
+     "t_si": 0.00019,
+     "ground_height": 0.00020154,
+     "deembedded": 3.782074710947943e-09,
+     "rel_to_chosen": 0.06227082494924696
+    },
+    "300": {
+     "t_si": 0.0003,
+     "ground_height": 0.00031153999999999996,
+     "deembedded": 3.892250745450201e-09,
+     "rel_to_chosen": 0.09321595322013088
+    }
+   },
+   "referee_dL_rel_same_pair": -0.1528968010805879,
+   "referee_dL_rel_chosen_to_real": 0.06227082494924696
+  },
+  "wall": {
+   "4": {
+    "pad_cells": 4,
+    "L_diff": 3.043329885586503e-09,
+    "Q_diff": 20.64536530369604,
+    "n_unknowns": 85785,
+    "wall_x": [
+     -0.0004308124999999999,
+     0.00043081250000000113
+    ],
+    "seconds": 217.52284693717957,
+    "from": "levels.1 (same solve)"
+   },
+   "8": {
+    "pad_cells": 8,
+    "L_diff": 3.074509893571299e-09,
+    "Q_diff": 20.660123865588023,
+    "n_unknowns": 119689,
+    "wall_x": [
+     -0.0013563007812499991,
+     0.0013563007812500067
+    ],
+    "seconds": 383.9322862625122,
+    "solve": {
+     "freq": 2450000000.0,
+     "theta": [
+      0.000218,
+      1.4e-05,
+      3e-05
+     ],
+     "L_diff": 3.074509893571299e-09,
+     "Q_diff": 20.660123865588023,
+     "L_se": 3.229924668622652e-09,
+     "Q_se": 13.16332042483985,
+     "L_z11_open": -1.3321114221169243e-08,
+     "L_raw": 3.1916956888283025e-09,
+     "seconds_per_fixture": {
+      "dut": 130.25774121284485,
+      "open": 128.5138599872589,
+      "short": 125.16068506240845
+     },
+     "seconds": 383.9322862625122,
+     "z_dut": [
+      [
+       122.81585415798489,
+       -205.0626214167935
+      ],
+      [
+       120.71020519958097,
+       -226.68922711474704
+      ],
+      [
+       120.71020519867245,
+       -226.68922711623946
+      ],
+      [
+       120.89536548292229,
+       -200.98743010853264
+      ]
+     ],
+     "s": {
+      "dut": [
+       [
+        0.1345992897202402,
+        0.2746554049682632
+       ],
+       [
+        0.7077794797894441,
+        -0.4725152267751664
+       ],
+       [
+        0.7077794797926499,
+        -0.47251522678282437
+       ],
+       [
+        0.12245238629193787,
+        0.28377696261722035
+       ]
+      ],
+      "open": [
+       [
+        0.9396845214187305,
+        -0.05355040314090611
+       ],
+       [
+        0.005961293169691257,
+        0.005696396093426773
+       ],
+       [
+        0.005961293170409497,
+        0.005696396083994494
+       ],
+       [
+        0.9399343955421564,
+        -0.05293366948991255
+       ]
+      ],
+      "short": [
+       [
+        -0.997631166308647,
+        0.025076670822717015
+       ],
+       [
+        0.0003237155253619788,
+        0.0019026371246187567
+       ],
+       [
+        0.0003237155253617557,
+        0.0019026371246181882
+       ],
+       [
+        -0.9977139093216625,
+        0.024364489678529364
+       ]
+      ],
+      "deembedded": [
+       [
+        0.1471039020550539,
+        0.2889181548982375
+       ],
+       [
+        0.750998847076874,
+        -0.45218545575622665
+       ],
+       [
+        0.7509988470768305,
+        -0.45218545576219016
+       ],
+       [
+        0.13433390524688024,
+        0.29748462458915603
+       ]
+      ]
+     },
+     "s_stats": {
+      "dut": {
+       "reciprocity": 8.301909087891271e-12,
+       "max_singular_value": 0.9490530248574934
+      },
+      "open": {
+       "reciprocity": 9.459585115304727e-12,
+       "max_singular_value": 0.9469661759095538
+      },
+      "short": {
+       "reciprocity": 6.107518055676119e-16,
+       "max_singular_value": 0.9982590430812074
+      },
+      "deembedded": {
+       "reciprocity": 5.9636662672866156e-12,
+       "max_singular_value": 0.9633852061281613
+      }
+     },
+     "mem": {
+      "rss_gb": 6.608673095703125,
+      "vms_gb": 423.5202941894531,
+      "footprint_gb": 6.829488977789879,
+      "tag": "solve_split",
+      "t": 399.5193910598755,
+      "solves": 0
+     },
+     "reciprocity_worst_solved": 9.459585115304727e-12,
+     "passivity_worst_solved": 0.9982590430812074,
+     "grid": {
+      "shape": [
+       51,
+       52,
+       14
+      ],
+      "n_unknowns": 119689,
+      "base_dx": 3e-05,
+      "dx_min": 1.299999999999999e-05,
+      "dx_max": 0.0003844335937500023,
+      "cells_across_width": 2,
+      "wall_x": [
+       -0.0013563007812499991,
+       0.0013563007812500067
+      ],
+      "wall_y": [
+       -0.0013863007812500029,
+       0.0013563007812499991
+      ],
+      "lid_z": 0.0006220399999999999,
+      "n_z_lines": 15,
+      "dz": [
+       6e-05,
+       6e-05,
+       6.040000000000003e-06,
+       9.999999999999972e-07,
+       9.999999999999972e-07,
+       9.999999999999972e-07,
+       9.999999999999972e-07,
+       1.4999999999999823e-06,
+       1.5000000000000094e-06,
+       1.5000000000000094e-06,
+       5.9999999999999995e-05,
+       9.000000000000002e-05,
+       0.00013499999999999997,
+       0.00020249999999999993
+      ],
+      "t_si": 0.00012,
+      "pad_cells": 8,
+      "pad_cells_z": 3,
+      "port_gap_m": 6e-05,
+      "build_seconds": 0.2732119560241699
+     }
+    }
+   },
+   "rel_change_L": 0.010245359246944474,
+   "rel_change_Q": 0.0007148607774618565,
+   "note": "pad_cells_z is pinned at 3 in both pads, so this gate moves the four SIDE walls only (431 -> 1356 um from the axis); the PEC lid stays at z = 622 um, i.e. 489 um above the top of TopMetal2. D2's wall gate moved the lid with the walls and measured the two together as +0.114 %.",
+   "6": {
+    "pad_cells": 6,
+    "L_diff": 3.073253341089888e-09,
+    "Q_diff": 20.658700357090513,
+    "n_unknowns": 102033,
+    "wall_x": [
+     -0.0007155781249999996,
+     0.0007155781250000029
+    ],
+    "seconds": 312.970205783844,
+    "solve": {
+     "freq": 2450000000.0,
+     "theta": [
+      0.000218,
+      1.4e-05,
+      3e-05
+     ],
+     "L_diff": 3.073253341089888e-09,
+     "Q_diff": 20.658700357090513,
+     "L_se": 3.228592788362586e-09,
+     "Q_se": 13.163899664415124,
+     "L_z11_open": -1.3322195798255739e-08,
+     "L_raw": 3.190354248353863e-09,
+     "seconds_per_fixture": {
+      "dut": 107.01322412490845,
+      "open": 106.18302798271179,
+      "short": 99.77395367622375
+     },
+     "seconds": 312.970205783844,
+     "z_dut": [
+      [
+       122.80384374176401,
+       -205.0792710024767
+      ],
+      [
+       120.69888630263509,
+       -226.69313298937402
+      ],
+      [
+       120.69888630185041,
+       -226.69313298606878
+      ],
+      [
+       120.88395963742146,
+       -200.99793538992353
+      ]
+     ],
+     "s": {
+      "dut": [
+       [
+        0.1344790329932383,
+        0.2745535719652978
+       ],
+       [
+        0.7079136082212107,
+        -0.4724283152673163
+       ],
+       [
+        0.7079136082112666,
+        -0.47242831525619006
+       ],
+       [
+        0.12232121642624784,
+        0.2836922432637416
+       ]
+      ],
+      "open": [
+       [
+        0.9396846400629719,
+        -0.05355106520177244
+       ],
+       [
+        0.005961365617022039,
+        0.005696017109454345
+       ],
+       [
+        0.005961365619250552,
+        0.005696017117759749
+       ],
+       [
+        0.9399344550353259,
+        -0.05293401054328307
+       ]
+      ],
+      "short": [
+       [
+        -0.9976321869066144,
+        0.025068190955501432
+       ],
+       [
+        0.00032463267228711925,
+        0.0019102679726839857
+       ],
+       [
+        0.00032463267228705273,
+        0.0019102679726830157
+       ],
+       [
+        -0.9977147638367941,
+        0.02435735020098889
+       ]
+      ],
+      "deembedded": [
+       [
+        0.14699465814244003,
+        0.28881320733550564
+       ],
+       [
+        0.7511230753975537,
+        -0.4520945012190233
+       ],
+       [
+        0.7511230753894577,
+        -0.4520945012107206
+       ],
+       [
+        0.13421291100744467,
+        0.2973967173595658
+       ]
+      ]
+     },
+     "s_stats": {
+      "dut": {
+       "reciprocity": 1.4922468246293866e-11,
+       "max_singular_value": 0.9490690916934746
+      },
+      "open": {
+       "reciprocity": 8.599186322641769e-12,
+       "max_singular_value": 0.9469663807310805
+      },
+      "short": {
+       "reciprocity": 9.722053530903736e-16,
+       "max_singular_value": 0.9982605317568171
+      },
+      "deembedded": {
+       "reciprocity": 1.1596602661458662e-11,
+       "max_singular_value": 0.9633920609017408
+      }
+     },
+     "mem": {
+      "rss_gb": 5.51116943359375,
+      "vms_gb": 422.38160705566406,
+      "footprint_gb": 5.706960074603558,
+      "tag": "solve_split",
+      "t": 328.18039774894714,
+      "solves": 0
+     },
+     "reciprocity_worst_solved": 1.4922468246293866e-11,
+     "passivity_worst_solved": 0.9982605317568171,
+     "grid": {
+      "shape": [
+       47,
+       48,
+       14
+      ],
+      "n_unknowns": 102033,
+      "base_dx": 3e-05,
+      "dx_min": 1.299999999999999e-05,
+      "dx_max": 0.0001708593750000011,
+      "cells_across_width": 2,
+      "wall_x": [
+       -0.0007155781249999996,
+       0.0007155781250000029
+      ],
+      "wall_y": [
+       -0.0007455781250000012,
+       0.0007155781249999996
+      ],
+      "lid_z": 0.0006220399999999999,
+      "n_z_lines": 15,
+      "dz": [
+       6e-05,
+       6e-05,
+       6.040000000000003e-06,
+       9.999999999999972e-07,
+       9.999999999999972e-07,
+       9.999999999999972e-07,
+       9.999999999999972e-07,
+       1.4999999999999823e-06,
+       1.5000000000000094e-06,
+       1.5000000000000094e-06,
+       5.9999999999999995e-05,
+       9.000000000000002e-05,
+       0.00013499999999999997,
+       0.00020249999999999993
+      ],
+      "t_si": 0.00012,
+      "pad_cells": 6,
+      "pad_cells_z": 3,
+      "port_gap_m": 6e-05,
+      "build_seconds": 0.26780009269714355
+     }
+    }
+   },
+   "ladder": {
+    "what": "least squares of L (and Q) against 1/wall_distance over the three pads: the intercept is the wall-free limit",
+    "pads": [
+     4,
+     6,
+     8
+    ],
+    "wall_distance": [
+     0.00043081250000000113,
+     0.0007155781250000029,
+     0.0013563007812500067
+    ],
+    "L_diff": [
+     3.043329885586503e-09,
+     3.073253341089888e-09,
+     3.074509893571299e-09
+    ],
+    "Q_diff": [
+     20.64536530369604,
+     20.658700357090513,
+     20.660123865588023
+    ],
+    "L_inf": 3.0941472611590656e-09,
+    "slope_L": -2.050030319731975e-14,
+    "Q_inf": 20.669057233194685,
+    "slope_Q": -9.645982236876943e-06,
+    "L_inf_over_pad0_minus_1": 0.016697951744645945,
+    "L_inf_over_padlast_minus_1": 0.006387153812328794,
+    "Q_inf_over_pad0_minus_1": 0.0011475664949558428,
+    "residual_L": 0.0025480866875767978
+   }
+  },
+  "gradients": {
+   "L": {
+    "which": "L",
+    "value": 3.0433298856416803e-09,
+    "grad_scaled": [
+     6.690676104208703e-09,
+     -8.508713279245425e-10,
+     -3.018415689357686e-09
+    ],
+    "grad": [
+     3.0691174789948176e-05,
+     -6.077652342318161e-05,
+     -0.00010061385631192287
+    ],
+    "params": [
+     "r_out",
+     "spacing",
+     "width"
+    ],
+    "theta0": [
+     0.000218,
+     1.4e-05,
+     3e-05
+    ],
+    "seconds": 467.5099723339081,
+    "mem": {
+     "rss_gb": 4.69793701171875,
+     "vms_gb": 427.2835998535156,
+     "footprint_gb": 9.80729005485773,
+     "tag": "grad_L",
+     "t": 482.118460893631,
+     "solves": 1
+    }
+   },
+   "Q": {
+    "which": "Q",
+    "value": 20.6453653054389,
+    "grad_scaled": [
+     -0.0802763703829994,
+     -0.22057997384121436,
+     -0.8224560171003968
+    ],
+    "grad": [
+     -368.2402311146761,
+     -15755.712417229597,
+     -27415.20057001323
+    ],
+    "params": [
+     "r_out",
+     "spacing",
+     "width"
+    ],
+    "theta0": [
+     0.000218,
+     1.4e-05,
+     3e-05
+    ],
+    "seconds": 466.0251889228821,
+    "mem": {
+     "rss_gb": 4.6958770751953125,
+     "vms_gb": 428.4288787841797,
+     "footprint_gb": 9.740349657833576,
+     "tag": "grad_Q",
+     "t": 480.8723449707031,
+     "solves": 1
+    }
+   }
+  },
+  "fd": {
+   "r_out": {
+    "param": "r_out",
+    "index": 0,
+    "step": 2.1800000000000003e-06,
+    "points": {
+     "-2": {
+      "theta": [
+       0.00021364000000000002,
+       1.4e-05,
+       3e-05
+      ],
+      "L_diff": 2.910222510290016e-09,
+      "Q_diff": 20.626531072694497,
+      "L_se": 3.046582925294155e-09,
+      "Q_se": 13.571134338603796,
+      "seconds": 224.4068500995636,
+      "mem": {
+       "rss_gb": 12.15673828125,
+       "vms_gb": 429.32305908203125,
+       "footprint_gb": 12.031046032905579,
+       "tag": "forward",
+       "t": 225.51491379737854,
+       "solves": 1
+      }
+     },
+     "-1": {
+      "theta": [
+       0.00021582,
+       1.4e-05,
+       3e-05
+      ],
+      "L_diff": 2.9765988584264983e-09,
+      "Q_diff": 20.641114706133127,
+      "L_se": 3.1214125428213237e-09,
+      "Q_se": 13.38920908716626,
+      "seconds": 223.87027406692505,
+      "mem": {
+       "rss_gb": 11.791168212890625,
+       "vms_gb": 429.6918487548828,
+       "footprint_gb": 11.662912331521511,
+       "tag": "forward",
+       "t": 224.9919888973236,
+       "solves": 1
+      }
+     },
+     "1": {
+      "theta": [
+       0.00022018000000000002,
+       1.4e-05,
+       3e-05
+      ],
+      "L_diff": 3.110410811901845e-09,
+      "Q_diff": 20.63962331173891,
+      "L_se": 3.2732694899554363e-09,
+      "Q_se": 13.013161418266247,
+      "seconds": 225.7245171070099,
+      "mem": {
+       "rss_gb": 5.6960906982421875,
+       "vms_gb": 428.73252868652344,
+       "footprint_gb": 10.867364197969437,
+       "tag": "forward",
+       "t": 226.84642696380615,
+       "solves": 1
+      }
+     },
+     "2": {
+      "theta": [
+       0.00022236,
+       1.4e-05,
+       3e-05
+      ],
+      "L_diff": 3.1778369943311556e-09,
+      "Q_diff": 20.624232646888792,
+      "L_se": 3.3503090945221597e-09,
+      "Q_se": 12.820227530381041,
+      "seconds": 224.46689677238464,
+      "mem": {
+       "rss_gb": 5.4069061279296875,
+       "vms_gb": 427.65484619140625,
+       "footprint_gb": 10.356621697545052,
+       "tag": "forward",
+       "t": 225.74048590660095,
+       "solves": 1
+      }
+     }
+    },
+    "fd4_dL_diff": 3.069117522024597e-05,
+    "fd4_dQ_diff": -368.22359893151696
+   },
+   "width": {
+    "param": "width",
+    "index": 2,
+    "step": 3.0000000000000004e-07,
+    "points": {
+     "-2": {
+      "theta": [
+       0.000218,
+       1.4e-05,
+       2.94e-05
+      ],
+      "L_diff": 3.104140890151925e-09,
+      "Q_diff": 20.658414907984426,
+      "L_se": 3.263630361971509e-09,
+      "Q_se": 13.129006818846293,
+      "seconds": 225.62280559539795,
+      "mem": {
+       "rss_gb": 10.53857421875,
+       "vms_gb": 430.30535888671875,
+       "footprint_gb": 12.444864749908447,
+       "tag": "forward",
+       "t": 226.77379393577576,
+       "solves": 1
+      }
+     },
+     "-1": {
+      "theta": [
+       0.000218,
+       1.4e-05,
+       2.97e-05
+      ],
+      "L_diff": 3.073624269406518e-09,
+      "Q_diff": 20.652737150814023,
+      "L_se": 3.2301702897920043e-09,
+      "Q_se": 13.16625790853393,
+      "seconds": 234.86465501785278,
+      "mem": {
+       "rss_gb": 4.089385986328125,
+       "vms_gb": 425.72886657714844,
+       "footprint_gb": 8.086722627282143,
+       "tag": "forward",
+       "t": 236.1964409351349,
+       "solves": 1
+      }
+     },
+     "1": {
+      "theta": [
+       0.000218,
+       1.4e-05,
+       3.03e-05
+      ],
+      "L_diff": 3.0132550757644978e-09,
+      "Q_diff": 20.63628223419634,
+      "L_se": 3.164034575045792e-09,
+      "Q_se": 13.2392542115026,
+      "seconds": 239.60726499557495,
+      "mem": {
+       "rss_gb": 3.91937255859375,
+       "vms_gb": 425.7229309082031,
+       "footprint_gb": 8.01740188151598,
+       "tag": "forward",
+       "t": 241.01857495307922,
+       "solves": 1
+      }
+     },
+     "2": {
+      "theta": [
+       0.000218,
+       1.4e-05,
+       3.06e-05
+      ],
+      "L_diff": 2.983397223533197e-09,
+      "Q_diff": 20.625470291423344,
+      "L_se": 3.131352723430432e-09,
+      "Q_se": 13.274955510910521,
+      "seconds": 241.9900679588318,
+      "mem": {
+       "rss_gb": 3.948822021484375,
+       "vms_gb": 423.9493865966797,
+       "footprint_gb": 6.459157943725586,
+       "tag": "forward",
+       "t": 243.3537700176239,
+       "solves": 1
+      }
+     }
+    },
+    "fd4_dL_diff": -0.00010061385625484278,
+    "fd4_dQ_diff": -27415.198994548755
+   }
+  },
+  "leontovich": {
+   "what": "skin depth over the THINNEST metal slab of the stack; the Leontovich sheet needs it well below 1 and it is not -- absolute Q at 2.45 GHz is therefore not a validated number here (see the module doc)",
+   "freq": 2450000000.0,
+   "sigma_metal": 30500000.0,
+   "skin_depth": 1.8411415106684175e-06,
+   "t_min": 2e-06,
+   "t_m2": 3e-06,
+   "leontovich_validity": 0.9205707553342087,
+   "delta_over_t_m2": 0.6137138368894725,
+   "pure_copper": {
+    "sigma": 58000000.0,
+    "skin_depth": 1.3351285802753275e-06,
+    "delta_over_t_m2": 0.4450428600917758,
+    "note": "the task's expected ~0.45 is delta/t for PURE copper (5.8e7 S/m) on the 3 um TopMetal2; the stack's 3.05e7 S/m gives a 1.36x larger skin depth"
+   }
+  },
+  "scaling": {
+   "what": "single-fixture (DUT only) solve time and factor memory against N on one geometry, N moved by the wall padding alone; the fit is the basis of the W/3 cost projection",
+   "points": {
+    "0": {
+     "pad_cells": 0,
+     "n_unknowns": 45744,
+     "shape": [
+      35,
+      36,
+      11
+     ],
+     "seconds": 21.862323760986328,
+     "footprint_before_gb": 0.2592783719301224,
+     "footprint_after_gb": 2.152804061770439,
+     "footprint_increment_gb": 1.8935256898403168,
+     "rss_after_gb": 2.075531005859375
+    },
+    "1": {
+     "pad_cells": 1,
+     "n_unknowns": 55315,
+     "shape": [
+      37,
+      38,
+      12
+     ],
+     "seconds": 32.72894287109375,
+     "footprint_before_gb": 2.2247950732707977,
+     "footprint_after_gb": 2.6677885726094246,
+     "footprint_increment_gb": 0.44299349933862686,
+     "rss_after_gb": 2.5001983642578125
+    },
+    "2": {
+     "pad_cells": 2,
+     "n_unknowns": 66106,
+     "shape": [
+      39,
+      40,
+      13
+     ],
+     "seconds": 42.65558695793152,
+     "footprint_before_gb": 2.7423278465867043,
+     "footprint_after_gb": 4.189518228173256,
+     "footprint_increment_gb": 1.4471903815865517,
+     "rss_after_gb": 3.297271728515625
+    },
+    "3": {
+     "pad_cells": 3,
+     "n_unknowns": 78189,
+     "shape": [
+      41,
+      42,
+      14
+     ],
+     "seconds": 66.68859100341797,
+     "footprint_before_gb": 4.278232894837856,
+     "footprint_after_gb": 6.724630691111088,
+     "footprint_increment_gb": 2.4463977962732315,
+     "rss_after_gb": 6.163726806640625
+    },
+    "4": {
+     "pad_cells": 4,
+     "n_unknowns": 85785,
+     "shape": [
+      43,
+      44,
+      14
+     ],
+     "seconds": 79.10962700843811,
+     "footprint_before_gb": 6.809225417673588,
+     "footprint_after_gb": 7.410956211388111,
+     "footprint_increment_gb": 0.6017307937145233,
+     "rss_after_gb": 5.0719451904296875
+    }
+   },
+   "memory_increments_usable": true,
+   "exponent_time": 2.0426487819870385,
+   "exponent_memory": 2.117600971507289,
+   "memory_basis": "footprint_after_gb",
+   "fit_note": "least squares on log N over N = 45744..85785 (5 points): seconds ~ N^2.04, peak process footprint ~ N^2.12",
+   "footprint_after_gb": [
+    2.152804061770439,
+    2.6677885726094246,
+    4.189518228173256,
+    6.724630691111088,
+    7.410956211388111
+   ],
+   "seconds": [
+    21.862323760986328,
+    32.72894287109375,
+    42.65558695793152,
+    66.68859100341797,
+    79.10962700843811
+   ],
+   "n_unknowns": [
+    45744.0,
+    55315.0,
+    66106.0,
+    78189.0,
+    85785.0
+   ]
+  }
+ },
+ "merged_runs": [
+  {
+   "path": "rfic_fd.json",
+   "keys_added": 2,
+   "seconds": 1842.8023297786713,
+   "solve_units": 8,
+   "what": "a sibling process that worked on disjoint items of this study (--only / --c-items / --fd-params) in parallel; its wall time is NOT added to this study's `seconds`, which is per-process"
+  },
+  {
+   "path": "rfic_awall.json",
+   "keys_added": 3,
+   "seconds": 401.2283160686493,
+   "solve_units": 1,
+   "what": "a sibling process that worked on disjoint items of this study (--only / --c-items / --fd-params) in parallel; its wall time is NOT added to this study's `seconds`, which is per-process"
+  }
+ ]
+}

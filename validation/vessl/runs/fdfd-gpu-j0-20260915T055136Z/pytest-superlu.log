@@ -1,0 +1,70 @@
+............F....................                                        [100%]
+=================================== FAILURES ===================================
+___________ test_repeated_jitted_solves_do_not_grow_the_resident_set ___________
+
+    @pytest.mark.usefixtures("superlu_backend")
+    def test_repeated_jitted_solves_do_not_grow_the_resident_set():
+        """Six jitted three-solve calls: growth after the second solve must be
+        under 15 % of the first solve's increment.
+    
+        The calls are driven from a WORKER thread and the cache is emptied from
+        this one, which is the design loop's situation made deterministic: under
+        ``jit`` XLA decides for itself whether to run a ``pure_callback`` on the
+        calling thread or on its pool, and it only moves off the caller's thread
+        above some program size (measured here: the same program runs on the
+        main thread at 13824 unknowns and on a pool thread at 17576). Driving it
+        from a worker pins the build thread without needing a system big enough
+        to make XLA do it, so the gate keeps its teeth in the fast lane.
+    
+        Threshold from the measurement: after the fix the growth over solves
+        2..6 is 0.000 GB here, and 0.016 % of the first increment at N = 12739
+        (0.00017 GB on 1.021 GB, validation/fdfd/memory_probe.json); with the
+        release path this module used before, the same loop here grows
+        0.21 GB per solve -- 0.842 GB over solves 2..6 against a 0.292 GB first
+        increment, a ratio of 2.89. 15 % sits two orders of magnitude above the
+        fixed behaviour and 19x below the broken one, and clears the ~0.01 GB
+        RSS jitter of a Python process on this machine.
+        """
+        import gc
+        from concurrent.futures import ThreadPoolExecutor
+        psutil = pytest.importorskip("psutil")
+        proc = psutil.Process()
+    
+        def rss_gb():
+            return proc.memory_info().rss / 2.0 ** 30
+    
+        with enable_x64():
+            rows, cols, data, n = _lap3()
+            f = _three_solve_program(rows, cols, n)
+            ls.clear_factor_cache()
+            gc.collect()
+            series = []
+    
+            def one_solve():
+                # x64 again INSIDE the worker: where JAX still ships
+                # ``jax.experimental.enable_x64`` (0.6.2, the VESSL lane's pin)
+                # that context manager is THREAD-LOCAL, so the worker would
+                # otherwise trace this program without x64 and sparse_solve
+                # would refuse it; where it has been removed (0.11.1 here)
+                # ``tests/_x64_compat`` flips the global flag and this nesting
+                # is a no-op. Measured: without it the test fails on jax 0.6.2
+                # and passes here, which is how the VESSL J0 run found it.
+                with enable_x64():
+                    jax.block_until_ready(f(data))
+    
+            with ThreadPoolExecutor(max_workers=1) as ex:
+                base = rss_gb()
+                for _ in range(6):
+                    ex.submit(one_solve).result()
+                    ls.clear_factor_cache()          # from THIS thread, as a design loop does
+                    gc.collect()
+                    series.append(rss_gb())
+        first = series[0] - base
+        later = series[-1] - series[1]
+        # the test only means something if the factors are big enough to see
+>       assert first > 0.05, (first, series)
+E       AssertionError: (0.015270233154296875, [1.1387100219726562, 1.1454734802246094, 1.1467323303222656, 1.1467323303222656, 1.1467323303222656, 1.1467323303222656])
+E       assert 0.015270233154296875 > 0.05
+
+tests/test_fdfd_linear_solve.py:587: AssertionError
+1 failed, 32 passed in 51.34s

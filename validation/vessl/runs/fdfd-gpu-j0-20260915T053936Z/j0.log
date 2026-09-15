@@ -1,0 +1,33 @@
++ timeout 2400 python -u /root/work/rfx-fdfd-gpu-j0/validation/vessl/_lane_embedded.py
+env: {'python': '3.10.13', 'jax': '0.6.2', 'scipy': '1.15.3', 'numpy': '2.2.6', 'jax_devices': ['TFRT_CPU_0'], 'nvidia_smi': 'NVIDIA GeForce RTX 4090, 24564 MiB, 391 MiB, 535.288.01'}
+backends: {'cudss': {'backend': 'cudss', 'available': True, 'reason': None, 'nvmath_version': '1.0.0', 'cupy_version': '14.2.0', 'device_count': 1, 'device_name': 'NVIDIA GeForce RTX 4090', 'device_arrays': True, 'min_cudss': '0.4.0'}, 'cusolver': {'backend': 'cusolver', 'available': True, 'reason': None, 'cupy_version': '14.2.0', 'device_count': 1, 'device_name': 'NVIDIA GeForce RTX 4090'}}
+No multithreading interface library was specified using the DirectSolverOptions. The performance of CPU operations like planning will be significantly lower than if you provide a multithreading library.
+No multithreading interface library was specified using the DirectSolverOptions. The performance of CPU operations like planning will be significantly lower than if you provide a multithreading library.
+  selftest cudss: residual_N 3.74e-16 residual_T 3.87e-16 diff_N 1.40e-15 diff_T 1.23e-15 cross_thread_ok False (0.2 s)
+  selftest cusolver: residual_N 1.22e-15 residual_T 1.25e-15 diff_N 2.75e-15 diff_T 2.77e-15 cross_thread_ok True (0.1 s)
+Traceback (most recent call last):
+  File "/root/work/rfx-fdfd-gpu-j0/rfx/fdfd/gds.py", line 721, in _shapely
+    import shapely
+ModuleNotFoundError: No module named 'shapely'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/root/work/rfx-fdfd-gpu-j0/validation/vessl/_lane_embedded.py", line 211, in <module>
+    sys.exit(main())
+  File "/root/work/rfx-fdfd-gpu-j0/validation/vessl/_lane_embedded.py", line 107, in main
+    model = study.build_level(DIV_G1)
+  File "/root/work/rfx-fdfd-gpu-j0/validation/fdfd/spiral_convergence.py", line 678, in build_level
+    return sm.build_spiral(spec)
+  File "/root/work/rfx-fdfd-gpu-j0/rfx/fdfd/spiral.py", line 717, in build_spiral
+    ras = gds.rasterise(sp.polygons, stack, x_nom, y_nom, z, freq=None)
+  File "/root/work/rfx-fdfd-gpu-j0/rfx/fdfd/gds.py", line 820, in rasterise
+    f = frac_for(key)
+  File "/root/work/rfx-fdfd-gpu-j0/rfx/fdfd/gds.py", line 805, in frac_for
+    cache[key] = fill_fractions(list(polygons_by_layer.get(key, ())), x, y)
+  File "/root/work/rfx-fdfd-gpu-j0/rfx/fdfd/gds.py", line 735, in fill_fractions
+    shapely = _shapely()
+  File "/root/work/rfx-fdfd-gpu-j0/rfx/fdfd/gds.py", line 723, in _shapely
+    raise ImportError("rfx.fdfd.gds.fill_fractions needs 'shapely' (uv pip install shapely)") from exc
+ImportError: rfx.fdfd.gds.fill_fractions needs 'shapely' (uv pip install shapely)
++ echo 1

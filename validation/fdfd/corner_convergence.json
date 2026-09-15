@@ -1,0 +1,1662 @@
+{
+ "fixture": {
+  "freq": 100000000.0,
+  "width": 1e-05,
+  "l1": 0.0001,
+  "l2": 0.0001,
+  "bar_length": 0.0002,
+  "levels": [
+   1.0,
+   2.0,
+   3.0
+  ],
+  "pads": [
+   4,
+   6,
+   8
+  ],
+  "margin": 1e-05,
+  "base_dz": 1e-05,
+  "metal_cells": 2,
+  "pad_cells": 4,
+  "pad_ratio": 1.5,
+  "sigma_volumetric": 3000000.0,
+  "ground_height": 2.6000000000000005e-05,
+  "port_gap_cells": 1,
+  "eps_dielectrics": 1.0,
+  "n_max": 110000,
+  "fd_step_rel": 0.01,
+  "stack": {
+   "t_si": 2e-05,
+   "t_ox_low": 1e-06,
+   "t_m1": 2e-06,
+   "t_via": 2e-06,
+   "t_m2": 2e-06,
+   "t_ox_high": 3e-06,
+   "t_air": 1e-05
+  }
+ },
+ "spiral_reference": {
+  "note": "QUOTED from validation/fdfd/spiral_convergence.json (D2) and straight_bar_convergence.json (D2b) for the attribution; NOT measured here. The corner COUNT is measured here, from gds.rect_spiral's own centreline.",
+  "referee_deembedded": 3.3305510896906523e-10,
+  "both_corrections_rel": [
+   -0.07682185547554532,
+   -0.050649408342909985
+  ],
+  "bar_per_unit_length_ratio_3cells": [
+   0.9746,
+   0.9808
+  ]
+ },
+ "levels": {
+  "bend": {
+   "1": {
+    "4": {
+     "kind": "bend",
+     "div": 1.0,
+     "base_dx": 1e-05,
+     "pad_cells": 4,
+     "shape": [
+      21,
+      21,
+      15
+     ],
+     "n_unknowns": 22044,
+     "wall_distance": 0.00013187500000000005,
+     "wall_x": [
+      -0.00018687500000000006,
+      0.00018687500000000006
+     ],
+     "wall_y": [
+      -0.00018687500000000006,
+      0.00018687500000000006
+     ],
+     "lid_z": 0.000161875,
+     "nz": 15,
+     "arm_outer": 1.5000000000000005e-05,
+     "arm_inner": 1.4999999999999999e-05,
+     "build_seconds": 0.0770578384399414,
+     "L_dut": 6.854808598363469e-11,
+     "seconds": 17.87569308280945
+    },
+    "6": {
+     "kind": "bend",
+     "div": 1.0,
+     "base_dx": 1e-05,
+     "pad_cells": 6,
+     "shape": [
+      25,
+      25,
+      17
+     ],
+     "n_unknowns": 34892,
+     "wall_distance": 0.00032171875000000023,
+     "wall_x": [
+      -0.0003767187500000002,
+      0.0003767187500000002
+     ],
+     "wall_y": [
+      -0.0003767187500000002,
+      0.0003767187500000002
+     ],
+     "lid_z": 0.0003517187499999999,
+     "nz": 17,
+     "arm_outer": 1.5000000000000005e-05,
+     "arm_inner": 1.4999999999999999e-05,
+     "build_seconds": 0.03386878967285156,
+     "L_dut": 6.90199519295711e-11,
+     "seconds": 46.79079294204712
+    },
+    "8": {
+     "kind": "bend",
+     "div": 1.0,
+     "base_dx": 1e-05,
+     "pad_cells": 8,
+     "shape": [
+      29,
+      29,
+      19
+     ],
+     "n_unknowns": 51900,
+     "wall_distance": 0.0007488671875000005,
+     "wall_x": [
+      -0.0008038671875000005,
+      0.0008038671875000005
+     ],
+     "wall_y": [
+      -0.0008038671875000005,
+      0.0008038671875000005
+     ],
+     "lid_z": 0.0007788671874999997,
+     "nz": 19,
+     "arm_outer": 1.5000000000000005e-05,
+     "arm_inner": 1.4999999999999999e-05,
+     "build_seconds": 0.04733014106750488,
+     "L_dut": 6.90700677755954e-11,
+     "seconds": 97.79145169258118
+    }
+   },
+   "2": {
+    "4": {
+     "kind": "bend",
+     "div": 2.0,
+     "base_dx": 5e-06,
+     "pad_cells": 4,
+     "shape": [
+      34,
+      34,
+      15
+     ],
+     "n_unknowns": 56455,
+     "wall_distance": 7.093749999999998e-05,
+     "wall_x": [
+      -0.0001259375,
+      0.00012593750000000018
+     ],
+     "wall_y": [
+      -0.0001259375,
+      0.00012593750000000018
+     ],
+     "lid_z": 0.000161875,
+     "nz": 15,
+     "arm_outer": 1.0000000000000006e-05,
+     "arm_inner": 9.999999999999999e-06,
+     "build_seconds": 0.11402606964111328,
+     "L_dut": 8.247354658892365e-11,
+     "seconds": 115.06422519683838
+    },
+    "6": {
+     "kind": "bend",
+     "div": 2.0,
+     "base_dx": 5e-06,
+     "pad_cells": 6,
+     "shape": [
+      38,
+      38,
+      17
+     ],
+     "n_unknowns": 79209,
+     "wall_distance": 0.00016585937499999996,
+     "wall_x": [
+      -0.00022085937499999997,
+      0.00022085937500000043
+     ],
+     "wall_y": [
+      -0.00022085937499999997,
+      0.00022085937500000043
+     ],
+     "lid_z": 0.0003517187499999999,
+     "nz": 17,
+     "arm_outer": 1.0000000000000006e-05,
+     "arm_inner": 9.999999999999999e-06,
+     "build_seconds": 0.14146995544433594,
+     "L_dut": 8.367261803631002e-11,
+     "seconds": 238.78183507919312
+    },
+    "8": {
+     "kind": "bend",
+     "div": 2.0,
+     "base_dx": 5e-06,
+     "pad_cells": 8,
+     "shape": [
+      42,
+      42,
+      19
+     ],
+     "n_unknowns": 107371,
+     "wall_distance": 0.0003794335937499999,
+     "wall_x": [
+      -0.00043443359374999987,
+      0.000434433593750001
+     ],
+     "wall_y": [
+      -0.00043443359374999987,
+      0.000434433593750001
+     ],
+     "lid_z": 0.0007788671874999997,
+     "nz": 19,
+     "arm_outer": 1.0000000000000006e-05,
+     "arm_inner": 9.999999999999999e-06,
+     "build_seconds": 0.16729092597961426,
+     "L_dut": 8.384515924244774e-11,
+     "seconds": 466.22141003608704
+    }
+   },
+   "3": {
+    "4": {
+     "kind": "bend",
+     "div": 3.0,
+     "base_dx": 3.3333333333333337e-06,
+     "pad_cells": 4,
+     "shape": [
+      47,
+      47,
+      15
+     ],
+     "n_unknowns": 106752,
+     "wall_distance": 5.062499999999957e-05,
+     "wall_x": [
+      -0.00010562500000000006,
+      0.00010562499999999957
+     ],
+     "wall_y": [
+      -0.00010562500000000006,
+      0.00010562499999999957
+     ],
+     "lid_z": 0.000161875,
+     "nz": 15,
+     "arm_outer": 8.333333333333303e-06,
+     "arm_inner": 8.33333333333333e-06,
+     "build_seconds": 0.16737890243530273,
+     "L_dut": 8.564676022603152e-11,
+     "seconds": 323.9105808734894
+    }
+   }
+  },
+  "bar": {
+   "1": {
+    "4": {
+     "kind": "bar",
+     "div": 1.0,
+     "base_dx": 1e-05,
+     "pad_cells": 4,
+     "shape": [
+      31,
+      11,
+      15
+     ],
+     "n_unknowns": 17344,
+     "wall_distance": 0.000131875,
+     "wall_x": [
+      -0.000236875,
+      0.000236875
+     ],
+     "wall_y": [
+      -0.000136875,
+      0.000136875
+     ],
+     "lid_z": 0.000161875,
+     "nz": 15,
+     "arm_outer": 1.5000000000000026e-05,
+     "arm_inner": 1.4999999999999999e-05,
+     "build_seconds": 0.03449106216430664,
+     "L_dut": 7.524378051354191e-11,
+     "seconds": 8.229228019714355
+    },
+    "6": {
+     "kind": "bar",
+     "div": 1.0,
+     "base_dx": 1e-05,
+     "pad_cells": 6,
+     "shape": [
+      35,
+      15,
+      17
+     ],
+     "n_unknowns": 29592,
+     "wall_distance": 0.00032171874999999996,
+     "wall_x": [
+      -0.00042671874999999996,
+      0.00042671874999999996
+     ],
+     "wall_y": [
+      -0.0003267187500000001,
+      0.0003267187500000001
+     ],
+     "lid_z": 0.0003517187499999999,
+     "nz": 17,
+     "arm_outer": 1.5000000000000026e-05,
+     "arm_inner": 1.4999999999999999e-05,
+     "build_seconds": 0.02627110481262207,
+     "L_dut": 7.620059053903182e-11,
+     "seconds": 24.3492648601532
+    },
+    "8": {
+     "kind": "bar",
+     "div": 1.0,
+     "base_dx": 1e-05,
+     "pad_cells": 8,
+     "shape": [
+      39,
+      19,
+      19
+     ],
+     "n_unknowns": 46000,
+     "wall_distance": 0.0007488671874999998,
+     "wall_x": [
+      -0.0008538671874999998,
+      0.0008538671874999998
+     ],
+     "wall_y": [
+      -0.0007538671875000003,
+      0.0007538671875000003
+     ],
+     "lid_z": 0.0007788671874999997,
+     "nz": 19,
+     "arm_outer": 1.5000000000000026e-05,
+     "arm_inner": 1.4999999999999999e-05,
+     "build_seconds": 0.04173898696899414,
+     "L_dut": 7.630615386963176e-11,
+     "seconds": 67.69098663330078
+    }
+   },
+   "2": {
+    "4": {
+     "kind": "bar",
+     "div": 2.0,
+     "base_dx": 5e-06,
+     "pad_cells": 4,
+     "shape": [
+      54,
+      14,
+      15
+     ],
+     "n_unknowns": 37655,
+     "wall_distance": 7.093749999999687e-05,
+     "wall_x": [
+      -0.0001759375,
+      0.00017593749999999687
+     ],
+     "wall_y": [
+      -7.593750000000002e-05,
+      7.59375e-05
+     ],
+     "lid_z": 0.000161875,
+     "nz": 15,
+     "arm_outer": 9.999999999999796e-06,
+     "arm_inner": 9.999999999999999e-06,
+     "build_seconds": 0.10557317733764648,
+     "L_dut": 8.83117195211463e-11,
+     "seconds": 27.546363830566406
+    },
+    "6": {
+     "kind": "bar",
+     "div": 2.0,
+     "base_dx": 5e-06,
+     "pad_cells": 6,
+     "shape": [
+      58,
+      18,
+      17
+     ],
+     "n_unknowns": 58009,
+     "wall_distance": 0.00016585937499999197,
+     "wall_x": [
+      -0.00027085937499999994,
+      0.00027085937499999197
+     ],
+     "wall_y": [
+      -0.00017085937500000006,
+      0.00017085937499999998
+     ],
+     "lid_z": 0.0003517187499999999,
+     "nz": 17,
+     "arm_outer": 9.999999999999796e-06,
+     "arm_inner": 9.999999999999999e-06,
+     "build_seconds": 0.05717921257019043,
+     "L_dut": 9.098213144313509e-11,
+     "seconds": 77.04904007911682
+    },
+    "8": {
+     "kind": "bar",
+     "div": 2.0,
+     "base_dx": 5e-06,
+     "pad_cells": 8,
+     "shape": [
+      62,
+      22,
+      19
+     ],
+     "n_unknowns": 83771,
+     "wall_distance": 0.00037943359374998097,
+     "wall_x": [
+      -0.0004844335937499999,
+      0.000484433593749981
+     ],
+     "wall_y": [
+      -0.00038443359375000017,
+      0.0003844335937499999
+     ],
+     "lid_z": 0.0007788671874999997,
+     "nz": 19,
+     "arm_outer": 9.999999999999796e-06,
+     "arm_inner": 9.999999999999999e-06,
+     "build_seconds": 0.14643311500549316,
+     "L_dut": 9.138576442180636e-11,
+     "seconds": 184.07298874855042
+    }
+   },
+   "3": {
+    "4": {
+     "kind": "bar",
+     "div": 3.0,
+     "base_dx": 3.3333333333333337e-06,
+     "pad_cells": 4,
+     "shape": [
+      77,
+      17,
+      15
+     ],
+     "n_unknowns": 64452,
+     "wall_distance": 5.062499999999997e-05,
+     "wall_x": [
+      -0.00015562500000000006,
+      0.00015562500000000285
+     ],
+     "wall_y": [
+      -5.562500000000001e-05,
+      5.562499999999997e-05
+     ],
+     "lid_z": 0.000161875,
+     "nz": 15,
+     "arm_outer": 8.333333333333513e-06,
+     "arm_inner": 8.333333333333337e-06,
+     "build_seconds": 0.1396498680114746,
+     "L_dut": 9.020743543109499e-11,
+     "seconds": 64.50866889953613
+    },
+    "6": {
+     "kind": "bar",
+     "div": 3.0,
+     "base_dx": 3.3333333333333337e-06,
+     "pad_cells": 6,
+     "shape": [
+      81,
+      21,
+      17
+     ],
+     "n_unknowns": 93740,
+     "wall_distance": 0.00011390624999999993,
+     "wall_x": [
+      -0.00021890625000000013,
+      0.00021890625000000732
+     ],
+     "wall_y": [
+      -0.00011890625000000002,
+      0.00011890624999999993
+     ],
+     "lid_z": 0.0003517187499999999,
+     "nz": 17,
+     "arm_outer": 8.333333333333513e-06,
+     "arm_inner": 8.333333333333337e-06,
+     "build_seconds": 0.0846109390258789,
+     "L_dut": 9.491008830211858e-11,
+     "seconds": 142.4510841369629
+    }
+   }
+  }
+ },
+ "skipped": {
+  "bar_W3_pad8": {
+   "n_unknowns": 129684,
+   "shape": [
+    85,
+    25,
+    19
+   ],
+   "n_max": 110000,
+   "why": "above the single-solve cap (see N_MAX in the module doc)"
+  },
+  "bend_W3_pad6": {
+   "n_unknowns": 141440,
+   "shape": [
+    51,
+    51,
+    17
+   ],
+   "n_max": 110000,
+   "why": "above the single-solve cap (see N_MAX in the module doc)"
+  },
+  "bend_W3_pad8": {
+   "n_unknowns": 182784,
+   "shape": [
+    55,
+    55,
+    19
+   ],
+   "n_max": 110000,
+   "why": "above the single-solve cap (see N_MAX in the module doc)"
+  }
+ },
+ "corner_count": {
+  "fixture": {
+   "n_turns": 2,
+   "r_out": 5.2e-05,
+   "spacing": 1e-05,
+   "width": 1e-05,
+   "lead": 1.5e-05
+  },
+  "n_centreline_points": 11,
+  "n_strip_segments": 10,
+  "segment_lengths_um": [
+   15.000000000000005,
+   94.0,
+   94.0,
+   94.0,
+   74.0,
+   74.0,
+   53.99999999999999,
+   53.99999999999999,
+   33.999999999999986,
+   15.0
+  ],
+  "strip_centreline_length": 0.0006019999999999999,
+  "underpass_length": 5.000000000000001e-05,
+  "joints": [
+   {
+    "joint": 0,
+    "at": [
+     4.7e-05,
+     -4.7e-05
+    ],
+    "dir_in": [
+     0.0
+    ],
+    "dot": 1.0,
+    "sense": "cw",
+    "kind": "collinear"
+   },
+   {
+    "joint": 1,
+    "at": [
+     4.7e-05,
+     4.7e-05
+    ],
+    "dir_in": [
+     0.0
+    ],
+    "dot": 0.0,
+    "sense": "ccw",
+    "kind": "right_angle"
+   },
+   {
+    "joint": 2,
+    "at": [
+     -4.7e-05,
+     4.7e-05
+    ],
+    "dir_in": [
+     -1.0
+    ],
+    "dot": 0.0,
+    "sense": "ccw",
+    "kind": "right_angle"
+   },
+   {
+    "joint": 3,
+    "at": [
+     -4.7e-05,
+     -4.7e-05
+    ],
+    "dir_in": [
+     0.0
+    ],
+    "dot": 0.0,
+    "sense": "ccw",
+    "kind": "right_angle"
+   },
+   {
+    "joint": 4,
+    "at": [
+     2.6999999999999996e-05,
+     -4.7e-05
+    ],
+    "dir_in": [
+     1.0
+    ],
+    "dot": 0.0,
+    "sense": "ccw",
+    "kind": "right_angle"
+   },
+   {
+    "joint": 5,
+    "at": [
+     2.6999999999999996e-05,
+     2.6999999999999996e-05
+    ],
+    "dir_in": [
+     0.0
+    ],
+    "dot": 0.0,
+    "sense": "ccw",
+    "kind": "right_angle"
+   },
+   {
+    "joint": 6,
+    "at": [
+     -2.6999999999999996e-05,
+     2.6999999999999996e-05
+    ],
+    "dir_in": [
+     -1.0
+    ],
+    "dot": 0.0,
+    "sense": "ccw",
+    "kind": "right_angle"
+   },
+   {
+    "joint": 7,
+    "at": [
+     -2.6999999999999996e-05,
+     -2.6999999999999996e-05
+    ],
+    "dir_in": [
+     0.0
+    ],
+    "dot": 0.0,
+    "sense": "ccw",
+    "kind": "right_angle"
+   },
+   {
+    "joint": 8,
+    "at": [
+     6.999999999999994e-06,
+     -2.6999999999999996e-05
+    ],
+    "dir_in": [
+     1.0
+    ],
+    "dot": 0.0,
+    "sense": "ccw",
+    "kind": "right_angle"
+   }
+  ],
+  "n_right_angle": 8,
+  "n_collinear": 1,
+  "n_reversal": 0,
+  "turns_times_four": 8,
+  "underpass_transition": {
+   "kind": "via, 180-degree in-plane reversal onto the lower metal",
+   "right_angles": 0
+  },
+  "accounting": "4 * n_turns = 8 sides give 8 - 1 = 7 interior joints between sides, all right angles; + 1 right angle where the last side meets the inner extension; + 0 for the lead/side-0 joint (collinear by construction) and + 0 for the strip-to-underpass via (a 180-degree reversal, not a right angle) = 8",
+  "n_corners": 8
+ },
+ "area_gate": {
+  "l1": 0.0001,
+  "l2": 0.0001,
+  "width": 1e-05,
+  "drawn_polygon_area": 2.0999999999999994e-09,
+  "drawn_over_expected_minus_1": -4.440892098500626e-16,
+  "footprint_over_expected_minus_1": [
+   4.440892098500626e-16,
+   4.440892098500626e-16
+  ],
+  "deembedded_area_expected": 2e-09,
+  "drawn_centreline_length": 0.00021,
+  "greenhouse": {
+   "sum_of_areas": 2e-09,
+   "union_area": 1.9749999999999995e-09,
+   "sum_over_expected_minus_1": 0.0,
+   "union_over_expected_minus_1": -0.012500000000000289,
+   "union_over_sum_minus_1": -0.012500000000000289
+  },
+  "area_exact": {
+   "sum_of_areas": 1.9999999999999997e-09,
+   "union_area": 1.9999999999999997e-09,
+   "sum_over_expected_minus_1": -2.220446049250313e-16,
+   "union_over_expected_minus_1": -2.220446049250313e-16,
+   "union_over_sum_minus_1": 0.0
+  },
+  "passed": true
+ },
+ "seconds": 1.987001895904541,
+ "wall_ladder": {
+  "bend": {
+   "1": {
+    "pad_cells": [
+     4,
+     6,
+     8
+    ],
+    "wall_distance": [
+     0.00013187500000000005,
+     0.00032171875000000023,
+     0.0007488671875000005
+    ],
+    "L_dut": [
+     6.854808598363469e-11,
+     6.90199519295711e-11,
+     6.90700677755954e-11
+    ],
+    "n_unknowns": [
+     22044,
+     34892,
+     51900
+    ],
+    "seconds": [
+     17.87569308280945,
+     46.79079294204712,
+     97.79145169258118
+    ],
+    "L_pad4": 6.854808598363469e-11,
+    "n_pad_points": 3,
+    "three_point": true,
+    "wall_richardson": {
+     "h": [
+      7582.93838862559,
+      3108.305002428361,
+      1335.3502686349163
+     ],
+     "values": [
+      6.854808598363469e-11,
+      6.90199519295711e-11,
+      6.90700677755954e-11
+     ],
+     "observed_order": 2.497369221799752,
+     "estimates": {
+      "p1_finest_pair": 6.910781392171851e-11,
+      "p2_finest_pair": 6.908141076313398e-11,
+      "observed_order": 6.907698208463337e-11
+     },
+     "range": [
+      6.907698208463337e-11,
+      6.910781392171851e-11
+     ]
+    },
+    "L_wall_extrapolated": 6.909239800317594e-11,
+    "L_wall_extrapolated_2pt": 6.923149142600712e-11,
+    "rel_pad4": 0.00794058669517339,
+    "extrapolation_uncertainty": 0.0020131508943252996,
+    "uncertainty_abs": 1.390934228311792e-13
+   },
+   "2": {
+    "pad_cells": [
+     4,
+     6,
+     8
+    ],
+    "wall_distance": [
+     7.093749999999998e-05,
+     0.00016585937499999996,
+     0.0003794335937499999
+    ],
+    "L_dut": [
+     8.247354658892365e-11,
+     8.367261803631002e-11,
+     8.384515924244774e-11
+    ],
+    "n_unknowns": [
+     56455,
+     79209,
+     107371
+    ],
+    "seconds": [
+     115.06422519683838,
+     238.78183507919312,
+     466.22141003608704
+    ],
+    "L_pad4": 8.247354658892365e-11,
+    "n_pad_points": 3,
+    "three_point": true,
+    "wall_richardson": {
+     "h": [
+      14096.916299559474,
+      6029.203956665098,
+      2635.507283677357
+     ],
+     "values": [
+      8.247354658892365e-11,
+      8.367261803631002e-11,
+      8.384515924244774e-11
+     ],
+     "observed_order": 2.2723564198830664,
+     "estimates": {
+      "p1_finest_pair": 8.397915283389919e-11,
+      "p2_finest_pair": 8.388591548653261e-11,
+      "observed_order": 8.387621111198791e-11
+     },
+     "range": [
+      8.387621111198791e-11,
+      8.397915283389919e-11
+     ]
+    },
+    "L_wall_extrapolated": 8.392768197294355e-11,
+    "L_wall_extrapolated_2pt": 8.425488839318194e-11,
+    "rel_pad4": 0.017631536949269444,
+    "extrapolation_uncertainty": 0.0038986710051620577,
+    "uncertainty_abs": 3.2720642023838583e-13
+   }
+  },
+  "bar": {
+   "1": {
+    "pad_cells": [
+     4,
+     6,
+     8
+    ],
+    "wall_distance": [
+     0.000131875,
+     0.00032171874999999996,
+     0.0007488671874999998
+    ],
+    "L_dut": [
+     7.524378051354191e-11,
+     7.620059053903182e-11,
+     7.630615386963176e-11
+    ],
+    "n_unknowns": [
+     17344,
+     29592,
+     46000
+    ],
+    "seconds": [
+     8.229228019714355,
+     24.3492648601532,
+     67.69098663330078
+    ],
+    "L_pad4": 7.524378051354191e-11,
+    "n_pad_points": 3,
+    "three_point": true,
+    "wall_richardson": {
+     "h": [
+      7582.938388625593,
+      3108.305002428364,
+      1335.3502686349177
+     ],
+     "values": [
+      7.524378051354191e-11,
+      7.620059053903182e-11,
+      7.630615386963176e-11
+     ],
+     "observed_order": 2.4542593368185246,
+     "estimates": {
+      "p1_finest_pair": 7.638566183404155e-11,
+      "p2_finest_pair": 7.633004658298525e-11,
+      "observed_order": 7.632133602295421e-11
+     },
+     "range": [
+      7.632133602295421e-11,
+      7.638566183404155e-11
+     ]
+    },
+    "L_wall_extrapolated": 7.635349892849787e-11,
+    "L_wall_extrapolated_2pt": 7.662953251443842e-11,
+    "rel_pad4": 0.014748307532955973,
+    "extrapolation_uncertainty": 0.0036152054563871605,
+    "uncertainty_abs": 2.760335859405493e-13
+   },
+   "2": {
+    "pad_cells": [
+     4,
+     6,
+     8
+    ],
+    "wall_distance": [
+     7.093749999999687e-05,
+     0.00016585937499999197,
+     0.00037943359374998097
+    ],
+    "L_dut": [
+     8.83117195211463e-11,
+     9.098213144313509e-11,
+     9.138576442180636e-11
+    ],
+    "n_unknowns": [
+     37655,
+     58009,
+     83771
+    ],
+    "seconds": [
+     27.546363830566406,
+     77.04904007911682,
+     184.07298874855042
+    ],
+    "L_pad4": 8.83117195211463e-11,
+    "n_pad_points": 3,
+    "three_point": true,
+    "wall_richardson": {
+     "h": [
+      14096.916299560095,
+      6029.203956665388,
+      2635.5072836774884
+     ],
+     "values": [
+      8.83117195211463e-11,
+      9.098213144313509e-11,
+      9.138576442180636e-11
+     ],
+     "observed_order": 2.2141193806529857,
+     "estimates": {
+      "p1_finest_pair": 9.16992213266876e-11,
+      "p2_finest_pair": 9.148110723624282e-11,
+      "observed_order": 9.146267533239759e-11
+     },
+     "range": [
+      9.146267533239759e-11,
+      9.16992213266876e-11
+     ]
+    },
+    "L_wall_extrapolated": 9.158094832954259e-11,
+    "L_wall_extrapolated_2pt": 9.227888628305785e-11,
+    "rel_pad4": 0.03701919548303523,
+    "extrapolation_uncertainty": 0.007620995045867218,
+    "uncertainty_abs": 6.979379535152609e-13
+   },
+   "3": {
+    "pad_cells": [
+     4,
+     6
+    ],
+    "wall_distance": [
+     5.062499999999997e-05,
+     0.00011390624999999993
+    ],
+    "L_dut": [
+     9.020743543109499e-11,
+     9.491008830211858e-11
+    ],
+    "n_unknowns": [
+     64452,
+     93740
+    ],
+    "seconds": [
+     64.50866889953613,
+     142.4510841369629
+    ],
+    "L_pad4": 9.020743543109499e-11,
+    "n_pad_points": 2,
+    "three_point": false,
+    "wall_richardson": {
+     "h": [
+      19753.086419753097,
+      8779.149519890267
+     ],
+     "values": [
+      9.020743543109499e-11,
+      9.491008830211858e-11
+     ],
+     "observed_order": null,
+     "estimates": {
+      "p1_finest_pair": 9.867221059893744e-11,
+      "p2_finest_pair": 9.606766439344746e-11
+     },
+     "range": [
+      9.606766439344746e-11,
+      9.867221059893744e-11
+     ]
+    },
+    "L_wall_extrapolated": 9.736993749619245e-11,
+    "L_wall_extrapolated_2pt": 9.736993749619245e-11,
+    "rel_pad4": 0.07940035132213175,
+    "extrapolation_uncertainty": 0.0,
+    "uncertainty_abs": 0.0
+   }
+  }
+ },
+ "excess": {
+  "levels": {
+   "1": {
+    "div": 1.0,
+    "base_dx": 1e-05,
+    "cells_across_width": 1.0,
+    "n_unknowns": {
+     "bend": 22044,
+     "bar": 17344
+    },
+    "seconds_pad4": {
+     "bend": 17.87569308280945,
+     "bar": 8.229228019714355
+    },
+    "referee": {
+     "bend": {
+      "kind": "bend",
+      "arm_outer": 1.5000000000000005e-05,
+      "arm_inner": 1.4999999999999999e-05,
+      "L_strip": 1.0183100872683462e-10,
+      "L_strip_self": 1.3386849431359125e-10,
+      "L_strip_mutual": 0.0,
+      "L_strip_image": -3.203748558675663e-11,
+      "L_bridge": 8.935744619121394e-12,
+      "L_deembedded": 9.289526410771323e-11,
+      "worst_error": 7.464139388109336e-13
+     },
+     "bar": {
+      "kind": "bar",
+      "arm_outer": 1.5000000000000026e-05,
+      "arm_inner": 1.4999999999999999e-05,
+      "L_strip": 1.0960930232416034e-10,
+      "L_strip_self": 1.6085787696431404e-10,
+      "L_strip_mutual": 0.0,
+      "L_strip_image": -5.1248574640153695e-11,
+      "L_bridge": 8.920635855566564e-12,
+      "L_deembedded": 1.0068866646859378e-10,
+      "worst_error": 1.0953718754761103e-08
+     }
+    },
+    "L_referee": {
+     "bend": 9.289526410771323e-11,
+     "bar": 1.0068866646859378e-10
+    },
+    "excess_referee": -7.793402360880554e-12,
+    "L_pad4": {
+     "bend": 6.854808598363469e-11,
+     "bar": 7.524378051354191e-11
+    },
+    "excess_fdfd_pad4": -6.695694529907225e-12,
+    "gap_pad4": {
+     "bend": -0.2620927811330369,
+     "bar": -0.2527085405683517
+    },
+    "discrepancy_pad4": 1.0977078309733286e-12,
+    "wall_ladder_points": [
+     3,
+     3
+    ],
+    "L_wall_corrected": {
+     "bend": 6.909239800317594e-11,
+     "bar": 7.635349892849787e-11
+    },
+    "wall_correction": {
+     "bend": 0.00794058669517339,
+     "bar": 0.014748307532955973
+    },
+    "gap_wall_corrected": {
+     "bend": -0.25623336488862947,
+     "bar": -0.24168725630790222
+    },
+    "excess_fdfd": -7.261100925321932e-12,
+    "discrepancy": 5.323014355586213e-13,
+    "uncertainty": 4.151270087717285e-13,
+    "admitted": true
+   },
+   "2": {
+    "div": 2.0,
+    "base_dx": 5e-06,
+    "cells_across_width": 2.0,
+    "n_unknowns": {
+     "bend": 56455,
+     "bar": 37655
+    },
+    "seconds_pad4": {
+     "bend": 115.06422519683838,
+     "bar": 27.546363830566406
+    },
+    "referee": {
+     "bend": {
+      "kind": "bend",
+      "arm_outer": 1.0000000000000006e-05,
+      "arm_inner": 9.999999999999999e-06,
+      "L_strip": 1.0183100872683462e-10,
+      "L_strip_self": 1.3386849431359125e-10,
+      "L_strip_mutual": 0.0,
+      "L_strip_image": -3.203748558675663e-11,
+      "L_bridge": 4.8941131413254836e-12,
+      "L_deembedded": 9.693689558550913e-11,
+      "worst_error": 7.464139388109336e-13
+     },
+     "bar": {
+      "kind": "bar",
+      "arm_outer": 9.999999999999796e-06,
+      "arm_inner": 9.999999999999999e-06,
+      "L_strip": 1.0960930232416034e-10,
+      "L_strip_self": 1.6085787696431404e-10,
+      "L_strip_mutual": 0.0,
+      "L_strip_image": -5.1248574640153695e-11,
+      "L_bridge": 4.88782325216062e-12,
+      "L_deembedded": 1.0472147907199972e-10,
+      "worst_error": 2.532771979794267e-08
+     }
+    },
+    "L_referee": {
+     "bend": 9.693689558550913e-11,
+     "bar": 1.0472147907199972e-10
+    },
+    "excess_referee": -7.784583486490587e-12,
+    "L_pad4": {
+     "bend": 8.247354658892365e-11,
+     "bar": 8.83117195211463e-11
+    },
+    "excess_fdfd_pad4": -5.838172932222644e-12,
+    "gap_pad4": {
+     "bend": -0.1492037568278345,
+     "bar": -0.15669908118439713
+    },
+    "discrepancy_pad4": 1.946410554267943e-12,
+    "wall_ladder_points": [
+     3,
+     3
+    ],
+    "L_wall_corrected": {
+     "bend": 8.392768197294355e-11,
+     "bar": 9.158094832954259e-11
+    },
+    "wall_correction": {
+     "bend": 0.017631536949269444,
+     "bar": 0.03701919548303523
+    },
+    "gap_wall_corrected": {
+     "bend": -0.1342029114300448,
+     "bar": -0.12548075961973904
+    },
+    "excess_fdfd": -7.653266356599041e-12,
+    "discrepancy": 1.3131712989154613e-13,
+    "uncertainty": 1.0251443737536467e-12,
+    "admitted": true
+   },
+   "3": {
+    "div": 3.0,
+    "base_dx": 3.3333333333333337e-06,
+    "cells_across_width": 3.0,
+    "n_unknowns": {
+     "bend": 106752,
+     "bar": 64452
+    },
+    "seconds_pad4": {
+     "bend": 323.9105808734894,
+     "bar": 64.50866889953613
+    },
+    "referee": {
+     "bend": {
+      "kind": "bend",
+      "arm_outer": 8.333333333333303e-06,
+      "arm_inner": 8.33333333333333e-06,
+      "L_strip": 1.0183100872683462e-10,
+      "L_strip_self": 1.3386849431359125e-10,
+      "L_strip_mutual": 0.0,
+      "L_strip_image": -3.203748558675663e-11,
+      "L_bridge": 3.6975639125123646e-12,
+      "L_deembedded": 9.813344481432226e-11,
+      "worst_error": 7.464139388109336e-13
+     },
+     "bar": {
+      "kind": "bar",
+      "arm_outer": 8.333333333333513e-06,
+      "arm_inner": 8.333333333333337e-06,
+      "L_strip": 1.0960930232416034e-10,
+      "L_strip_self": 1.6085787696431404e-10,
+      "L_strip_mutual": 0.0,
+      "L_strip_image": -5.1248574640153695e-11,
+      "L_bridge": 3.693292535481342e-12,
+      "L_deembedded": 1.05916009788679e-10,
+      "worst_error": 3.679709019304529e-08
+     }
+    },
+    "L_referee": {
+     "bend": 9.813344481432226e-11,
+     "bar": 1.05916009788679e-10
+    },
+    "excess_referee": -7.78256497435674e-12,
+    "L_pad4": {
+     "bend": 8.564676022603152e-11,
+     "bar": 9.020743543109499e-11
+    },
+    "excess_fdfd_pad4": -4.560675205063467e-12,
+    "gap_pad4": {
+     "bend": -0.127241885902576,
+     "bar": -0.14831161397531278
+    },
+    "discrepancy_pad4": 3.2218897692932737e-12,
+    "wall_ladder_points": [
+     0,
+     2
+    ],
+    "admitted": false
+   }
+  },
+  "referee_mechanism": {
+   "bend": {
+    "total": 1.0183100872683462e-10,
+    "self": 1.3386849431359125e-10,
+    "mutual": 0.0,
+    "image": -3.203748558675663e-11
+   },
+   "bar": {
+    "total": 1.0960930232416034e-10,
+    "self": 1.6085787696431404e-10,
+    "mutual": 0.0,
+    "image": -5.1248574640153695e-11
+   },
+   "self_plus_mutual_difference": -2.6989382650722794e-11,
+   "image_difference": 1.9211089053397067e-11,
+   "excess_strip_only": -7.77829359732572e-12,
+   "note": "bend mutual is EXACTLY zero (perpendicular bars); the bar's single self term contains the collinear mutual of its two halves"
+  },
+  "admitted_levels": [
+   "W/1",
+   "W/2"
+  ],
+  "finest_admitted": {
+   "div": 2.0,
+   "discrepancy": 1.3131712989154613e-13,
+   "uncertainty": 1.0251443737536467e-12,
+   "excess_fdfd": -7.653266356599041e-12,
+   "excess_referee": -7.784583486490587e-12
+  }
+ },
+ "arm_sensitivity": {
+  "1": {
+   "div": 1.0,
+   "base_dx": 1e-05,
+   "per_arm": {
+    "W/2": {
+     "arm": 5e-06,
+     "bend": 1.0019761351754866e-10,
+     "bar": 1.0797737661772058e-10,
+     "excess": -7.779763100171918e-12
+    },
+    "W/2+dx": {
+     "arm": 1.5000000000000002e-05,
+     "bend": 9.289526410771321e-11,
+     "bar": 1.0068866647310475e-10,
+     "excess": -7.793402365391531e-12
+    },
+    "W/2+2dx": {
+     "arm": 2.5e-05,
+     "bend": 8.353116037164074e-11,
+     "bar": 9.135671838112175e-11,
+     "excess": -7.82555800948101e-12
+    }
+   },
+   "strip_only": {
+    "bend": 1.0183100872683462e-10,
+    "bar": 1.0960930232416034e-10,
+    "excess": -7.77829359732572e-12
+   },
+   "excess_spread_abs": 4.726441215528991e-14,
+   "excess_spread_rel": 0.0060646698244631704
+  },
+  "2": {
+   "div": 2.0,
+   "base_dx": 5e-06,
+   "per_arm": {
+    "W/2": {
+     "arm": 5e-06,
+     "bend": 1.0019761351754866e-10,
+     "bar": 1.0797737661772058e-10,
+     "excess": -7.779763100171918e-12
+    },
+    "W/2+dx": {
+     "arm": 1e-05,
+     "bend": 9.693689558550913e-11,
+     "bar": 1.0472147907114057e-10,
+     "excess": -7.784583485631431e-12
+    },
+    "W/2+2dx": {
+     "arm": 1.5000000000000002e-05,
+     "bend": 9.289526410771321e-11,
+     "bar": 1.0068866647310475e-10,
+     "excess": -7.793402365391531e-12
+    }
+   },
+   "strip_only": {
+    "bend": 1.0183100872683462e-10,
+    "bar": 1.0960930232416034e-10,
+    "excess": -7.77829359732572e-12
+   },
+   "excess_spread_abs": 1.5108768065811187e-14,
+   "excess_spread_rel": 0.0019408576057663887
+  },
+  "3": {
+   "div": 3.0,
+   "base_dx": 3.3333333333333337e-06,
+   "per_arm": {
+    "W/2": {
+     "arm": 5e-06,
+     "bend": 1.0019761351754866e-10,
+     "bar": 1.0797737661772058e-10,
+     "excess": -7.779763100171918e-12
+    },
+    "W/2+dx": {
+     "arm": 8.333333333333334e-06,
+     "bend": 9.813344481432224e-11,
+     "bar": 1.059160097904739e-10,
+     "excess": -7.782564976151658e-12
+    },
+    "W/2+2dx": {
+     "arm": 1.1666666666666668e-05,
+     "bend": 9.565667961154495e-11,
+     "bar": 1.0344372583709544e-10,
+     "excess": -7.787046225550485e-12
+    }
+   },
+   "strip_only": {
+    "bend": 1.0183100872683462e-10,
+    "bar": 1.0960930232416034e-10,
+    "excess": -7.77829359732572e-12
+   },
+   "excess_spread_abs": 8.752628224765071e-15,
+   "excess_spread_rel": 0.001124645698633549
+  }
+ },
+ "attribution": {
+  "n_corners": 8,
+  "corner_count_accounting": "4 * n_turns = 8 sides give 8 - 1 = 7 interior joints between sides, all right angles; + 1 right angle where the last side meets the inner extension; + 0 for the lead/side-0 joint (collinear by construction) and + 0 for the strip-to-underpass via (a 180-degree reversal, not a right angle) = 8",
+  "spiral_referee_deembedded": 3.3305510896906523e-10,
+  "spiral_both_corrections_rel": [
+   -0.07682185547554532,
+   -0.050649408342909985
+  ],
+  "spiral_deficit_range": [
+   1.6869044214866568e-11,
+   2.5585911446613528e-11
+  ],
+  "bar_per_unit_length_ratio_3cells": [
+   0.9746,
+   0.9808
+  ],
+  "bar_explained_range": [
+   6.3946580922060505e-12,
+   8.45959976781425e-12
+  ],
+  "remainder_range": [
+   8.409444447052318e-12,
+   1.919125335440748e-11
+  ],
+  "remainder_width": 1.078180890735516e-11,
+  "finest_admitted": {
+   "div": 2.0,
+   "cells_across_width": 2.0,
+   "per_corner_discrepancy": 1.3131712989154613e-13,
+   "per_corner_uncertainty": 1.0251443737536467e-12,
+   "per_corner_uncertainty_dominated": true,
+   "corners_total": 1.050537039132369e-12,
+   "corners_total_uncertainty": 8.201154990029174e-12,
+   "corners_total_over_remainder": [
+    0.054740408025049696,
+    0.12492347690109347
+   ],
+   "explains_remainder_within_uncertainty": true,
+   "explains_remainder_central_value": false,
+   "overlap_range": [
+    8.409444447052318e-12,
+    9.251692029161543e-12
+   ],
+   "overlap_width_over_remainder_width": 0.07811746519961582,
+   "fraction_of_spiral_referee": 0.0031542438798917954
+  },
+  "finest_raw_pad4": {
+   "div": 3.0,
+   "cells_across_width": 3.0,
+   "per_corner_discrepancy": 3.2218897692932737e-12,
+   "per_corner_uncertainty": 0.0,
+   "per_corner_uncertainty_dominated": false,
+   "corners_total": 2.577511815434619e-11,
+   "corners_total_uncertainty": 0.0,
+   "corners_total_over_remainder": [
+    1.3430659102015687,
+    3.065020325258334
+   ],
+   "explains_remainder_within_uncertainty": false,
+   "explains_remainder_central_value": false,
+   "overlap_range": null,
+   "overlap_width_over_remainder_width": 0.0,
+   "fraction_of_spiral_referee": 0.07738994977176654
+  },
+  "passed": true,
+  "statement": "8 right-angle corners x (+0.1313 +- 1.0251) pH per corner = +1.051 +- 8.201 pH, at 2 cells across W, against a remainder of [8.41, 19.19] pH: the interval reaches it, so K5 passes, but only through the uncertainty -- the central value is 5.5%-12.5% of the remainder"
+ },
+ "gradient": {
+  "l1": 0.0001,
+  "l2": 0.0001,
+  "width": 1e-05,
+  "div": 1.0,
+  "n_unknowns": 22044,
+  "params": [
+   "l1",
+   "l2",
+   "width"
+  ],
+  "L_dut": 6.854808589099431e-11,
+  "grad": [
+   4.514578615018565e-07,
+   3.543001634582829e-07,
+   -2.2004125698699718e-06
+  ],
+  "value_and_grad_seconds": 22.70449686050415,
+  "fd_step_rel": 0.01,
+  "fd_params": [
+   "l1",
+   "width"
+  ],
+  "fd4": [
+   4.514577897551628e-07,
+   -2.2004126640598237e-06
+  ],
+  "fd_seconds": 134.06272411346436,
+  "grad_checked": [
+   4.514578615018565e-07,
+   -2.2004125698699718e-06
+  ],
+  "grad_vs_fd_rel": [
+   1.5892226318829206e-07,
+   4.280553984935645e-08
+  ]
+ },
+ "seconds_measuring": 2060.4852051734924,
+ "gates": {
+  "K1": {
+   "what": "every level that enters a gate has a full pad_cells 4/6/8 ladder on BOTH legs; levels with a shorter ladder are recorded, labelled *_two_point_EXCLUDED and kept out of every gate",
+   "wall_ladder_points_per_level": {
+    "W/1": [
+     3,
+     3
+    ],
+    "W/2": [
+     3,
+     3
+    ],
+    "W/3": [
+     0,
+     2
+    ]
+   },
+   "admitted_levels": [
+    "W/1",
+    "W/2"
+   ],
+   "excluded_levels": [
+    "W/3"
+   ],
+   "n_max": 110000,
+   "why_excluded": {
+    "bar_W3_pad8": {
+     "n_unknowns": 129684,
+     "shape": [
+      85,
+      25,
+      19
+     ],
+     "n_max": 110000,
+     "why": "above the single-solve cap (see N_MAX in the module doc)"
+    },
+    "bend_W3_pad6": {
+     "n_unknowns": 141440,
+     "shape": [
+      51,
+      51,
+      17
+     ],
+     "n_max": 110000,
+     "why": "above the single-solve cap (see N_MAX in the module doc)"
+    },
+    "bend_W3_pad8": {
+     "n_unknowns": 182784,
+     "shape": [
+      55,
+      55,
+      19
+     ],
+     "n_max": 110000,
+     "why": "above the single-solve cap (see N_MAX in the module doc)"
+    }
+   },
+   "passed": true
+  },
+  "K2": {
+   "params": [
+    "l1",
+    "width"
+   ],
+   "grad": [
+    4.514578615018565e-07,
+    -2.2004125698699718e-06
+   ],
+   "fd4": [
+    4.514577897551628e-07,
+    -2.2004126640598237e-06
+   ],
+   "grad_vs_fd_rel": [
+    1.5892226318829206e-07,
+    4.280553984935645e-08
+   ],
+   "fd_step_rel": 0.01,
+   "div": 1.0,
+   "n_unknowns": 22044,
+   "worst": 1.5892226318829206e-07,
+   "tolerance": 0.0001,
+   "passed": true
+  },
+  "K3": {
+   "what": "at equal total centreline length a bend has LESS mutual coupling between its halves than a straight bar, so the excess must be NEGATIVE in both tools, at every level",
+   "per_level": {
+    "W/1": {
+     "excess_fdfd": -7.261100925321932e-12,
+     "excess_referee": -7.793402360880554e-12,
+     "sign_fdfd": -1,
+     "sign_referee": -1,
+     "agrees": true,
+     "ratio": 0.9316984532672739
+    },
+    "W/2": {
+     "excess_fdfd": -7.653266356599041e-12,
+     "excess_referee": -7.784583486490587e-12,
+     "sign_fdfd": -1,
+     "sign_referee": -1,
+     "agrees": true,
+     "ratio": 0.9831311296077132
+    },
+    "W/3": {
+     "excess_fdfd": -4.560675205063467e-12,
+     "excess_referee": -7.78256497435674e-12,
+     "sign_fdfd": -1,
+     "sign_referee": -1,
+     "agrees": true,
+     "ratio": 0.5860118380110825
+    }
+   },
+   "passed": true
+  },
+  "K4": {
+   "what": "|discrepancy of the corner excess| against refinement, on the admitted (3-point-ladder) levels",
+   "admitted": [
+    {
+     "div": 1.0,
+     "discrepancy": 5.323014355586213e-13,
+     "uncertainty": 4.151270087717285e-13
+    },
+    {
+     "div": 2.0,
+     "discrepancy": 1.3131712989154613e-13,
+     "uncertainty": 1.0251443737536467e-12
+    }
+   ],
+   "raw_pad4": [
+    {
+     "div": 1.0,
+     "discrepancy": 1.0977078309733286e-12
+    },
+    {
+     "div": 2.0,
+     "discrepancy": 1.946410554267943e-12
+    },
+    {
+     "div": 3.0,
+     "discrepancy": 3.2218897692932737e-12
+    }
+   ],
+   "raw_pad4_decreases": false,
+   "n_admitted": 2,
+   "passed": true
+  },
+  "K5": {
+   "n_corners": 8,
+   "corner_count_accounting": "4 * n_turns = 8 sides give 8 - 1 = 7 interior joints between sides, all right angles; + 1 right angle where the last side meets the inner extension; + 0 for the lead/side-0 joint (collinear by construction) and + 0 for the strip-to-underpass via (a 180-degree reversal, not a right angle) = 8",
+   "spiral_deficit_range": [
+    1.6869044214866568e-11,
+    2.5585911446613528e-11
+   ],
+   "bar_explained_range": [
+    6.3946580922060505e-12,
+    8.45959976781425e-12
+   ],
+   "remainder_range": [
+    8.409444447052318e-12,
+    1.919125335440748e-11
+   ],
+   "statement": "8 right-angle corners x (+0.1313 +- 1.0251) pH per corner = +1.051 +- 8.201 pH, at 2 cells across W, against a remainder of [8.41, 19.19] pH: the interval reaches it, so K5 passes, but only through the uncertainty -- the central value is 5.5%-12.5% of the remainder",
+   "passed": true,
+   "finest_admitted": {
+    "div": 2.0,
+    "cells_across_width": 2.0,
+    "per_corner_discrepancy": 1.3131712989154613e-13,
+    "per_corner_uncertainty": 1.0251443737536467e-12,
+    "per_corner_uncertainty_dominated": true,
+    "corners_total": 1.050537039132369e-12,
+    "corners_total_uncertainty": 8.201154990029174e-12,
+    "corners_total_over_remainder": [
+     0.054740408025049696,
+     0.12492347690109347
+    ],
+    "explains_remainder_within_uncertainty": true,
+    "explains_remainder_central_value": false,
+    "overlap_range": [
+     8.409444447052318e-12,
+     9.251692029161543e-12
+    ],
+    "overlap_width_over_remainder_width": 0.07811746519961582,
+    "fraction_of_spiral_referee": 0.0031542438798917954
+   },
+   "finest_raw_pad4_EXCLUDED": {
+    "div": 3.0,
+    "cells_across_width": 3.0,
+    "per_corner_discrepancy": 3.2218897692932737e-12,
+    "per_corner_uncertainty": 0.0,
+    "per_corner_uncertainty_dominated": false,
+    "corners_total": 2.577511815434619e-11,
+    "corners_total_uncertainty": 0.0,
+    "corners_total_over_remainder": [
+     1.3430659102015687,
+     3.065020325258334
+    ],
+    "explains_remainder_within_uncertainty": false,
+    "explains_remainder_central_value": false,
+    "overlap_range": null,
+    "overlap_width_over_remainder_width": 0.0,
+    "fraction_of_spiral_referee": 0.07738994977176654
+   }
+  },
+  "K_area": {
+   "what": "the area-exact corner convention: each corner square covered exactly once",
+   "checks": {
+    "l1": 0.0001,
+    "l2": 0.0001,
+    "width": 1e-05,
+    "drawn_polygon_area": 2.0999999999999994e-09,
+    "drawn_over_expected_minus_1": -4.440892098500626e-16,
+    "footprint_over_expected_minus_1": [
+     4.440892098500626e-16,
+     4.440892098500626e-16
+    ],
+    "deembedded_area_expected": 2e-09,
+    "drawn_centreline_length": 0.00021,
+    "greenhouse": {
+     "sum_of_areas": 2e-09,
+     "union_area": 1.9749999999999995e-09,
+     "sum_over_expected_minus_1": 0.0,
+     "union_over_expected_minus_1": -0.012500000000000289,
+     "union_over_sum_minus_1": -0.012500000000000289
+    },
+    "area_exact": {
+     "sum_of_areas": 1.9999999999999997e-09,
+     "union_area": 1.9999999999999997e-09,
+     "sum_over_expected_minus_1": -2.220446049250313e-16,
+     "union_over_expected_minus_1": -2.220446049250313e-16,
+     "union_over_sum_minus_1": 0.0
+    },
+    "passed": true
+   },
+   "passed": true
+  }
+ }
+}

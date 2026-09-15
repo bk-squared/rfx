@@ -1,0 +1,131 @@
+............F....................                                        [100%]
+=================================== FAILURES ===================================
+___________ test_repeated_jitted_solves_do_not_grow_the_resident_set ___________
+jax.errors.SimplifiedTraceback: For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.
+
+The above exception was the direct cause of the following exception:
+
+    @pytest.mark.usefixtures("superlu_backend")
+    def test_repeated_jitted_solves_do_not_grow_the_resident_set():
+        """Six jitted three-solve calls: growth after the second solve must be
+        under 15 % of the first solve's increment.
+    
+        The calls are driven from a WORKER thread and the cache is emptied from
+        this one, which is the design loop's situation made deterministic: under
+        ``jit`` XLA decides for itself whether to run a ``pure_callback`` on the
+        calling thread or on its pool, and it only moves off the caller's thread
+        above some program size (measured here: the same program runs on the
+        main thread at 13824 unknowns and on a pool thread at 17576). Driving it
+        from a worker pins the build thread without needing a system big enough
+        to make XLA do it, so the gate keeps its teeth in the fast lane.
+    
+        Threshold from the measurement: after the fix the growth over solves
+        2..6 is 0.000 GB here, and 0.016 % of the first increment at N = 12739
+        (0.00017 GB on 1.021 GB, validation/fdfd/memory_probe.json); with the
+        release path this module used before, the same loop here grows
+        0.21 GB per solve -- 0.842 GB over solves 2..6 against a 0.292 GB first
+        increment, a ratio of 2.89. 15 % sits two orders of magnitude above the
+        fixed behaviour and 19x below the broken one, and clears the ~0.01 GB
+        RSS jitter of a Python process on this machine.
+        """
+        import gc
+        from concurrent.futures import ThreadPoolExecutor
+        psutil = pytest.importorskip("psutil")
+        proc = psutil.Process()
+    
+        def rss_gb():
+            return proc.memory_info().rss / 2.0 ** 30
+    
+        with enable_x64():
+            rows, cols, data, n = _lap3()
+            f = _three_solve_program(rows, cols, n)
+            ls.clear_factor_cache()
+            gc.collect()
+            series = []
+            with ThreadPoolExecutor(max_workers=1) as ex:
+                base = rss_gb()
+                for _ in range(6):
+>                   ex.submit(lambda: jax.block_until_ready(f(data))).result()
+
+tests/test_fdfd_linear_solve.py:567: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/conda/lib/python3.10/concurrent/futures/_base.py:458: in result
+    return self.__get_result()
+/opt/conda/lib/python3.10/concurrent/futures/_base.py:403: in __get_result
+    raise self._exception
+/opt/conda/lib/python3.10/concurrent/futures/thread.py:58: in run
+    result = self.fn(*self.args, **self.kwargs)
+tests/test_fdfd_linear_solve.py:567: in <lambda>
+    ex.submit(lambda: jax.block_until_ready(f(data))).result()
+tests/test_fdfd_linear_solve.py:521: in three
+    return sum(sparse_solve(d * (1.0 + 1e-3 * j), rows, cols, rhs).sum()
+tests/test_fdfd_linear_solve.py:521: in <genexpr>
+    return sum(sparse_solve(d * (1.0 + 1e-3 * j), rows, cols, rhs).sum()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+data = Traced<complex64[53600]>with<DynamicJaxprTrace>
+rows = array([   0,    1,    2, ..., 7997, 7998, 7999], shape=(53600,))
+cols = array([   0,    1,    2, ..., 7996, 7997, 7998], shape=(53600,))
+b = Array([[1.+0.j, 1.+0.j],
+       [1.+0.j, 1.+0.j],
+       [1.+0.j, 1.+0.j],
+       ...,
+       [1.+0.j, 1.+0.j],
+       [1.+0.j, 1.+0.j],
+       [1.+0.j, 1.+0.j]], dtype=complex128)
+permc_spec = None, backend = None
+
+    def sparse_solve(data: jax.Array, rows: np.ndarray, cols: np.ndarray, b: jax.Array, *,
+                     permc_spec: str | None = None,
+                     backend: str | None = None) -> jax.Array:
+        """Solve ``A x = b`` for the sparse COO matrix ``(rows, cols, data)``.
+    
+        ``rows``/``cols`` are static integer NumPy arrays (the pattern);
+        ``data`` and ``b`` are JAX arrays and may be traced, jitted and
+        differentiated in either mode. ``b`` is ``(n,)`` for one right-hand side
+        or ``(n, m)`` for ``m`` of them; ``x`` has the same shape and the host
+        factorises ``A`` once for all columns. Duplicate ``(row, col)`` pairs are
+        summed, as in ``scipy.sparse``.
+    
+        ``permc_spec`` is the SuperLU column ordering, one of
+        :data:`PERMC_SPECS`. ``None`` (the default) means
+        :func:`get_default_permc_spec`, itself ``None`` = SuperLU's own COLAMD,
+        which the measurements in "Ordering" above say to keep;
+        ``"MMD_AT_PLUS_A"``, ``"MMD_ATA"``, ``"NATURAL"`` and an explicit
+        ``"COLAMD"`` are the alternatives, and :func:`default_permc_spec`
+        overrides the default for a scope. The ordering is part of the LU cache
+        key, so the forward and adjoint solve of one gradient share a
+        factorisation while two orderings of the same matrix do not collide.
+        Neither the solution nor a gradient depends on it, to roundoff. On a
+        self-contained 2-D Helmholtz system (N = 3600, 1-norm condition estimate
+        1.3e4) the four distinct orderings give fields agreeing to 3.6e-14
+        relative, the objective to 5.1e-14 and its two-parameter gradient to
+        3.9e-14; on the hplane two-iris system (N = 3619, cond ~1e12) the field
+        agrees to 6.0e-13, |S11|^2 to 4.6e-14 and d|S11|^2/dwidth to 2.9e-12.
+        Every one of those gradients matches a 4th-order central difference
+        (2.9e-8 and 3.0e-7 relative, FD4 truncation dominating). See
+        ``tests/test_fdfd_linear_solve.py``.
+    
+        ``backend`` names the sparse direct solver, one of :data:`BACKENDS`.
+        ``None`` (the default) means :func:`get_default_backend`, itself
+        ``"superlu"`` unless the environment (``RFX_FDFD_BACKEND``) or a
+        :func:`default_backend` scope says otherwise -- so the resolved default
+        is ``"superlu"`` and this argument is backward compatible. ``"cudss"``
+        (NVIDIA cuDSS via nvmath-python) and ``"cusolver"`` (cuSOLVER sparse QR
+        via cupy) factorise on the GPU; see "Backends" above for what they cost
+        and what ``permc_spec`` means there (nothing). Measured on the
+        N = 108898 spiral W/3 fixture, same ``(data, rows, cols, b)``: cuDSS and
+        SuperLU relative residuals 6.2e-14 / 1.2e-13, the two solutions differing
+        by 1.6e-11 relative, ``L_dut`` to 4.4e-15 and its three-parameter
+        gradient to 1.2e-12 -- i.e. both are at their own roundoff and neither is
+        the reference. The numbers are in
+        ``validation/fdfd/gpu_scaling.json`` under ``gates.G1``.
+        """
+        if not jax.config.read("jax_enable_x64"):
+>           raise RuntimeError(
+                "rfx.fdfd.sparse_solve needs x64: the frequency-domain systems it "
+                "targets have cond ~1e12. Enable jax_enable_x64 for this scope.")
+E           RuntimeError: rfx.fdfd.sparse_solve needs x64: the frequency-domain systems it targets have cond ~1e12. Enable jax_enable_x64 for this scope.
+
+rfx/fdfd/linear_solve.py:548: RuntimeError
+1 failed, 32 passed in 46.01s

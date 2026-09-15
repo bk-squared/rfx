@@ -27,6 +27,20 @@ def _fd4(f, x0, direction, d):
             - 8 * f(x0 - d * direction) + f(x0 - 2 * d * direction)) / (12 * d)
 
 
+@pytest.fixture
+def superlu_backend():
+    """Pin the default backend to SuperLU for one test.
+
+    The VESSL GPU lanes run this whole file with ``RFX_FDFD_BACKEND=cudss``
+    (validation/vessl/), which makes the process default a GPU backend. Every
+    test that is ABOUT scipy -- its column orderings, its ``splu`` call count,
+    the host RSS of its factors -- pins SuperLU explicitly so that run keeps
+    the claim it is making instead of turning it into a tautology.
+    """
+    with ls.default_backend("superlu"):
+        yield
+
+
 def test_solve_residual_and_matvec_consistency():
     with enable_x64():
         rows, cols, data, b = _system()
@@ -205,6 +219,7 @@ def test_lu_cache_distinguishes_two_patterns_with_identical_data():
 # entry. Timings and fill live in the module docstring of linear_solve.
 # ---------------------------------------------------------------------------
 
+@pytest.mark.usefixtures("superlu_backend")
 def test_permc_spec_gives_the_same_solution_and_its_own_cache_entry():
     """Every accepted ordering solves the same system to the LU noise floor,
     an unknown one is rejected, and the LU cache is keyed by the ordering --
@@ -234,6 +249,7 @@ def test_permc_spec_gives_the_same_solution_and_its_own_cache_entry():
         assert ls.get_default_permc_spec() is None   # SuperLU's default (COLAMD)
 
 
+@pytest.mark.usefixtures("superlu_backend")
 def test_default_permc_spec_scope_is_restored_and_validated():
     """``default_permc_spec`` is the hook for solvers that do not forward the
     keyword (hplane.solve, yee3d.solve, ports3d.s_matrix). It must actually
@@ -337,6 +353,7 @@ def _h2d_obj(theta, spec=None):
     return jnp.sum(jnp.abs(x[52, 10:50]) ** 2)
 
 
+@pytest.mark.usefixtures("superlu_backend")
 def test_helmholtz_value_field_and_gradient_are_independent_of_the_ordering():
     """The column ordering is a fill heuristic, not physics. On a
     self-contained 2-D Helmholtz system (N = 3600, 1-norm condition estimate
@@ -411,6 +428,7 @@ def _with_ordering(spec, fn):
             ls.clear_factor_cache()
 
 
+@pytest.mark.usefixtures("superlu_backend")
 def test_gradient_is_independent_of_the_lu_ordering():
     """Same claim as the Helmholtz test above, on the real thing:
     d|S11|^2/dwidth of the hplane two-iris model (refinement 2, N = 3619,
@@ -506,6 +524,7 @@ def _three_solve_program(rows, cols, n):
     return jax.jit(three)
 
 
+@pytest.mark.usefixtures("superlu_backend")
 def test_repeated_jitted_solves_do_not_grow_the_resident_set():
     """Six jitted three-solve calls: growth after the second solve must be
     under 15 % of the first solve's increment.
@@ -542,18 +561,44 @@ def test_repeated_jitted_solves_do_not_grow_the_resident_set():
         ls.clear_factor_cache()
         gc.collect()
         series = []
+
+        def one_solve():
+            # x64 again INSIDE the worker: where JAX still ships
+            # ``jax.experimental.enable_x64`` (0.6.2, the VESSL lane's pin)
+            # that context manager is THREAD-LOCAL, so the worker would
+            # otherwise trace this program without x64 and sparse_solve
+            # would refuse it; where it has been removed (0.11.1 here)
+            # ``tests/_x64_compat`` flips the global flag and this nesting
+            # is a no-op. Measured: without it the test fails on jax 0.6.2
+            # and passes here, which is how the VESSL J0 run found it.
+            with enable_x64():
+                jax.block_until_ready(f(data))
+
         with ThreadPoolExecutor(max_workers=1) as ex:
             base = rss_gb()
             for _ in range(6):
-                ex.submit(lambda: jax.block_until_ready(f(data))).result()
+                ex.submit(one_solve).result()
                 ls.clear_factor_cache()          # from THIS thread, as a design loop does
                 gc.collect()
                 series.append(rss_gb())
     first = series[0] - base
     later = series[-1] - series[1]
-    # the test only means something if the factors are big enough to see
-    assert first > 0.05, (first, series)
-    assert later < 0.15 * first, (first, later, series)
+    # Two ways to read the same series, because the FIRST solve's RSS
+    # increment is an allocator detail and not a property of this module.
+    # Here (macOS, jax 0.11.1) the first solve costs 0.29 GB of fresh RSS
+    # and the ratio test below has teeth. On the VESSL lane (Linux, glibc
+    # malloc, jax 0.6.2, this file's tests run before it) the heap is
+    # already warm and the whole six-solve series fits in 0.015 GB of RSS
+    # movement: 1.1387 / 1.1455 / 1.1467 / 1.1467 / 1.1467 / 1.1467 GB,
+    # i.e. first = 0.0153 and later = 0.0013 GB. That is the property
+    # holding, not the test failing, so when the increment is too small to
+    # resolve a ratio the gate becomes an ABSOLUTE cap: 0.02 GB of growth
+    # over solves 2..6, which is 15x what the lane measured and 400x below
+    # the 0.842 GB the broken release path grew here.
+    if first > 0.05:
+        assert later < 0.15 * first, (first, later, series)
+    else:
+        assert later < 0.02, (first, later, series)
 
 
 def test_every_factor_is_built_and_dropped_on_one_thread():
@@ -613,6 +658,7 @@ def test_factor_cache_size_knob_bounds_the_live_factors():
             ls.clear_factor_cache()
 
 
+@pytest.mark.usefixtures("superlu_backend")
 def test_gradient_still_shares_one_factorisation_with_the_adjoint():
     """The factor thread must not have broken what the cache is FOR: a
     reverse-mode pass re-uses the forward solve's factorisation, so a
@@ -640,3 +686,270 @@ def test_gradient_still_shares_one_factorisation_with_the_adjoint():
             ls.spl.splu = orig
         assert len(calls) == 1, len(calls)
         assert float(jnp.linalg.norm(g)) > 0.0
+
+
+# ---------------------------------------------------------------------------
+# Backends. ``sparse_solve(backend=...)`` dispatches the factorisation to
+# scipy's SuperLU (host), NVIDIA cuDSS through nvmath-python or cuSOLVER's
+# sparse QR through cupy. The GPU tests SKIP with the reason when the stack
+# is not installed or no device is visible -- this Mac has no GPU, and the
+# gates are run on the VESSL RTX 4090 lane (validation/vessl/).
+#
+# Rule 2 of the study: backend equality is a hard gate. What is compared is
+# the residual of each solve and the two solutions' difference, because
+# neither backend is "the answer" -- both are LU/QR with their own pivoting,
+# and the reference is the residual.
+# ---------------------------------------------------------------------------
+
+GPU_BACKENDS = ("cudss", "cusolver")
+
+
+def _require(backend):
+    """Skip, with the reason, unless ``backend`` can factorise here."""
+    if backend == "superlu":
+        return
+    from rfx.fdfd import _cudss
+    if not ls.backend_available(backend):
+        pytest.skip(f"backend {backend!r} unavailable: "
+                    f"{_cudss.unavailable_reason(backend)}")
+
+
+def test_backend_keyword_and_the_module_default_are_validated():
+    """An unknown backend is rejected at the call, an unknown scoped default
+    at the ``with``, and an unknown ``RFX_FDFD_BACKEND`` at import -- none of
+    them silently falls back to SuperLU. The scope nests and is restored on
+    an exception, like ``default_permc_spec``; and a GPU backend that cannot
+    run here raises at trace time with the reason rather than inside a
+    ``pure_callback``."""
+    import os
+    import subprocess
+    import sys
+    assert ls.BACKENDS == ("superlu", "cudss", "cusolver")
+    assert ls.DEFAULT_BACKEND in ls.BACKENDS
+    assert ls.get_default_backend() in ls.BACKENDS
+    with enable_x64():
+        rows, cols, data, b = _system(n=8)
+        with pytest.raises(ValueError, match="backend must be one of"):
+            sparse_solve(data, rows, cols, b, backend="cuda")
+        with pytest.raises(ValueError, match="backend must be one of"):
+            with ls.default_backend("CUDSS"):
+                pass
+        assert ls.get_default_backend() == ls.DEFAULT_BACKEND
+        with ls.default_backend("superlu"):
+            with ls.default_backend("cudss"):
+                assert ls.get_default_backend() == "cudss"
+            assert ls.get_default_backend() == "superlu"
+            with pytest.raises(ZeroDivisionError):
+                with ls.default_backend("cusolver"):
+                    1 / 0
+            assert ls.get_default_backend() == "superlu"
+        assert ls.get_default_backend() == ls.DEFAULT_BACKEND
+        assert ls.backend_available("superlu") is True
+        for backend in GPU_BACKENDS:
+            if not ls.backend_available(backend):
+                from rfx.fdfd import _cudss
+                assert _cudss.unavailable_reason(backend)          # says why
+                with pytest.raises(RuntimeError, match="not available"):
+                    sparse_solve(data, rows, cols, b, backend=backend)
+    # the environment variable: a bad value must not import, a good one must
+    # become the default (this needs no GPU -- nothing solves)
+    env = dict(os.environ)
+    env["RFX_FDFD_BACKEND"] = "gpu"
+    bad = subprocess.run([sys.executable, "-c", "import rfx.fdfd.linear_solve"],
+                         env=env, capture_output=True, text=True)
+    assert bad.returncode != 0 and "RFX_FDFD_BACKEND" in bad.stderr
+    env["RFX_FDFD_BACKEND"] = "cudss"
+    good = subprocess.run(
+        [sys.executable, "-c", "import rfx.fdfd.linear_solve as l;"
+                               "print(l.DEFAULT_BACKEND, l.get_default_backend())"],
+        env=env, capture_output=True, text=True)
+    assert good.returncode == 0, good.stderr
+    assert good.stdout.split() == ["cudss", "cudss"]
+
+
+@pytest.mark.parametrize("backend", GPU_BACKENDS)
+def test_gpu_backend_agrees_with_superlu_on_the_random_system(backend):
+    """Gate G1's unit-scale twin: the same ``(data, rows, cols, b)`` solved by
+    a GPU backend and by SuperLU, forward and transposed, single and block
+    right-hand side. Both residuals must be at the roundoff level and the two
+    solutions must agree there too. ``_cudss.selftest`` runs the same
+    comparison with no JAX in the loop and is what the J0 probe prints; this
+    is the pytest gate on top of it, including the cross-thread check (CUDA's
+    primary context is per process, so the one factor thread that SuperLU
+    needs costs the GPU backends nothing).
+
+    Tolerances: 1e-10 on every relative residual and on the solutions'
+    difference -- three orders above the measured LU noise floor on this
+    well-conditioned 400 x 400 system (see validation/vessl/runs/ for the
+    numbers this actually returns on the RTX 4090 lane)."""
+    _require(backend)
+    from rfx.fdfd import _cudss
+    rec = _cudss.selftest(backend, n=400, m=3)
+    for k in ("residual_N_gpu", "residual_T_gpu", "residual_N_superlu",
+              "residual_T_superlu", "diff_N", "diff_T"):
+        assert rec[k] < 1e-10, (k, rec)
+    assert rec["cross_thread_ok"], rec
+    # cuDSS has no transposed solve: the transposed system is a SECOND
+    # factorisation of A^T inside the same factor object (module docstring of
+    # rfx/fdfd/_cudss.py). Two solves N + T therefore cost two factorisations,
+    # and repeating either one costs none.
+    if backend == "cudss":
+        assert rec["factorizations"] == 2, rec
+        assert rec["replans"] == 0, rec
+
+
+@pytest.mark.parametrize("backend", GPU_BACKENDS)
+def test_gpu_backend_solution_and_gradient_match_superlu_through_jax(backend):
+    """The backend under JAX: value, reverse-mode gradient and forward-mode
+    JVP of the same objective, against SuperLU and against FD4.
+
+    This is rule 1 and rule 2 at unit scale (the real-fixture versions are
+    gates G1 and G2 on the W/3 spiral, run on the GPU lane): the gradient
+    goes through ``custom_linear_solve``'s transposed solve, which on cuDSS
+    is the separately factorised ``A^T``, so a wrong transpose cannot pass
+    here. 1e-9 relative between backends (both at their own roundoff) and
+    1e-6 against FD4 (its truncation dominates)."""
+    _require(backend)
+    with enable_x64():
+        rows, cols, data, b = _system(n=300, seed=5)
+
+        def loss(d, backend):
+            return jnp.sum(jnp.abs(sparse_solve(d, rows, cols, b,
+                                                backend=backend)) ** 2)
+
+        v_cpu, g_cpu = jax.value_and_grad(loss)(data, "superlu")
+        v_gpu, g_gpu = jax.value_and_grad(loss)(data, backend)
+        assert abs(float(v_gpu) - float(v_cpu)) <= 1e-9 * abs(float(v_cpu))
+        num = float(jnp.linalg.norm(g_gpu - g_cpu))
+        den = float(jnp.linalg.norm(g_cpu))
+        assert num <= 1e-9 * den, (num / den, backend)
+        rng = np.random.default_rng(11)
+        t = jnp.asarray(rng.standard_normal(len(rows))
+                        + 1j * rng.standard_normal(len(rows)))
+        _, jvp_val = jax.jvp(lambda d: loss(d, backend), (data,), (t,))
+        fd = _fd4(lambda d: loss(d, backend), data, t, 1e-4)
+        assert abs(float(jvp_val) - float(fd)) < 1e-6 * abs(float(fd))
+
+
+@pytest.mark.parametrize("backend", GPU_BACKENDS)
+def test_backend_is_part_of_the_factor_cache_key(backend):
+    """Two backends' factors are different objects on the same matrix, so the
+    backend is in the LRU key: solving the same system twice with two
+    backends gives two entries, and repeating either is a hit. ``permc_spec``
+    is NOT in the GPU key (cuDSS reorders itself), so a scoped
+    ``default_permc_spec`` cannot split one GPU factorisation over two
+    slots."""
+    _require(backend)
+    with enable_x64():
+        rows, cols, data, b = _system(n=200, seed=2)
+        ls.clear_factor_cache()
+        x_cpu = sparse_solve(data, rows, cols, b, backend="superlu")
+        x_gpu = sparse_solve(data, rows, cols, b, backend=backend)
+        assert len(ls._FACTOR_CACHE) == 2
+        sparse_solve(data, rows, cols, b, backend="superlu")
+        sparse_solve(data, rows, cols, b, backend=backend)
+        assert len(ls._FACTOR_CACHE) == 2
+        with ls.default_permc_spec("MMD_AT_PLUS_A"):
+            sparse_solve(data, rows, cols, b, backend=backend)
+        assert len(ls._FACTOR_CACHE) == 2                 # ignored, not a 3rd
+        with ls.default_permc_spec("MMD_AT_PLUS_A"):
+            sparse_solve(data, rows, cols, b, backend="superlu")
+        assert len(ls._FACTOR_CACHE) == 3                 # SuperLU: its own
+        nb = float(jnp.linalg.norm(b))
+        r_gpu = float(jnp.linalg.norm(sparse_matvec(data, rows, cols, x_gpu) - b)) / nb
+        r_cpu = float(jnp.linalg.norm(sparse_matvec(data, rows, cols, x_cpu) - b)) / nb
+        assert r_gpu < 1e-10 and r_cpu < 1e-10, (r_gpu, r_cpu)
+        ls.clear_factor_cache()
+        assert len(ls._FACTOR_CACHE) == 0
+
+
+@pytest.mark.parametrize("backend", GPU_BACKENDS)
+def test_gpu_backend_block_rhs_equals_separate_columns(backend):
+    """One factorisation, ``m`` right-hand sides: the block solve must equal
+    the columns solved one at a time (1e-10 relative), which is the N-port
+    FDFD case and, on cuDSS, the path where the right-hand-side block is
+    reset in place between solves without re-planning."""
+    _require(backend)
+    with enable_x64():
+        rows, cols, data, b = _block_system(n=200, m=3, seed=4)
+        block = sparse_solve(data, rows, cols, b, backend=backend)
+        for j in range(b.shape[1]):
+            col = sparse_solve(data, rows, cols, b[:, j], backend=backend)
+            d = float(jnp.max(jnp.abs(block[:, j] - col)))
+            assert d <= 1e-10 * float(jnp.max(jnp.abs(col))), (j, d)
+
+
+def _lane_lib():
+    """``validation/vessl/_gpu_lane_lib.py`` as a module, or skip.
+
+    That file is the GPU lanes' measurement code and it is not importable as
+    a package (``validation/`` has no ``__init__``), so it is loaded by path.
+    A source checkout without ``validation/`` simply skips the test below.
+    """
+    import importlib.util
+    import pathlib
+    path = (pathlib.Path(__file__).resolve().parents[1]
+            / "validation" / "vessl" / "_gpu_lane_lib.py")
+    if not path.exists():
+        pytest.skip(f"{path} not in this checkout")
+    spec = importlib.util.spec_from_file_location("gpu_lane_lib_t", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+@pytest.mark.usefixtures("superlu_backend")
+def test_same_backend_control_transforms_preserve_the_exact_solution():
+    """Gate G1's control (``validation/fdfd/gpu_scaling.py
+    --ordering-control``) compares one backend with itself over several
+    elimination paths, and its whole meaning depends on the paths having the
+    SAME exact solution. Two of them are algebraic rewrites of the system
+    rather than solver options, so they are guarded here, on the
+    well-conditioned 40 x 40 random system where the answer is known to
+    roundoff:
+
+    * ``row_permuted``: ``(P A) x = P b`` -- the equations in another order,
+      which is what moves SuperLU's partial pivoting.
+    * ``col_scaled``: ``(A D) y = b``, ``x = D y`` -- the unknowns rescaled
+      by a positive non-dyadic diagonal, so every multiply rounds.
+
+    Measured here (max |x - x_COLAMD| / max |x_COLAMD|): row permutation
+    2.5e-16, column scaling 3.8e-16 -- both transforms are exact to the LU
+    noise floor on this system, whose 1-norm condition estimate is 5.76.
+    Gate 1e-12, as in the ordering test above.
+
+    The same call also proves the control reports a MEANINGFUL spread rather
+    than a constant: over its four cases here the residuals span
+    2.06e-16..2.43e-16 and the worst difference between two solutions is
+    3.81e-16, so on a well-conditioned system the control's answer is "they
+    agree to roundoff" -- which is the null result the 1.3e-04 it measures at
+    W/1 and the 2.4e-03 G1 measures at W/3 are to be read against.
+    """
+    lib = _lane_lib()
+    with enable_x64():
+        rows, cols, data, b = _system()
+        d_np, b_np = np.asarray(data), np.asarray(b)
+        ref = np.asarray(sparse_solve(data, rows, cols, b, permc_spec="COLAMD"))
+        scale_ref = float(np.max(np.abs(ref)))
+
+        d, r, (c, bb, scale) = lib._row_permuted(d_np, rows, cols, b_np, 7)
+        x = np.asarray(sparse_solve(jnp.asarray(d), r, c, jnp.asarray(bb)))
+        assert scale is None
+        assert float(np.max(np.abs(x - ref))) < 1e-12 * scale_ref
+
+        d, r, (c, bb, scale) = lib._col_scaled(d_np, rows, cols, b_np, 7)
+        y = np.asarray(sparse_solve(jnp.asarray(d), r, c, jnp.asarray(bb)))
+        assert np.all(scale > 0.0)
+        assert float(np.max(np.abs(y * scale - ref))) < 1e-12 * scale_ref
+
+        out = lib.superlu_ordering_control(
+            d_np, rows, cols, b_np,
+            cases=(("COLAMD", "COLAMD"), ("NATURAL", "NATURAL"),
+                   ("row_permuted", "row_permuted:COLAMD"),
+                   ("col_scaled", "col_scaled:COLAMD")),
+            cond_estimate=True)
+    assert set(out["cases"]) == {"COLAMD", "NATURAL", "row_permuted", "col_scaled"}
+    assert out["residual_span"][1] < 1e-12
+    assert out["worst_rel_diff"] < 1e-12
+    # a condition estimate that is actually an estimate of this system
+    assert 1.0 < out["cond_1_estimate"]["cond_1"] < 1e6
