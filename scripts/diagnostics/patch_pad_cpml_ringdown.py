@@ -206,7 +206,15 @@ def _provenance(expect_rfx_root, rfx_tree_sha):
             f"imported rfx from {rfx_root}, expected {expect_rfx_root} -- "
             "a stale editable install or a wrong PYTHONPATH would measure the wrong tree")
     porcelain = git("status", "--porcelain")
+    try:
+        import jax
+        jax_info = dict(version=jax.__version__, backend=jax.default_backend(),
+                        devices=[str(d) for d in jax.devices()],
+                        x64_enabled=bool(jax.config.x64_enabled))
+    except Exception as exc:  # pragma: no cover - reported, never swallowed silently
+        jax_info = {"error": repr(exc)}
     return dict(
+        jax=jax_info,
         driver_repo_root=root,
         driver_git_sha=git("rev-parse", "HEAD"),
         driver_dirty=bool(porcelain) if porcelain is not None else None,
@@ -309,7 +317,8 @@ def main():
 
     prov = _provenance(a.expect_rfx_root, a.rfx_tree_sha)
     print(f"[{a.tag}] rfx from {prov['rfx_package_file']} (tree {prov['rfx_tree_sha']}); "
-          f"driver {prov['driver_git_sha']} dirty={prov['driver_dirty']}", flush=True)
+          f"driver {prov['driver_git_sha']} dirty={prov['driver_dirty']}; "
+          f"jax {prov['jax']}", flush=True)
 
     sim, geom = build(a.n, a.shift_x, a.shift_y, a.pad, a.swap_xy, a.cpml, a.gnd_cell,
                       a.pad_z, a.patch_plane, a.shrink_domain_ulp)

@@ -1,0 +1,134 @@
+name: rfx-patch-pad-cpml-ringdown
+description: "Issue #801: does the isolated-patch ring-down still grow when the lateral domain is padded +10h under a 2n-cell CPML? Pre-declared in scripts/diagnostics/_artifacts/patch_pad_cpml_ringdown/PREDECLARATION.md (question, observable, gate, falsifier; the arm table is Addendum B). Seven arms of scripts/diagnostics/patch_pad_cpml_ringdown.py -- the rig the issue names, its build() copied verbatim: the +10h arm and its 16-layer control on main (fc7f7202) and on the commit before PR #1047 (c0435798 = 541f703f^), a one-ULP-shorter domain that removes the vacuum absorber pad, and two subpixel-smoothing positive controls. MEASUREMENT ONLY -- each arm writes its JSON and its raw probe series before the next starts; no verdict logic in the job. gpu-rtx4090 because one arm is 26659 steps on 3.8M cells (3555 steps took 7.4 min on the CPU pod, so ~55 min per arm there), and because the issue's own numbers were taken on rtx4090, so the same hardware class keeps that out of the before/after table. Both rfx trees are fetched fresh from GitHub by sha; the mounted primary checkout is never read or written."
+tags: [rfx, issue-801, cpml, ring-down, patch, measurement]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: "Agg"
+  # The rig runs the shipped default precision. An x64 rerun would be a
+  # different measurement and is not mixed into this table.
+  JAX_ENABLE_X64: "0"
+  # The driver comes from the diagnosis branch; the two rfx trees under test are
+  # pinned by sha. RFX_DRIVER_BRANCH is informational -- the fetch is keyed by sha.
+  RFX_DRIVER_BRANCH: "diag/801-patch-ringdown-padding"
+  RFX_DRIVER_SHA: "FILL_AFTER_PUSH"
+  RFX_TREE_MAIN: "fc7f7202567e2cf78a65ab90a709e4ff45b185f1"
+  RFX_TREE_PRE1047: "c043579891e9b1e24b906f9780f5f8433fe89f43"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #801 isolated-patch ring-down, padded lateral domain, thin CPML ==="
+  date
+  if [ "$RFX_DRIVER_SHA" = "FILL_AFTER_PUSH" ]; then
+    echo "FATAL: RFX_DRIVER_SHA still holds the FILL_AFTER_PUSH placeholder"
+    exit 3
+  fi
+  echo "driver branch (informational): $RFX_DRIVER_BRANCH"
+  echo "driver commit: $RFX_DRIVER_SHA"
+  echo "tree main:     $RFX_TREE_MAIN"
+  echo "tree pre-1047: $RFX_TREE_PRE1047"
+
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  git config --global --add safe.directory '*' || true
+
+  # Three fresh fetches by sha: the driver's own commit and the two trees under
+  # test. Nothing reads the mounted primary checkout. The sha is verified after
+  # checkout and a mismatch aborts -- a run whose tree identity is assumed is not
+  # a provenance-complete run.
+  fetch_sha() {
+    git init -q "$1"
+    cd "$1"
+    git fetch -q --depth 1 https://github.com/bk-squared/rfx.git "$2"
+    git checkout -q FETCH_HEAD
+    got=$(git rev-parse HEAD)
+    if [ "$got" != "$2" ]; then
+      echo "FATAL: $1 is at $got, wanted $2"
+      exit 3
+    fi
+    echo "fetched $2 into $1"
+    cd /
+  }
+  rm -rf /tmp/rfx-801-driver /tmp/rfx-801-main /tmp/rfx-801-pre1047
+  fetch_sha /tmp/rfx-801-driver "$RFX_DRIVER_SHA"
+  fetch_sha /tmp/rfx-801-main "$RFX_TREE_MAIN"
+  fetch_sha /tmp/rfx-801-pre1047 "$RFX_TREE_PRE1047"
+
+  DRVDIR=/tmp/rfx-801-driver/scripts/diagnostics
+  test -f "$DRVDIR/patch_pad_cpml_ringdown.py" || { echo "FATAL: driver missing"; exit 3; }
+  test -f "$DRVDIR/patch_pad_cpml_ringdown_summary.py" || { echo "FATAL: summary missing"; exit 3; }
+  test -f "$DRVDIR/_artifacts/patch_pad_cpml_ringdown/PREDECLARATION.md" || { echo "FATAL: pre-declaration missing"; exit 3; }
+  # The driver asserts its own repo root, so it runs from INSIDE each tree under
+  # test. The copy makes that tree dirty and the driver's `dirty` flag reports it
+  # -- which is what that flag is for.
+  cp "$DRVDIR/patch_pad_cpml_ringdown.py" /tmp/rfx-801-main/scripts/diagnostics/
+  cp "$DRVDIR/patch_pad_cpml_ringdown.py" /tmp/rfx-801-pre1047/scripts/diagnostics/
+
+  echo "=== runtime deps ==="
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  python -c "import jax; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| devices', jax.devices(), '| x64', jax.config.x64_enabled)"
+
+  SHORT=$(echo "$RFX_DRIVER_SHA" | cut -c1-8)
+  OUT="/root/workspace/claude-workspace/rfx/runs/patch_pad_cpml_ringdown/$(date -u +%Y%m%dT%H%M%SZ)-$SHORT"
+  mkdir -p "$OUT"
+  echo "artifacts: $OUT"
+  echo "$RFX_DRIVER_SHA" > "$OUT/driver_commit.txt"
+  echo "$RFX_TREE_MAIN" > "$OUT/tree_main_commit.txt"
+  echo "$RFX_TREE_PRE1047" > "$OUT/tree_pre1047_commit.txt"
+  cp "$DRVDIR/_artifacts/patch_pad_cpml_ringdown/PREDECLARATION.md" "$OUT/"
+
+  # One arm per process, each persisted before the next starts, and the loop
+  # continues past a failed arm so an earlier arm is never lost to a later one.
+  # Field separator is ':' and underscores inside field 4 become spaces, so the
+  # whole spec stays one whitespace-free word per arm for sh word splitting.
+  ARMS="main_cpml8:main:8:-
+  main_cpml16:main:16:-
+  pre1047_cpml8:pre1047:8:-
+  pre1047_cpml16:pre1047:16:-
+  main_cpml8_noulp:main:8:--shrink-domain-ulp_1
+  main_cpml8_subpixel:main:8:--subpixel
+  pre1047_cpml8_subpixel:pre1047:8:--subpixel"
+
+  fails=0
+  for A in $ARMS; do
+    TAG=$(echo "$A" | cut -d: -f1)
+    WHICH=$(echo "$A" | cut -d: -f2)
+    CPML=$(echo "$A" | cut -d: -f3)
+    RAW=$(echo "$A" | cut -d: -f4-)
+    if [ "$RAW" = "-" ]; then EXTRA=""; else EXTRA=$(echo "$RAW" | tr '_' ' '); fi
+    if [ "$WHICH" = "pre1047" ]; then
+      TREE=/tmp/rfx-801-pre1047; SHA="$RFX_TREE_PRE1047"
+    else
+      TREE=/tmp/rfx-801-main; SHA="$RFX_TREE_MAIN"
+    fi
+    echo "===== arm $TAG (tree $SHA, cpml $CPML, extra '$EXTRA') ====="
+    date
+    cd "$TREE"
+    PYTHONPATH="$TREE"
+    export PYTHONPATH
+    { timeout 7200 python -u scripts/diagnostics/patch_pad_cpml_ringdown.py \
+        --n 4 --pad 10 --periods 150 --cpml "$CPML" $EXTRA \
+        --tag "$TAG" --out-dir "$OUT" \
+        --rfx-tree-sha "$SHA" --expect-rfx-root "$TREE" 2>&1
+      echo "$?" > "$OUT/$TAG.rc"
+    } | tee "$OUT/$TAG.log"
+    rc=$(cat "$OUT/$TAG.rc")
+    echo "arm $TAG rc=$rc"
+    if [ "$rc" -ne 0 ]; then fails=$((fails + 1)); fi
+  done
+
+  echo "===== per-arm numbers (quoted from the JSONs; no verdict here) ====="
+  cd /tmp/rfx-801-driver
+  python -u scripts/diagnostics/patch_pad_cpml_ringdown_summary.py \
+    --dir "$OUT" --json-out "$OUT/summary.json" | tee "$OUT/summary.txt"
+
+  ls -la "$OUT"
+  echo "artifacts persisted (mounted, survives teardown): $OUT"
+  echo "patch_pad_cpml_ringdown_failed_arms=$fails"
+  [ "$fails" -eq 0 ]
