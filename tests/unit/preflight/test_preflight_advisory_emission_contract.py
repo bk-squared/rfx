@@ -358,11 +358,21 @@ def _enumerate_emission_sites():
 # uses. A SHRINKING surface is the direction this pin is least worried
 # about, but it is re-frozen here rather than left to drift, because the
 # point of the number is that every move is a conscious edit.
-_FROZEN_TOTAL_SITES = 112
+# 112 -> 113, 2026-09-15 (#1043 stage B). One site added:
+# ``_validate_cfg_dielectric_at_absorber_seam``'s ``dielectric_at_absorber_seam``
+# warning in ``rfx/preflight/absorber.py`` -- the seam counterpart of
+# ``geometry_in_absorber``, reporting a dielectric that ends AT the pad
+# boundary in a shape the smoothed lane cannot continue into it. A GROWING
+# surface is the direction this pin exists for, so the number moves here in
+# the same change that adds the site, never afterwards.
+_FROZEN_TOTAL_SITES = 113
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
-_FROZEN_LITERAL_CODE_COUNT = 73
+# 73 -> 74, 2026-09-15 (#1043 stage B): the new advisory kind
+# ``dielectric_at_absorber_seam``. A new code is a new advisory kind, which is
+# what this count is for.
+_FROZEN_LITERAL_CODE_COUNT = 74
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

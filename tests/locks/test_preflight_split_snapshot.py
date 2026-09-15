@@ -807,6 +807,10 @@ _REBOUND_ON_MIXIN = {
         "_validate_cfg_absorber_budget_vs_grid",
         "_validate_cfg_absorber_placement",
         "_validate_cfg_compute_cpml_thickness",
+        # 2026-09-15 (#1043 stage B): not a MOVED body -- written in the
+        # family module, bound on the mixin the same way, so it wants the
+        # same qualname pin as the eleven that moved.
+        "_validate_cfg_dielectric_at_absorber_seam",
         "_validate_cfg_dispersive_pole_at_absorber_face",
         "_validate_cfg_geometry_in_cpml",
         "_validate_cfg_lossless_resonator_in_absorber",

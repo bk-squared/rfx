@@ -27,6 +27,7 @@ Three design improvements over the original rfx linear-SDF scheme:
 from __future__ import annotations
 
 import warnings
+from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
@@ -206,6 +207,264 @@ def _get_normal_fn(shape: Shape):
     elif isinstance(shape, Cylinder):
         return _normal_cylinder
     return None
+
+
+# ---------------------------------------------------------------------------
+# CPML pad continuation for the SMOOTHED lane (#1043 stage B)
+# ---------------------------------------------------------------------------
+#
+# ``_assemble_materials`` continues a boundary-touching structure into the
+# absorber pad by replicating the interior-edge slice of the eps_r/sigma/mu_r
+# ARRAYS outward (``extend_cpml_pad_materials``), "as if the geometry continued
+# beyond the domain". The smoothed lane rebuilds its update permittivity from
+# ``sim._geometry`` and never saw that step, so under ``subpixel_smoothing`` a
+# guide that touches the domain edge was solved with VACUUM in the pad and a
+# Kottke half-cell at the seam -- a facet the guided mode reflects off (#831:
+# ``|B/A|`` 0.53 at 20 CPML cells, and WORSE as the absorber deepens, because
+# the first pad cell's conductivity falls as N^-3 and loads the facet less).
+#
+# The fix cannot reuse ``extend_cpml_pad_materials`` on the smoothing OUTPUT.
+# Measured, with no FDTD, on cv01's committed build (guide centre row, x-lo
+# seam, ``eps_r = 12``; driver
+# ``scripts/diagnostics/cv03_seam_facet/pad_replication_shape.py``):
+#
+#   variant                                  pad      row across the seam
+#   committed (no replication)                1.000    1.0,  1.0,  6.5, 12.0
+#   naive extend_cpml_pad_materials on it     6.500    6.5,  6.5,  6.5, 12.0
+#   sourced one column inward                12.000   12.0, 12.0,  6.5, 12.0
+#   reference: _assemble_materials           12.000   12.0, 12.0, 12.0, 12.0
+#
+# The smoothed array's interior-edge column IS the Kottke half-cell, so
+# replicating it fills the pad with a medium that is neither the guide nor
+# vacuum; sourcing one column inward gets the pad right but strands that
+# half-cell INSIDE the absorber -- the one-cell film #655 already had to repair
+# on the staircase lane. Only continuing the GEOMETRY and smoothing THAT
+# reproduces the reference row, which is what this helper does: the reached
+# face is moved out past the array, so the smoothing sees no interface there at
+# all and the pad and seam cells come out at bulk eps through the ordinary
+# ``f >= 1`` branch.
+
+
+#: A face counts as REACHING a padded boundary when the shape's bounding box
+#: comes within this many local cells of the outermost interior node plane.
+#: Half a cell is the rasterizer's own tie width: inside it the staircase lane
+#: either replicates the boundary column (lo face) or promotes one column
+#: inward (hi face, the #627a half-open fallback), so the two lanes continue
+#: the same structures.
+_PAD_REACH_TOL_CELLS = 0.5
+
+#: How far past the array the continued face is pushed, in local cells. The
+#: outermost pad sample must sit at least half a cell inside the continued
+#: shape for ``f = clip(0.5 - sdf/dx, 0, 1)`` to reach 1 and take the bulk
+#: branch; two cells clears that for every Yee component offset.
+_PAD_CONTINUE_CELLS = 2.0
+
+
+class UnextendableShape(NamedTuple):
+    """One (shape, axis, side) a pad continuation could not express.
+
+    ``axis`` is 0/1/2 and ``side`` is ``"lo"`` / ``"hi"``. Returned rather
+    than warned about here: the caller is a runner, and preflight owns
+    advisories (``_validate_cfg_dielectric_at_absorber_seam``).
+    """
+
+    shape: object
+    axis: int
+    side: str
+    reason: str
+
+
+def _axis_cells(nodes) -> tuple[float, float]:
+    """Local cell width at the lo and the hi end of a 1-D node array."""
+    n = len(nodes)
+    if n < 2:
+        return (0.0, 0.0)
+    return (float(nodes[1] - nodes[0]), float(nodes[n - 1] - nodes[n - 2]))
+
+
+def _continue_box(shape, axis: int, side: str, target: float):
+    from rfx.geometry.csg import Box
+    lo = list(shape.corner_lo)
+    hi = list(shape.corner_hi)
+    if side == "lo":
+        lo[axis] = min(lo[axis], target)
+    else:
+        hi[axis] = max(hi[axis], target)
+    return Box(tuple(lo), tuple(hi))
+
+
+def _continue_cylinder(shape, axis: int, side: str, target: float):
+    """Continue a cylinder along ITS OWN axis; ``None`` across it."""
+    from rfx.geometry.csg import Cylinder
+    if {"x": 0, "y": 1, "z": 2}[shape.axis] != axis:
+        return None
+    centre_a = float(shape.center[axis])
+    half = float(shape.height) / 2.0
+    lo, hi = centre_a - half, centre_a + half
+    if side == "lo":
+        lo = min(lo, target)
+    else:
+        hi = max(hi, target)
+    centre = list(shape.center)
+    centre[axis] = (lo + hi) / 2.0
+    return Cylinder(tuple(centre), shape.radius, hi - lo, shape.axis)
+
+
+def extend_shapes_into_cpml_pad(
+    shapes: list[tuple[Shape, float]],
+    node_coords,
+    pads,
+) -> tuple[list[tuple[Shape, float]], list["UnextendableShape"]]:
+    """Continue boundary-touching shapes out through the absorber pads.
+
+    The smoothed lane's counterpart to
+    :func:`rfx.geometry.rasterize_grid.extend_cpml_pad_materials`, and
+    deliberately a GEOMETRY transform rather than an array one -- see this
+    section's header comment for the measured reason.
+
+    Parameters
+    ----------
+    shapes : list of (shape, eps_r)
+        The pairs the smoothing is about to be handed. Shapes whose material
+        carries a dispersion pole must be filtered out by the caller: pole
+        extension into a pad diverges (#627b) and promoting a pole-carrying
+        column's statics moved a committed Debye recovery past its gate
+        (#808).
+    node_coords : (x, y, z)
+        1-D E-NODE coordinate arrays over the FULL array, pads included --
+        ``coords_from_uniform_grid`` / ``coords_from_nonuniform_grid``.
+    pads : ((plx, phx), (ply, phy), (plz, phz))
+        Allocated absorbing cells per face. A face with ``0`` is not a pad
+        (reflector / periodic / no absorber) and is never continued, which is
+        how per-face ``BoundarySpec`` allocation reaches this function without
+        being re-derived here.
+
+    Returns
+    -------
+    extended : list of (shape, eps_r)
+        Same length and order as ``shapes``. An entry reaching no padded face
+        is the SAME object, so a geometry that touches nothing makes this
+        function an identity by construction -- that is what keeps every
+        non-touching configuration bit-identical.
+    unextendable : list of UnextendableShape
+        Faces reached by a shape whose type has no continuation (a sphere's
+        tangency, a cylinder reached across its axis, an imported mesh).
+        Those shapes are returned unchanged and still carry the facet; the
+        caller surfaces them.
+    """
+    from rfx.geometry.csg import Box, Cylinder
+
+    out: list[tuple[Shape, float]] = []
+    unextendable: list[UnextendableShape] = []
+    for shape, eps_r in shapes:
+        try:
+            bbox_lo, bbox_hi = shape.bounding_box()
+        except (NotImplementedError, AttributeError):
+            out.append((shape, eps_r))
+            continue
+        current = shape
+        for axis in range(3):
+            nodes = node_coords[axis]
+            n = len(nodes)
+            cell_lo, cell_hi = _axis_cells(nodes)
+            for side, pad, cell in (("lo", int(pads[axis][0]), cell_lo),
+                                    ("hi", int(pads[axis][1]), cell_hi)):
+                if pad <= 0 or cell <= 0.0 or n < 2:
+                    continue
+                if side == "lo":
+                    edge = float(nodes[pad])
+                    reaches = (float(bbox_lo[axis])
+                               <= edge + _PAD_REACH_TOL_CELLS * cell)
+                    target = float(nodes[0]) - _PAD_CONTINUE_CELLS * cell
+                else:
+                    edge = float(nodes[n - 1 - pad])
+                    reaches = (float(bbox_hi[axis])
+                               >= edge - _PAD_REACH_TOL_CELLS * cell)
+                    target = float(nodes[n - 1]) + _PAD_CONTINUE_CELLS * cell
+                if not reaches:
+                    continue
+                if isinstance(current, Box):
+                    current = _continue_box(current, axis, side, target)
+                elif isinstance(current, Cylinder):
+                    grown = _continue_cylinder(current, axis, side, target)
+                    if grown is None:
+                        unextendable.append(UnextendableShape(
+                            current, axis, side,
+                            "a cylinder has no continuation across its axis"))
+                    else:
+                        current = grown
+                else:
+                    unextendable.append(UnextendableShape(
+                        current, axis, side,
+                        f"{type(current).__name__} has no pad continuation"))
+        out.append((current, eps_r))
+    return out, unextendable
+
+
+def smoothed_shape_pairs(sim, grid):
+    """Build the (shape, eps_r) pairs the smoothed lane solves, pad included.
+
+    ONE implementation for the three sites that rebuild the update
+    permittivity from ``sim._geometry`` -- Stage-2 ``kottke_pec`` and Stage-1
+    in ``rfx/runners/uniform.py`` and the NU mirror in
+    ``rfx/runners/nonuniform.py``. #627 exists because the array-side
+    replication was hand-duplicated across two assemblers and drifted; this
+    one is not duplicated a second time.
+
+    The continuation is applied when the run has absorbing pads at all
+    (``sim._boundary`` in ``cpml``/``upml`` with ``_cpml_layers > 0``) --
+    the SAME gate ``_assemble_materials`` uses for
+    ``extend_cpml_pad_materials`` -- and only to shapes whose material carries
+    no dispersion pole (#627b, #808: a pole in a pad diverges, and a
+    pole-carrying column's promoted statics are a material no declared model
+    has).
+
+    Returns ``(pairs, unextendable)``; ``unextendable`` is empty whenever
+    nothing reaches a padded face.
+    """
+    pairs = [(entry.shape, sim._resolve_material(entry.material_name).eps_r)
+             for entry in sim._geometry]
+    if not pairs:
+        return pairs, []
+    if (getattr(sim, "_boundary", None) not in ("cpml", "upml")
+            or int(getattr(sim, "_cpml_layers", 0)) <= 0):
+        return pairs, []
+
+    if hasattr(grid, "dx_arr"):
+        from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
+        coords = coords_from_nonuniform_grid(grid)
+    else:
+        from rfx.geometry.rasterize_grid import coords_from_uniform_grid
+        coords = coords_from_uniform_grid(grid)
+    node_coords = (coords.x, coords.y, coords.z)
+    pads = ((grid.pad_x_lo, grid.pad_x_hi),
+            (grid.pad_y_lo, grid.pad_y_hi),
+            (grid.pad_z_lo, grid.pad_z_hi))
+
+    # Per entry, in the DECLARED order: `compute_smoothed_eps` applies groups
+    # in insertion order and later shapes overwrite earlier ones, so the list
+    # is rebuilt position for position rather than partitioned and rejoined.
+    out = []
+    unextendable = []
+    pec_sigma = float(getattr(sim, "_PEC_SIGMA_THRESHOLD", float("inf")))
+    for entry, (shape, eps_r) in zip(sim._geometry, pairs):
+        mat = sim._resolve_material(entry.material_name)
+        # PEC volumes are not continued on EITHER lane: ``pec_mask`` is not in
+        # ``extend_cpml_pad_materials``' signature, so the staircase lane ends
+        # a PEC structure at the seam too, and the two lanes have to agree
+        # about what stands in a pad.
+        if float(getattr(mat, "sigma", 0.0)) >= pec_sigma:
+            out.append((shape, eps_r))
+            continue
+        if (getattr(mat, "debye_poles", None)
+                or getattr(mat, "lorentz_poles", None)):
+            out.append((shape, eps_r))
+            continue
+        one, unext = extend_shapes_into_cpml_pad(
+            [(shape, eps_r)], node_coords, pads)
+        out.extend(one)
+        unextendable.extend(unext)
+    return out, unextendable
 
 
 # ---------------------------------------------------------------------------

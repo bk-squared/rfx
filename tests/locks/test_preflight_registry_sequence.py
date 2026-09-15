@@ -156,6 +156,34 @@ _CALL_SEQUENCE_AT_LEG7_TIP = (
     ("_check_waveguide_port_evanescent", ()),
     ("_check_msl_port_geometry", ("dx", "cpml_thick_lo", "cpml_thick_hi")),
     ("_check_coaxial_port_junction_aperture", ()),
+    # 2026-09-15 (#1043 stage B): the first ADDITION to this sequence, and the
+    # point at which the tuple stops being purely a transcript of the
+    # pre-registry hub -- so it is appended at the END and marked, the same
+    # discipline the #1047 removal above got. What it adds:
+    # ``_validate_cfg_dielectric_at_absorber_seam``, the seam counterpart of
+    # ``_validate_cfg_geometry_in_cpml`` -- geometry ABSENT from the absorber
+    # under the feature that says it puts it there, silent until now (#831
+    # section 8.7 filed it).
+    #
+    # Appending reorders nothing: every check above keeps its index, so all 65
+    # committed report snapshots keep the advisory ORDER they recorded, and
+    # only a fixture that makes the NEW check speak can move a snapshot byte.
+    # None does -- the check fires for a dielectric ending at the seam whose
+    # shape has no pad continuation (Sphere, a Cylinder reached across its
+    # axis, an imported mesh), and no fixture in the corpus has one.
+    # Verified by running the snapshot lock, not asserted here.
+    #
+    # Why not ``register_config_check``, which this registry's own docstring
+    # gives as the recipe for adding a check: because
+    # ``test_no_extra_check_is_registered_by_importing_rfx`` below forbids it
+    # for a SHIPPED check -- a family module that registered one at import
+    # would change what every ``preflight()`` in the process emits, and that
+    # test's own instruction is "register from an explicit opt-in instead".
+    # ``EXTRA_CONFIG_CHECKS`` is the caller's opt-in surface; an always-on
+    # check belongs in the reviewed, locked list, which is what makes this
+    # edit visible.
+    ("_validate_cfg_dielectric_at_absorber_seam",
+     ("warn", "dx", "cpml_thick_lo", "cpml_thick_hi")),
 )
 
 #: Just the names, in order -- the runtime view of the tuple above.

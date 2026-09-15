@@ -346,6 +346,25 @@ CORE_CONFIG_CHECKS: tuple[ConfigCheck, ...] = (
     ConfigCheck("_check_coaxial_port_junction_aperture",
                 lambda sim, c: sim._check_coaxial_port_junction_aperture(),
                 "ports"),
+    # 2026-09-15 (#1043 stage B): the first ADDITION to this sequence since it
+    # was locked, appended at the END so nothing already in it moves index and
+    # every committed snapshot keeps the advisory order it recorded.
+    #
+    # It is not registered through ``register_config_check`` even though this
+    # module's "Adding a check" recipe reads that way, because
+    # ``tests/locks/test_preflight_registry_sequence.py
+    # ::test_no_extra_check_is_registered_by_importing_rfx`` forbids exactly
+    # that for a SHIPPED check: a family module that registered one as an
+    # import side effect would change what every ``preflight()`` in the
+    # process emits, and that lock's own instruction is "register from an
+    # explicit opt-in instead". ``EXTRA_CONFIG_CHECKS`` is for a caller's
+    # opt-in; an always-on check belongs in this reviewed, locked list, and
+    # the two locks that read it are edited in the same change -- the review
+    # a red lock is supposed to force.
+    ConfigCheck("_validate_cfg_dielectric_at_absorber_seam",
+                lambda sim, c: sim._validate_cfg_dielectric_at_absorber_seam(
+                    c.warn, c.dx, c.cpml_thick_lo, c.cpml_thick_hi),
+                "absorber"),
 )
 
 

@@ -849,10 +849,12 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 stacklevel=2,
             )
         else:
-            shape_eps_pairs = [
-                (entry.shape, sim._resolve_material(entry.material_name).eps_r)
-                for entry in sim._geometry
-            ]
+            # #1043 stage B: the pairs carry the CPML/UPML pad continuation,
+            # the NU mirror of the two uniform sites. Same shared builder, so
+            # the three cannot drift the way the array-side replication did
+            # before #627.
+            from rfx.geometry.smoothing import smoothed_shape_pairs
+            shape_eps_pairs, _ = smoothed_shape_pairs(sim, grid)
             if shape_eps_pairs:
                 aniso_eps = compute_smoothed_eps_nonuniform(
                     grid, shape_eps_pairs, background_eps=1.0,

@@ -1535,6 +1535,11 @@ class _PreflightMixin:
         _validate_cfg_pec_faces_with_finite_pec,
         _validate_cfg_upml_refinement,
         _validate_cfg_upml_nonuniform_lane,
+        # #1043 stage B: the seam counterpart of _validate_cfg_geometry_in_cpml
+        # -- geometry ABSENT from the absorber under the feature that says it
+        # puts it there. Defined in the family module like the eleven above,
+        # never in this class body.
+        _validate_cfg_dielectric_at_absorber_seam,
     )
 
     # ------------------------------------------------------------------

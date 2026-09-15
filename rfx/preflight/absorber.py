@@ -916,6 +916,102 @@ def _validate_cfg_geometry_in_cpml(
             )
 
 
+def _validate_cfg_dielectric_at_absorber_seam(
+    self,
+    _w,
+    dx: float,
+    cpml_thick_lo: list[float],
+    cpml_thick_hi: list[float],
+) -> None:
+    """A dielectric ends AT the seam and its shape cannot be continued.
+
+    The complement of ``_validate_cfg_geometry_in_cpml``. That check reports
+    geometry standing INSIDE the absorber; this one reports geometry ABSENT
+    from it under a feature that says it puts it there. The CPML pad material
+    extension continues a boundary-touching structure outward "as if the
+    geometry continued beyond the domain" -- the staircase lane by replicating
+    the material arrays, the smoothed lane by continuing the SHAPE
+    (``rfx.geometry.smoothing.extend_shapes_into_cpml_pad``). A shape whose
+    type has no continuation -- a sphere touching a face at a point, a cylinder
+    reached across its axis, an imported mesh -- gets neither on the smoothed
+    lane, and is then solved with vacuum in its own pad: an end facet at the
+    interior/pad seam, which is what #831 measured as ``|B/A| ~ 0.53`` on a
+    straight guide, WORSENING with absorber depth.
+
+    Declared vs solved, in input units: this says which entry reaches which
+    face and what permittivity the pad there will hold. It does not predict
+    what that costs the result -- how much a facet reflects depends on the
+    mode, and that is the caller's judgement.
+
+    Silent where nothing is lost or where another check already speaks: a Box
+    or an axis-aligned Cylinder IS continued; a PEC volume is continued by
+    neither lane; and a dispersive material at an absorber face is
+    ``_validate_cfg_dispersive_pole_at_absorber_face``'s subject, not this
+    one's (pole masks are deliberately never continued -- #627b divergence,
+    #808 promoted statics).
+    """
+    if self._boundary not in ("cpml", "upml") or not self._geometry:
+        return
+    from rfx.geometry.csg import Box, Cylinder
+
+    pec_sigma = float(getattr(self, "_PEC_SIGMA_THRESHOLD", float("inf")))
+    tol = 0.5 * float(dx)
+    findings = []
+    for idx, entry in enumerate(self._geometry):
+        shape = entry.shape
+        if not hasattr(shape, "bounding_box"):
+            continue
+        try:
+            c1, c2 = shape.bounding_box()
+        except (NotImplementedError, TypeError):
+            continue
+        try:
+            mat = self._resolve_material(entry.material_name)
+        except KeyError:
+            continue
+        if float(getattr(mat, "sigma", 0.0)) >= pec_sigma:
+            continue
+        if (getattr(mat, "debye_poles", None)
+                or getattr(mat, "lorentz_poles", None)):
+            continue
+        for ax in range(min(3, len(self._domain))):
+            d = self._domain[ax] if ax < len(self._domain) else self._domain[-1]
+            axis_name = "xyz"[ax]
+            cyl_axis = (isinstance(shape, Cylinder)
+                        and {"x": 0, "y": 1, "z": 2}[shape.axis] == ax)
+            for side, thick, face, at_seam in (
+                    ("lo", cpml_thick_lo[ax], float(c1[ax]),
+                     0.0 <= float(c1[ax]) <= tol),
+                    ("hi", cpml_thick_hi[ax], float(c2[ax]),
+                     (d - tol) <= float(c2[ax]) <= d)):
+                if thick <= 0 or not at_seam:
+                    continue
+                if isinstance(shape, Box) or cyl_axis:
+                    continue
+                findings.append((idx, entry.material_name,
+                                 type(shape).__name__, axis_name, side,
+                                 face, float(mat.eps_r)))
+
+    for idx, mat_name, kind, axis_name, side, face, eps_r in findings:
+        _w.warn(
+            PreflightWarning(
+                f"Material '{mat_name}' (geometry entry #{idx}, {kind}) ends "
+                f"at the {axis_name}-{side} absorber seam "
+                f"({_fmt_len(face)}), and {kind} has no pad continuation "
+                f"across that face. With subpixel smoothing the "
+                f"pad there is solved at eps_r = 1.0, not the declared "
+                f"{eps_r:g}, so the structure is terminated by an end facet "
+                f"at the interior/pad boundary (issue #1043). Move the "
+                f"structure clear of the face, or declare it as a Box / "
+                f"axis-aligned Cylinder, which are continued.",
+                code="dielectric_at_absorber_seam",
+                loc=f"geometry[#{idx}] {axis_name}-{side}",
+                source="_validate_cfg_dielectric_at_absorber_seam",
+            ),
+            stacklevel=3,
+        )
+
+
 def _validate_cfg_pec_boundary_open_structure(self, _w) -> None:
     """P0.4: PEC boundary on likely open structure."""
     if self._boundary == "pec" and self._ntff is not None:
@@ -981,4 +1077,10 @@ _validate_cfg_geometry_in_cpml.__qualname__ = (
 )
 _validate_cfg_pec_boundary_open_structure.__qualname__ = (
     "_PreflightMixin._validate_cfg_pec_boundary_open_structure"
+)
+# Twelfth body, added here rather than moved (#1043 stage B): it was never in
+# the class, so its qualname is set for the same reason -- the composition-time
+# rewrite in rfx/api/__init__.py only promotes ``_PreflightMixin.<name>``.
+_validate_cfg_dielectric_at_absorber_seam.__qualname__ = (
+    "_PreflightMixin._validate_cfg_dielectric_at_absorber_seam"
 )
