@@ -76,6 +76,7 @@ from rfx.runners._distributed_common import (
     shard_stacked,
     shard_stacked_psi,
     unstack_and_gather,
+    update_e_nu_shmap,
     update_h_nu_shmap,
 )
 
@@ -645,7 +646,6 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     if is_nu:
         from rfx.runners.distributed_nu import (
             _build_sharded_inv_dx_arrays,
-            _update_e_local_nu,
             split_1d_with_ghost as _split_1d_with_ghost_helper,
         )
         inv_dx_global, inv_dx_h_global, _dx_padded = (
@@ -1006,31 +1006,16 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         """E update (with optional dispersion) via shard_map."""
         if is_nu:
             # NU path: no dispersion (blocked upstream).
-            @partial(
-                shard_map,
-                mesh=mesh,
-                in_specs=(
-                    P("x"), P("x"), P("x"),
-                    P("x"), P("x"), P("x"),
-                    P(),
-                    P("x"), P("x"), P("x"),
-                    P("x"), P(None), P(None),
-                ),
-                out_specs=(P("x"), P("x"), P("x"), P()),
-                check_rep=False,
+            # #1038 leg 4: this branch held a renamed copy (`_e_nu`) of
+            # distributed_nu.py's own `_e` wrapper -- inventory §2.4, 0.947
+            # similarity, the def name and nothing else. One shared body now,
+            # in _distributed_common; the `is_nu` dispatch, the dispersive
+            # branch below and the (state, db_st, lr_st) return shape are
+            # untouched.
+            new_st = update_e_nu_shmap(
+                st, mat, mesh, dt,
+                inv_dx_sharded, inv_dy_rep, inv_dz_rep,
             )
-            def _e_nu(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r,
-                      invdx, invdy, invdz):
-                _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
-                _mat = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
-                new_st = _update_e_local_nu(_st, _mat, dt, invdx, invdy, invdz)
-                return new_st.ex, new_st.ey, new_st.ez, new_st.step
-
-            ex, ey, ez, step = _e_nu(
-                st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
-                mat.eps_r, mat.sigma, mat.mu_r,
-                inv_dx_sharded, inv_dy_rep, inv_dz_rep)
-            new_st = st._replace(ex=ex, ey=ey, ez=ez, step=step)
             # db_st / lr_st are passthrough (dummies) in NU path.
             return new_st, db_st, lr_st
 

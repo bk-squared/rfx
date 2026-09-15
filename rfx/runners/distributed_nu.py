@@ -60,6 +60,7 @@ from rfx.runners._distributed_common import (
     shard_stacked_poles,
     shard_stacked_psi,
     unstack_and_gather,
+    update_e_nu_shmap,
     update_h_nu_shmap,
     zeros_psi_stacked,
 )
@@ -2125,32 +2126,13 @@ def run_nonuniform_distributed_pec(
         )
 
     def _update_e_shmap(st, mat):
-        @partial(
-            shard_map,
-            mesh=mesh,
-            in_specs=(
-                P("x"), P("x"), P("x"),
-                P("x"), P("x"), P("x"),
-                P(),
-                P("x"), P("x"), P("x"),
-                P("x"), P(None), P(None),
-            ),
-            out_specs=(P("x"), P("x"), P("x"), P()),
-            check_rep=False,
-        )
-        def _e(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r,
-               invdx, invdy, invdz):
-            _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
-            _mat = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
-            new_st = _update_e_local_nu(_st, _mat, dt, invdx, invdy, invdz)
-            return new_st.ex, new_st.ey, new_st.ez, new_st.step
-
-        ex, ey, ez, step = _e(
-            st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
-            mat.eps_r, mat.sigma, mat.mu_r,
+        # #1038 leg 4: body moved VERBATIM to
+        # _distributed_common.update_e_nu_shmap, shared with the `is_nu`
+        # branch of distributed_v2.run_distributed.
+        return update_e_nu_shmap(
+            st, mat, mesh, dt,
             inv_dx_sharded, inv_dy_rep, inv_dz_rep,
         )
-        return st._replace(ex=ex, ey=ey, ez=ez, step=step)
 
     # ------------------------------------------------------------------
     # Phase 2D: dispersive E shmap helper

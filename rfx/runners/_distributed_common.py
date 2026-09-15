@@ -57,6 +57,7 @@ __all__ = [
     "_update_h_local_nu",
     "_update_e_local_nu",
     "update_h_nu_shmap",
+    "update_e_nu_shmap",
 ]
 
 
@@ -929,3 +930,46 @@ def update_h_nu_shmap(st, mat, mesh, dt,
         inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep,
     )
     return st._replace(hx=hx, hy=hy, hz=hz, step=step)
+
+
+def update_e_nu_shmap(st, mat, mesh, dt,
+                      inv_dx_sharded, inv_dy_rep, inv_dz_rep):
+    """E update on the NU distributed path, via ``shard_map``.
+
+    The E sibling of :func:`update_h_nu_shmap`, shared by the same two
+    runners and merged for the same reason -- inventory §2.4 measured the two
+    inner kernels at 0.947 similarity, the entire residue being the ``def``
+    name. It needs three inverse-spacing arrays rather than six because the E
+    curl reads only the cell-local spacings, not the mean-spacing ones.
+
+    Returns the state with ``ex``/``ey``/``ez``/``step`` replaced. Dispersion
+    is NOT handled here: ``distributed_v2.run_distributed`` refuses Debye and
+    Lorentz on the NU path upstream, and its caller passes the polarisation
+    state straight back out.
+    """
+    @partial(
+        shard_map,
+        mesh=mesh,
+        in_specs=(
+            P("x"), P("x"), P("x"),
+            P("x"), P("x"), P("x"),
+            P(),
+            P("x"), P("x"), P("x"),
+            P("x"), P(None), P(None),
+        ),
+        out_specs=(P("x"), P("x"), P("x"), P()),
+        check_rep=False,
+    )
+    def _e(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r,
+           invdx, invdy, invdz):
+        _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
+        _mat = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
+        new_st = _update_e_local_nu(_st, _mat, dt, invdx, invdy, invdz)
+        return new_st.ex, new_st.ey, new_st.ez, new_st.step
+
+    ex, ey, ez, step = _e(
+        st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
+        mat.eps_r, mat.sigma, mat.mu_r,
+        inv_dx_sharded, inv_dy_rep, inv_dz_rep,
+    )
+    return st._replace(ex=ex, ey=ey, ez=ez, step=step)
