@@ -417,3 +417,114 @@ def test_dispersive_material_is_not_continued_into_the_pad():
     assert pairs[0][0] is touching, (
         "a Lorentz-pole material was continued into the absorber pad; "
         "see #627b in extend_cpml_pad_materials' docstring")
+
+
+def test_a_traced_axis_is_skipped_but_its_concrete_siblings_are_not():
+    """Per-axis, not per-run. Round-1 review caught the whole-run version.
+
+    A mesh-as-design-variable profile makes ONE axis' node positions tracers.
+    Skipping the continuation for the whole run when any axis was traced left
+    the concrete axes carrying their facets, so a run optimizing a dz profile
+    still descended against an x-face reflector — the defect this change
+    exists to remove, reintroduced by the guard meant to protect it.
+    """
+    import jax
+
+    from rfx.geometry.smoothing import extend_shapes_into_cpml_pad
+
+    nx, nz = 41, 21
+    x = np.arange(nx) * DX - 8 * DX          # concrete, 8 pad cells
+    y = np.arange(nx) * DX - 8 * DX          # concrete
+    box = Box((0.0, 0.0, 0.0), ((nx - 17) * DX, (nx - 17) * DX, (nz - 9) * DX))
+    pads = ((8, 8), (8, 8), (4, 4))
+
+    def _continued(z_axis):
+        out, _ = extend_shapes_into_cpml_pad([(box, 4.0)], (x, y, z_axis), pads)
+        return out[0][0]
+
+    z_concrete = np.arange(nz) * DX - 4 * DX
+    both = _continued(z_concrete)
+    assert both.corner_lo[0] < 0.0 and both.corner_lo[2] < 0.0, (
+        "the all-concrete control did not continue every axis")
+
+    captured = {}
+
+    def _probe(z_traced):
+        captured["shape"] = _continued(z_traced)
+        return z_traced.sum()
+
+    jax.make_jaxpr(_probe)(jax.numpy.asarray(z_concrete))
+    got = captured["shape"]
+    assert got.corner_lo[0] < 0.0 and got.corner_lo[1] < 0.0, (
+        "a traced z axis suppressed the CONCRETE x/y continuation; the guard "
+        "must be per-axis")
+    assert got.corner_lo[2] == box.corner_lo[2], (
+        "the traced z axis was continued anyway — its reach test has no "
+        "concrete answer and forcing one puts the pad on the tape")
+
+
+def test_the_nonuniform_runner_continues_a_boundary_touching_slab():
+    """The NU mirror on the CONTINUATION path, not only the identity path.
+
+    `rfx/runners/nonuniform.py` builds its pairs through the same shared
+    builder, and until this test the only NU coverage was a geometry that
+    reaches nothing — which passes whether the mirror is wired up or not.
+    """
+    from rfx.geometry.smoothing import (
+        compute_smoothed_eps_nonuniform, smoothed_shape_pairs,
+    )
+
+    dz = [DX] * 8 + [2 * DX] * 8 + [DX] * 8
+    lx = 24 * DX
+    sim = Simulation(freq_max=0.25 * C0 / A, domain=(lx, lx, 0.0), dx=DX,
+                     dz_profile=dz, boundary="cpml", cpml_layers=6)
+    sim.add_material("slab", eps_r=EPS_WG)
+    # Spans the full x extent (both x faces on the seam), inset in y and z.
+    slab = Box((0.0, 8 * DX, 8 * DX), (lx, 16 * DX, 12 * DX))
+    sim.add(slab, material="slab")
+    grid = sim._build_nonuniform_grid()
+
+    pairs, unextendable = smoothed_shape_pairs(sim, grid)
+    assert unextendable == []
+    assert pairs[0][0] is not slab, "the NU lane did not continue the slab"
+    assert pairs[0][0].corner_lo[0] < 0.0 and pairs[0][0].corner_hi[0] > lx
+
+    _, _, eps_ez = compute_smoothed_eps_nonuniform(
+        grid, pairs, background_eps=1.0)
+    arr = np.asarray(eps_ez)
+    # Index off the REALIZED node lines. z is the graded axis here, so
+    # "10 cells in" is not node 10 — assuming it is was how the first draft of
+    # this test sampled vacuum and blamed the continuation.
+    from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
+    c = coords_from_nonuniform_grid(grid)
+    jy = int(np.argmin(np.abs(np.asarray(c.y, dtype=float) - 12 * DX)))
+    kz = int(np.argmin(np.abs(np.asarray(c.z, dtype=float) - 10 * DX)))
+    row = arr[:, jy, kz].astype(float)
+    plx, phx = int(grid.pad_x_lo), int(grid.pad_x_hi)
+    assert plx > 0 and phx > 0
+    assert np.allclose(row[:plx], EPS_WG, rtol=1e-5), (
+        f"NU lo pad reads {row[:plx][:4]}, not the slab's {EPS_WG}")
+    assert np.allclose(row[len(row) - phx:], EPS_WG, rtol=1e-5), (
+        f"NU hi pad reads {row[len(row) - phx:][-4:]}, not {EPS_WG}")
+
+
+def test_a_shape_that_cannot_be_continued_warns_at_run_time():
+    """Preflight is not the only place this has to be said.
+
+    `smoothed_shape_pairs` returns the unextendable faces and every runner
+    site now surfaces them. Before round-1 review all three discarded the list
+    while the docstrings claimed the caller surfaced it, so a `skip_preflight`
+    run — which is most scripted runs — solved the facet in silence.
+    """
+    from rfx.geometry.csg import Sphere
+
+    sim = Simulation(freq_max=0.25 * C0 / A, domain=(SX, SY, DX), dx=DX,
+                     boundary=BoundarySpec.uniform("cpml"),
+                     cpml_layers=CPML_LAYERS, mode="2d_tmz")
+    sim.add_material("blob", eps_r=EPS_WG)
+    sim.add(Sphere((0.0, WG_Y, 0.0), 2 * A), material="blob")
+    sim.add_source(position=(4 * A, WG_Y, 0), component="ez",
+                   waveform=GaussianPulse(f0=FCEN, bandwidth=FWIDTH / FCEN,
+                                          amplitude=1.0))
+    with pytest.warns(UserWarning, match="were NOT continued"):
+        sim.run(n_steps=6, subpixel_smoothing=True, skip_preflight=True)

@@ -363,7 +363,7 @@ CORE_CONFIG_CHECKS: tuple[ConfigCheck, ...] = (
     # a red lock is supposed to force.
     ConfigCheck("_validate_cfg_dielectric_at_absorber_seam",
                 lambda sim, c: sim._validate_cfg_dielectric_at_absorber_seam(
-                    c.warn, c.dx, c.cpml_thick_lo, c.cpml_thick_hi),
+                    c.warn),
                 "absorber"),
 )
 

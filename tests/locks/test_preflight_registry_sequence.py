@@ -182,8 +182,14 @@ _CALL_SEQUENCE_AT_LEG7_TIP = (
     # ``EXTRA_CONFIG_CHECKS`` is the caller's opt-in surface; an always-on
     # check belongs in the reviewed, locked list, which is what makes this
     # edit visible.
-    ("_validate_cfg_dielectric_at_absorber_seam",
-     ("warn", "dx", "cpml_thick_lo", "cpml_thick_hi")),
+    # Takes only ``warn``. Round-1 review: the body used to re-derive "reaches
+    # a padded face" from ``self._domain`` with dx and the per-face
+    # thicknesses, which is a SECOND copy of the continuation's own predicate
+    # and disagreed with it on a shape that CROSSES the boundary. It now asks
+    # ``smoothed_shape_pairs`` -- the same call the three runner sites make --
+    # and builds the grid itself, so the context fields it used to read are
+    # gone rather than passed and ignored.
+    ("_validate_cfg_dielectric_at_absorber_seam", ("warn",)),
 )
 
 #: Just the names, in order -- the runtime view of the tuple above.

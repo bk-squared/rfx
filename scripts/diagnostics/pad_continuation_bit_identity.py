@@ -32,8 +32,14 @@ committed: the same FDTD code differs between hosts and XLA is free to re-fuse
 a graph between versions, so bit identity is promised for A/B on ONE host with
 ONE toolchain -- which is the question this change asks.
 
+One entry is a DECLARED MOVER and says so in its name and docstring:
+``box_drawn_into_the_pad_2d__MOVER``. A table of only the cases that hold
+still is not a check -- the mover is what shows the harness can tell the
+difference.
+
 Measured 2026-09-15 on the remilab pod (linux x86_64, CPU, python 3.10, jax
-0.6.2) against ``origin/main`` at 541f703f: all eight IDENTICAL in both lanes.
+0.6.2) against ``origin/main`` at 541f703f: the eight identity cases IDENTICAL
+in both precision lanes, the mover DIFFERS in both.
 """
 from __future__ import annotations
 
@@ -125,6 +131,31 @@ def cfg_touching_dielectric_pec_walls_2d():
     return sim, dict(subpixel_smoothing=True)
 
 
+def cfg_box_drawn_into_the_pad_2d():
+    """A DECLARED MOVER, not an identity case.
+
+    A Box whose corner already sits inside the absorber (here 5 cells past the
+    x-lo face, pad 20) reaches the face by any reading, so the continuation
+    carries it to the array edge and the whole pad fills. Before this change
+    the smoothed lane solved the 5 cells the user drew and vacuum beyond them.
+
+    The move is deliberate: it is what the staircase lane's interior-edge
+    replication already does for the same geometry, so the two lanes agree
+    afterwards and disagreed before. It is listed here rather than left out
+    because a configuration that MOVES belongs in the same table as the ones
+    that do not -- a bit-identity table with the movers omitted is a table
+    that cannot be checked. ``geometry_in_absorber`` (#61) also fires on this
+    configuration and always has.
+    """
+    sim = Simulation(freq_max=0.25 * C0 / A, domain=(8 * A, 6 * A, DX), dx=DX,
+                     boundary=BoundarySpec.uniform("cpml"), cpml_layers=20,
+                     mode="2d_tmz")
+    sim.add_material("d", eps_r=4.0)
+    sim.add(Box((-5 * DX, 2.5 * A, 0), (8 * A, 3.5 * A, DX)), material="d")
+    _src(sim, 1 * A, 3 * A)
+    return sim, dict(subpixel_smoothing=True)
+
+
 def cfg_interior_dielectric_3d():
     sim = Simulation(freq_max=0.25 * C0 / A, domain=(5 * A, 5 * A, 5 * A),
                      dx=DX, boundary=BoundarySpec.uniform("cpml"),
@@ -168,6 +199,7 @@ CONFIGS = {
     "interior_dielectric_upml_2d": cfg_interior_dielectric_upml_2d,
     "touching_dielectric_subpixel_off_2d": cfg_touching_dielectric_subpixel_off_2d,
     "touching_dielectric_pec_walls_2d": cfg_touching_dielectric_pec_walls_2d,
+    "box_drawn_into_the_pad_2d__MOVER": cfg_box_drawn_into_the_pad_2d,
     "interior_dielectric_3d": cfg_interior_dielectric_3d,
     "kottke_pec_interior_3d": cfg_kottke_pec_interior_3d,
     "nonuniform_interior_dielectric": cfg_nonuniform_interior_dielectric,

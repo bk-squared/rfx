@@ -991,3 +991,48 @@ def test_dispersive_sphere_is_section_3s_subject_not_this_one():
     sim.add(_seam_sphere(), material="slab")
     assert _seam_findings(sim) == []
     assert _findings(sim), "section 3's advisory should still speak here"
+
+
+def test_sphere_CROSSING_the_absorber_face_is_reported_too():
+    """Round-1 review found this one: crossing is not the same as touching.
+
+    The first draft re-derived "reaches a padded face" from ``self._domain``
+    and asked whether the bbox face landed inside ``[0, d]``. A sphere drawn
+    PAST the boundary fails that window and was silent, while the continuation
+    itself calls it unextendable — its bounding box reaches the face. Two
+    hand-written copies of one predicate is the #627 defect; the check now
+    asks the continuation, so this case comes for free rather than needing its
+    own clause.
+
+    ``geometry_in_absorber`` (#61) also speaks here. The two are not
+    redundant: that one says the structure stands in the absorber, this one
+    says the pad it stands in is still solved as vacuum.
+    """
+    sim = _dp_sim()
+    sim.add_material("d", eps_r=4.0)
+    r = 4 * DP_DX
+    sim.add(Sphere((r - 2 * DP_DX, NB * DP_DX / 2, NZ * DP_DX / 2), r),
+            material="d")
+    found = _seam_findings(sim)
+    assert len(found) == 1, found
+    assert "Sphere" in str(found[0]) and "x-lo" in str(found[0])
+
+
+def test_the_advisory_and_the_continuation_cannot_disagree():
+    """The check consumes the builder's own list, so equality is structural.
+
+    Asserted rather than assumed, because "one implementation" is a claim
+    about the code that a refactor can quietly undo.
+    """
+    from rfx.geometry.smoothing import smoothed_shape_pairs
+
+    sim = _dp_sim()
+    sim.add_material("d", eps_r=4.0)
+    sim.add(_seam_sphere(), material="d")
+    grid = sim._build_grid()
+    _, unextendable = smoothed_shape_pairs(sim, grid)
+    found = _seam_findings(sim)
+    assert len(found) == len(unextendable) == 1
+    u = unextendable[0]
+    assert "xyz"[u.axis] + "-" + u.side in str(found[0])
+    assert f"{u.eps_r:g}" in str(found[0])

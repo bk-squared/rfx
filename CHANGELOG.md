@@ -91,8 +91,15 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   in its own absorber and a Kottke half-cell at the seam, i.e. terminated by an
   end facet. Fixed at all three sites that rebuild that array (Stage-1,
   Stage-2 `kottke_pec`, and the non-uniform mirror) through one shared builder.
-- **This changes solved numbers for boundary-touching dielectrics under
-  subpixel smoothing, and only for those.** Measured: crossval 03's straight
+- **This changes solved numbers for dielectrics that REACH an absorber pad
+  under subpixel smoothing** — which includes one case the first draft of this
+  entry did not say out loud: a `Box` whose corner already sits *inside* the
+  pad is continued to the array edge and fills the whole pad, where before it
+  filled only the cells it was drawn across. That is deliberate — it is what
+  the staircase lane's interior-edge replication already did for the same
+  geometry, so the two lanes now agree where they disagreed — and
+  `geometry_in_absorber` (#61) has always warned about that configuration
+  independently. Everything that reaches no pad is untouched. Measured: crossval 03's straight
   guide `|B/A|` 0.531 → 0.030 at 20 absorber cells, with the depth trend
   inverted back (it rose 0.53 → 0.59 → 0.62 over 20/40/60 cells and now falls
   0.030 → 0.012 → 0.002) and the ring-down settling witness −37.3 → −138.3 dB;
@@ -102,11 +109,15 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   absorber-depth ladder goes flat (0.9876 / 0.9890 / 0.9894 / 0.9889 at 10 / 16
   / 20 / 40 cells, spread 0.0018, against 0.7489 → 0.9473 before): the depth
   dependence was the facet, not the absorber.
-- Everything without a boundary-touching dielectric is **bit-identical** —
-  eight configurations (vacuum pads, interior dielectric under CPML and UPML,
+- Everything that reaches no absorber pad is **bit-identical** — eight
+  configurations (vacuum pads, interior dielectric under CPML and UPML,
   `subpixel_smoothing=False` on the same touching geometry, PEC walls, 3-D,
   `kottke_pec`, non-uniform) SHA-256-identical over the six final field arrays
-  and the probe trace, in both the x64 and float32 lanes.
+  and the probe trace, in both the x64 and float32 lanes. A ninth
+  configuration — the `Box` drawn into the pad above — is carried in the same
+  harness as a **declared mover** and differs in both lanes, so the table
+  demonstrates that it can tell the two apart rather than only that nothing
+  moved.
 - Not continued into a pad, each for a measured reason: PEC volumes (the
   staircase lane does not extend `pec_mask` either), dispersive materials
   (#627b: a high-Q pole in a pad turns a stable run divergent with no NaN;

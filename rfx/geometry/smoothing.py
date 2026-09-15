@@ -281,15 +281,52 @@ _PAD_CONTINUE_CELLS = 2.0
 class UnextendableShape(NamedTuple):
     """One (shape, axis, side) a pad continuation could not express.
 
-    ``axis`` is 0/1/2 and ``side`` is ``"lo"`` / ``"hi"``. Returned rather
-    than warned about here: the caller is a runner, and preflight owns
-    advisories (``_validate_cfg_dielectric_at_absorber_seam``).
+    ``axis`` is 0/1/2 and ``side`` is ``"lo"`` / ``"hi"``. It carries the
+    shape's declared ``eps_r`` so a caller can say what the pad will hold
+    instead of what was drawn, without re-resolving the material.
+
+    Two callers surface these, and they are the SAME list from the SAME
+    predicate, not two rules that happen to agree today (the #627
+    duplication class): :func:`warn_unextendable_shapes` at run time, and
+    preflight's ``_validate_cfg_dielectric_at_absorber_seam``, which calls
+    :func:`smoothed_shape_pairs` itself rather than re-deriving "reaches a
+    padded face" from the declared domain.
     """
 
     shape: object
     axis: int
     side: str
     reason: str
+    eps_r: float = 1.0
+
+
+def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
+    """Emit ONE run-time warning for shapes left carrying a seam facet.
+
+    Preflight says this before the run when it can (it builds the grid
+    itself); this says it from inside the runner, where the realized pads
+    are no longer in question. A shape that reaches a padded face and is
+    not continued is solved with vacuum in its own absorber -- the #831
+    facet -- and nothing downstream distinguishes that from a structure
+    the user meant to end there.
+    """
+    if not unextendable:
+        return
+    import warnings as _w
+    faces = ", ".join(
+        f"{type(u.shape).__name__} at {'xyz'[u.axis]}-{u.side} "
+        f"(eps_r {u.eps_r:g}; {u.reason})"
+        for u in unextendable)
+    _w.warn(
+        "subpixel smoothing: "
+        f"{len(unextendable)} declared face(s) reach a CPML/UPML pad and "
+        f"were NOT continued into it -- {faces}. Those pads are solved at "
+        "eps_r = 1.0, so each structure is terminated by an end facet at the "
+        "interior/pad seam and the guided/standing field sees a reflector "
+        "there (issue #1043). Draw the structure as a Box or an "
+        "axis-aligned Cylinder, or move it clear of the face.",
+        stacklevel=stacklevel,
+    )
 
 
 def _axis_cells(nodes) -> tuple[float, float]:
@@ -370,6 +407,7 @@ def extend_shapes_into_cpml_pad(
         Those shapes are returned unchanged and still carry the facet; the
         caller surfaces them.
     """
+    from rfx.core.jax_utils import is_tracer
     from rfx.geometry.csg import Box, Cylinder
 
     out: list[tuple[Shape, float]] = []
@@ -383,6 +421,15 @@ def extend_shapes_into_cpml_pad(
         current = shape
         for axis in range(3):
             nodes = node_coords[axis]
+            # PER AXIS, not per run. A mesh-as-design-variable profile makes
+            # ONE axis' node positions tracers (a traced dz leaves x and y
+            # concrete), and skipping all three then left the concrete axes'
+            # facets in place -- an optimizer would still be descending
+            # against a reflector on x. The traced axis is skipped because
+            # its reach test has no concrete answer, and forcing one would
+            # make the pad depend on a value the tape differentiates through.
+            if is_tracer(nodes):
+                continue
             n = len(nodes)
             cell_lo, cell_hi = _axis_cells(nodes)
             for side, pad, cell in (("lo", int(pads[axis][0]), cell_lo),
@@ -408,13 +455,15 @@ def extend_shapes_into_cpml_pad(
                     if grown is None:
                         unextendable.append(UnextendableShape(
                             current, axis, side,
-                            "a cylinder has no continuation across its axis"))
+                            "a cylinder has no continuation across its axis",
+                            float(eps_r)))
                     else:
                         current = grown
                 else:
                     unextendable.append(UnextendableShape(
                         current, axis, side,
-                        f"{type(current).__name__} has no pad continuation"))
+                        f"{type(current).__name__} has no pad continuation",
+                        float(eps_r)))
         out.append((current, eps_r))
     return out, unextendable
 
@@ -431,8 +480,13 @@ def smoothed_shape_pairs(sim, grid):
 
     The continuation is applied when the run has absorbing pads at all
     (``sim._boundary`` in ``cpml``/``upml`` with ``_cpml_layers > 0``) --
-    the SAME gate ``_assemble_materials`` uses for
-    ``extend_cpml_pad_materials`` -- and only to shapes whose material carries
+    the same gate ``_assemble_materials`` uses for
+    ``extend_cpml_pad_materials``, MINUS its ``include_cpml_pad_extension``
+    keyword, which is a private ``_assemble_materials`` argument with one
+    in-tree caller (``rfx/vmap_sweep.py``) and does not reach a runner. That
+    caller passes ``False`` and runs no subpixel lane, so the two gates cannot
+    disagree today; a future caller that wants the flag honoured here has to
+    thread it -- and only to shapes whose material carries
     no dispersion pole (#627b, #808: a pole in a pad diverges, and a
     pole-carrying column's promoted statics are a material no declared model
     has).
@@ -455,18 +509,14 @@ def smoothed_shape_pairs(sim, grid):
         from rfx.geometry.rasterize_grid import coords_from_uniform_grid
         coords = coords_from_uniform_grid(grid)
     node_coords = (coords.x, coords.y, coords.z)
-    # A traced mesh (mesh-as-design-variable: a dz profile that is an
-    # optimization variable) makes these node positions tracers, and the reach
-    # test reads them as Python floats. Rather than force a concretization --
-    # which would raise inside a jit and make the pad depend on a value the
-    # tape is differentiating through -- the continuation is skipped and the
-    # pairs come back untouched: exactly the behaviour every traced-mesh run
-    # had before this change, and no silent geometry move under a gradient.
-    # Box corners themselves are always concrete (``Box._axis_mask`` relies on
-    # it: ``extent = float(hi - lo)``), so only the grid side needs this.
-    from rfx.core.jax_utils import is_tracer
-    if any(is_tracer(axis) for axis in node_coords):
-        return pairs, []
+    # A traced mesh (mesh-as-design-variable) makes node positions tracers on
+    # the traced axis, and the reach test reads them as Python floats. That is
+    # handled PER AXIS inside extend_shapes_into_cpml_pad rather than here:
+    # skipping the whole run when any one axis was traced left the concrete
+    # axes carrying their facets, so a run optimizing a dz profile still
+    # descended against an x-face reflector. Box corners themselves are always
+    # concrete (``Box._axis_mask`` relies on it: ``extent = float(hi - lo)``),
+    # so only the grid side needs the guard at all.
     pads = ((grid.pad_x_lo, grid.pad_x_hi),
             (grid.pad_y_lo, grid.pad_y_hi),
             (grid.pad_z_lo, grid.pad_z_hi))
@@ -476,7 +526,12 @@ def smoothed_shape_pairs(sim, grid):
     # is rebuilt position for position rather than partitioned and rejoined.
     out = []
     unextendable = []
-    pec_sigma = float(getattr(sim, "_PEC_SIGMA_THRESHOLD", float("inf")))
+    # 1e6, the value every other reader of this threshold defaults to
+    # (rfx/surrogate.py, rfx/fidelity.py, rfx/pcb.py). An ``inf``
+    # default fails OPEN: a sim without the attribute would classify a
+    # PEC material as a dielectric and continue metal into the pad,
+    # which is the one thing both lanes agree never to do.
+    pec_sigma = float(getattr(sim, "_PEC_SIGMA_THRESHOLD", 1e6))
     for entry, (shape, eps_r) in zip(sim._geometry, pairs):
         mat = sim._resolve_material(entry.material_name)
         # PEC volumes are not continued on EITHER lane: ``pec_mask`` is not in

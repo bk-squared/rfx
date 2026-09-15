@@ -644,12 +644,25 @@ def compute_waveguide_s_matrix(
     # 185 verdicts replay against a frozen artifact, so moving its numbers is
     # a measurement change that wants its own pre-declaration and its own
     # re-measurement, not a ride on the runner fix ("refactoring and
-    # measurement changes do not travel together", #928). Whether any
-    # committed fixture is actually affected was NOT measured — the site was
-    # found by grep during stage B and is recorded in section 8a of
-    # docs/design_notes/issue1043_pad_continuation_results.md. Anyone closing
-    # it: the reference run passes dielectric_shapes=[] and so cannot carry a
-    # facet; only the device run can.
+    # measurement changes do not travel together", #928).
+    #
+    # NOTHING IN THE TREE REACHES IT TODAY, counted rather than assumed
+    # (round-1 review of the stage-B PR):
+    #   * the parameter defaults to False (:76), so a caller has to opt in;
+    #   * exactly ONE in-tree caller passes a truthy value --
+    #     tests/unit/sparams/test_waveguide_nu_sparam.py:396 -- and it is a
+    #     FENCE: pytest.raises(NotImplementedError, match="subpixel_smoothing")
+    #     on the NU dispatch, which stops before any solve;
+    #   * every other caller takes the default, including the v1.8
+    #     chain-closure battery and the #1043 F1 PEC-short gate driver, so the
+    #     blocks below are never entered by them;
+    #   * and PEC volumes are not continued on either lane anyway, so a
+    #     PEC-only fixture could not move even if it did enter.
+    # A latent gap, then, not a live wrong number. Anyone closing it: the
+    # reference run passes dielectric_shapes=[] and cannot carry a facet, so
+    # only the device run can. Tracked as #1066; section 8a of
+    # docs/design_notes/issue1043_pad_continuation_results.md carries the
+    # census.
     # Stage 2 unified path: subpixel_smoothing="kottke_pec" routes
     # through compute_inv_eps_tensor_diag and skips the Stage 1
     # eps_correction + apply_conformal_pec chain entirely. Both

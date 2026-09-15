@@ -249,31 +249,39 @@ says both cv01 numbers stay facet-dominated until stage B. Consistent with both;
 contradicts neither. `R2-attempts=1`. `falsifier=section 8.4 re-run on the
 committed cv03 geometry` — 0.0296 at 20 layers, 0.0020 at 60, −138.3 dB.
 
-## 8a. A FOURTH site, found during this change and deliberately not changed
+## 8a. A FOURTH site, found here, counted, and deliberately not changed
 
 `#1043`'s table names three sites. There is a fourth:
-**`rfx/sparams/waveguide.py:642-697`**, the waveguide S-parameter lane, which
-builds its own `shape_eps_pairs` from `self._geometry` for both the Stage-2 and
-the Stage-1 branch under a comment that says "Mirrors
-rfx/runners/uniform.py". It is the same defect class — a rebuilt update
-permittivity with no pad step — and after this change it is the one place where
-that mirror no longer holds.
+**`rfx/sparams/waveguide.py`**, the waveguide S-parameter lane, which builds
+its own `shape_eps_pairs` from `self._geometry` for both the Stage-2 and the
+Stage-1 branch under a comment saying "Mirrors rfx/runners/uniform.py". Same
+defect class, and after this change it is the one place that mirror no longer
+holds.
 
-It is left alone here, and that is a decision rather than an oversight:
+**Nothing in the tree reaches it**, counted rather than assumed (round-1
+review; the first draft of this section said "unmeasured", which was true when
+written and is no longer):
 
-* the lane is v1.8 **chain-closed**, with 185 verdicts replayed against a
-  frozen artifact, so a change there moves a closed family's numbers and wants
-  its own pre-declaration and its own re-measurement, not a ride on this one;
-* "refactoring and measurement changes do not travel together" (#928) cuts the
-  same way;
-* the reference run passes `dielectric_shapes=[]`, so only the device run can
-  carry a facet at all, and whether any committed waveguide fixture has a
-  dielectric reaching a padded face is not established here — it was found by
-  grep, not by measurement.
+* the parameter defaults to `False` (`waveguide.py:76`), so a caller opts in;
+* exactly **one** in-tree caller passes a truthy value —
+  `tests/unit/sparams/test_waveguide_nu_sparam.py:396` — and it is a **fence**:
+  `pytest.raises(NotImplementedError, match="subpixel_smoothing")` on the NU
+  dispatch. It stops before any solve;
+* every other caller of `compute_waveguide_s_matrix` takes the default,
+  including the v1.8 chain-closure battery and this issue's own F1 PEC-short
+  gate driver (`scripts/diagnostics/cpml_subpixel_stability/f1_pec_short_gate.py:143`,
+  which passes no `subpixel_smoothing` and declares only PEC);
+* and PEC volumes are continued by neither lane, so a PEC-only fixture could
+  not move even if it did enter.
 
-So: **unmeasured, unfixed, named.** A waveguide fixture with a dielectric
-touching a CPML port face is solved with vacuum in that pad today, exactly as
-cv01 and cv03 were.
+So it is a **latent gap, not a live wrong number**. Left alone because the lane
+is v1.8 chain-closed — 185 verdicts replay against a frozen artifact, and
+moving its numbers is a measurement change wanting its own pre-declaration
+("refactoring and measurement changes do not travel together", #928). Folding
+it into `smoothed_shape_pairs` when the waveguide lane next opens for a
+measurement change is tracked as **#1066**. For whoever takes it: the
+reference run passes `dielectric_shapes=[]` and cannot carry a facet, so only
+the device run can.
 
 ## 9. What this does not close
 

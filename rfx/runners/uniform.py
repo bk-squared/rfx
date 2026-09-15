@@ -237,13 +237,15 @@ def run_uniform(
     if use_kottke_pec:
         from rfx.geometry.smoothing import (
             compute_inv_eps_tensor_diag, smoothed_shape_pairs,
+            warn_unextendable_shapes,
         )
         # #1043 stage B: the pairs carry the CPML/UPML pad continuation, so a
         # dielectric that touches the domain edge is solved with the material
         # in its own pad instead of a vacuum facet at the seam. PEC shapes are
         # NOT continued — ``pec_mask`` is not extended on the staircase lane
         # either, and the two lanes have to agree about what stands in a pad.
-        shape_eps_pairs, _ = smoothed_shape_pairs(sim, grid)
+        shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
+        warn_unextendable_shapes(_unextendable)
         aniso_inv_eps = compute_inv_eps_tensor_diag(
             grid,
             dielectric_shapes=shape_eps_pairs,
@@ -270,9 +272,11 @@ def run_uniform(
     elif subpixel_smoothing:
         from rfx.geometry.smoothing import (
             compute_smoothed_eps, smoothed_shape_pairs,
+            warn_unextendable_shapes,
         )
         # #1043 stage B: same pad continuation as the Stage-2 site above.
-        shape_eps_pairs, _ = smoothed_shape_pairs(sim, grid)
+        shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
+        warn_unextendable_shapes(_unextendable)
         if shape_eps_pairs:
             aniso_eps = compute_smoothed_eps(grid, shape_eps_pairs, background_eps=1.0)
 
