@@ -345,6 +345,12 @@ def main():
     p.add_argument("--subpixel", action="store_true",
                    help="run(subpixel_smoothing=True); OFF is the rig #801 measured")
     p.add_argument("--dry", action="store_true", help="build + raster + preflight, no solve")
+    p.add_argument("--no-raster", action="store_true",
+                   help="skip the raster read-back and its assert.  ONLY for the bisect lane: "
+                        "raster() touches _assemble_materials' sheet-collector signature and the "
+                        "#931 realized_pec_edge_masks rename, so on a commit between fa3a99bd and "
+                        "main it can fail for reasons that have nothing to do with the ring-down. "
+                        "The solve itself is untouched.")
     p.add_argument("--tag", required=True)
     p.add_argument("--out-dir", required=True)
     p.add_argument("--rfx-tree-sha", default=None)
@@ -366,7 +372,10 @@ def main():
     sim, geom = build(a.n, a.shift_x, a.shift_y, a.pad, a.swap_xy, a.cpml, a.gnd_cell,
                       a.pad_z, a.patch_plane, a.shrink_domain_ulp,
                       a.sheet_conductors)
-    ras = raster(sim, geom)
+    if a.no_raster:
+        ras = {"skipped": "raster read-back disabled (--no-raster)"}
+    else:
+        ras = raster(sim, geom)
     rec = dict(tag=a.tag, provenance=prov, n=a.n, dx_um=geom["dx"] * 1e6, periods=a.periods,
                pad_h=a.pad, cpml_layers=geom["cpml_layers"], subpixel_smoothing=bool(a.subpixel),
                sheet_conductors=bool(a.sheet_conductors),
@@ -374,14 +383,31 @@ def main():
                raster=ras, geom={k: v for k, v in geom.items() if k != "quad"},
                status="built")
     exp_x, exp_y = (W_H, L_H) if a.swap_xy else (L_H, W_H)
-    assert ras["n_cells_x"] == exp_x * a.n and ras["n_cells_y"] == exp_y * a.n, \
-        f"raster {ras['n_cells_x']}x{ras['n_cells_y']} != {exp_x*a.n}x{exp_y*a.n}"
-    print(f"[{a.tag}] grid {ras['shape']} patch {ras['n_cells_x']}x{ras['n_cells_y']} cells; "
-          f"cpml {geom['cpml_layers']}; pad eps x-lo row {ras['pad_eps']['xlo_row']}", flush=True)
+    if not a.no_raster:
+        assert ras["n_cells_x"] == exp_x * a.n and ras["n_cells_y"] == exp_y * a.n, \
+            f"raster {ras['n_cells_x']}x{ras['n_cells_y']} != {exp_x*a.n}x{exp_y*a.n}"
+        print(f"[{a.tag}] grid {ras['shape']} patch {ras['n_cells_x']}x{ras['n_cells_y']} cells; "
+              f"cpml {geom['cpml_layers']}; pad eps x-lo row {ras['pad_eps']['xlo_row']}",
+              flush=True)
+    else:
+        print(f"[{a.tag}] raster read-back SKIPPED (--no-raster); cpml {geom['cpml_layers']}",
+              flush=True)
     persist(f"{a.tag}.json", rec)
 
-    adv = [str(v) for v in sim.preflight()]
-    rec["preflight"] = adv
+    # The preflight is part of the result and is never swallowed.  On the bisect lane a
+    # commit may raise inside a validator for reasons unrelated to the ring-down, so the
+    # exception is RECORDED as the preflight rather than allowed to abort the arm -- and
+    # the record says so, so a reader cannot mistake it for a clean zero-finding preflight.
+    try:
+        adv = [str(v) for v in sim.preflight()]
+        rec["preflight"] = adv
+        rec["preflight_status"] = "ran"
+    except Exception as exc:
+        adv = []
+        rec["preflight"] = []
+        rec["preflight_status"] = f"RAISED: {type(exc).__name__}: {exc}"
+        print(f"[{a.tag}] preflight RAISED and was recorded, not swallowed: "
+              f"{rec['preflight_status']}", flush=True)
     print(f"[{a.tag}] preflight ({len(adv)}), quoted verbatim:", flush=True)
     for v in adv:
         print(f"   ! {v}", flush=True)

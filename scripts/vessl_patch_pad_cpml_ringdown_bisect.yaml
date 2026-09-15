@@ -1,0 +1,135 @@
+name: rfx-patch-pad-cpml-ringdown-bisect
+description: "Issue #801 localization, pre-declared in Addendum E of scripts/diagnostics/_artifacts/patch_pad_cpml_ringdown/PREDECLARATION.md. Three earlier jobs (369367261204 / 261205 / 261209) closed four hypotheses: the growth is not the #1043 class (pre-#1047 and main are bit-identical on this arm), it is not reproducible at any lateral pad from +6h to +16h on main, and it does not return when the pre-#931 board is restored field-for-field. So something else among the 734 commits between fa3a99bd and fc7f7202 stopped it, and this job finds which one. git bisect run over that range with the arm the issue measured: n4, +10h lateral pad, cpml_layers = 2n = 8, 150 periods = 26659 steps, board AS DECLARED. THE PREDICATE IS INVERTED ON PURPOSE -- bad = fc7f7202 = settles, good = fa3a99bd = grows -- so git's 'first bad commit' is the first commit where the growth stopped. Both endpoints are re-measured in this pod BEFORE the bisect starts and a disagreement aborts, because a bisect between two mislabelled ends returns a confident wrong commit. LOCALIZATION ONLY: the only verdict is settling_db > -40 dB, fixed before the run. Serial by construction -- a bisect step cannot start until the previous one reports, so sharding does not apply. ~12 arms at 26 s of solve each."
+tags: [rfx, issue-801, cpml, ring-down, bisect, localization]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: "Agg"
+  JAX_ENABLE_X64: "0"
+  RFX_DRIVER_BRANCH: "diag/801-patch-ringdown-padding"
+  RFX_DRIVER_SHA: "FILL_AFTER_PUSH"
+  # bad = the arm SETTLES (the behaviour that appears), good = the arm GROWS.
+  RFX_BISECT_BAD: "fc7f7202567e2cf78a65ab90a709e4ff45b185f1"
+  RFX_BISECT_GOOD: "fa3a99bda71728b6f00575540995e690ad16cbda"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #801: which commit stopped the growth? (git bisect) ==="
+  date
+  if [ "$RFX_DRIVER_SHA" = "FILL_AFTER_PUSH" ]; then
+    echo "FATAL: RFX_DRIVER_SHA still holds the FILL_AFTER_PUSH placeholder"
+    exit 3
+  fi
+  echo "driver commit: $RFX_DRIVER_SHA"
+  echo "bisect bad  (arm SETTLES): $RFX_BISECT_BAD"
+  echo "bisect good (arm GROWS):  $RFX_BISECT_GOOD"
+
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  git config --global --add safe.directory '*' || true
+  git config --global user.email "bisect@rfx.invalid" || true
+  git config --global user.name "rfx bisect" || true
+
+  # The driver's own commit, shallow -- only two scripts are read from it.
+  rm -rf /tmp/rfx-801b-driver /tmp/rfx-801b-work
+  git init -q /tmp/rfx-801b-driver
+  cd /tmp/rfx-801b-driver
+  git fetch -q --depth 1 https://github.com/bk-squared/rfx.git "$RFX_DRIVER_SHA"
+  git checkout -q FETCH_HEAD
+  got=$(git rev-parse HEAD)
+  if [ "$got" != "$RFX_DRIVER_SHA" ]; then
+    echo "FATAL: driver tree is at $got, wanted $RFX_DRIVER_SHA"
+    exit 3
+  fi
+  DRVDIR=/tmp/rfx-801b-driver/scripts/diagnostics
+  STEP="$DRVDIR/patch_pad_cpml_ringdown_bisect_step.sh"
+  test -f "$DRVDIR/patch_pad_cpml_ringdown.py" || { echo "FATAL: driver missing"; exit 3; }
+  test -f "$STEP" || { echo "FATAL: bisect step script missing"; exit 3; }
+  test -f "$DRVDIR/_artifacts/patch_pad_cpml_ringdown/PREDECLARATION.md" || { echo "FATAL: pre-declaration missing"; exit 3; }
+
+  # A bisect needs real history, so this clone is FULL, not shallow.
+  git clone -q https://github.com/bk-squared/rfx.git /tmp/rfx-801b-work
+  cd /tmp/rfx-801b-work
+  git cat-file -e "$RFX_BISECT_GOOD^{commit}" || { echo "FATAL: good endpoint not in the clone"; exit 3; }
+  git cat-file -e "$RFX_BISECT_BAD^{commit}" || { echo "FATAL: bad endpoint not in the clone"; exit 3; }
+  N=$(git rev-list --count "$RFX_BISECT_GOOD".."$RFX_BISECT_BAD")
+  echo "commits in range: $N"
+
+  echo "=== runtime deps ==="
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  python -c "import jax; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| devices', jax.devices(), '| x64', jax.config.x64_enabled)"
+
+  SHORT=$(echo "$RFX_DRIVER_SHA" | cut -c1-8)
+  OUT="/root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-bisect-$(date -u +%Y%m%dT%H%M%SZ)-$SHORT"
+  mkdir -p "$OUT"
+  echo "artifacts: $OUT"
+  echo "$RFX_DRIVER_SHA" > "$OUT/driver_commit.txt"
+  echo "$RFX_BISECT_BAD" > "$OUT/bisect_bad_settles.txt"
+  echo "$RFX_BISECT_GOOD" > "$OUT/bisect_good_grows.txt"
+  echo "$N" > "$OUT/range_commit_count.txt"
+  cp "$DRVDIR/_artifacts/patch_pad_cpml_ringdown/PREDECLARATION.md" "$OUT/"
+  printf 'sha\tsettling_db\tverdict\n' > "$OUT/bisect_trace.tsv"
+
+  DRIVER="$DRVDIR/patch_pad_cpml_ringdown.py"
+  ARM_ARGS=""
+  export OUT DRIVER ARM_ARGS
+
+  # ENDPOINT RE-MEASUREMENT, before the bisect. git bisect run TRUSTS the two labels and
+  # never tests them; a bisect between two mislabelled ends returns a confident wrong
+  # commit. Each endpoint is measured in THIS pod and must reproduce its recorded verdict.
+  endcheck() {
+    git checkout -q "$1"
+    set +e
+    sh "$STEP"
+    erc=$?
+    set -e
+    echo "  endpoint $2 -> step exit $erc (expected $3)"
+    if [ "$erc" -ne "$3" ]; then
+      echo "FATAL: endpoint $2 did not reproduce its recorded verdict in this pod."
+      echo "The bisect is not run: its search boundary is not where the labels say."
+      exit 4
+    fi
+  }
+  echo "===== endpoint check: good = fa3a99bd must GROW (step exit 0) ====="
+  endcheck "$RFX_BISECT_GOOD" "good/fa3a99bd" 0
+  echo "===== endpoint check: bad = fc7f7202 must SETTLE (step exit 1) ====="
+  endcheck "$RFX_BISECT_BAD" "bad/fc7f7202" 1
+  cp "$OUT/bisect_trace.tsv" "$OUT/endpoint_trace.tsv"
+
+  git bisect start "$RFX_BISECT_BAD" "$RFX_BISECT_GOOD"
+  set +e
+  git bisect run sh "$STEP" 2>&1 | tee "$OUT/bisect_run.log"
+  brc=$?
+  set -e
+  echo "$brc" > "$OUT/bisect_run.rc"
+
+  echo "===== bisect log ====="
+  git bisect log > "$OUT/bisect_log.txt" 2>&1 || true
+  cat "$OUT/bisect_log.txt" || true
+  FIRST=$(grep -oE '^[0-9a-f]{40} is the first bad commit' "$OUT/bisect_run.log" | cut -d' ' -f1 | head -1 || true)
+  if [ -n "${FIRST:-}" ]; then
+    echo "$FIRST" > "$OUT/first_commit_where_it_settles.txt"
+    echo "===== first commit where the arm SETTLES: $FIRST ====="
+    git --no-pager log -1 --format='%H%n%ad%n%an%n%s%n%n%b' --date=iso "$FIRST" > "$OUT/first_commit_message.txt"
+    cat "$OUT/first_commit_message.txt"
+    git --no-pager show --stat --format='' "$FIRST" > "$OUT/first_commit_diffstat.txt"
+    cat "$OUT/first_commit_diffstat.txt"
+    git --no-pager log -1 --format='%H %s' "$FIRST^" > "$OUT/first_commit_parent.txt"
+    cat "$OUT/first_commit_parent.txt"
+    git --no-pager show "$FIRST" > "$OUT/first_commit_full.diff" 2>&1 || true
+  else
+    echo "WARNING: no 'first bad commit' line parsed; read bisect_run.log"
+  fi
+  git bisect reset || true
+
+  echo "===== per-step trace ====="
+  cat "$OUT/bisect_trace.tsv"
+  ls -la "$OUT"
+  echo "artifacts persisted (mounted, survives teardown): $OUT"
+  echo "bisect_rc=$brc"

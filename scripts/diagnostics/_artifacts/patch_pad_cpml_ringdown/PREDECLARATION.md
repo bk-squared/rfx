@@ -250,3 +250,66 @@ field for field, then something between fa3a99bd and main other than #931 and ot
 #1047/#1057 is responsible, and the next step is a bisect, not another mechanism hypothesis.
 
 This is attempt 1 on H4. Attempts on H1, H2 and H3 are closed above.
+
+---
+
+## Addendum E — the bisect, pre-declared before it ran (PI-approved 2026-09-15 KST)
+
+Four hypotheses are closed above and none of them explains what stopped the growth. This is
+**localization under a criterion already fixed**, not a fifth mechanism hypothesis, and the
+rule below says so in advance.
+
+**Range.** `fa3a99bd..fc7f7202`, 734 commits, so ~10 bisect steps.
+
+**Arm — the one the issue measured, unchanged.** `--n 4 --pad 10 --periods 150 --cpml 8`
+(= `2n`), board **AS DECLARED** (no `--sheet-conductors`, no `--shrink-domain-ulp`),
+26659 steps, float32, `gpu-rtx4090`.
+
+**Criterion.** `settling_db > -40 dB` = **grows**; `<= -40 dB` = **settles**. Nothing else is
+read, and no per-step judgement is exercised.
+
+**Endpoints, from the runs already on record.**
+
+| endpoint | verdict | settling_db |
+|---|---|---|
+| `fa3a99bd` | grows | 0.00 (recorded, this issue) |
+| `fc7f7202` | settles | -43.37 (VESSL 369367261204) |
+
+**The predicate is inverted on purpose.** git bisect walks toward the first commit where a
+property APPEARS. The property that appears here is *settling*, so the job runs
+`git bisect start fc7f7202 fa3a99bd`: **bad = settles**, **good = grows**, and git's "first bad
+commit" is **the first commit where the growth stopped**. The report must use that wording;
+"bad" here does not mean broken.
+
+**Endpoint falsifier, run BEFORE the bisect.** `git bisect run` trusts the two labels and never
+tests them, so a bisect between two mislabelled ends returns a confident wrong commit. Both
+endpoints are re-measured in the same pod first and must reproduce their recorded verdict; a
+disagreement aborts the job with exit 4 and no bisect is run. (`fa3a99bd` has never been run in
+this pod — only its recorded series has been re-scored — so this is also the first direct
+reproduction of the issue's own measurement on this hardware.)
+
+**Portability.** The step script passes `--no-raster`: `raster()` spans the #931
+`tangential_edge_masks` -> `realized_pec_edge_masks` rename and the sheet-collector signature
+change in `_assemble_materials`, either of which can fail on an intermediate commit for reasons
+that have nothing to do with the ring-down. The solve is untouched. A step whose driver exits
+non-zero returns 125 and git **skips** that commit rather than scoring it; 125 is never produced
+by a real measurement. `sim.preflight()` raising is recorded as the preflight
+(`preflight_status: "RAISED: ..."`) rather than swallowed or allowed to abort.
+
+**Named candidates, written down first so the result cannot be retrofitted to them.** From the
+~37 commits in range touching `rfx/boundaries/`, `rfx/simulation.py`, `rfx/geometry/`:
+
+1. the **#931 lattice-ownership stack** (`a3e4dba4` … `f112f7bb`) — the board change is only one
+   of its effects; it also rewrote how every lane realizes and applies PEC edges;
+2. **`a65c6626`** *"never promote a pole-carrying column's statics into a hi-face pad"* — a CPML
+   pad materials change on the same face family this lane found the vacuum facet on.
+
+Landing on neither is a legitimate outcome and is reported as such.
+
+**Reporting rule, fixed now.** The first commit where the arm settles is reported with its PR
+number and **one paragraph** reading its diff for a mechanism. If that diff plausibly explains
+the change, it gets **one** A/B confirmation at that commit and its parent — a single pre-declared
+check, not an investigation. No further hypothesis is opened in this lane.
+
+**Sharding.** Not applicable: a bisect step cannot start until the previous one reports. Serial
+in one job, ~12 arms (2 endpoints + ~10 steps) at 26 s of solve each.
