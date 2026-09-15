@@ -818,7 +818,7 @@
   },
   "diagnostic_source": "608 confirmation for complete diagnostics; all quantities shared with base604 are bit-identical",
   "raw_record": {
-    "path": "docs/research_notes/issue726/collocation/gpu-369367260604/coupon/call-0-raw-vi.npz",
+    "path": "tests/fixtures/msl_port_vi_dump_replay/coupon_call0_raw_vi.npz",
     "sha256": "7a946f9a76cdfc152dc93fd4eb6fdcd06a76dd4c6a22d020fb8d5cb95e4fa45a"
   },
   "base_result": {
