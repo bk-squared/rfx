@@ -1,8 +1,8 @@
 {
  "schema": "cv01-waveguide-bend/v1",
  "case_id": "01_waveguide_bend",
- "commit": "a45bab4f7e451164e28fec541e415bf08f40edf5",
- "date_utc": "2026-09-15T20:00:14Z",
+ "commit": "8a62f25ad45580a6a370559757a2e6dedbeef0da",
+ "date_utc": "2026-09-15T20:48:47Z",
  "provenance": {
   "rfx_version": "1.8.0",
   "meep_version": "1.34.0",
@@ -10,7 +10,7 @@
   "rfx_boundary": "upml",
   "python": "3.10.12",
   "platform": "Linux-5.15.0-187-generic-x86_64-with-glibc2.35",
-  "wall_s_since_bend_run_start": 30.32453203201294
+  "wall_s_since_bend_run_start": 29.643738985061646
  },
  "rig": {
   "a_m": 1e-06,
@@ -3042,8 +3042,8 @@
     "summary": "SOME CHECKS FAILED",
     "boundary": "upml",
     "boundary_layers": 10,
-    "commit": "a45bab4f7e451164e28fec541e415bf08f40edf5",
-    "date_utc": "2026-09-15T20:00:14Z"
+    "commit": "8a62f25ad45580a6a370559757a2e6dedbeef0da",
+    "date_utc": "2026-09-15T20:48:47Z"
    },
    "revision_cpml_variant": {
     "mean_T_smoothed_over_band": 0.7017475699461292,
@@ -3061,8 +3061,8 @@
     "summary": "SOME CHECKS FAILED",
     "boundary": "cpml",
     "boundary_layers": 20,
-    "commit": "a45bab4f7e451164e28fec541e415bf08f40edf5",
-    "date_utc": "2026-09-15T20:02:58Z"
+    "commit": "8a62f25ad45580a6a370559757a2e6dedbeef0da",
+    "date_utc": "2026-09-15T20:51:33Z"
    },
    "deltas_upml": {
     "mean_T_smoothed_over_band": 0.039364329948547216,
@@ -3091,14 +3091,54 @@
     "y_hi": 0.0
    },
    "meep_leg_guide_ends_at_the_pml_face": true,
-   "upstream_tutorial_uses_an_infinite_block": true,
+   "upstream_bend_arms": {
+    "cell_over_a": [
+     16.0,
+     32.0
+    ],
+    "dpml_over_a": 1.0,
+    "cell_edge": {
+     "x_lo": -8.0,
+     "y_hi": 16.0
+    },
+    "pml_inner_face": {
+     "x_lo": -7.0,
+     "y_hi": 15.0
+    },
+    "horizontal_arm_x": [
+     -8.0,
+     4.0
+    ],
+    "vertical_arm_y": [
+     -12.0,
+     16.0
+    ],
+    "waveguide_centres": {
+     "vertical_x": 3.5,
+     "horizontal_y": -11.5
+    },
+    "horizontal_arm_reaches_the_cell_edge_at_x_lo": true,
+    "vertical_arm_reaches_the_cell_edge_at_y_hi": true,
+    "bend_run_blocks_are_finite_in_plane": true,
+    "the_mp_inf_block_is_the_straight_runs": true,
+    "source_lines": {
+     "straight_run_block": "size=mp.Vector3(mp.inf, w, mp.inf),",
+     "bend_horizontal_block": "mp.Vector3(sx - pad, w, mp.inf),",
+     "bend_vertical_block": "mp.Vector3(w, sy - pad, mp.inf),",
+     "note": "all three greppable verbatim in the vendored copy; the trailing mp.inf in every one of them is the z extent of a 2-D cell, not an in-plane size."
+    }
+   },
+   "upstream_fidelity_check": {
+    "checked_lines": 12,
+    "all_present_verbatim": true
+   },
    "upstream_path": "validation/crossval/_01_waveguide_bend_upstream/bend-flux.py",
    "measured_direction_on_the_rfx_side": {
     "delta_mean_T_when_the_rfx_facet_was_removed": 0.039364329948547216,
     "note": "same rig, same window, same step count: removing rfx's own end facet RAISED its band-mean T by this much. The sign is what makes the reading below worth recording."
    },
-   "reading": "cv01's Meep leg builds two FINITE blocks whose outer faces land exactly on the PML inner faces, so its guide is terminated at the absorber with vacuum inside it -- the construction rfx had until PR #1057. Upstream's own bend-flux.py instead uses an INFINITE block and runs the guide straight through the PML. That is a SEVENTH divergence from the tutorial, on top of the six this case's own REPRODUCE_GATE_RECORD do_not_repeat text already lists, and it is in the one place this revision moved.",
-   "not_claimed": "that the G3 gap is caused by it. Meep was not re-run here and this lane measured nothing on the Meep side. The cheap falsifier is named in the design note: re-run the Meep leg with the guide continued through the PML and see whether its band mean rises toward rfx's. Until that runs, this is a geometry reading."
+   "reading": "cv01's Meep leg stops each arm exactly on a PML inner face, so its guide is terminated AT the absorber with vacuum inside it -- the construction rfx had until PR #1057. Upstream's own bend run instead continues each arm to the CELL EDGE, through the PML: its horizontal block spans x = -8 .. +4 and its vertical block y = -12 .. +16 in a 16 x 32 cell with dpml = 1, so the face that meets an absorber is inside it rather than up against it. NOT mp.inf in x -- that block is the STRAIGHT run's, and reading it as the bend geometry would also push the input arm out through the source-side PML, which is a different normalization than the tutorial's. The divergence is a SEVENTH one, on top of the six this case's own REPRODUCE_GATE_RECORD do_not_repeat text lists, and it is in the one place this revision moved.",
+   "not_claimed": "that the G3 gap is caused by it. Meep was not re-run here and this lane measured nothing on the Meep side. The cheap falsifier is named in the design note: re-run the Meep leg with each arm continued to the cell edge, the way upstream's bend run does, and see whether its band mean rises toward rfx's. Until that runs, this is a geometry reading."
   },
   "preflight_verbatim": {
    "upml": {
@@ -3592,7 +3632,7 @@
        181,
        1
       ],
-      "wall_s": 35.7
+      "wall_s": 34.7
      },
      "bend": {
       "which": "bend",
@@ -4033,7 +4073,7 @@
        181,
        1
       ],
-      "wall_s": 30.5
+      "wall_s": 29.1
      }
     },
     "mean_self_smoothed_over_band": 0.9910752993577158,
@@ -4493,7 +4533,7 @@
        201,
        1
       ],
-      "wall_s": 48.8
+      "wall_s": 48.3
      },
      "bend": {
       "which": "bend",
@@ -4934,7 +4974,7 @@
        201,
        1
       ],
-      "wall_s": 43.8
+      "wall_s": 46.7
      }
     },
     "mean_self_smoothed_over_band": 0.9894314610377936,
@@ -4955,24 +4995,24 @@
   "run_logs": {
    "upml": {
     "path": "validation/crossval/_01_waveguide_bend_logs/20260915_r2_upml_run.log",
-    "sha256": "d59b6bb9eb3786fc2fc5efe684f7f338a7af83c35a34924058ce277c10f854c3",
+    "sha256": "c63ce33e9f3fda0788968158da9ffd05e40e8465ce24474daaa861524835bb61",
     "returncode": 1,
-    "wall_s": 68.2
+    "wall_s": 67.3
    },
    "cpml": {
     "path": "validation/crossval/_01_waveguide_bend_logs/20260915_r2_cpml_run.log",
-    "sha256": "b512f33c894cb0e6922952d3b59f6c446e012563cf9ebbd05106664e50ed8b8a",
+    "sha256": "9a31ad46298d0f4520d0720d00ebfcfdc16779859dcc2f87f63fea48edcf3532",
     "returncode": 1,
-    "wall_s": 97.4
+    "wall_s": 102.1
    }
   },
   "cpml_variant_note": "cv01's committed claim is the UPML run; the CPML variant is the diagnostic arm RFX_BOUNDARY=cpml selects, at 20 absorber layers since #813/#1027. Its whole record is carried under `cpml_variant` so `--replay` on THIS file still re-judges the UPML arm, which is the one the case is defined by.",
   "provenance": {
-   "commit": "a45bab4f7e451164e28fec541e415bf08f40edf5",
+   "commit": "8a62f25ad45580a6a370559757a2e6dedbeef0da",
    "branch": "evidence/813-cv01-record-on-fixed-solver",
    "dirty": true,
    "case_sha256": "2c0b3f8a06e629d5f1b9a3b21a6255bb07dcbdd57d471b2917991968454abb7e",
-   "driver_sha256": "2553ef159eed78136a4b590d5afdc2a675f91c5a90b64f103bc6807a220a5fdd",
+   "driver_sha256": "3037a95c2ab27ff2a3a8b87a49c35bce90c264c252f59387d55032bab6edd4b9",
    "python": "3.10.12",
    "platform": "Linux-5.15.0-187-generic-x86_64-with-glibc2.35",
    "argv": [
@@ -4984,7 +5024,7 @@
     "--log-dir",
     "validation/crossval/_01_waveguide_bend_logs"
    ],
-   "date_utc": "2026-09-15T20:04:32Z",
+   "date_utc": "2026-09-15T20:53:09Z",
    "rfx_provenance_check": {
     "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a991c068ad0d0fb85/rfx/__init__.py",
     "under_repo_root": true,
@@ -5000,8 +5040,8 @@
  "cpml_variant": {
   "schema": "cv01-waveguide-bend/v1",
   "case_id": "01_waveguide_bend",
-  "commit": "a45bab4f7e451164e28fec541e415bf08f40edf5",
-  "date_utc": "2026-09-15T20:02:58Z",
+  "commit": "8a62f25ad45580a6a370559757a2e6dedbeef0da",
+  "date_utc": "2026-09-15T20:51:33Z",
   "provenance": {
    "rfx_version": "1.8.0",
    "meep_version": "1.34.0",
@@ -5009,7 +5049,7 @@
    "rfx_boundary": "cpml",
    "python": "3.10.12",
    "platform": "Linux-5.15.0-187-generic-x86_64-with-glibc2.35",
-   "wall_s_since_bend_run_start": 45.28881311416626
+   "wall_s_since_bend_run_start": 47.764065980911255
   },
   "rig": {
    "a_m": 1e-06,

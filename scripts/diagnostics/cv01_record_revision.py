@@ -456,6 +456,84 @@ def _advisory_codes(stdout: str, stderr: str) -> dict:
 UPSTREAM = (REPO / "validation" / "crossval" / "_01_waveguide_bend_upstream"
             / "bend-flux.py")
 
+# The literals below are read out of the VENDORED upstream script, so they are
+# pinned there the way RIG_LINES pins cv01's own: if upstream's copy changes,
+# this driver reds instead of quietly describing a different tutorial.
+UPSTREAM_LINES = (
+    "sx = 16  # size of cell in X direction",
+    "sy = 32  # size of cell in Y direction",
+    "dpml = 1.0",
+    "pad = 4  # padding distance between waveguide and cell edge",
+    "w = 1  # width of waveguide",
+    "wvg_xcen = 0.5 * (sx - w - 2 * pad)  # x center of vert. wvg",
+    "wvg_ycen = -0.5 * (sy - w - 2 * pad)  # y center of horiz. wvg",
+    # The STRAIGHT (normalization) run's block -- the mp.inf one.
+    "        size=mp.Vector3(mp.inf, w, mp.inf),",
+    # The BEND run's two blocks, which are NOT that.
+    "        mp.Vector3(sx - pad, w, mp.inf),",
+    "        center=mp.Vector3(-0.5 * pad, wvg_ycen),",
+    "        mp.Vector3(w, sy - pad, mp.inf),",
+    "        center=mp.Vector3(wvg_xcen, 0.5 * pad),",
+)
+
+
+def _upstream_bend_arm_extents() -> dict:
+    """Where upstream's own BEND run puts its two arms, from its own literals.
+
+    Written because the obvious reading of that file is wrong. Line 24's
+    ``size=mp.Vector3(mp.inf, w, mp.inf)`` belongs to the STRAIGHT run, the
+    one that produces the normalization flux -- not to the bend. The bend run
+    (:77, :82) builds two blocks with FINITE in-plane sizes; the ``mp.inf``
+    that still appears in each is the third component, the out-of-plane z
+    extent of a 2-D cell, and reading it as "infinite in x" would also run the
+    input arm out through the SOURCE-side PML, which is a different
+    normalization than the tutorial's.
+
+    What those finite sizes do is reach the CELL EDGE on the face that meets a
+    PML, so each arm is continued THROUGH the absorber rather than stopped at
+    its inner face. That -- not ``mp.inf`` -- is the thing cv01's hand-ported
+    leg does not do.
+    """
+    sx, sy, pad, w, dpml = 16.0, 32.0, 4.0, 1.0, 1.0
+    wvg_xcen = 0.5 * (sx - w - 2 * pad)
+    wvg_ycen = -0.5 * (sy - w - 2 * pad)
+    horiz_lo = -0.5 * pad - (sx - pad) / 2          # :77 size, :78 center
+    horiz_hi = -0.5 * pad + (sx - pad) / 2
+    vert_lo = 0.5 * pad - (sy - pad) / 2            # :82 size, :83 center
+    vert_hi = 0.5 * pad + (sy - pad) / 2
+    return {
+        "cell_over_a": [sx, sy],
+        "dpml_over_a": dpml,
+        "cell_edge": {"x_lo": -sx / 2, "y_hi": sy / 2},
+        "pml_inner_face": {"x_lo": -sx / 2 + dpml, "y_hi": sy / 2 - dpml},
+        "horizontal_arm_x": [horiz_lo, horiz_hi],
+        "vertical_arm_y": [vert_lo, vert_hi],
+        "waveguide_centres": {"vertical_x": wvg_xcen, "horizontal_y": wvg_ycen},
+        "horizontal_arm_reaches_the_cell_edge_at_x_lo": horiz_lo == -sx / 2,
+        "vertical_arm_reaches_the_cell_edge_at_y_hi": vert_hi == sy / 2,
+        "bend_run_blocks_are_finite_in_plane": True,
+        "the_mp_inf_block_is_the_straight_runs": True,
+        "source_lines": {
+            "straight_run_block": "size=mp.Vector3(mp.inf, w, mp.inf),",
+            "bend_horizontal_block": "mp.Vector3(sx - pad, w, mp.inf),",
+            "bend_vertical_block": "mp.Vector3(w, sy - pad, mp.inf),",
+            "note": ("all three greppable verbatim in the vendored copy; the "
+                     "trailing mp.inf in every one of them is the z extent of "
+                     "a 2-D cell, not an in-plane size."),
+        },
+    }
+
+
+def _assert_upstream_lines_present() -> dict:
+    text = UPSTREAM.read_text(encoding="utf-8")
+    missing = [line for line in UPSTREAM_LINES if line not in text]
+    if missing:
+        raise SystemExit(
+            "upstream fidelity check FAILED -- these lines are no longer in "
+            f"{UPSTREAM.relative_to(REPO)} verbatim, so the extents computed "
+            "from them describe some other tutorial:\n  " + "\n  ".join(missing))
+    return {"checked_lines": len(UPSTREAM_LINES), "all_present_verbatim": True}
+
 
 def _comparator_geometry_note(delta_mean_T: float) -> dict:
     """Where the Meep leg's guide ends, arithmetically, and where upstream's does.
@@ -474,7 +552,6 @@ def _comparator_geometry_note(delta_mean_T: float) -> dict:
     horiz_x_lo = (-16.0 / 4 + 0.25) - (16.0 / 2 + 0.5) / 2
     # mp.Block(size=(1, sy/(2a)+0.5), center=(0, sy/(4a)-0.25))
     vert_y_hi = (16.0 / 4 - 0.25) + (16.0 / 2 + 0.5) / 2
-    upstream_text = UPSTREAM.read_text(encoding="utf-8")
     return {
         "question": ("after PR #1057 rfx continues a boundary-touching "
                      "dielectric through its own absorber pad. Does the Meep "
@@ -489,8 +566,8 @@ def _comparator_geometry_note(delta_mean_T: float) -> dict:
         },
         "meep_leg_guide_ends_at_the_pml_face": (
             horiz_x_lo == interior_x_lo and vert_y_hi == interior_y_hi),
-        "upstream_tutorial_uses_an_infinite_block": (
-            "size=mp.Vector3(mp.inf, w, mp.inf)" in upstream_text),
+        "upstream_bend_arms": _upstream_bend_arm_extents(),
+        "upstream_fidelity_check": _assert_upstream_lines_present(),
         "upstream_path": str(UPSTREAM.relative_to(REPO)),
         "measured_direction_on_the_rfx_side": {
             "delta_mean_T_when_the_rfx_facet_was_removed": delta_mean_T,
@@ -499,20 +576,26 @@ def _comparator_geometry_note(delta_mean_T: float) -> dict:
                      "sign is what makes the reading below worth recording."),
         },
         "reading": (
-            "cv01's Meep leg builds two FINITE blocks whose outer faces land "
-            "exactly on the PML inner faces, so its guide is terminated at the "
-            "absorber with vacuum inside it -- the construction rfx had until "
-            "PR #1057. Upstream's own bend-flux.py instead uses an INFINITE "
-            "block and runs the guide straight through the PML. That is a "
-            "SEVENTH divergence from the tutorial, on top of the six this "
-            "case's own REPRODUCE_GATE_RECORD do_not_repeat text already "
-            "lists, and it is in the one place this revision moved."),
+            "cv01's Meep leg stops each arm exactly on a PML inner face, so "
+            "its guide is terminated AT the absorber with vacuum inside it -- "
+            "the construction rfx had until PR #1057. Upstream's own bend run "
+            "instead continues each arm to the CELL EDGE, through the PML: "
+            "its horizontal block spans x = -8 .. +4 and its vertical block "
+            "y = -12 .. +16 in a 16 x 32 cell with dpml = 1, so the face that "
+            "meets an absorber is inside it rather than up against it. NOT "
+            "mp.inf in x -- that block is the STRAIGHT run's, and reading it "
+            "as the bend geometry would also push the input arm out through "
+            "the source-side PML, which is a different normalization than the "
+            "tutorial's. The divergence is a SEVENTH one, on top of the six "
+            "this case's own REPRODUCE_GATE_RECORD do_not_repeat text lists, "
+            "and it is in the one place this revision moved."),
         "not_claimed": (
             "that the G3 gap is caused by it. Meep was not re-run here and "
             "this lane measured nothing on the Meep side. The cheap falsifier "
-            "is named in the design note: re-run the Meep leg with the guide "
-            "continued through the PML and see whether its band mean rises "
-            "toward rfx's. Until that runs, this is a geometry reading."),
+            "is named in the design note: re-run the Meep leg with each arm "
+            "continued to the cell edge, the way upstream's bend run does, "
+            "and see whether its band mean rises toward rfx's. Until that "
+            "runs, this is a geometry reading."),
     }
 
 
@@ -687,6 +770,21 @@ def main(argv=None) -> int:
                      "do not, the witness measures a different simulation and "
                      "its settling_db does not describe the record."),
         }
+        # And REFUSE on it, rather than recording a False and writing anyway.
+        # A check that is only reported is a report. The settling numbers in
+        # this revision are claimed to describe the RECORD's arms, and these
+        # two booleans are the whole of that claim; if either is False the
+        # witness measured some other simulation, so nothing gets written.
+        check = witness_block[boundary]["non_perturbation_check"]
+        if not (check["mean_self_identical"] and check["mean_T_identical"]):
+            raise SystemExit(
+                f"non-perturbation check FAILED on the {boundary} witness "
+                f"arms: mean_self {check['case_mean_self']!r} (case) vs "
+                f"{check['witness_mean_self']!r} (witness), mean_T "
+                f"{check['case_mean_T']!r} vs {check['witness_mean_T']!r}. "
+                "Adding the point probe moved the solution, so its "
+                "settling_db does not describe the record's arms. Nothing "
+                "was written.")
 
     upml_doc["revision"] = {
         "schema": "cv01-waveguide-bend-revision/v1",
