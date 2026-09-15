@@ -4,7 +4,7 @@
     "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-ac585302d6176235b/rfx/__init__.py",
     "rfx_under_repo_root": true,
     "driver_root": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-ac585302d6176235b",
-    "commit": "499c8e1ea89e0c855d7b0b28ccbbd653672897ad",
+    "driver_commit": "b8b08dabd2abbf6c1b61ca687af01193e1c8dbf9",
     "branch": "fix/1043-cpml-subpixel-coefficients"
   },
   "cpml_layers": 20,
@@ -18,5 +18,5 @@
   "run_warnings": [
     "[run] preflight found 4 advisory issue(s) - pass skip_preflight=True to suppress:\n  - dielectric 'wg' on x: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - dielectric 'wg' on y: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - dielectric 'wg' on z: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.\n  - all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)"
   ],
-  "wall_s": 54.1
+  "wall_s": 206.6
 }

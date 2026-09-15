@@ -2,12 +2,9 @@
   "provenance": {
     "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-ac585302d6176235b/rfx/__init__.py",
     "repo_root": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-ac585302d6176235b",
-    "commit": "499c8e1ea89e0c855d7b0b28ccbbd653672897ad"
+    "driver_commit": "b8b08dabd2abbf6c1b61ca687af01193e1c8dbf9"
   },
-  "profile_check_vs_rfx": {
-    "max_abs_db_vs_rfx": 2.5974864259481478e-08,
-    "max_abs_dc_vs_rfx": 2.6781307949086397e-08
-  },
+  "model_owner": "tests/unit/boundaries/test_cpml_subpixel_coefficient_consistency.py::amplification_rho",
   "model": {
     "n_cells": 24,
     "n_cpml_layers": 10,
@@ -15,45 +12,45 @@
     "dt": 1.6678204755367634e-16,
     "courant": 0.5,
     "kappa_max": 1.0,
-    "c_outermost": -0.9683772233983161,
-    "b_outermost": 0.03162277660168381
+    "c_outermost": -0.9683772325515747,
+    "b_outermost": 0.03162277489900589
   },
   "self_check": {
-    "rho_vacuum_no_pml": 1.0000000000000016,
-    "rho_vacuum_consistent_cpml": 1.0000000000000009
+    "rho_vacuum_no_pml": 1.000000000000002,
+    "rho_vacuum_consistent_cpml": 1.0000000000000013
   },
   "cases": [
     {
       "case": "today: eps_a from aniso_eps, eps_b from materials.eps_r",
-      "rho": 2.2086042601188436,
+      "rho": 2.208604285969583,
       "unstable": true,
       "eps_a": 6.5,
       "eps_b": 1.0
     },
     {
       "case": "fixed: eps_b = eps_a",
-      "rho": 1.0,
+      "rho": 1.0000000000000058,
       "unstable": false,
       "eps_a": 6.5,
       "eps_b": 6.5
     },
     {
       "case": "vacuum pad, consistent",
-      "rho": 1.0000000000000009,
+      "rho": 1.0000000000000013,
       "unstable": false,
       "eps_a": 1.0,
       "eps_b": 1.0
     },
     {
       "case": "eps 12 pad, consistent (= subpixel OFF row)",
-      "rho": 1.0,
+      "rho": 1.000000000000001,
       "unstable": false,
       "eps_a": 12.0,
       "eps_b": 12.0
     },
     {
       "case": "today's cv01: eps_a = 1, eps_b = 12 (under-damped, stable)",
-      "rho": 1.0000000000000029,
+      "rho": 1.0000000000000209,
       "unstable": false,
       "eps_a": 1.0,
       "eps_b": 12.0
@@ -64,109 +61,109 @@
       "eps_a": 6.5,
       "eps_b": 1.0,
       "eps_a_over_eps_b": 6.5,
-      "K_eff_norm_outermost": -0.8145310695521623,
-      "rho": 2.2086042601188436
+      "K_eff_norm_outermost": -0.8145310787054209,
+      "rho": 2.208604285969583
     },
     {
       "eps_a": 6.5,
       "eps_b": 2.0,
       "eps_a_over_eps_b": 3.25,
-      "K_eff_norm_outermost": -0.3303424578530042,
-      "rho": 1.6761842385320769
+      "K_eff_norm_outermost": -0.3303424624296335,
+      "rho": 1.6761842551259551
     },
     {
       "eps_a": 6.5,
       "eps_b": 4.0,
       "eps_a_over_eps_b": 1.625,
-      "K_eff_norm_outermost": -0.08824815200342517,
-      "rho": 1.3131034705279563
+      "K_eff_norm_outermost": -0.08824815429173982,
+      "rho": 1.3131034836818418
     },
     {
       "eps_a": 6.5,
       "eps_b": 5.0,
       "eps_a_over_eps_b": 1.3,
-      "K_eff_norm_outermost": -0.03982929083350936,
-      "rho": 1.2049696274985884
+      "K_eff_norm_outermost": -0.039829292664161076,
+      "rho": 1.204969641569857
     },
     {
       "eps_a": 6.5,
       "eps_b": 6.0,
       "eps_a_over_eps_b": 1.0833333333333333,
-      "K_eff_norm_outermost": -0.007550050053565488,
-      "rho": 1.0988702796128915
+      "K_eff_norm_outermost": -0.0075500515791085965,
+      "rho": 1.0988702992287167
     },
     {
       "eps_a": 6.5,
       "eps_b": 6.294,
       "eps_a_over_eps_b": 1.032729583730537,
-      "K_eff_norm_outermost": -1.104720219635702e-05,
-      "rho": 1.0579770629378145
+      "K_eff_norm_outermost": -1.1048656479578645e-05,
+      "rho": 1.057977089956825
     },
     {
       "eps_a": 6.5,
       "eps_b": 6.35,
       "eps_a_over_eps_b": 1.0236220472440944,
-      "K_eff_norm_outermost": 0.0013458037046867322,
-      "rho": 1.0480335060949155
+      "K_eff_norm_outermost": 0.001345802263228696,
+      "rho": 1.0480335364628999
     },
     {
       "eps_a": 6.5,
       "eps_b": 6.4,
       "eps_a_over_eps_b": 1.015625,
-      "K_eff_norm_outermost": 0.0025372126901669623,
-      "rho": 1.0377609477422345
+      "K_eff_norm_outermost": 0.0025372112599703067,
+      "rho": 1.03776098299207
     },
     {
       "eps_a": 6.5,
       "eps_b": 6.45,
       "eps_a_over_eps_b": 1.0077519379844961,
-      "K_eff_norm_outermost": 0.003710150218507957,
-      "rho": 1.024927965790116
+      "K_eff_norm_outermost": 0.0037101487993980997,
+      "rho": 1.0249280111171182
     },
     {
       "eps_a": 6.5,
       "eps_b": 6.49,
       "eps_a_over_eps_b": 1.0015408320493067,
-      "K_eff_norm_outermost": 0.00463548768308511,
-      "rho": 1.0090917214068964
+      "K_eff_norm_outermost": 0.0046354862727217006,
+      "rho": 1.0090917999402533
     },
     {
       "eps_a": 6.5,
       "eps_b": 6.5,
       "eps_a_over_eps_b": 1.0,
-      "K_eff_norm_outermost": 0.00486504255410522,
-      "rho": 1.0
+      "K_eff_norm_outermost": 0.004865041145911603,
+      "rho": 1.0000000000000058
     },
     {
       "eps_a": 6.5,
       "eps_b": 8.0,
       "eps_a_over_eps_b": 0.8125,
-      "K_eff_norm_outermost": 0.03279900092136434,
-      "rho": 1.0
+      "K_eff_norm_outermost": 0.032798999777207016,
+      "rho": 1.0000000000000129
     },
     {
       "eps_a": 6.5,
       "eps_b": 12.0,
       "eps_a_over_eps_b": 0.5416666666666666,
-      "K_eff_norm_outermost": 0.07314805189629418,
-      "rho": 1.0000000000000078
+      "K_eff_norm_outermost": 0.07314805113352263,
+      "rho": 1.0000000000000089
     },
     {
       "eps_a": 6.5,
       "eps_b": 20.0,
       "eps_a_over_eps_b": 0.325,
-      "K_eff_norm_outermost": 0.10542729267623804,
-      "rho": 1.0000000000000084
+      "K_eff_norm_outermost": 0.10542729221857512,
+      "rho": 1.0
     }
   ],
   "absolute_scale_scan": [
     {
       "eps_consistent": 1.0,
-      "rho": 1.0000000000000009
+      "rho": 1.0000000000000013
     },
     {
       "eps_consistent": 2.0,
-      "rho": 1.0000000000000007
+      "rho": 1.0
     },
     {
       "eps_consistent": 4.0,
@@ -174,47 +171,47 @@
     },
     {
       "eps_consistent": 6.5,
-      "rho": 1.0
+      "rho": 1.0000000000000058
     },
     {
       "eps_consistent": 12.0,
-      "rho": 1.0
+      "rho": 1.000000000000001
     },
     {
       "eps_consistent": 30.0,
-      "rho": 1.0000000000000009
+      "rho": 1.0
     },
     {
       "eps_consistent": 80.0,
-      "rho": 1.0000000000000022
+      "rho": 1.0000000000000049
     }
   ],
   "courant_scan": [
     {
       "courant": 0.2,
-      "rho_defect": 1.354225285501446,
-      "rho_fixed": 1.0
-    },
-    {
-      "courant": 0.35,
-      "rho_defect": 1.7274380917795173,
+      "rho_defect": 1.3542252892776572,
       "rho_fixed": 1.0000000000000009
     },
     {
-      "courant": 0.5,
-      "rho_defect": 2.2086042601188436,
+      "courant": 0.35,
+      "rho_defect": 1.7274381022518441,
       "rho_fixed": 1.0
     },
     {
+      "courant": 0.5,
+      "rho_defect": 2.208604285969583,
+      "rho_fixed": 1.0000000000000058
+    },
+    {
       "courant": 0.7,
-      "rho_defect": 3.0351986375497986,
+      "rho_defect": 3.035198628848612,
       "rho_fixed": 1.0
     }
   ],
   "gates": {
     "G_C": {
-      "rho_old": 2.2086042601188436,
-      "rho_new": 1.0,
+      "rho_old": 2.208604285969583,
+      "rho_new": 1.0000000000000058,
       "r_C": 0.0,
       "verdict": "H1 SUPPORTED"
     }

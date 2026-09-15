@@ -703,6 +703,18 @@ CLASSIFICATION: dict[str, str] = {
     "docs/design_notes/issue812_cv17_cv18_geometry_sensitivity_predeclaration.md": GATED,
     "docs/design_notes/issue812_phase_identity_predeclaration.md": GATED,
     "docs/design_notes/issue812_phase_identity_results.md": GATED,
+    # 2026-09-15 (#1043 Stage A, CPML + subpixel psi coefficient): neither note
+    # carries a `::` span at all -- `parses` and `others` are both empty. Every
+    # number in the results note is replayed by
+    # scripts/diagnostics/cpml_subpixel_stability/ into
+    # scripts/diagnostics/_artifacts/cpml_subpixel_stability/*.json, and the
+    # load-bearing ones are additionally pinned by
+    # tests/unit/boundaries/test_cpml_subpixel_coefficient_consistency.py,
+    # which is a stronger check than a key lookup.
+    "docs/design_notes/issue1043_cpml_subpixel_coefficient_predeclaration.md":
+        NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue1043_cpml_subpixel_coefficient_results.md":
+        NO_ARTIFACT_REFERENCE,
     "docs/design_notes/mixed_refplane_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/portgrid_m0m1_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/portgrid_m0m1_results.md": NO_ARTIFACT_REFERENCE,

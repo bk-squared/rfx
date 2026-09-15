@@ -38,14 +38,19 @@ reads whichever side the sample point fell on.
 small 2-D rig (`cpml_subpixel_coefficients.py`, 101x101x1, 10 CPML layers,
 a full-span eps 12 guide, cv01 Run 1's topology at quarter size).
 
-| arm | `K_eff_norm` min | negative cells | FDTD on main |
-|---|---:|---:|---|
-| `cpml_baseline` (today, no pad replication) | **+0.007941** | 0 | finite |
-| `cpml_padrep` (Stage-B replication on `aniso_eps`) | **−0.838213** | 21 | **848 non-finite, first probe index 352** |
-| `cpml_subpixel_off` | **+0.000662** | 0 | finite |
-| `upml_padrep` | (not defined — `apply_cpml_e` never runs) | — | finite |
+| arm | `K_eff_norm` min | negative cells | FDTD on main | FDTD on this branch |
+|---|---:|---:|---|---|
+| `cpml_baseline` (today, no pad replication) | **+0.007941** | 0 | finite | finite |
+| `cpml_padrep` (Stage-B replication on `aniso_eps`) | **−0.838213** | 21 | **848 non-finite, first probe index 352** | **finite** |
+| `cpml_subpixel_off` | **+0.000662** | 0 | finite | finite |
+| `upml_padrep` | (not defined — `apply_cpml_e` never runs) | — | finite | finite |
 
-`r_A = 0`. The UPML arm is excluded rather than scored: `apply_upml_e` builds
+`r_A = 0`; `r_D = 0` against the pre-fix table on main and against the
+all-finite table on this branch. The `K_eff_norm` column is a property of the
+two arrays, so it reads the same on both trees — what the fix changes is which
+of the two the solver uses, and the FDTD columns are where that shows.
+
+The UPML arm is excluded from `r_A` rather than scored: `apply_upml_e` builds
 its own coefficients from `aniso_eps` (`upml.py:213-217`) and has no second
 permittivity to disagree with, which is why it was stable all along.
 
@@ -73,8 +78,9 @@ pre-declared one is recorded as not met rather than replaced.
 ## 5. G-C — the amplification factor
 
 1-D leapfrog + psi over 24 cells (10 CPML layers), `amplification.py`.
-Comparator checked first: a lossless vacuum slice gives `rho = 1.000000000`
-with and without the absorber. (An earlier version of this matrix took rfx's
+Comparator checked first: a lossless vacuum slice sits on the unit circle to
+2e-15 (`rho` = 1.0000000000000016 without the absorber, 1.0000000000000009
+with a consistent CPML). (An earlier version of this matrix took rfx's
 `hy -= (dt/mu)*curl_y` literally instead of resolving
 `curl_y = dEx/dz - dEz/dx` in the 1-D slice, reported `rho = 1.3 … 2.6` for
 every case including vacuum, and was caught by exactly this check.)
@@ -172,6 +178,52 @@ exactly the cells meant to absorb the guided mode. The fix makes the absorber
 match the medium the solver is actually stepping, which is a change of
 substance, not of rounding.
 
+**Preflight is part of the result.** Both arms carry the same banner, verbatim
+and identical between the two trees (full text in the artifacts'
+`preflight_warnings` / `run_warnings`):
+
+> `add_source(..., amplitude_kind=None): on this simulation the waveform
+> amplitude is a Cb-normalized field add (E += Cb*w; NOT one of the two named
+> kinds …)` — issue #571 deprecation, cv01's own registration, unchanged here.
+
+> `[run] preflight found 4 advisory issue(s)` — `dielectric 'wg' on x / y / z:
+> 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20
+> cells/λ_eff for phase-accurate propagation …`, plus the lossless-in-an-open-
+> domain advisory.
+
+No geometry-in-absorber (#61) line on either arm — no declared geometry
+changed, which is what makes the two `mean_self` values comparable. cv01 Run 1
+records `settling_db = None` on both trees: that rig registers flux monitors,
+not probe records, so no ring-down witness is established. **That is a
+pre-existing property of cv01's registration, identical before and after, and
+it is not evidence that either number is settled.** The witness this branch
+does gate on lives in the new test, which registers a probe and asserts
+`settling_verdict(...) == "pass"`.
+
+## 7b. What this branch leaves stale, and deliberately does not re-point
+
+Moving cv01's CPML `mean_self` moves every committed surface that recorded a
+CPML number off that rig. **No gate goes red** — the numeric-provenance
+contract checks that cited keys resolve in the artifact, not that a re-run
+reproduces them, and the driver below is on-demand, not collected by pytest —
+but the numbers now describe the pre-fix solver:
+
+| surface | what it holds |
+|---|---|
+| `scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json` | the CPML `mean_self` ladder: `/control/cpml_full_mean_self` 0.7488520140093946, `/layers/{10,16,20,40}/mean_self_full` = 0.7488520140093946 / 0.8840995730804735 / 0.9195301017439319 / … and their `aperture` siblings |
+| `scripts/diagnostics/cv01_cpml_flux_selfcheck.py` | `SWEEP_BASELINE_CPML_FULL_MEAN_SELF = 0.7488520140093946`, `SWEEP_BASELINE_OUTSIDE_FRACTION_PCT = -26.041819705557895`, and the `SWEEP_GATE_MEAN_SELF_AT_40` derived from them |
+
+Unaffected, checked rather than assumed: the committed cv01 case record
+(`validation/crossval/_01_waveguide_bend_results/crossval.json`,
+`mean_self_smoothed_over_band = 0.9891610388008335`) is a **UPML** run, and
+UPML is byte-identical here (§7).
+
+Re-pointing the CPML ladder is #813 / Stage-B work, not this branch's: the
+whole ladder has to be re-measured together, and #1027's monotone `mean_self`
+trend re-read off the new one. Re-pointing one stored number without
+re-measuring its siblings is how a stored primary silently re-points its
+readers.
+
 ## 8. New tests
 
 `tests/unit/boundaries/test_cpml_subpixel_coefficient_consistency.py`.
@@ -183,6 +235,18 @@ substance, not of rounding.
 | `test_amplification_is_bounded_only_when_the_two_epsilons_agree` | green (pure analysis, tree-independent) | green |
 | `test_threading_an_equal_permittivity_is_bit_identical` | RED (`TypeError`, the parameter does not exist) | green |
 | `test_threading_a_different_permittivity_changes_the_coefficient` | RED (`TypeError`) | green |
+| `..._threaded_exactly_when_the_e_update_is_anisotropic[subpixel]` | **RED** | green |
+| `..._threaded_exactly_when_the_e_update_is_anisotropic[plain]` | green | green |
+| `..._threaded_exactly_when_the_e_update_is_anisotropic[dispersive]` | green | green |
+
+The last three pin WHICH runs get the new coefficient. The dispersive row is
+the one that matters for a future edit: `_update_e_with_optional_dispersion`
+ignores `aniso_eps`, so threading it unconditionally would re-open the same
+disagreement with the sign reversed, and nothing else here would notice.
+
+The committed-geometry CPML control is deliberately NOT pinned as unchanged —
+its pad holds `materials.eps_r = 12` against `aniso_eps = 1`, so its numbers
+move by design (cv01 Run 1, §7).
 
 The `[cpml]`/`[upml]` pair is the discriminator: the same pad replication under
 the other absorber family must keep passing, or the test is measuring "a

@@ -1,7 +1,7 @@
 {
   "provenance": {
     "rfx_file": "/tmp/claude-0/-root-workspace-byungkwan-workspace-research-rfx/44efb5ea-44e2-4413-9da7-9514386aba06/scratchpad/1043A_ref/rfx/__init__.py",
-    "commit": "499c8e1ea89e0c855d7b0b28ccbbd653672897ad",
+    "driver_commit": "b8b08dabd2abbf6c1b61ca687af01193e1c8dbf9",
     "branch": "fix/1043-cpml-subpixel-coefficients"
   },
   "n_steps": 400,

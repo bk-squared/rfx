@@ -86,7 +86,7 @@ def main() -> None:
         "label": args.label,
         "provenance": {"rfx_file": str(rfx_file), "rfx_under_repo_root": inside,
                        "driver_root": str(root),
-                       "commit": _git("rev-parse", "HEAD"),
+                       "driver_commit": _git("rev-parse", "HEAD"),
                        "branch": _git("rev-parse", "--abbrev-ref", "HEAD")},
         "cpml_layers": args.layers,
         "mean_self": arm["mean_self"],

@@ -115,7 +115,7 @@ def _assert_rfx_is_this_repo(allow_foreign: bool = False) -> dict:
                 f"rfx provenance check FAILED: {f} is not under {REPO}")
     return {"rfx_file": str(f), "rfx_under_repo_root": inside,
             "repo_root": str(REPO),
-            "commit": _git("rev-parse", "HEAD"),
+            "driver_commit": _git("rev-parse", "HEAD"),
             "branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
             "dirty": bool(_git("status", "--porcelain"))}
 

@@ -127,7 +127,7 @@ def test_boundary_touching_dielectric_in_pad_stays_finite(monkeypatch,
 # (b) the mechanism gate: the one-cell amplification factor
 # ---------------------------------------------------------------------------
 
-def _amplification_rho(n_layers, dx, dt, eps_a, eps_b, n=24):
+def amplification_rho(n_layers, dx, dt, eps_a, eps_b, n=24, absorber=True):
     """Spectral radius of the 1-D leapfrog + psi update over ``n`` cells.
 
         H^{n+1/2} = H^{n-1/2} + (dt/mu0) * dEz/dx
@@ -136,14 +136,20 @@ def _amplification_rho(n_layers, dx, dt, eps_a, eps_b, n=24):
 
     ``apply_cpml_e`` writes the new psi and uses it immediately, so this does
     too. ``eps_a`` is the E update's permittivity, ``eps_b`` the psi
-    coefficient's.
+    coefficient's. ``absorber=False`` gives b = 1, c = 0 everywhere — a plain
+    lossless slice, which is the model's own comparator.
+
+    This is the ONE copy of this model.
+    ``scripts/diagnostics/cpml_subpixel_stability/amplification.py`` imports it
+    rather than keeping a second; two hand-maintained copies of one derivation
+    is how the repo's grep-map drifted.
     """
-    p = _cpml_profile(n_layers, dt, dx)
-    b = np.zeros(n)
+    b = np.ones(n)
     c = np.zeros(n)
-    b[:n_layers] = np.asarray(p.b, dtype=float)
-    c[:n_layers] = np.asarray(p.c, dtype=float)
-    b[n_layers:] = 1.0
+    if absorber:
+        p = _cpml_profile(n_layers, dt, dx)
+        b[:n_layers] = np.asarray(p.b, dtype=float)
+        c[:n_layers] = np.asarray(p.c, dtype=float)
     ea = np.full(n, float(eps_a))
     eb = np.full(n, float(eps_b))
 
@@ -188,8 +194,13 @@ def test_amplification_is_bounded_only_when_the_two_epsilons_agree():
     tol = 1e-6
 
     # Comparator first -- a model that cannot reproduce the trivial case
-    # cannot be read on the interesting one.
-    rho_vac = _amplification_rho(10, DX, dt, 1.0, 1.0)
+    # cannot be read on the interesting one. Both trivial cases: a plain
+    # lossless slice, and the same slice with a consistent absorber.
+    rho_bare = amplification_rho(10, DX, dt, 1.0, 1.0, absorber=False)
+    assert abs(rho_bare - 1.0) <= tol, (
+        f"the amplification model is wrong: a lossless slice with NO absorber "
+        f"gives rho={rho_bare}, and it must be 1")
+    rho_vac = amplification_rho(10, DX, dt, 1.0, 1.0)
     assert abs(rho_vac - 1.0) <= tol, (
         f"the amplification model is wrong: a lossless vacuum CPML slice gives "
         f"rho={rho_vac}, and it must be 1")
@@ -198,19 +209,19 @@ def test_amplification_is_bounded_only_when_the_two_epsilons_agree():
     # falsifies a "high eps in the graded region breaks the CFL bound"
     # reading -- eps 1 through 80 are all exactly marginal.
     for eps in (1.0, 2.0, 6.5, 12.0, 80.0):
-        rho = _amplification_rho(10, DX, dt, eps, eps)
+        rho = amplification_rho(10, DX, dt, eps, eps)
         assert rho <= 1.0 + tol, f"consistent eps={eps} gives rho={rho} > 1"
 
     # eps_b ABOVE eps_a: under-damped absorber, still not amplifying. This is
     # the pre-#1043 state of a boundary-touching guide (aniso_eps = 1 in the
     # pad, materials.eps_r = 12 there) and it is why that case was wrong but
     # stable.
-    assert _amplification_rho(10, DX, dt, 1.0, 12.0) <= 1.0 + tol
+    assert amplification_rho(10, DX, dt, 1.0, 12.0) <= 1.0 + tol
 
     # eps_b BELOW eps_a: amplifying. 6.5 against 1.0 is the measured failing
     # cell -- a Kottke interface value carried into the pad beside a staircase
     # array that reads vacuum at the same cell.
-    rho_defect = _amplification_rho(10, DX, dt, 6.5, 1.0)
+    rho_defect = amplification_rho(10, DX, dt, 6.5, 1.0)
     assert rho_defect > 1.0 + tol, (
         f"expected an amplifying update at eps_a=6.5 / eps_b=1.0, got "
         f"rho={rho_defect}")
@@ -286,6 +297,67 @@ def test_threading_an_equal_permittivity_is_bit_identical():
             f"{name}: threading an EQUAL permittivity changed the field bytes "
             f"(max |delta| = {np.max(np.abs(a - b))}). The parameter must be a "
             f"no-op wherever the two epsilons agree.")
+
+
+@pytest.mark.parametrize("subpixel,dispersive,expect_threaded", [
+    (False, False, False),   # no anisotropic array -> materials.eps_r, as before
+    (True, False, True),     # Stage 1 -> 1/aniso_eps
+    (True, True, False),     # dispersion wins the E update, so it wins here too
+])
+def test_the_coefficient_is_threaded_exactly_when_the_e_update_is_anisotropic(
+        monkeypatch, subpixel, dispersive, expect_threaded):
+    """Pin WHICH runs get the new coefficient, not just what it computes.
+
+    The three stable configurations of #1043's table are stable because their
+    two permittivities agree wherever ``apply_cpml_e`` writes — the
+    subpixel-OFF run by taking the ``materials`` branch outright, the
+    dispersive run the same way. A future edit that threads the array
+    unconditionally would break the dispersive run silently, because
+    ``_update_e_with_optional_dispersion`` ignores ``aniso_eps`` and the two
+    halves would disagree again with the sign reversed.
+
+    (The committed-geometry CPML control is NOT pinned as unchanged: its pad
+    holds ``materials.eps_r = 12`` against ``aniso_eps = 1``, so its numbers
+    move by design. cv01 Run 1 goes 0.9195301017439319 -> 0.9166511849380675;
+    the measurement lives in
+    `scripts/diagnostics/cpml_subpixel_stability/cv01_control.py`.)
+    """
+    import rfx.boundaries.cpml as _cpml
+    from rfx.materials.lorentz import LorentzPole
+
+    seen = []
+    orig = _cpml.apply_cpml_e
+
+    def spy(*a, **kw):
+        seen.append(kw.get("inv_eps_r_update"))
+        return orig(*a, **kw)
+
+    monkeypatch.setattr(_cpml, "apply_cpml_e", spy)
+
+    sy = 8.0 * A
+    sim = _guide_sim("cpml")
+    if dispersive:
+        w0 = 2 * np.pi * (0.15 * C0 / A)
+        sim.add_material("disp", eps_r=4.0,
+                         lorentz_poles=[LorentzPole(omega_0=w0, delta=w0 / 100.0,
+                                                    kappa=w0 ** 2)])
+        sim.add(rfx.Box((2.0 * A, sy / 2 - 0.2 * A, 0),
+                        (4.0 * A, sy / 2 + 0.2 * A, DX)), material="disp")
+    # Long enough for the pulse to actually couple; a handful of steps leaves
+    # "no field energy was recorded" (#336) on the record, which makes a
+    # passing spy test look like it measured nothing.
+    sim.run(n_steps=120, subpixel_smoothing=subpixel, skip_preflight=True)
+
+    assert seen, "apply_cpml_e was never called -- the spy missed the call site"
+    threaded = [v for v in seen if v is not None]
+    if expect_threaded:
+        assert len(threaded) == len(seen), (
+            f"expected every CPML-E call to carry inv_eps_r_update, "
+            f"{len(seen) - len(threaded)} of {len(seen)} did not")
+    else:
+        assert not threaded, (
+            f"inv_eps_r_update was passed on a run whose E update does not use "
+            f"an anisotropic array (subpixel={subpixel}, dispersive={dispersive})")
 
 
 def test_threading_a_different_permittivity_changes_the_coefficient():

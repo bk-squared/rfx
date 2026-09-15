@@ -61,16 +61,11 @@ def _field_hash(state) -> str:
     return h.hexdigest()
 
 
-def _base(boundary: str, cpml_layers: int = 10, nu: bool = False):
-    import rfx
+def _base(boundary: str, cpml_layers: int = 10):
     from rfx import Simulation
     from rfx.boundaries.spec import BoundarySpec
-    from rfx.sources import GaussianPulse
 
     sx = sy = 8.0 * A
-    kw = {}
-    if nu:
-        kw["dz_profile"] = None
     sim = Simulation(freq_max=0.25 * C0 / A, domain=(sx, sy, DX), dx=DX,
                      boundary=BoundarySpec.uniform(boundary),
                      cpml_layers=cpml_layers, mode="2d_tmz")
@@ -151,7 +146,7 @@ def main() -> None:
         except ValueError:
             raise SystemExit(f"rfx provenance check FAILED: {rfx_file}")
 
-    rec = {"provenance": {"rfx_file": rfx_file, "commit": _git("rev-parse", "HEAD"),
+    rec = {"provenance": {"rfx_file": rfx_file, "driver_commit": _git("rev-parse", "HEAD"),
                           "branch": _git("rev-parse", "--abbrev-ref", "HEAD")},
            "n_steps": N_STEPS, "expect_change": sorted(EXPECT_CHANGE),
            "hashes": {}}

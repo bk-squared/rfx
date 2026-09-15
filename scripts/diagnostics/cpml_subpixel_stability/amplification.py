@@ -15,7 +15,7 @@ THE MODEL
 ---------
 A 1-D CPML slice, ``n`` cells, Ez / Hy / psi_ez, with the rfx assembly:
 
-    H^{n+1/2}  = H^{n-1/2} - (dt/mu0) * dEz/dx
+    H^{n+1/2}  = H^{n-1/2} + (dt/mu0) * dEz/dx
     psi^{n+1}  = b*psi^n + c*dHy/dx
     E^{n+1}    = E^n + (dt/(eps_a*eps0)) * dHy/dx + (dt/(eps_b*eps0)) * psi^{n+1}
 
@@ -67,89 +67,21 @@ def _assert_rfx_is_this_repo() -> dict:
     except ValueError:
         raise SystemExit(f"rfx provenance check FAILED: {f} is not under {REPO}")
     return {"rfx_file": str(f), "repo_root": str(REPO),
-            "commit": _git("rev-parse", "HEAD")}
+            "driver_commit": _git("rev-parse", "HEAD")}
 
 
-def amplification_matrix(n: int, dx: float, dt: float,
-                         eps_a: np.ndarray, eps_b: np.ndarray,
-                         b: np.ndarray, c: np.ndarray) -> np.ndarray:
-    """One-step operator on ``(Ez[n], Hy[n], psi[n])``, PEC-terminated."""
-    m = 3 * n
-    A = np.eye(m)
-    iE = slice(0, n)
-    iH = slice(n, 2 * n)
-    iP = slice(2 * n, 3 * n)
+def _rho_fn():
+    """The ONE copy of the amplification model lives in the committed gate.
 
-    # dEz/dx at H nodes: (E[i+1] - E[i]) / dx, last row 0 (PEC)
-    DE = np.zeros((n, n))
-    for i in range(n - 1):
-        DE[i, i + 1] = 1.0 / dx
-        DE[i, i] = -1.0 / dx
-    # dHy/dx at E nodes: (H[i] - H[i-1]) / dx, first row H[0]/dx
-    DH = np.zeros((n, n))
-    for i in range(n):
-        DH[i, i] = 1.0 / dx
-        if i > 0:
-            DH[i, i - 1] = -1.0 / dx
-
-    # H^{n+1/2} = H^{n-1/2} + (dt/mu0) * dEz/dx.
-    # rfx writes ``hy -= (dt/mu)*curl_y`` with ``curl_y = dEx/dz - dEz/dx``
-    # (yee.py update_h); in this 1-D Ez/Hy slice that is ``+ (dt/mu)*dEz/dx``.
-    # Taking the minus sign literally turns the leapfrog into positive
-    # feedback and makes EVERY case report rho > 1, vacuum included -- which
-    # is how this sign was caught.
-    H_new = np.zeros((n, m))
-    H_new[:, iH] = np.eye(n)
-    H_new[:, iE] = (dt / MU_0) * DE
-
-    # psi^{n+1} = b*psi^n + c*(DH @ H^{n+1/2})
-    P_new = np.zeros((n, m))
-    P_new[:, iP] = np.diag(b)
-    P_new += np.diag(c) @ DH @ H_new
-
-    # E^{n+1} = E^n + (dt/(eps_a*eps0))*(DH @ H^{n+1/2})
-    #                + (dt/(eps_b*eps0))*psi^{n+1}
-    E_new = np.zeros((n, m))
-    E_new[:, iE] = np.eye(n)
-    E_new += np.diag(dt / (eps_a * EPS_0)) @ DH @ H_new
-    E_new += np.diag(dt / (eps_b * EPS_0)) @ P_new
-
-    A[iE, :] = E_new
-    A[iH, :] = H_new
-    A[iP, :] = P_new
-    return A
-
-
-def rho(*args, **kw) -> float:
-    return float(np.max(np.abs(np.linalg.eigvals(amplification_matrix(*args, **kw)))))
-
-
-def cpml_profile(n_layers: int, dt: float, dx: float, order: int = 3,
-                 R: float = 1e-15):
-    """Re-derives rfx's own profile (cpml.py:_cpml_profile) in plain numpy."""
-    eta = float(np.sqrt(MU_0 / EPS_0))
-    d = n_layers * dx
-    sigma_max = -float(np.log(R)) * (order + 1) / (2.0 * eta * d)
-    rho_p = 1.0 - np.arange(n_layers) / max(n_layers - 1, 1)
-    sigma = sigma_max * rho_p ** order
-    kappa = np.ones(n_layers)
-    alpha = 0.05 * (1.0 - rho_p)
-    denom = sigma * kappa + kappa ** 2 * alpha
-    b = np.exp(-(sigma / kappa + alpha) * dt / EPS_0)
-    c = np.where(denom > 1e-30, sigma * (b - 1.0) / denom, 0.0)
-    return sigma, kappa, alpha, b, c
-
-
-def _assert_profile_matches_rfx(n_layers, dt, dx) -> dict:
-    """The numpy profile above must equal rfx's, or nothing here is about rfx."""
-    from rfx.boundaries.cpml import _cpml_profile
-    p = _cpml_profile(n_layers, dt, dx)
-    _s, _k, _a, b, c = cpml_profile(n_layers, dt, dx)
-    db = float(np.max(np.abs(np.asarray(p.b, dtype=float) - b)))
-    dc = float(np.max(np.abs(np.asarray(p.c, dtype=float) - c)))
-    if db > 1e-6 or dc > 1e-6:
-        raise SystemExit(f"profile mismatch vs rfx: db={db} dc={dc}")
-    return {"max_abs_db_vs_rfx": db, "max_abs_dc_vs_rfx": dc}
+    ``tests/unit/boundaries/test_cpml_subpixel_coefficient_consistency.py``
+    owns ``amplification_rho``; this driver sweeps it. Keeping a second
+    hand-maintained copy here is how the repo's grep map drifted, so there
+    isn't one.
+    """
+    import importlib
+    mod = importlib.import_module(
+        "tests.unit.boundaries.test_cpml_subpixel_coefficient_consistency")
+    return mod.amplification_rho
 
 
 def main() -> None:
@@ -158,38 +90,36 @@ def main() -> None:
     args = ap.parse_args()
 
     prov = _assert_rfx_is_this_repo()
+    amplification_rho = _rho_fn()
 
     # The failing cells of the FDTD rig: a 10-layer pad, dx = 0.1 um, the
     # rig's own CFL dt, eps_a = the Kottke interface value at the guide wall,
     # eps_b = the staircase value the pad replication left beside it.
+    from rfx.boundaries.cpml import _cpml_profile
     n_layers = 10
     dx = 1.0e-7
     courant = 0.5
     dt = courant * dx / C0
-    _s, kap, _al, b, c = cpml_profile(n_layers, dt, dx)
-    chk = _assert_profile_matches_rfx(n_layers, dt, dx)
+    prof = _cpml_profile(n_layers, dt, dx)
+    c_out = float(np.asarray(prof.c, dtype=float)[0])
+    b_out = float(np.asarray(prof.b, dtype=float)[0])
+    kappa_max = float(np.asarray(prof.kappa, dtype=float).max())
 
     n = 24  # pad cells + interior tail
-    bb = np.zeros(n)
-    cc = np.zeros(n)
-    bb[:n_layers] = b
-    cc[:n_layers] = c
-    bb[n_layers:] = 1.0
 
     EPS_A_FAIL = 6.5   # Kottke half-cell carried into the pad by the fix
     EPS_B_FAIL = 1.0   # what materials.eps_r reads at the same cell
 
-    def homog(val):
-        return np.full(n, float(val))
+    def rho(eps_a, eps_b, dt_=None, absorber=True):
+        return amplification_rho(n_layers, dx, dt if dt_ is None else dt_,
+                                 eps_a, eps_b, n=n, absorber=absorber)
 
     # Comparator first: the model has to be right before its verdict is
     # readable. A lossless vacuum slice with NO absorber must sit on the unit
     # circle, and a consistent CPML must sit on or inside it. The leapfrog
     # sign error that made every case report rho = 1.3-2.6 was caught here.
-    no_pml_b = np.ones(n)
-    no_pml_c = np.zeros(n)
-    rho_vac_nopml = rho(n, dx, dt, homog(1.0), homog(1.0), no_pml_b, no_pml_c)
-    rho_vac_cpml = rho(n, dx, dt, homog(1.0), homog(1.0), bb, cc)
+    rho_vac_nopml = rho(1.0, 1.0, absorber=False)
+    rho_vac_cpml = rho(1.0, 1.0)
     if not (abs(rho_vac_nopml - 1.0) < 1e-6 and rho_vac_cpml <= 1.0 + 1e-6):
         raise SystemExit(
             "amplification model SELF-CHECK FAILED — a lossless vacuum slice "
@@ -200,21 +130,20 @@ def main() -> None:
     rows = []
 
     def add(label, eps_a, eps_b, **kw):
-        r = rho(n, dx, dt, eps_a, eps_b, bb, cc)
+        r = rho(eps_a, eps_b)
         rows.append({"case": label, "rho": r, "unstable": bool(r > 1 + 1e-6),
-                     "eps_a": float(eps_a[0]), "eps_b": float(eps_b[0]), **kw})
+                     "eps_a": float(eps_a), "eps_b": float(eps_b), **kw})
         return r
 
     # --- the defect and the fix, at the failing cell ---
     rho_old = add("today: eps_a from aniso_eps, eps_b from materials.eps_r",
-                  homog(EPS_A_FAIL), homog(EPS_B_FAIL))
-    rho_new = add("fixed: eps_b = eps_a", homog(EPS_A_FAIL), homog(EPS_A_FAIL))
+                  EPS_A_FAIL, EPS_B_FAIL)
+    rho_new = add("fixed: eps_b = eps_a", EPS_A_FAIL, EPS_A_FAIL)
 
     # --- controls that must stay stable ---
-    add("vacuum pad, consistent", homog(1.0), homog(1.0))
-    add("eps 12 pad, consistent (= subpixel OFF row)", homog(12.0), homog(12.0))
-    add("today's cv01: eps_a = 1, eps_b = 12 (under-damped, stable)",
-        homog(1.0), homog(12.0))
+    add("vacuum pad, consistent", 1.0, 1.0)
+    add("eps 12 pad, consistent (= subpixel OFF row)", 12.0, 12.0)
+    add("today's cv01: eps_a = 1, eps_b = 12 (under-damped, stable)", 1.0, 12.0)
 
     # --- H1 vs H2 discriminator -------------------------------------------
     # eps_b enters ONLY the psi coefficient; it is not a property of the
@@ -227,42 +156,35 @@ def main() -> None:
     ratio_scan = []
     for eb_val in (1.0, 2.0, 4.0, 5.0, 6.0, 6.294, 6.35, 6.4, 6.45, 6.49,
                    6.5, 8.0, 12.0, 20.0):
-        ea = homog(6.5)
-        eb = homog(eb_val)
         ratio_scan.append({
             "eps_a": 6.5, "eps_b": eb_val, "eps_a_over_eps_b": 6.5 / eb_val,
-            "K_eff_norm_outermost": 1.0 / 6.5 + float(cc[0]) / eb_val,
-            "rho": rho(n, dx, dt, ea, eb, bb, cc)})
+            "K_eff_norm_outermost": 1.0 / 6.5 + c_out / eb_val,
+            "rho": rho(6.5, eb_val)})
 
     # Consistent (eps_a == eps_b) across a wide absolute range: if H2 were the
     # mechanism, a high absolute permittivity in the graded region would break
     # stability on its own. It must not.
     scale_scan = []
     for eps in (1.0, 2.0, 4.0, 6.5, 12.0, 30.0, 80.0):
-        e = homog(eps)
-        scale_scan.append({"eps_consistent": eps,
-                           "rho": rho(n, dx, dt, e, e, bb, cc)})
+        scale_scan.append({"eps_consistent": eps, "rho": rho(eps, eps)})
 
     courant_scan = []
     for cf in (0.2, 0.35, 0.5, 0.7):
         dt_c = cf * dx / C0
-        _s2, _k2, _a2, b2, c2 = cpml_profile(n_layers, dt_c, dx)
-        bb2 = np.zeros(n); cc2 = np.zeros(n)
-        bb2[:n_layers] = b2; cc2[:n_layers] = c2; bb2[n_layers:] = 1.0
         courant_scan.append({
             "courant": cf,
-            "rho_defect": rho(n, dx, dt_c, homog(EPS_A_FAIL),
-                              homog(EPS_B_FAIL), bb2, cc2),
-            "rho_fixed": rho(n, dx, dt_c, homog(EPS_A_FAIL),
-                             homog(EPS_A_FAIL), bb2, cc2),
+            "rho_defect": rho(EPS_A_FAIL, EPS_B_FAIL, dt_=dt_c),
+            "rho_fixed": rho(EPS_A_FAIL, EPS_A_FAIL, dt_=dt_c),
         })
 
     rec = {
         "provenance": prov,
-        "profile_check_vs_rfx": chk,
+        "model_owner": ("tests/unit/boundaries/"
+                        "test_cpml_subpixel_coefficient_consistency.py"
+                        "::amplification_rho"),
         "model": {"n_cells": n, "n_cpml_layers": n_layers, "dx": dx,
-                  "dt": dt, "courant": courant, "kappa_max": float(kap.max()),
-                  "c_outermost": float(cc[0]), "b_outermost": float(bb[0])},
+                  "dt": dt, "courant": courant, "kappa_max": kappa_max,
+                  "c_outermost": c_out, "b_outermost": b_out},
         "self_check": {"rho_vacuum_no_pml": rho_vac_nopml,
                        "rho_vacuum_consistent_cpml": rho_vac_cpml},
         "cases": rows,

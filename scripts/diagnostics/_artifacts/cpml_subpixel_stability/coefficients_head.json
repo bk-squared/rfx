@@ -4,7 +4,7 @@
     "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-ac585302d6176235b/rfx/__init__.py",
     "rfx_under_repo_root": true,
     "repo_root": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-ac585302d6176235b",
-    "commit": "499c8e1ea89e0c855d7b0b28ccbbd653672897ad",
+    "driver_commit": "b8b08dabd2abbf6c1b61ca687af01193e1c8dbf9",
     "branch": "fix/1043-cpml-subpixel-coefficients",
     "dirty": true
   },
@@ -71,7 +71,7 @@
         "max_abs_finite": 4.7000727931845176e-07,
         "settling_db": -18.10368441230787,
         "stdout_tail": "  [PREFLIGHT] dielectric 'wg' on x: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] dielectric 'wg' on y: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] dielectric 'wg' on z: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n",
-        "wall_s": 2.8
+        "wall_s": 2.7
       }
     },
     "cpml_padrep": {
@@ -379,7 +379,7 @@
         "max_abs_finite": 4.592121172208863e-07,
         "settling_db": -34.22297970707086,
         "stdout_tail": "  [PREFLIGHT] dielectric 'wg' on x: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] dielectric 'wg' on y: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] dielectric 'wg' on z: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n",
-        "wall_s": 1.6
+        "wall_s": 1.7
       }
     },
     "cpml_subpixel_off": {
@@ -433,7 +433,7 @@
         "max_abs_finite": 4.5304705054149963e-07,
         "settling_db": -41.078245123656544,
         "stdout_tail": "  [PREFLIGHT] dielectric 'wg' on x: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] dielectric 'wg' on y: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] dielectric 'wg' on z: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n",
-        "wall_s": 1.7
+        "wall_s": 1.5
       }
     },
     "upml_padrep": {
@@ -741,7 +741,7 @@
         "max_abs_finite": 4.2711874925771554e-07,
         "settling_db": -35.45452498147205,
         "stdout_tail": "  [PREFLIGHT] dielectric 'wg' on x: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] dielectric 'wg' on y: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] dielectric 'wg' on z: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (UPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n",
-        "wall_s": 1.3
+        "wall_s": 1.2
       }
     }
   },
