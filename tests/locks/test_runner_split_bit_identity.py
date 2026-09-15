@@ -975,6 +975,15 @@ _RUNNER_ENTRY_POINTS = (
      "run_subgridded_path"),
     ("disjoint", "run_disjoint_stage2_path", "rfx.runners.disjoint",
      "run_disjoint_stage2_path"),
+    # KEPT DELIBERATELY THROUGH #1038 leg 6. Leg 6 removed v1's PACKAGE-level
+    # export (see test_the_package_no_longer_exports_run_distributed); the
+    # MODULE still exports its entry point and must keep doing so. It is a
+    # live dependency, not dead code: distributed_v2.py:56 imports twelve
+    # names from it, rfx/api/_execute.py imports _split_materials from it,
+    # distributed_v2.run_distributed delegates to this function verbatim at
+    # n_devices == 1, tests/unit/{materials,boundaries} import it by full path
+    # as the legacy pmap runner, and one of the seven #677 FENCE_REGISTRY
+    # frames above is raised from inside it.
     ("distributed", "run_distributed", "rfx.runners.distributed",
      "run_distributed"),
     ("distributed_v2", "run_distributed", "rfx.runners.distributed_v2",
@@ -983,21 +992,39 @@ _RUNNER_ENTRY_POINTS = (
      "rfx.runners.distributed_nu", "run_nonuniform_distributed_pec"),
 )
 
-#: rfx/runners/__init__.py's __all__ at 9866bafd.
-_RUNNERS_ALL = ("run_uniform", "run_nonuniform_path", "run_subgridded_path",
-                "run_distributed")
+#: rfx/runners/__init__.py's __all__.
+#:
+#: CHANGED BY #1038 leg 6 (was, at 9866bafd, this tuple plus a trailing
+#: "run_distributed"). Leg 6 retires the v1 pmap runner as a PUBLIC entry
+#: point: the package-level ``run_distributed`` resolved to ``distributed.py``,
+#: which ``sim.run(devices=...)`` reaches only as v2's ``n_devices == 1`` fast
+#: path, while the runner it actually dispatches to
+#: (``distributed_v2.run_distributed``) was never exported. The deliberate
+#: surface change is the removal; the module itself is untouched and still
+#: importable by full path. Re-adding "run_distributed" here would restore the
+#: collision, so this pin now guards the removal rather than the collision.
+_RUNNERS_ALL = ("run_uniform", "run_nonuniform_path", "run_subgridded_path")
 
 #: The module-level ``from rfx.runners.X import Y`` statements in
-#: rfx/runners/__init__.py at 9866bafd, read with ast. §5e: __init__.py
-#: eagerly imports four submodules at package import, and anything a new
-#: shared module imports at module level joins that eager chain --
-#: conftest.py:405 carries a repair routine for what happens when a test
-#: evicts rfx.runners from sys.modules and that chain is not what it was.
+#: rfx/runners/__init__.py, read with ast. §5e: __init__.py eagerly imports
+#: submodules at package import, and anything a new shared module imports at
+#: module level joins that eager chain -- conftest.py:405 carries a repair
+#: routine for what happens when a test evicts rfx.runners from sys.modules
+#: and that chain is not what it was.
+#:
+#: CHANGED BY #1038 leg 6: ("rfx.runners.distributed", "run_distributed") was
+#: the fourth row and is gone with the public export. That SHORTENS the eager
+#: chain twice over -- verified in a fresh interpreter, ``import rfx.runners``
+#: now loads neither ``rfx.runners.distributed`` nor, transitively,
+#: ``rfx.runners._distributed_common`` (distributed.py:48 was its only eager
+#: importer). Both are still reached on demand: every consumer imports them by
+#: full module path or as ``from rfx.runners import _distributed_common``,
+#: and conftest.py's repair guard walks the loaded set rather than a fixed
+#: list, so a shorter chain gives it less to repair, not more.
 _RUNNERS_EAGER_IMPORTS = (
     ("rfx.runners.uniform", "run_uniform"),
     ("rfx.runners.nonuniform", "run_nonuniform_path"),
     ("rfx.runners.subgridded", "run_subgridded_path"),
-    ("rfx.runners.distributed", "run_distributed"),
 )
 
 
@@ -1029,28 +1056,55 @@ def test_runners_package_all_is_unchanged():
 
     assert tuple(pkg.__all__) == _RUNNERS_ALL, (
         f"rfx.runners.__all__ is {tuple(pkg.__all__)}, expected "
-        f"{_RUNNERS_ALL}. Inventory §8 leg 6 PROPOSES dropping "
-        "'run_distributed' from it (retiring v1 as a public entry point); "
-        "that is a deliberate surface change and must edit this pin in the "
-        "same commit, not arrive as a side effect of code motion.")
+        f"{_RUNNERS_ALL}. Inventory §8 leg 6 dropped 'run_distributed' from it "
+        "(retiring v1 as a public entry point); that was a deliberate surface "
+        "change and it edited this pin in the same commit. Any further change "
+        "-- including RE-ADDING 'run_distributed', which would restore the "
+        "collision leg 6 removed -- must do the same, not arrive as a side "
+        "effect of code motion.")
 
 
-def test_the_run_distributed_name_collision_still_resolves_to_v1():
-    """``rfx.runners.run_distributed`` is v1; production ``run(devices=)`` is v2.
+def test_the_package_no_longer_exports_run_distributed():
+    """#1038 leg 6: neither ``run_distributed`` is a package-level name.
 
-    Two modules export ``run_distributed`` (§1.1 / §1.10). The package-level
-    name is ``distributed.py``'s pmap runner, while ``sim.run(devices=[...])``
-    dispatches to ``distributed_v2.run_distributed`` and only falls back to v1
-    at ``n_devices == 1``. Pinning which one the package re-exports keeps a
-    consolidation from quietly swapping the public meaning of the name -- the
-    two are NOT bit-identical (2.794e-09 on a 9.4145e-03 peak).
+    Replaces ``test_the_run_distributed_name_collision_still_resolves_to_v1``,
+    which pinned the PRE-leg-6 surface: ``rfx.runners.run_distributed`` used to
+    resolve to ``distributed.py``'s pmap runner. That was the wrong runner to
+    put behind the public name -- ``sim.run(devices=[...])`` dispatches to
+    ``distributed_v2.run_distributed`` for uniform and non-uniform grids alike,
+    and reaches v1 only as v2's ``n_devices == 1`` fast path
+    (``distributed_v2.py:514-517``). Leg 6 resolved the collision by exporting
+    NEITHER, rather than by swapping which one wins: the two are NOT
+    bit-identical (2.794e-09 on a 9.4145e-03 peak) and they disagree on the
+    odd-``nx`` rule, so a silent swap of the public meaning of the name would
+    have changed numbers for anyone who had imported it.
+
+    What this now pins: the package exports no ``run_distributed``, and both
+    functions still exist as distinct callables reachable only by full module
+    path. The v1 MODULE keeps its entry point -- see
+    ``test_runner_module_still_exports_its_entry_point[distributed.run_distributed]``.
     """
     import rfx.runners as pkg
     import rfx.runners.distributed as v1
     import rfx.runners.distributed_v2 as v2
 
-    assert pkg.run_distributed is v1.run_distributed
-    assert pkg.run_distributed is not v2.run_distributed
+    assert not hasattr(pkg, "run_distributed"), (
+        "rfx.runners.run_distributed is back. #1038 leg 6 retired v1 as a "
+        "public entry point precisely so this name cannot point at a runner "
+        "sim.run() does not dispatch to; re-exporting either one restores the "
+        "collision. Migration for callers is Simulation.run(devices=[...]) or "
+        "the full module path.")
+    assert "run_distributed" not in pkg.__all__
+
+    assert callable(v1.run_distributed)
+    assert callable(v2.run_distributed)
+    assert v1.run_distributed is not v2.run_distributed, (
+        "rfx.runners.distributed.run_distributed and "
+        "rfx.runners.distributed_v2.run_distributed collapsed to one object. "
+        "PI decision 2026-09-15 is that v1 is NOT merged into v2 -- they are "
+        "not bit-identical and they disagree on the odd-nx rule.")
+    assert v1.run_distributed.__module__ == "rfx.runners.distributed"
+    assert v2.run_distributed.__module__ == "rfx.runners.distributed_v2"
 
 
 def test_runners_package_eager_import_list_is_unchanged():
