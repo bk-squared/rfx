@@ -29,7 +29,7 @@ from jax import lax
 from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh, PartitionSpec as P
 
-from rfx.core.yee import EPS_0, MU_0, FDTDState
+from rfx.core.yee import EPS_0, MU_0, FDTDState, _shift_fwd, _shift_bwd
 
 __all__ = [
     "cpml_coeff_e_vacuum",
@@ -47,6 +47,8 @@ __all__ = [
     "shard_stacked_psi",
     "inject_sources_shmap",
     "sample_probes_shmap",
+    "_update_h_local_nu",
+    "_update_e_local_nu",
 ]
 
 
@@ -746,3 +748,90 @@ def sample_probes_shmap(st, mesh, n_prb, prb_local_specs, prb_device_ids):
         return lax.psum(jnp.stack(samples), "x")
 
     return _sample(st.ex, st.ey, st.ez, st.hx, st.hy, st.hz)
+
+
+# ---------------------------------------------------------------------------
+# Local NU update kernels (operate on per-device slab including ghosts)
+# ---------------------------------------------------------------------------
+#
+# #1038 leg 4 (prerequisite). Moved VERBATIM -- name, signature, docstring and
+# body byte-for-byte -- from ``distributed_nu.py`` L137/L169. Neither was
+# duplicated; they move for the same reason leg 2 moved ``split_array_x`` /
+# ``gather_array_x``: leg 4's shared NU shard wrappers below call them, and
+# this module MUST NOT import from ``rfx.runners.distributed_nu`` (it is the
+# leaf of the runner DAG, and ``distributed_nu`` imports it at L49). Their only
+# dependencies are ``rfx.core.yee`` names, so the move is cycle-free.
+#
+# ``distributed_nu.py`` re-imports both at the position they were defined, so
+# ``rfx.runners.distributed_nu._update_{h,e}_local_nu`` keeps resolving for
+# ``tests/unit/runners/test_distributed_nu_kernel.py`` and for
+# ``distributed_v2.py``'s function-local import. The two leading-underscore
+# names in ``__all__`` above are deliberate: renaming a physics kernel to fit
+# this module's public-name convention would put a rename inside a
+# bit-identity leg for cosmetic reasons, so the exported spelling is the
+# original one.
+
+def _update_h_local_nu(state, materials, dt,
+                      inv_dx_slab, inv_dy_full, inv_dz_full,
+                      inv_dx_h_slab, inv_dy_h_full, inv_dz_h_full):
+    """H update on a local slab using NU inverse spacings.
+
+    Mirrors ``rfx/core/yee.py::update_h_nu`` but accepts pre-sliced
+    per-device ``inv_dx`` / ``inv_dx_h`` (length nx_local), while
+    y/z spacings are replicated (full-axis).
+    """
+    ex, ey, ez = state.ex, state.ey, state.ez
+    mu = materials.mu_r * MU_0
+
+    curl_x = (
+        (_shift_fwd(ez, 1) - ez) * inv_dy_h_full[None, :, None]
+        - (_shift_fwd(ey, 2) - ey) * inv_dz_h_full[None, None, :]
+    )
+    curl_y = (
+        (_shift_fwd(ex, 2) - ex) * inv_dz_h_full[None, None, :]
+        - (_shift_fwd(ez, 0) - ez) * inv_dx_h_slab[:, None, None]
+    )
+    curl_z = (
+        (_shift_fwd(ey, 0) - ey) * inv_dx_h_slab[:, None, None]
+        - (_shift_fwd(ex, 1) - ex) * inv_dy_h_full[None, :, None]
+    )
+
+    hx = state.hx - (dt / mu) * curl_x
+    hy = state.hy - (dt / mu) * curl_y
+    hz = state.hz - (dt / mu) * curl_z
+
+    return state._replace(hx=hx, hy=hy, hz=hz)
+
+
+def _update_e_local_nu(state, materials, dt,
+                      inv_dx_slab, inv_dy_full, inv_dz_full):
+    """E update on a local slab using NU inverse (cell-local) spacings.
+
+    Mirrors ``rfx/core/yee.py::update_e_nu``.
+    """
+    hx, hy, hz = state.hx, state.hy, state.hz
+    eps = materials.eps_r * EPS_0
+    sigma = materials.sigma
+
+    sigma_dt_2eps = sigma * dt / (2.0 * eps)
+    ca = (1.0 - sigma_dt_2eps) / (1.0 + sigma_dt_2eps)
+    cb = (dt / eps) / (1.0 + sigma_dt_2eps)
+
+    curl_x = (
+        (hz - _shift_bwd(hz, 1)) * inv_dy_full[None, :, None]
+        - (hy - _shift_bwd(hy, 2)) * inv_dz_full[None, None, :]
+    )
+    curl_y = (
+        (hx - _shift_bwd(hx, 2)) * inv_dz_full[None, None, :]
+        - (hz - _shift_bwd(hz, 0)) * inv_dx_slab[:, None, None]
+    )
+    curl_z = (
+        (hy - _shift_bwd(hy, 0)) * inv_dx_slab[:, None, None]
+        - (hx - _shift_bwd(hx, 1)) * inv_dy_full[None, :, None]
+    )
+
+    ex = ca * state.ex + cb * curl_x
+    ey = ca * state.ey + cb * curl_y
+    ez = ca * state.ez + cb * curl_z
+
+    return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)

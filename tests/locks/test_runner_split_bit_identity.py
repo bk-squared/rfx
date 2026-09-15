@@ -873,6 +873,19 @@ _SHARED_HELPER_BINDINGS = (
      "_apply_pmc_shmap"),
     ("apply_pmc_face_shmap", "rfx.runners.distributed_nu",
      "_apply_pmc_face_nu_shmap"),
+    # #1038 leg 4 (prerequisite) -- the two local NU Yee kernels. Not a
+    # de-duplication: single definitions in distributed_nu.py that had to move
+    # BELOW the shared module so leg 4's shared NU shard wrappers can call
+    # them without importing from distributed_nu (which would invert the DAG).
+    # distributed_nu.py re-imports both at the position they were defined, so
+    # these rows are what says the re-import is the SAME object and not a
+    # resurrected copy. v2's own import of them is function-local (inside
+    # run_distributed), so there is no rfx.runners.distributed_v2 attribute to
+    # guard -- one module-level importer, one row each.
+    ("_update_h_local_nu", "rfx.runners.distributed_nu",
+     "_update_h_local_nu"),
+    ("_update_e_local_nu", "rfx.runners.distributed_nu",
+     "_update_e_local_nu"),
 )
 
 
