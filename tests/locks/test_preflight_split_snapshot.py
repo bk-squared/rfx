@@ -93,7 +93,7 @@ report-text change and should be re-blessed as one, not normalised here.
 
 Coverage, measured -- and what it does NOT cover
 ------------------------------------------------
-65 fixtures, witnessing 63 of the 74 literal ``code=`` slugs in
+66 fixtures, witnessing 63 of the 74 literal ``code=`` slugs in
 ``rfx/api/_preflight.py`` and ``rfx/preflight/`` plus the dynamic ``uncoded``
 and ``sparam_routing_msl`` paths. Stated because the split-inventory that
 seeded this lock projected "~56 of 74" for its 12-fixture set; the measured
@@ -114,15 +114,39 @@ carrying eight codes, and took its three families (ports lumped/wire + coax,
 sources, NTFF) to ZERO unwitnessed codes -- the first leg to close its own
 family completely.
 
+Issue #1024 added the 66th, ``waveguide_refplane_in_slab``, and it carries
+``waveguide_reference_plane`` -- the code the ledger below used to file as
+unwitnessABLE. It was: the advisory's only reachable emission site read the
+wrong attribute off the geometry wrapper and swallowed the ``AttributeError``,
+so no fixture could have made it speak. See the paragraph on it further down.
+
 The 11 unwitnessed codes left are the honest hole, and every one of them
 belongs to a family this lock has already discharged or to a body no builder
 reaches: the two remaining ``precision_*`` guards,
-``port_aperture_unrasterizable`` / ``waveguide_reference_plane`` /
+``port_aperture_unrasterizable`` /
 ``port_index_mirror_asymmetry`` / ``record_far_boundary_band_below_cutoff`` /
 ``waveguide_setup_audit_skipped`` / ``port_freqs_below_cutoff`` /
 ``port_source_below_cutoff`` (the waveguide leg),
-``campaign_statics_unavailable`` (leg 2) and ``mesh_import_underresolved``
-(leg 5, which needs the optional ``cad`` extra -- see below).
+``campaign_statics_unavailable`` (leg 2), ``mesh_import_underresolved``
+(leg 5, which needs the optional ``cad`` extra -- see below) and
+``dielectric_at_absorber_seam`` (#1043 stage B).
+
+That list is MEASURED, not maintained by hand -- it was wrong in both
+directions before #1024 re-derived it. It named ``waveguide_reference_plane``,
+which #1024 now witnesses, and it omitted ``dielectric_at_absorber_seam``,
+whose own check landed on 2026-09-15 without being filed here. The two errors
+cancelled in the COUNT (11 either way) and not in the content, which is the
+failure mode a hand-kept ledger has: re-derive it with
+
+    python -c "import json,glob,sys; sys.path.insert(0,'.'); \
+    from tests.unit.preflight.test_preflight_advisory_emission_contract import \
+    _enumerate_emission_sites as E; \
+    lit={c for (_,_,c,d,_) in E() if not d}; \
+    seen={i['code'] for p in glob.glob('tests/data/preflight_split_snapshot/*.json') \
+    for r in json.load(open(p)).values() for i in r['issues']}; \
+    print(len(lit&seen), sorted(lit-seen))"
+
+whenever a fixture or an advisory is added, rather than editing the prose.
 
 ``mesh_import_underresolved`` is the one leg 5 left, and it is left for a
 reason that will not change by writing another fixture: its branch is gated
@@ -222,25 +246,32 @@ and only the second needs a raise. The first is an ordinary ``dz_profile``
 mesh -- the #544 BLOCKING-1 fix SKIPS the uniform-only dead-cell
 classification on the non-uniform lane rather than building a mismatched
 substitute -- which ``wire_port_dead_cell_nu`` now witnesses from a plain
-builder. Only the ``_assemble_materials``-raises arm stays out. ``waveguide_reference_plane`` is the odd one: it has three emission
-sites and MEASURED, none of the three can fire through the public API.
+builder. Only the ``_assemble_materials``-raises arm stays out.
+``waveguide_reference_plane`` was the odd one, and issue #1024 CLOSED it: it
+has three emission sites and, measured at the time of the #980 leg-3 move,
+none of the three could fire through the public API.
 The first raises ``PreflightConfigError``, and ``add_waveguide_port`` already
 rejects an out-of-domain ``x_position``/``reference_plane`` with a
 ``ValueError`` before preflight runs (and a raise could not be rendered into
 a report anyway). The second is the branch its own source comments call
 provably dead: ``_absorber_boundary_for_axis`` returns exactly
 ``(0.0, domain_ext)`` for any nonzero CPML thickness, the same thresholds the
-hard check above it already raises on. The third walks ``self._geometry``
+hard check above it already raises on. The third walked ``self._geometry``
 reading ``g.bounds``, but that list holds ``_GeometryEntry(shape,
 material_name)`` wrappers with no ``bounds`` attribute -- every other reader
-in the file goes through ``entry.shape`` -- so the ``AttributeError`` is
+in the file goes through ``entry.shape`` -- so the ``AttributeError`` was
 swallowed by the bare ``except Exception: continue`` on the line below and
-the device-overlap advisory never fires. That third one looks like a latent
-defect rather than a design choice, but diagnosing it is not a code-motion
-leg's business: it is recorded here, NOT fixed in #980 Phase 3, because
-fixing it would change preflight output inside a step whose whole warrant is
-that output does not change. The body itself is not unexercised -- 45 of the
-48 fixtures call it -- only its three outputs are unreachable.
+the device-overlap advisory never fired. That third one looked like a latent
+defect rather than a design choice, and it was one: recorded here, NOT fixed
+in #980 Phase 3 (fixing it changes preflight output inside a step whose whole
+warrant is that output does not change), then filed as #1024 and fixed there.
+The site now reads ``g.shape.bounding_box()``, ``waveguide_refplane_in_slab``
+witnesses it, and sites 1 and 2 stay as documented no-ops -- the reasons are
+re-measured in the check's own docstring
+(``rfx/preflight/waveguide.py``). Note what the body's own call count could
+NOT have told anyone: it was never unexercised, 45 of the then-48 fixtures
+called it, and all three of its outputs were still unreachable. A body-entry
+census is a necessary witness, not a sufficient one.
 
 Each of the rest needs its own narrow fixture. A leg that moves one of those
 checks is NOT covered by this lock and should add the fixture in its own PR
@@ -1757,6 +1788,35 @@ def _wire_port_dead_cell_nu_sim():
     return sim
 
 
+def _waveguide_refplane_in_slab_sim():
+    """A dielectric slab drawn ACROSS a waveguide port's reference plane.
+
+    Closes the ledger entry above that said ``waveguide_reference_plane``
+    could not be witnessed. It could not: the advisory's only emitting site
+    read ``g.bounds`` off a ``_GeometryEntry`` wrapper that has no such
+    attribute, under a bare ``except Exception`` (issue #1024). With that
+    site reading ``g.shape.bounding_box()`` the code is reachable from a
+    plain builder, so it is snapshotted like any other.
+
+    Built (not run) through the owning behavioural test's own module-level
+    helper, so the two cannot drift: the positive control
+    ``test_waveguide_reference_plane_device_overlap_fires_on_straddling_slab``
+    asserts on this exact geometry, and its non-firing twin moves the same
+    slab clear of both planes.
+
+    x64-invariance is by CHOICE of operating point, not by pinning an input
+    the way ``waveguide_layout_near_cutoff`` had to: this band's lowest bin
+    is 1.28x the guide's TE10 cutoff, so nothing rendered here divides by a
+    near-zero ``sqrt(1 - (f_c/f)^2)``. Measured over four processes --
+    ``JAX_ENABLE_X64`` 0/1 and ``PYTHONHASHSEED`` 5/777 -- byte-identical.
+    """
+    from tests.unit.preflight.test_preflight_absorber import (
+        _waveguide_refplane_in_slab_sim as _build,
+    )
+
+    return _build()
+
+
 # ---------------------------------------------------------------------------
 # (fixture id, builder, preflight kwargs, preflight_sparameters calculator).
 #
@@ -1975,6 +2035,14 @@ _FIXTURES = (
      {"strict": False}, None),
     ("wire_port_end_gap", _wire_port_end_gap_sim, {"check_ntff": False}, None),
     ("wire_port_dead_cell_nu", _wire_port_dead_cell_nu_sim, {}, None),
+    # -- 58. issue #1024 ----------------------------------------------------
+    # NOT a leg gap-closer: the ledger above recorded waveguide_reference_plane
+    # as unwitnessABLE, and it was -- its device-overlap site read the wrong
+    # attribute off the geometry wrapper and swallowed the AttributeError, so
+    # no fixture could have made it speak. #1024 fixes the site; this fixture
+    # is the text witness that the code now emits, and the FIRST committed
+    # rendering of that advisory's message.
+    ("waveguide_refplane_in_slab", _waveguide_refplane_in_slab_sim, {}, None),
 )
 
 _IDS = [fid for fid, _, _, _ in _FIXTURES]
