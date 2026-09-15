@@ -109,6 +109,14 @@ at Courant 0.2 / 0.35 / 0.5 / 0.7; the fixed path is `1.000000` at all four.
 INVERSE relative permittivity the E half-step actually used — and builds its
 psi coefficient from it. `None` keeps `materials.eps_r` and every byte with it.
 
+(§4 of the pre-declaration wrote this as "`aniso_eps` on Stage 1,
+`1/aniso_inv_eps` on Stage 2". The shipped parameter is the reciprocal of that
+— one inverse-permittivity argument, `1/aniso_eps` on Stage 1 and
+`aniso_inv_eps` as-is on Stage 2 — because the inverse form is the one that
+stays finite at a Kottke-frozen PEC cell, where `inv = 0` and the permittivity
+does not exist. Same quantity, one fewer division, and the pre-declaration is
+left as frozen rather than retro-edited to match.)
+
 Threaded at the two call sites that have such an array:
 
 | site | what it passes |
@@ -258,10 +266,40 @@ with the production path — do not delete the test with it.
 
 **Mutation check.** A third tree carrying ONLY the `rfx/boundaries/cpml.py`
 half of the fix — the new parameter exists and behaves, the callers still do
-not pass it — runs the three unit tests **green** and
-`test_boundary_touching_dielectric_in_pad_stays_finite[cpml]` **red**. So the
+not pass it — leaves exactly two tests red:
+`..._stays_finite[cpml]` and `..._threaded_exactly_..._[subpixel]`. So the
 physics test is not measuring the API surface, and the `simulation.py` /
 `nonuniform.py` threading is load-bearing rather than decorative.
+
+Whole-file counts, each measured by running the same file against that tree
+rather than read off the table above: `origin/main` **4 failed, 4 passed**;
+`rfx/boundaries/cpml.py` half only **2 failed, 6 passed**; this branch
+**8 passed**.
+
+## 8b. Suites
+
+All on this branch, CPU, jax 0.6.2. `tests/unit/boundaries/ tests/oracle/
+tests/contracts/` was split into 8 groups with pytest-split (no xdist in this
+env, and the repo's own note says xdist loadfile workers accumulate XLA state).
+
+| run | result |
+|---|---|
+| the three directories, 8 shards, full pass | **3175 passed, 8 skipped, 17 xfailed, 1 failed** |
+| the one failure: `test_evidence_numeric_provenance.py::test_every_enumerated_document_is_classified` — that contract enumerates every `docs/design_notes/*.md` and refuses an unclassified one, and it caught both new notes | fixed by classifying both as `NO_ARTIFACT_REFERENCE` (neither carries a `path.json::key` span); **its shard re-run 606 passed / 0 failed**, and the whole contract file re-run **1422 passed** |
+| the new test file re-run in full after its last edit | **6 passed** (fast) + **2 passed** (slow) |
+| `tests/unit/boundaries/ -m slow` | **7 passed, 211 deselected** — the three `test_cpml_reflectivity_regression` cases, `test_pole_extension_divergence_repro_636` (the #636 pole-pad divergence lock on the neighbouring mechanism), `test_clamped_per_face_absorber_actually_absorbs`, and both new `..._stays_finite` cases |
+| `tests/unit/nonuniform/` — the other edited path | **399 passed, 11 deselected, 1 xfailed** |
+| `tests/crossval/` cv01/cv03 files: `test_cv03_slab_dispersion_oracle.py`, `test_crossval_comprehensive.py`, `test_crossval_gate_logic.py`, `test_aux_echo_record_invariant.py` | **71 passed, 11 deselected** |
+| `ruff check rfx/ tests/ scripts/diagnostics/cpml_subpixel_stability/ --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402` | **All checks passed** |
+
+Stated precisely so the coverage claim is checkable: the 8-shard pass ran
+against this branch's `rfx/` code, which has not changed since. What changed
+afterwards is the new test file, the contract file and the design notes — all
+three re-run directly and in full, as the rows above record. A confirmatory
+clean 8-shard re-run was started on the final tree; shards 4, 6, 7 and 8 came
+back green (548 / 905 / 606 / 282 passed) and the remaining four were still
+grinding through long `tests/oracle/` cases after 75 minutes, so it was stopped
+rather than left to run. It is confirmatory, not additional coverage.
 
 ## 9. R2 ledger
 
