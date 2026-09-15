@@ -826,6 +826,12 @@ _SHARED_HELPER_BINDINGS = (
      "sample_probes_shmap"),
     ("sample_probes_shmap", "rfx.runners.distributed_v2",
      "sample_probes_shmap"),
+    # #1038 leg 2 (a) -- the stacked-CPML-psi allocator. Two nested ``_zeros``
+    # closures over (n_devices, n) that differed only in how they spelled the
+    # two face-parallel extents (inventory §2.3(b)). Both callers are
+    # setup-time, so this row guards a de-duplication with no jaxpr exposure.
+    ("zeros_psi_stacked", "rfx.runners.distributed", "zeros_psi_stacked"),
+    ("zeros_psi_stacked", "rfx.runners.distributed_nu", "zeros_psi_stacked"),
 )
 
 

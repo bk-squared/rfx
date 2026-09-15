@@ -55,6 +55,7 @@ from rfx.runners._distributed_common import (
     shard_stacked,
     shard_stacked_poles,
     shard_stacked_psi,
+    zeros_psi_stacked,
 )
 
 
@@ -1036,7 +1037,7 @@ def init_cpml_for_sharded_nu(sharded_grid: ShardedNUGrid, n_devices: int,
 
     def _zeros(d1, d2):
         # (n_devices, n_cpml, d1, d2) — same dtype as single-device init
-        return jnp.zeros((n_devices, n, d1, d2), dtype=jnp.float32)
+        return zeros_psi_stacked(n_devices, n, d1, d2)
 
     cpml_state_stacked = CPMLState(
         # E-field psi arrays

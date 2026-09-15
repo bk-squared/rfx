@@ -34,6 +34,7 @@ from rfx.core.yee import EPS_0, MU_0
 __all__ = [
     "cpml_coeff_e_vacuum",
     "cpml_coeff_h_vacuum",
+    "zeros_psi_stacked",
     "exchange_component_shmap",
     "shard_stacked",
     "shard_stacked_poles",
@@ -84,6 +85,44 @@ def cpml_coeff_h_vacuum(dt: float) -> float:
     assumption is intentional and load-bearing: see the module docstring.
     """
     return dt / MU_0
+
+
+# ---------------------------------------------------------------------------
+# Stacked CPML psi allocation
+# ---------------------------------------------------------------------------
+#
+# #1038 leg 2 (a). ``distributed._init_cpml_distributed`` and
+# ``distributed_nu.init_cpml_for_sharded_nu`` each built the 24 psi arrays of
+# a ``CPMLState`` through a nested ``_zeros`` closure over ``n_devices`` and
+# the CPML layer count ``n``. The two bodies were the same statement spelled
+# with different parameter names (``dim1, dim2`` vs ``d1, d2``) -- inventory
+# §2.3(b). ``dim1, dim2`` is the spelling that landed; the second parameter
+# keeps the terse name ``n`` the two closures used so the moved statement is
+# byte-identical to the one it replaced.
+#
+# Both callers run at setup time, outside any jit/shard_map trace, so this
+# move carries no jaxpr-shape change.
+
+
+def zeros_psi_stacked(n_devices, n, dim1, dim2):
+    """Zero CPML psi array stacked over ranks: ``(n_devices, n, dim1, dim2)``.
+
+    Parameters
+    ----------
+    n_devices : int
+        Number of ranks the psi array is stacked over (axis 0).
+    n : int
+        CPML layer count (``grid.cpml_layers``) -- the psi depth on axis 1.
+    dim1, dim2 : int
+        The two face-parallel extents. Which grid dimensions these are
+        depends on the face; callers pass ``nx_local`` for a y-/z-face psi
+        that indexes along the rank-local x slab, and the global ``ny``/``nz``
+        for an x-face psi.
+
+    ``float32`` is fixed here, matching the single-device
+    ``rfx.boundaries.cpml.init_cpml`` convention both callers mirror.
+    """
+    return jnp.zeros((n_devices, n, dim1, dim2), dtype=jnp.float32)
 
 
 # ---------------------------------------------------------------------------

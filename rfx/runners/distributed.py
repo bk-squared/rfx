@@ -48,6 +48,7 @@ from rfx.materials.lorentz import LorentzCoeffs, LorentzState
 from rfx.runners._distributed_common import (
     cpml_coeff_e_vacuum,
     cpml_coeff_h_vacuum,
+    zeros_psi_stacked,
 )
 
 
@@ -685,7 +686,7 @@ def _init_cpml_distributed(grid, nx_local, n_devices):
 
     def _zeros(dim1, dim2):
         """Zero psi array: (n_devices, n_cpml, dim1, dim2)."""
-        return jnp.zeros((n_devices, n, dim1, dim2), dtype=jnp.float32)
+        return zeros_psi_stacked(n_devices, n, dim1, dim2)
 
     # X-face psi: perpendicular dims are (ny, nz) or transposed
     # Y/Z-face psi: perpendicular dims include nx_local (slab-local x)
