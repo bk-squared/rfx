@@ -241,7 +241,7 @@ def _check_native_xml(path, board):
 
 
 def test_retained_native_board_and_feed_match_the_current_realization(realized):
-    path = REPO_ROOT / "docs/research_notes/issue959/native_369367260761/cv05-delta0.xml"
+    path = REPO_ROOT / "tests/fixtures/patch_sheet_board_native_xml/board_delta0.xml"
     _check_native_xml(path, realized["external_board_mm"])
 
 
@@ -371,7 +371,7 @@ def test_sheet_plane_falsifier_moves_the_cavity(tmp_path):
     record = _run(tmp_path, delta=1)
     _assert_mesh_contains_every_board_feature(record)
     _check_native_xml(
-        REPO_ROOT / "docs/research_notes/issue959/native_369367260761/cv05-delta1.xml",
+        REPO_ROOT / "tests/fixtures/patch_sheet_board_native_xml/board_delta1.xml",
         record["external_board_mm"])
     st = record["no_port"]
     assert st["substrate_cells_between"] == N_SUB + 2
