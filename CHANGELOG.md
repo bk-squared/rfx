@@ -71,6 +71,13 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   through both changes with no re-bless. Gate:
   `tests/unit/runners/test_distributed_v2_seam_source_order.py` (1e-3,
   parametrised over both runners, proven red on each pre-fix body).
+- **Who is affected, one more case**: with the PEC face now applied AFTER source
+  injection (as `distributed_v2` and `distributed_nu` do), a source placed ON a domain
+  PEC face is zeroed in the step it is injected on this lane too — measured: v1 probe
+  peaks `[0.01101839 0.00094625]` before (bit-identical to the single-device lane),
+  `[0. 0.]` after, and `distributed_v2` gives `[0. 0.]` on the same fixture. This is
+  lane parity, not a new divergence; the single-device lane still keeps such a source
+  (tracked separately). No repo test, example or doc places a source on a PEC face.
 
 ### Added — `sim.run(devices=...)` realizes declared PEC volumes (#1053)
 
