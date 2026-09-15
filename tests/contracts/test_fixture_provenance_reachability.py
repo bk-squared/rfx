@@ -235,11 +235,24 @@ ANNOTATED: dict[tuple[str, str], str] = {
 
 #: Fixture JSONs that declare no commit sha anywhere. Asserted EXACTLY, both
 #: directions, so the hole is a number a reader can see rather than a silence.
-#: Measured at 53 of 80 when this gate landed. It must only shrink. A new
-#: fixture is expected to embed
+#: Measured at 53 of 80 when this gate landed, 55 of 82 after the rebase below.
+#: It must only shrink. A new fixture is expected to embed
 #: ``tests._fixture_provenance.capture()`` rather than be added here.
+#:
+#: TWO ENTRIES WERE ADDED AFTER THE LIST WAS FROZEN, and the reason is recorded
+#: because "the list must only shrink" is otherwise violated by them. Both
+#: arrived on main in ``fc7f7202`` (#1051, "docs/research_notes is local-only:
+#: untrack it and add the contract"), which RELOCATED them out of the
+#: now-untracked ``docs/research_notes/`` into ``tests/fixtures/``. They are not
+#: new fixtures somebody forgot to instrument; they are pre-existing evidence
+#: that had to stay tracked and landed here on the way. The gate caught them on
+#: the first run after this branch rebased onto that merge, which is the
+#: behaviour it was built for.
 NO_PROVENANCE_YET: frozenset[str] = frozenset({
     "tests/fixtures/coax_broad_e4/coaxial_line_meep_broad_comparison.json",
+    # relocated by #1051 (fc7f7202) out of docs/research_notes/
+    "tests/fixtures/harminv_record_support/capacity_impact_report.json",
+    "tests/fixtures/msl_notch_uniform_environment/realized_metal_plan.json",
     "tests/fixtures/coax_broad_e5/coaxial_line_broad_e5_envelope.json",
     "tests/fixtures/cv02_ring_judge/tautology_trials_200k.json",
     "tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json",
