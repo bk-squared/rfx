@@ -8,7 +8,7 @@ NFS=/Users/bk-squared/nfs-remilab/personal-workspaces/claude-workspace/rfx/runs
 DEST="$REPO/validation/vessl/runs"
 mkdir -p "$DEST"
 t() { perl -e 'alarm 30; exec @ARGV' "$@"; }
-for d in $(t ls "$NFS" 2>/dev/null | grep '^fdfd-gpu-' || true); do
+for d in $(t ls "$NFS" 2>/dev/null | grep '^fdfd-gpu-' | grep -v '\.latest$' || true); do
   mkdir -p "$DEST/$d"
   for f in $(t ls "$NFS/$d" 2>/dev/null || true); do
     t cp -p "$NFS/$d/$f" "$DEST/$d/$f" 2>/dev/null || echo "skip $d/$f"

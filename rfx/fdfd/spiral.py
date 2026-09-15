@@ -173,6 +173,51 @@ the inner column (as for the bar).
 it compares the bend against the straight bar of the same total length
 ``l1 + l2`` to isolate ONE right-angle corner.
 
+The level-invariant fixture (``wall_margin_m``, ``lid_height_m``,
+``short_gap_m``, ``port_gap_m``, ``refine``, ``z_refine``, ``pad_refine``)
+------------------------------------------------------------------------
+Three things in the fixture above are defined in CELLS, so the physical
+problem changes with ``base_dx``: the graded padding (``pad_lines``) grows
+``pad_cells`` cells from the last meshed cell, so the side walls and the lid
+move IN as the grid refines; the short standard's post spans
+``[inner.i1 + 1, outer.i0 - 1)``, one CELL from each column, so the post and
+the bridge arms change width with the grid; and ``port_gap_cells`` counts z
+cells. Every option below replaces one of those by a physical coordinate;
+each is independent (so the old fixture can be moved one artefact at a time)
+and every default is the original build, statement for statement:
+
+* ``wall_margin_m``: the four side walls at the DUT bounding box -+ this
+  distance, reached from the meshed box by :func:`pad_to` -- a geometric
+  grading of ratio <= ``pad_ratio`` whose LAST line is pinned to the wall;
+  ``lid_height_m``: the lid at this z, the same way. They replace
+  ``pad_cells`` (for the walls) and ``pad_cells_z`` (for the lid).
+* ``short_gap_m``: the post's x edges at the inner column's ``+x`` edge plus
+  the gap and the outer column's ``-x`` edge minus the gap, both made
+  mandatory grid lines (with the column footprints), so the post, the arms
+  (post to each column's far edge) and the reference planes are the same
+  physical objects at every resolution.
+* ``port_gap_m``: the lead columns end at this height, a mandatory z line;
+  the port spans however many z cells lie below it.
+* ``refine = m``: NESTED refinement. The level-1 lines (all the mandatory
+  lines above, polygon edges and stack interfaces included, graded to
+  ``base_dx`` / ``base_dz`` / ``metal_cells`` as usual) are built first and
+  every interval of the meshed box is then cut into ``m`` equal cells in x
+  and y and ``z_refine or m`` in z (joint refinement; the metal slabs are
+  subdivided too), so every level-1 line is a line of every level. The
+  padding is refined by :func:`_refine_pad`: ``pad_refine="uniform"``
+  subdivides every padding interval ``m`` times as well (the whole mesh is
+  nested); ``"graded"`` keeps the level-1 padding lines and only grades the
+  transition (cheaper when the level-1 padding grows well below
+  ``pad_ratio``; with the steepest allowed grading it cascades through the
+  whole padding and saves nothing).
+
+The traced metric is unchanged: breakpoints are still the polygon edges and
+every other line (walls, post, subdivisions) moves by the same piecewise
+linear interpolation between them, so ``theta`` derivatives work at every
+level. ``validation/fdfd/invariant_ladder.py`` is the study these options
+were added for; its gate P1 reads every fixture coordinate back from the
+built cell masks at every level.
+
 Scope fence. Closed PEC box (no PML; fine below the first box resonance);
 staircase PEC or Leontovich metal, no finite-thickness skin effect (see
 above for the frequency floor that implies); grid resolution is a cost
@@ -206,6 +251,7 @@ __all__ = [
     "build_spiral", "pad_lines", "spiral_lines", "breakpoint_gaps",
     "check_feasible", "solve_spiral", "nominal_record", "skin_depth", "leontovich_validity",
     "KEY_M2", "KEY_M1", "KEY_VIA", "DUT_KINDS",
+    "pad_to", "subdivide_lines", "PAD_REFINE_MODES",
 ]
 
 DUT_KINDS = ("spiral", "bar", "bend")
@@ -322,7 +368,15 @@ class SpiralSpec:
     decomposes the spiral study's residual gap: a bar has no corners, no
     underpass and no via, so it isolates the discretisation of the strip
     cross-section and the de-embedding residual from the spiral-specific
-    geometry."""
+    geometry.
+
+    ``wall_margin_m`` / ``lid_height_m`` / ``short_gap_m`` / ``port_gap_m``
+    / ``refine`` / ``z_refine`` / ``pad_refine`` build the LEVEL-INVARIANT
+    fixture (module doc, "The level-invariant fixture"): walls, lid, the
+    short standard's post and the port gap at physical coordinates, and
+    nested joint refinement of a level-1 mesh. All default to the original
+    cell-defined build (``invariant`` is then False and ``build_spiral``
+    runs the original statements)."""
     n_turns: int = 2
     r_out: float = 60e-6
     spacing: float = 10e-6
@@ -345,6 +399,24 @@ class SpiralSpec:
     bar_length: float = 0.0
     bend_l1: float = 0.0
     bend_l2: float = 0.0
+    # -- the level-invariant fixture (``validation/fdfd/invariant_ladder.py``);
+    #    every default below is the original cell-defined fixture, unchanged
+    wall_margin_m: float | None = None
+    lid_height_m: float | None = None
+    short_gap_m: float | None = None
+    port_gap_m: float | None = None
+    refine: int = 1
+    z_refine: int = 0
+    pad_refine: str = "uniform"
+
+    @property
+    def invariant(self) -> bool:
+        """True when any option of the level-invariant fixture is set (see
+        "The level-invariant fixture" in the module doc); False is the
+        original cell-defined build, statement for statement."""
+        return (self.wall_margin_m is not None or self.lid_height_m is not None
+                or self.short_gap_m is not None or self.port_gap_m is not None
+                or int(self.refine) != 1 or int(self.z_refine) != 0)
 
     @property
     def pml(self) -> tuple[int, int, int, int, int, int]:
@@ -648,6 +720,7 @@ class SpiralModel:
     si_cells: np.ndarray                         # (nx, ny, nz) bool, silicon (non-metal) cells
     theta_nominal: tuple[float, ...]
     build_seconds: float
+    fixture: dict[str, Any] = field(default_factory=dict)   # invariant-fixture bookkeeping
 
     @property
     def n_unknowns(self) -> int:
@@ -708,6 +781,230 @@ def pad_lines(lines: np.ndarray, n: int, ratio: float, lo: bool = True, hi: bool
     return out
 
 
+# ----------------------------------------------------------------------------
+# the level-invariant fixture: physical walls, nested refinement
+
+PAD_REFINE_MODES = ("uniform", "graded")
+
+
+def pad_to(lines: np.ndarray, wall: float, ratio: float, hi: bool = True) -> np.ndarray:
+    """Graded padding from the end cell of ``lines`` to the FIXED coordinate
+    ``wall`` (on the ``hi`` end, or the ``lo`` end with ``hi=False``).
+
+    With ``d`` the end cell and ``D`` the distance to the wall, the number of
+    cells ``n`` is the smallest for which ``d (r + r^2 + ... + r^n) >= D`` at
+    ``r = ratio``; the common ratio is then solved (bisection) so the ``n``
+    cells ``d q^k`` sum to ``D`` exactly and the last line is PINNED to
+    ``wall`` bit-exactly. Every neighbour ratio is therefore in ``[1/ratio,
+    ratio]`` (``q <= ratio`` by the choice of ``n``; ``q > 1/ratio`` whenever
+    ``D >= d / ratio``, which is required). Unlike :func:`pad_lines`, where
+    the wall is wherever ``pad_cells`` cells happen to end (so it moves with
+    the end cell, i.e. with the grid level), the wall here is a property of
+    the geometry."""
+    lines = np.asarray(lines, dtype=np.float64)
+    if ratio <= 1.0:
+        raise ValueError("pad ratio must be > 1")
+    if hi:
+        d, edge, span = lines[-1] - lines[-2], lines[-1], float(wall) - lines[-1]
+    else:
+        d, edge, span = lines[1] - lines[0], lines[0], lines[0] - float(wall)
+    if span < d / ratio:
+        raise ValueError(f"wall {wall!r} is closer to the meshed box than end cell / ratio "
+                         f"({span:.3g} m < {d / ratio:.3g} m)")
+
+    def total(q: float, n: int) -> float:
+        return d * float(np.sum(q ** np.arange(1, n + 1, dtype=np.float64)))
+
+    n = 1
+    while total(ratio, n) < span:
+        n += 1
+        if n > 400:
+            raise RuntimeError("pad_to: no cell count reaches the wall (report this)")
+    lo_q, hi_q = 1.0 / ratio, float(ratio)
+    for _ in range(200):
+        mid = 0.5 * (lo_q + hi_q)
+        if total(mid, n) < span:
+            lo_q = mid
+        else:
+            hi_q = mid
+    q = 0.5 * (lo_q + hi_q)
+    cells = d * q ** np.arange(1, n + 1, dtype=np.float64)
+    cells *= span / cells.sum()
+    steps = np.cumsum(cells)
+    if hi:
+        new = edge + steps
+        new[-1] = float(wall)
+        return np.concatenate([lines, new])
+    new = (edge - steps)[::-1]
+    new[0] = float(wall)
+    return np.concatenate([new, lines])
+
+
+def subdivide_lines(lines: np.ndarray, m: int) -> np.ndarray:
+    """Every interval of ``lines`` cut into ``m`` equal cells (nested
+    refinement): every input line is an output line bit-exactly
+    (``np.linspace`` returns both end points exactly). ``m = 1`` returns
+    the input unchanged."""
+    lines = np.asarray(lines, dtype=np.float64)
+    m = int(m)
+    if m < 1:
+        raise ValueError("refinement factor must be >= 1")
+    if m == 1:
+        return lines
+    out = [lines[:1]]
+    for a, b in zip(lines[:-1], lines[1:]):
+        out.append(np.linspace(a, b, m + 1)[1:])
+    return np.concatenate(out)
+
+
+def _refine_pad(pad: np.ndarray, edge: float, cell: float, m: int, mode: str,
+                ratio: float) -> np.ndarray:
+    """Refine one padding run ``pad`` (the level-1 lines strictly beyond the
+    meshed box's ``edge`` up to and including the wall, ordered away from the
+    box) for level ``m``, given the refined box's end cell ``cell``.
+    ``"uniform"`` subdivides every padding interval ``m`` times; ``"graded"``
+    keeps the level-1 padding lines and inserts only the lines a neighbour
+    ratio <= ``0.95 ratio`` needs between the refined end cell and them
+    (:func:`rfx.fdfd.gds.grade_lines`). Both keep every level-1 line and
+    both end exactly on the wall."""
+    if m == 1 or len(pad) == 0:
+        return pad
+    pad = np.asarray(pad, dtype=np.float64)
+    sgn = 1.0 if pad[0] > edge else -1.0
+    u = sgn * (pad - edge)                                           # > 0, increasing
+    if mode == "uniform":
+        out = subdivide_lines(np.concatenate([[0.0], u]), m)[1:]
+        idx = np.arange(m - 1, len(out), m)
+    elif mode == "graded":
+        # grade_lines enforces 0.95 x its ratio argument; ask for ``ratio``
+        # itself so the level-1 padding (neighbour ratio <= ratio by
+        # construction) is left alone and only the transition is filled
+        g = gds.grade_lines(np.concatenate([[-cell, 0.0], u]),
+                            float(np.max(np.diff(u, prepend=0.0))),
+                            ratio * (1.0 + 1e-9) / 0.95)
+        out = g[g > 0.0]
+        idx = np.searchsorted(out, u - 1e-9 * u[-1])
+        if not np.allclose(out[idx], u, rtol=0.0, atol=1e-12 * u[-1]):
+            raise RuntimeError("graded padding lost a level-1 line (report this)")
+    else:
+        raise ValueError(f"pad_refine must be one of {PAD_REFINE_MODES}, got {mode!r}")
+    res = edge + sgn * out
+    res[idx] = pad          # the level-1 lines (walls included) bit-exactly
+    return res
+
+
+def _stack_z_lines(st: "SmallStack", stack: gds.LayerStack, extra: Sequence[float]) -> np.ndarray:
+    """:func:`rfx.fdfd.gds.z_lines` over ``[0, z_top]`` with ``extra``
+    mandatory z lines (the physical port gap): every stack interface and
+    every extra line exactly, uniform cells of at most ``base_dz`` between
+    them, at least ``metal_cells`` across every metal / via slab. With no
+    extra line inside an interval this is ``z_lines`` itself."""
+    zi = stack.interfaces()
+    lo, hi = 0.0, float(st.z_top)
+    ex = np.asarray([v for v in extra if lo < v < hi], dtype=np.float64)
+    z = np.unique(np.concatenate([[lo, hi], zi[(zi > lo) & (zi < hi)], ex]))
+    out = [z[0]]
+    for a, b in zip(z[:-1], z[1:]):
+        zc = 0.5 * (a + b)
+        need = 1
+        for lay in stack.layers:
+            if lay.is_metal and lay.z0 <= zc < lay.z1:
+                need = max(need, st.metal_cells)
+        n = max(need, int(np.ceil((b - a) / st.base_dz - 1e-9)))
+        out.extend(np.linspace(a, b, n + 1)[1:].tolist())
+    return np.asarray(out, dtype=np.float64)
+
+
+def _fixture_rects(spec: "SpiralSpec", sp: gds.Spiral) -> list:
+    """Plan-view rectangles whose edges the invariant fixture makes grid
+    lines: the two lead-column footprints (``W x W`` at each port) and, with
+    ``short_gap_m``, the short standard's post (``x`` from the inner
+    column's ``+x`` edge plus the gap to the outer column's ``-x`` edge minus
+    the gap, ``y`` over the union of the two terminal rows). The bars run
+    from the post to the columns' far edges, which are these same lines."""
+    w = float(spec.width)
+    hw = 0.5 * w
+    rects = [gds.rect_from_bounds(xc - hw, yc, xc + hw, yc + w) for (xc, yc) in sp.ports]
+    if spec.short_gap_m is not None:
+        g = float(spec.short_gap_m)
+        (xo, yo), (xi, yi) = sp.ports
+        x0, x1 = xi + hw + g, xo - hw - g
+        if x1 <= x0 or g <= 0:
+            raise ValueError(f"short_gap_m = {g!r} leaves no post between the lead columns "
+                             f"(post width {x1 - x0:.3g} m)")
+        rects.append(gds.rect_from_bounds(x0, min(yo, yi), x1, max(yo, yi) + w))
+    return rects
+
+
+def _fixture_grid(spec: "SpiralSpec", sp: gds.Spiral, stack: gds.LayerStack,
+                  bounds: tuple[float, float, float, float],
+                  bbox: tuple[float, float, float, float]):
+    """x, y, z lines of the level-invariant fixture and their bookkeeping.
+
+    LEVEL 1: x/y from :func:`rfx.fdfd.gds.mesh_lines` over the meshed box
+    ``bounds`` with the polygons AND :func:`_fixture_rects` as mandatory
+    edges; z from :func:`_stack_z_lines` with the port gap as a mandatory
+    line. Padding (level 1): ``wall_margin_m`` -> :func:`pad_to` the four
+    walls at ``bbox -+ wall_margin_m`` (else ``pad_cells`` as before);
+    ``lid_height_m`` -> :func:`pad_to` the lid (else ``pad_cells_z``).
+    LEVEL m: the meshed box's intervals cut into ``refine`` (x, y) and
+    ``z_refine or refine`` (z) equal cells, the padding refined by
+    :func:`_refine_pad` in the ``pad_refine`` mode. The ground (z = 0) is
+    never padded."""
+    st = spec.stack
+    m = int(spec.refine)
+    mz = int(spec.z_refine) or m
+    if m < 1 or mz < 1:
+        raise ValueError("refine and z_refine must be >= 1 (z_refine = 0: follow refine)")
+    if spec.pad_refine not in PAD_REFINE_MODES:
+        raise ValueError(f"pad_refine must be one of {PAD_REFINE_MODES}")
+    polys = [p for ps in sp.polygons.values() for p in ps] + _fixture_rects(spec, sp)
+    x1c, y1c = gds.mesh_lines(polys, bounds, spec.dx, snap=True)
+    extra = [] if spec.port_gap_m is None else [float(spec.port_gap_m)]
+    z1c = (gds.z_lines(stack, st.base_dz, metal_cells=st.metal_cells, z_min=0.0, z_max=st.z_top)
+           if spec.port_gap_m is None else _stack_z_lines(st, stack, extra))
+    ratio = float(spec.pad_ratio)
+
+    def one_axis(core: np.ndarray, lo_wall: float | None, hi_wall: float | None,
+                 n_pad: int, lo: bool, k: int) -> tuple[np.ndarray, dict[str, Any]]:
+        lvl1 = core
+        if hi_wall is not None:
+            lvl1 = pad_to(lvl1, hi_wall, ratio, hi=True)
+            if lo and lo_wall is not None:
+                lvl1 = pad_to(lvl1, lo_wall, ratio, hi=False)
+        elif n_pad:
+            lvl1 = pad_lines(lvl1, n_pad, ratio, lo=lo, hi=True)
+        i0 = int(np.searchsorted(lvl1, core[0]))
+        i1 = i0 + len(core) - 1
+        fine = subdivide_lines(core, k)
+        lo_pad = _refine_pad(lvl1[:i0][::-1], core[0], fine[1] - fine[0], k, spec.pad_refine,
+                             ratio)[::-1]
+        hi_pad = _refine_pad(lvl1[i1 + 1:], core[-1], fine[-1] - fine[-2], k, spec.pad_refine,
+                             ratio)
+        out = np.concatenate([lo_pad, fine, hi_pad])
+        if not np.all(np.diff(out) > 0):
+            raise RuntimeError("invariant grid is not strictly increasing (report this)")
+        info = {"level1": lvl1, "core_level1": core, "core_index": (len(lo_pad), len(lo_pad) + len(fine) - 1)}
+        return out, info
+
+    wm = spec.wall_margin_m
+    if wm is not None and spec.pad_cells:
+        raise ValueError("wall_margin_m and pad_cells are alternative wall placements")
+    if spec.lid_height_m is not None and (spec.pad_cells_z or (spec.pad_cells and wm is None)):
+        raise ValueError("lid_height_m and pad_cells(_z) are alternative lid placements")
+    bx0, by0, bx1, by1 = bbox
+    x, xi = one_axis(x1c, None if wm is None else bx0 - wm, None if wm is None else bx1 + wm,
+                     spec.pad_cells, True, m)
+    y, yi = one_axis(y1c, None if wm is None else by0 - wm, None if wm is None else by1 + wm,
+                     spec.pad_cells, True, m)
+    z, zi = one_axis(z1c, None, None if spec.lid_height_m is None else float(spec.lid_height_m),
+                     (spec.pad_cells_z or spec.pad_cells) if spec.lid_height_m is None else 0,
+                     False, mz)
+    info = {"refine": m, "z_refine": mz, "pad_refine": spec.pad_refine,
+            "x": xi, "y": yi, "z": zi}
+    return x, y, z, info
+
+
 def build_spiral(spec: SpiralSpec) -> SpiralModel:
     """Static model at the nominal ``theta`` (see the module doc)."""
     t0 = time.time()
@@ -729,14 +1026,23 @@ def build_spiral(spec: SpiralSpec) -> SpiralModel:
     allp = np.concatenate(polys)
     xlo, ylo = allp.min(axis=0) - spec.margin
     xhi, yhi = allp.max(axis=0) + spec.margin
-    x_nom, y_nom = gds.mesh_lines(sp.polygons, (xlo, ylo, xhi, yhi), spec.dx, snap=True)
-    z = gds.z_lines(stack, st.base_dz, metal_cells=st.metal_cells, z_min=0.0, z_max=st.z_top)
-    if spec.pad_cells:
-        # graded padding outside the meshed box: the four side walls and the
-        # lid move away, the GROUND (z = 0) stays where it is
-        x_nom = pad_lines(x_nom, spec.pad_cells, spec.pad_ratio)
-        y_nom = pad_lines(y_nom, spec.pad_cells, spec.pad_ratio)
-        z = pad_lines(z, spec.pad_cells_z or spec.pad_cells, spec.pad_ratio, lo=False, hi=True)
+    fixture: dict[str, Any] = {}
+    if spec.invariant:
+        # the level-invariant fixture (module doc): physical walls / lid / post
+        # / port gap and nested refinement; the branch below is untouched
+        pmin, pmax = allp.min(axis=0), allp.max(axis=0)
+        x_nom, y_nom, z, fixture = _fixture_grid(
+            spec, sp, stack, (xlo, ylo, xhi, yhi),
+            (float(pmin[0]), float(pmin[1]), float(pmax[0]), float(pmax[1])))
+    else:
+        x_nom, y_nom = gds.mesh_lines(sp.polygons, (xlo, ylo, xhi, yhi), spec.dx, snap=True)
+        z = gds.z_lines(stack, st.base_dz, metal_cells=st.metal_cells, z_min=0.0, z_max=st.z_top)
+        if spec.pad_cells:
+            # graded padding outside the meshed box: the four side walls and the
+            # lid move away, the GROUND (z = 0) stays where it is
+            x_nom = pad_lines(x_nom, spec.pad_cells, spec.pad_ratio)
+            y_nom = pad_lines(y_nom, spec.pad_cells, spec.pad_ratio)
+            z = pad_lines(z, spec.pad_cells_z or spec.pad_cells, spec.pad_ratio, lo=False, hi=True)
     nx, ny, nz = len(x_nom) - 1, len(y_nom) - 1, len(z) - 1
     if spec.port_gap_cells < 1:
         raise ValueError("port_gap_cells must be >= 1")
@@ -766,6 +1072,13 @@ def build_spiral(spec: SpiralSpec) -> SpiralModel:
     k_m1 = _z_cell_range(z, st.z_m1, st.z_m1 + st.t_m1)
     k_m2 = _z_cell_range(z, st.z_m2, st.z_m2 + st.t_m2)
     gap = spec.port_gap_cells
+    if spec.port_gap_m is not None:
+        # physical port gap: the column bottom is the z line at port_gap_m
+        # (a mandatory line of the invariant grid), however many cells lie below
+        hit = np.nonzero(np.abs(z - float(spec.port_gap_m)) <= 1e-12 * (z[-1] - z[0]))[0]
+        if len(hit) != 1:
+            raise AssertionError("port_gap_m is not a z line of the grid (report this)")
+        gap = int(hit[0])
     stub = spec.lead_stub_cells
     cols = []
     stub_cells = np.zeros((nx, ny, nz), dtype=bool)
@@ -808,6 +1121,15 @@ def build_spiral(spec: SpiralSpec) -> SpiralModel:
     if inner.i1 >= outer.i0:
         raise AssertionError("column order: the inner terminal must be left of the outer one")
     post_i0, post_i1 = inner.i1 + 1, outer.i0 - 1
+    if spec.short_gap_m is not None:
+        # physical short standard: post edges at the column edges -+ the gap
+        # (mandatory x lines of the invariant grid), not one cell from them
+        g = float(spec.short_gap_m)
+        post_i0, post_i1 = _footprint(x_nom, x_nom[inner.i1] + g, x_nom[outer.i0] - g)
+        span_x = x_nom[-1] - x_nom[0]
+        if (abs(x_nom[post_i0] - (x_nom[inner.i1] + g)) > 1e-12 * span_x
+                or abs(x_nom[post_i1] - (x_nom[outer.i0] - g)) > 1e-12 * span_x):
+            raise AssertionError("short-standard post edges are not grid lines (report this)")
     if post_i1 <= post_i0:
         raise ValueError("no room for the short's ground post between the lead columns "
                          "(need >= 3 cells between them); larger n_turns * pitch or finer base_dx")
@@ -841,11 +1163,17 @@ def build_spiral(spec: SpiralSpec) -> SpiralModel:
             if np.any(np.concatenate([m.ravel() for m in masks])[ids]):
                 raise AssertionError(f"port edges are PEC in fixture {k}")
     geo = {k: cd.conductor_geometry(yee, cd.Conductor(cells=v)) for k, v in cells.items()}
+    if spec.invariant:
+        fixture = dict(fixture, post=(post_i0, post_i1, jp0, jp1, 0,
+                                      max(metal_ks[0][1], metal_ks[1][1])),
+                       arms=((post_i0, outer.i1) + rows[0] + metal_ks[0],
+                             (inner.i0, post_i1) + rows[1] + metal_ks[1]),
+                       port_gap_index=gap)
     return SpiralModel(
         spec=spec, stack=stack, spiral=sp, yee=yee, x_nom=x_nom, y_nom=y_nom, z=z,
         xmap=xmap, ymap=ymap, cells=cells, pec=pec, geo=geo, ports=(ports[0], ports[1]),
         columns=columns, eps_static=np.asarray(ras.eps_r, dtype=np.complex128), si_cells=si_cells,
-        theta_nominal=spec.theta, build_seconds=time.time() - t0)
+        theta_nominal=spec.theta, build_seconds=time.time() - t0, fixture=fixture)
 
 
 # ----------------------------------------------------------------------------

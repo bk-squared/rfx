@@ -1,0 +1,247 @@
+{
+ "lane": "P1b",
+ "started_utc": "2026-09-15T15:15:04Z",
+ "artifact_dir": "/root/workspace/claude-workspace/rfx/runs/fdfd-gpu-p1b-20260915T151356Z",
+ "env": {
+  "python": "3.10.13",
+  "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
+  "numpy": "2.2.6",
+  "scipy": "1.15.3",
+  "jax": "0.6.2",
+  "jax_platforms_env": "cpu",
+  "jax_devices": [
+   "TFRT_CPU_0"
+  ],
+  "jax_default_backend": "cpu",
+  "default_backend": "cudss",
+  "env_backend": "cudss",
+  "cudss_hybrid_memory": false,
+  "cudss_free_forward": true,
+  "backends": {
+   "cudss": {
+    "backend": "cudss",
+    "available": true,
+    "reason": null,
+    "nvmath_version": "1.0.0",
+    "cupy_version": "14.2.0",
+    "device_count": 1,
+    "device_name": "NVIDIA RTX A6000",
+    "device_arrays": true,
+    "min_cudss": "0.4.0",
+    "threading_lib": "/opt/conda/lib/python3.10/site-packages/nvidia/cu12/lib/libcudss_mtlayer_gomp.so.0",
+    "host_nthreads": 16,
+    "ir_steps": null
+   },
+   "cusolver": {
+    "backend": "cusolver",
+    "available": true,
+    "reason": null,
+    "cupy_version": "14.2.0",
+    "device_count": 1,
+    "device_name": "NVIDIA RTX A6000"
+   }
+  },
+  "device_memory_gb": {
+   "used": 0.2606201171875,
+   "free": 47.2752685546875,
+   "total": 47.535888671875,
+   "pool_used": 0.0,
+   "pool_total": 0.0
+  },
+  "cpu_count": 128,
+  "omp_num_threads": "16",
+  "nvmath_version": "1.0.0",
+  "cupy_version": "14.2.0",
+  "nvidia_smi": "NVIDIA RTX A6000, 49140 MiB, 266 MiB, 535.309.01"
+ },
+ "seconds": 2911.557275056839,
+ "finished_utc": "2026-09-15T16:03:36Z",
+ "host_memory_gb": {
+  "MemTotal": 251.5681037902832,
+  "MemAvailable": 245.9824447631836,
+  "peak_rss": 0.6230621337890625
+ },
+ "config": {
+  "backend": "cudss",
+  "levels": [
+   4
+  ],
+  "xlevels": [],
+  "wall_w": 10.0,
+  "fd_level": "4",
+  "thru_levels": [
+   4
+  ],
+  "hybrid_levels": [],
+  "deadline_s": 4200.0,
+  "factor_cache_size": 0,
+  "free_forward": true
+ },
+ "fixture": {
+  "freq": 100000000.0,
+  "sigma": 2000000.0,
+  "short_gap": 1e-05,
+  "port_gap": 1e-05,
+  "base_dz": 1e-05,
+  "metal_cells": 1,
+  "pad_ratio": 1.5,
+  "wall_w": 10.0,
+  "skin_depth": 3.558812717085886e-05
+ },
+ "levels": {
+  "4": {
+   "m": 4,
+   "metal_cells": 1,
+   "hybrid_memory": false,
+   "grid": {
+    "shape": [
+     84,
+     88,
+     48
+    ],
+    "n_unknowns": 1095964,
+    "wall_x": [
+     -0.000152,
+     0.000152
+    ],
+    "wall_y": [
+     -0.000162,
+     0.000152
+    ],
+    "lid_z": 0.00014000000000000001,
+    "dx_min": 1.999999999999997e-06,
+    "dz_min": 2.499999999999993e-07,
+    "build_seconds": 2.8424179553985596
+   },
+   "build_seconds_here": 2.842895269393921,
+   "factor": {
+    "n": 1095964,
+    "nnz": 14057116,
+    "rhs_shape": [
+     1095964,
+     2
+    ],
+    "reference": "cudss",
+    "per_backend": {
+     "cudss": {
+      "cold_seconds": 122.48620343208313,
+      "warm_seconds": 120.16130948066711,
+      "factor_seconds": 2.3248939514160156,
+      "solve_seconds": 120.16130948066711,
+      "residual": 2.509620123969892e-08,
+      "residual_warm": 2.4501901313444123e-08,
+      "warm_is_bit_identical": false,
+      "device_memory_gb_before": {
+       "used": 0.2606201171875,
+       "free": 47.2752685546875,
+       "total": 47.535888671875,
+       "pool_used": 0.0,
+       "pool_total": 0.0
+      },
+      "device_memory_gb_after": {
+       "used": 38.8192138671875,
+       "free": 8.7166748046875,
+       "total": 47.535888671875,
+       "pool_used": 0.0,
+       "pool_total": 1.2373533248901367
+      },
+      "device_memory_gb_delta": 38.55859375
+     }
+    },
+    "reference_scale": 4944547.104319424
+   },
+   "L_dut": 3.126745781241744e-10,
+   "grad": [
+    1.1593065539540792e-05,
+    -1.1126723412542185e-05,
+    -2.45700821321299e-05
+   ],
+   "value_and_grad_seconds": 755.283323764801,
+   "device_memory_gb_before": {
+    "used": 38.8192138671875,
+    "free": 8.7166748046875,
+    "total": 47.535888671875,
+    "pool_used": 0.0,
+    "pool_total": 1.2373533248901367
+   },
+   "device_memory_gb_peak_after": {
+    "used": 38.8192138671875,
+    "free": 8.7166748046875,
+    "total": 47.535888671875,
+    "pool_used": 0.0,
+    "pool_total": 1.2373533248901367
+   },
+   "factor_cache_size": 0,
+   "factor_cache_entries": 0,
+   "host_memory_gb": {
+    "MemTotal": 251.5681037902832,
+    "MemAvailable": 239.94828414916992,
+    "peak_rss": 19.414875030517578
+   },
+   "rc_twin": {
+    "L_dut": 3.1297146294823863e-10,
+    "L_raw": 3.413558163004601e-10,
+    "Q_diff": 0.014631230152148724,
+    "re_z_diff": 1.3440139189349583,
+    "sigma": 20000000.0,
+    "freq": 10000000.0,
+    "seconds": 368.5445659160614,
+    "device_memory_gb_after": 38.8192138671875
+   },
+   "fd_width": {
+    "backend": "cudss",
+    "parameter": 2,
+    "step": 1.0000000000000001e-07,
+    "fd_order": 4,
+    "fd": -2.457006875118969e-05,
+    "fd_seconds": 1471.0647423267365,
+    "ad": -2.45700821321299e-05,
+    "rel": 5.44603287212866e-07
+   }
+  }
+ },
+ "thru": {
+  "bar_length": 4e-05,
+  "levels": {
+   "4": {
+    "L_dut": 1.2464072485592866e-12,
+    "L_raw": 3.133885725067567e-11,
+    "Q_diff": 0.005818943968838546,
+    "re_z_diff": 0.13458469015767105,
+    "sigma": 2000000.0,
+    "freq": 100000000.0,
+    "seconds": 61.20664167404175,
+    "device_memory_gb_after": 38.8211669921875,
+    "grid": {
+     "shape": [
+      60,
+      44,
+      48
+     ],
+     "n_unknowns": 395576,
+     "wall_x": [
+      -0.000125,
+      0.000125
+     ],
+     "wall_y": [
+      -0.000105,
+      0.000105
+     ],
+     "lid_z": 0.00014000000000000001,
+     "dx_min": 2.4999999999999998e-06,
+     "dz_min": 2.499999999999993e-07,
+     "build_seconds": 0.9304132461547852
+    }
+   }
+  },
+  "spiral_columns_x": [
+   6.999999999999994e-06,
+   4.7e-05
+  ]
+ },
+ "host_memory_gb_end": {
+  "MemTotal": 251.5681037902832,
+  "MemAvailable": 240.16934204101562,
+  "peak_rss": 19.414875030517578
+ }
+}

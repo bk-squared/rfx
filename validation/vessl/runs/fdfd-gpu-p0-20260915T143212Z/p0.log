@@ -1,0 +1,36 @@
++ timeout 4800 python -u /root/work/rfx-fdfd-gpu-p0/validation/vessl/_lane_embedded.py
+  plan W10 mc2 m3: N=581430 perm 15.65 GB peak 15.65 GB hybrid_min 3.91 GB
+  plan W20 mc2 m3: N=784614 perm 23.45 GB peak 23.45 GB hybrid_min 5.76 GB
+  plan W10 mc2 m4: N=1366216 perm 50.85 GB peak 50.85 GB hybrid_min 11.24 GB
+  plan W20 mc2 m4: N=1845216 perm 77.32 GB peak 77.32 GB hybrid_min 16.64 GB
+  plan W10 mc1 m4: N=1095964 perm 36.61 GB peak 36.61 GB hybrid_min 7.31 GB
+  walls 10 W: N=175292 L=299.4900 pH (11 s)
+  walls 20 W: N=236152 L=300.0374 pH (14 s)
+  walls 40 W: N=340706 L=300.0183 pH (23 s)
+  walls 80 W: N=494342 L=300.0467 pH (40 s)
+  P6 level 1 old       : N=23062 L=262.2989 pH
+  P6 level 1 a_walls   : N=23062 L=262.5587 pH
+  P6 level 1 b_short   : N=23062 L=262.2989 pH
+  P6 level 1 c_vertical: N=23062 L=262.2989 pH
+  P6 level 1 abc       : N=23062 L=262.5587 pH
+  P6 level 1 new       : N=23062 L=262.5587 pH
+  P6 level 2 old       : N=56408 L=292.8776 pH
+  P6 level 2 a_walls   : N=63112 L=293.7074 pH
+  P6 level 2 b_short   : N=56408 L=289.8221 pH
+  P6 level 2 c_vertical: N=110438 L=301.0119 pH
+  P6 level 2 abc       : N=123562 L=298.3067 pH
+  P6 level 2 new       : N=175292 L=299.4900 pH
+  plateau f=1e+08 sigma=3e+05 delta=91.9 um L=296.9372 pH Re Z=85.15 (55 s)
+  plateau f=1e+08 sigma=1e+06 delta=50.3 um L=308.1294 pH Re Z=25.55 (54 s)
+  plateau f=1e+08 sigma=2e+06 delta=35.6 um L=308.9595 pH Re Z=12.77 (54 s)
+  plateau f=1e+08 sigma=3e+06 delta=29.1 um L=309.1133 pH Re Z=8.515 (54 s)
+  plateau f=1e+08 sigma=1e+07 delta=15.9 um L=309.2249 pH Re Z=2.555 (54 s)
+  plateau f=1e+08 sigma=3e+07 delta=9.2 um L=309.2317 pH Re Z=0.852 (54 s)
+  plateau f=1e+07 sigma=2e+07 delta=35.6 um L=309.2334 pH Re Z=1.277 (54 s)
+    cudss     L_dut=262.5587 pH  grad=['9.958726e-06', '-9.951410e-06', '-2.074500e-05']  9.7 s
+    cudss     L_dut=299.4900 pH  grad=['1.111087e-05', '-1.112943e-05', '-2.259202e-05']  20.3 s
+  plan W10 mc2 m5: N=2654390 perm 125.60 GB peak 125.60 GB hybrid_min 25.61 GB
+  plan W10 mc1 m5: N=2128175 perm 91.87 GB peak 91.87 GB hybrid_min 16.78 GB
+  plan W10 mc1 m6: N=3663258 perm 193.78 GB peak 193.78 GB hybrid_min 34.85 GB
+P0 done in 629 s -> /root/workspace/claude-workspace/rfx/runs/fdfd-gpu-p0-20260915T143212Z/p0_probe.json
++ echo 0

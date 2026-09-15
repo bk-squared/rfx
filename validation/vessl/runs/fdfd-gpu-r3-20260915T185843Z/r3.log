@@ -1,0 +1,43 @@
++ timeout 5100 python -u /root/work/rfx-fdfd-gpu-r3/validation/vessl/_lane_embedded.py
+=== block fdopt ===
+  grad at optimum: dL=[4.0220306577301155e-05, -8.455720997563938e-05, -0.00013798508789043172] dQ=[-18460.25321817035, 705.2423587026951, 41261.30136520184]
+    FD r_out -2h: L=3840.0063 pH Q=23.97164 (75 s)
+    FD r_out -1h: L=3919.7782 pH Q=23.94707 (72 s)
+    FD r_out +1h: L=4080.8016 pH Q=23.87325 (72 s)
+    FD r_out +2h: L=4162.0508 pH Q=23.82450 (72 s)
+    FD width -2h: L=4061.1763 pH Q=23.89372 (72 s)
+    FD width -1h: L=4030.5048 pH Q=23.90454 (72 s)
+    FD width +1h: L=3969.7905 pH Q=23.92269 (72 s)
+    FD width +2h: L=3939.7426 pH Q=23.93004 (72 s)
+  block fdopt: 812 s
+=== block csweep ===
+  csweep  1/27 (200, 10, 22) um: L=4152.24 pH Q=23.8823 (72 s)
+  csweep  2/27 (200, 10, 27) um: L=3484.74 pH Q=23.7374 (72 s)
+  csweep  3/27 (200, 10, 32) um: L=2906.16 pH Q=23.0002 (72 s)
+  csweep  4/27 (200, 14, 22) um: L=3815.65 pH Q=23.8785 (72 s)
+  csweep  5/27 (200, 14, 27) um: L=3205.09 pH Q=23.8413 (72 s)
+  csweep  6/27 (200, 14, 32) um: L=2673.78 pH Q=23.1858 (72 s)
+  csweep  7/27 (200, 18, 22) um: L=3515.69 pH Q=23.6451 (72 s)
+  csweep  8/27 (200, 18, 27) um: L=2953.23 pH Q=23.6878 (72 s)
+  csweep  9/27 (200, 18, 32) um: L=2462.83 pH Q=23.0871 (72 s)
+  csweep 10/27 (230, 10, 22) um: L=5449.93 pH Q=22.4855 (72 s)
+  csweep 11/27 (230, 10, 27) um: L=4673.88 pH Q=22.8156 (72 s)
+  csweep 12/27 (230, 10, 32) um: L=3999.30 pH Q=22.8611 (72 s)
+  csweep 13/27 (230, 14, 22) um: L=5037.75 pH Q=22.6839 (72 s)
+  csweep 14/27 (230, 14, 27) um: L=4328.53 pH Q=23.1350 (73 s)
+  csweep 15/27 (230, 14, 32) um: L=3708.24 pH Q=23.2732 (72 s)
+  csweep 16/27 (230, 18, 22) um: L=4674.45 pH Q=22.6874 (72 s)
+  csweep 17/27 (230, 18, 27) um: L=4020.00 pH Q=23.2398 (72 s)
+  csweep 18/27 (230, 18, 32) um: L=3445.25 pH Q=23.4483 (72 s)
+  csweep 19/27 (260, 10, 22) um: L=6867.19 pH Q=20.1249 (72 s)
+  csweep 20/27 (260, 10, 27) um: L=5975.50 pH Q=20.5600 (72 s)
+  csweep 21/27 (260, 10, 32) um: L=5200.16 pH Q=20.9161 (72 s)
+  csweep 22/27 (260, 14, 22) um: L=6364.98 pH Q=20.4354 (72 s)
+  csweep 23/27 (260, 14, 27) um: L=5553.45 pH Q=20.9895 (72 s)
+  csweep 24/27 (260, 14, 32) um: L=4842.41 pH Q=21.4411 (73 s)
+  csweep 25/27 (260, 18, 22) um: L=5929.87 pH Q=20.5855 (72 s)
+  csweep 26/27 (260, 18, 27) um: L=5182.17 pH Q=21.2498 (72 s)
+  csweep 27/27 (260, 18, 32) um: L=4523.46 pH Q=21.7850 (72 s)
+  block csweep: 1952 s
+lane done in 2764 s -> /root/workspace/claude-workspace/rfx/runs/fdfd-gpu-r3-20260915T185843Z/r3_fdopt.json
++ echo 0

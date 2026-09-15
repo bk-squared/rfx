@@ -1,0 +1,79 @@
+[
+ {
+  "id": "369367261232",
+  "name": "rfx-fdfd-gpu-p0",
+  "lane": "p0",
+  "preset": "gpu-rtx4090",
+  "state": "completed",
+  "submitted_utc": "2026-09-15T14:31:47Z",
+  "finished_utc": "2026-09-15T14:44:39Z",
+  "wall_minutes": 12.9,
+  "lane_seconds": 629.1,
+  "artifacts": "validation/vessl/runs/fdfd-gpu-p0-20260915T143212Z/",
+  "note": "probe: cuDSS plans (W10/W20 x metal_cells 1/2 x m 3..6), wall ladder at level 2, P6 at W/1 and W/2, sigma plateau at level 3 + RC twin, value_and_grad at levels 1-2 (metal_cells 2). Source volume rfx-fdfd-gpu-p-20260915, tarball rfx-src-p.tgz sha256 225b4622dd987410."
+ },
+ {
+  "id": "369367261233",
+  "name": "rfx-fdfd-gpu-p1",
+  "lane": "p1",
+  "preset": "gpu-rtx4090",
+  "state": "completed (lane exit 0; level 3 and the metal_cells-2 level 3 FAILED in value_and_grad: cuDSS ALLOC_FAILED)",
+  "submitted_utc": "2026-09-15T14:45:29Z",
+  "finished_utc": "2026-09-15T14:50:29Z",
+  "wall_minutes": 5.0,
+  "lane_seconds": 194.0,
+  "artifacts": "validation/vessl/runs/fdfd-gpu-p1-20260915T144557Z/",
+  "note": "levels 1 and 2 (value_and_grad, factor probe, RC twin) and the thru probe at levels 1-3 landed. Level 3 (N=466833) factorised once in the probe (11.0 s, 12.81 GB device in use) but value_and_grad ran out of the 24 GB: with factor_cache_size(1) the last fixture's A factor is still cached while its A^T is factorised, i.e. two factors resident. Fixed for the rerun by factor_cache_size(0)."
+ },
+ {
+  "id": "369367261234",
+  "name": "rfx-fdfd-gpu-p1",
+  "lane": "p1 (rerun: level 3)",
+  "preset": "gpu-rtx4090",
+  "state": "completed",
+  "submitted_utc": "2026-09-15T14:59:54Z",
+  "finished_utc": "2026-09-15T15:09:47Z",
+  "wall_minutes": 9.9,
+  "lane_seconds": 484.9,
+  "artifacts": "validation/vessl/runs/fdfd-gpu-p1-20260915T150027Z/",
+  "note": "factor_cache_size(0): level 3 (N=466833) value_and_grad 76.5 s, the metal_cells-2 level 3 (N=581430) 113.5 s, FD4 dL/dwidth at level 3 through cuDSS rel 1.72e-07 from the AD gradient; RC twins at both."
+ },
+ {
+  "id": "369367261236",
+  "name": "rfx-fdfd-gpu-p1b",
+  "lane": "p1b",
+  "preset": "gpu-a6000-1",
+  "state": "completed",
+  "submitted_utc": "2026-09-15T15:11:38Z",
+  "finished_utc": "2026-09-15T16:03:38Z",
+  "wall_minutes": 52.0,
+  "lane_seconds": 2911.6,
+  "artifacts": "validation/vessl/runs/fdfd-gpu-p1b-20260915T151356Z/",
+  "note": "level 4 (N=1095964) on the 48 GB card, factor_cache_size(0): one cuDSS factorisation 120.2 s with 38.82 GB in use, value_and_grad 755.3 s, RC twin, FD4 dL/dwidth through cuDSS 1471 s (rel 5.45e-07 from AD), thru probe at level 4."
+ },
+ {
+  "id": "369367261249",
+  "name": "rfx-fdfd-gpu-p2",
+  "lane": "p2",
+  "preset": "gpu-rtx4090",
+  "state": "completed",
+  "submitted_utc": "2026-09-15T16:04:39Z",
+  "finished_utc": "2026-09-15T16:11:38Z",
+  "wall_minutes": 7.0,
+  "lane_seconds": 319.0,
+  "artifacts": "validation/vessl/runs/fdfd-gpu-p2-20260915T160513Z/",
+  "note": "secondary: the paper-geometry square spiral on the invariant fixture at 10 MHz / 2e6 S/m (delta 3.75 W): cuDSS plans (m=2 12.60 GB, m=3 65.79 GB), level-1 walls 5/10/20 W, the sigma plateau at level 2 (4 cells across W) + the 1 MHz RC twin, forward L at levels 1-2."
+ },
+ {
+  "id": "369367261252",
+  "name": "rfx-fdfd-gpu-p1c",
+  "lane": "p1c",
+  "preset": "gpu-a6000-1",
+  "state": "failed (lane exit 1: cuDSS ALLOC_FAILED at level 5)",
+  "submitted_utc": "2026-09-15T16:12:56Z",
+  "finished_utc": "2026-09-15T16:15:35Z",
+  "wall_minutes": 2.7,
+  "artifacts": "validation/vessl/runs/fdfd-gpu-p1c-20260915T161317Z/",
+  "note": "stretch: level 5 (N=2128175, plan 91.87 GB permanent, 16.78 GB hybrid minimum) as a forward solve with RFX_FDFD_CUDSS_HYBRID=1 on the 48 GB card. The first factorisation filled the device (47.52 GB in use) and failed with ALLOC_FAILED (cuDSSError ALLOC_FAILED (2) in the log). Likely cause, NOT verified: rfx.fdfd._cudss switches hybrid mode on (HybridMemoryModeOptions(hybrid_memory_mode=True)) without a device-memory limit, so cuDSS may not have spilled to the host. The lane env block records cudss_hybrid_memory false at start because the lane switches hybrid on per level (RFX_P_HYBRID_LEVELS); the level-5 record has hybrid_memory true. Level 5 is therefore not measured; the ladder is m = 1-4."
+ }
+]

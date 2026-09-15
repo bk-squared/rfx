@@ -13,7 +13,7 @@ while :; do
   STATE=$(vessl run list 2>/dev/null | awk -v id="$ID" '$1==id{print $4}')
   echo "[$(date -u +%H:%M:%SZ)] $ID state=${STATE:-unknown}"
   case "${STATE:-}" in
-    running|pending|idle|"") : ;;
+    running|pending|idle|initializing|queued|"") : ;;
     *) echo "final state: $STATE"; vessl run logs "$ID" --tail 40 2>/dev/null | tail -40; exit 0 ;;
   esac
   if [ "$(date +%s)" -ge "$END" ]; then

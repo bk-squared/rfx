@@ -1,0 +1,72 @@
+[
+ {
+  "id": "369367261262",
+  "name": "rfx-fdfd-gpu-r0",
+  "lane": "r0",
+  "preset": "gpu-rtx4090",
+  "state": "completed (lane exit 0; the level-2 forward FAILED: cuDSS ALLOC_FAILED)",
+  "submitted_utc": "2026-09-15T17:27:10Z",
+  "finished_utc": "2026-09-15T17:30:14Z",
+  "wall_minutes": 3.1,
+  "lane_seconds": 92.4,
+  "artifacts": "validation/vessl/runs/fdfd-gpu-r0-20260915T172732Z/",
+  "use": true,
+  "note": "probe with the silicon graded at ratio 1.5: cuDSS plans (190 um graded 1.5 / 2 / uniform and 120 um graded at level 2; 190 um graded 1.5 at level 3), level-1 thickness sensitivity 120/190/300 um and uniform silicon at level 1. The level-2 forward at ratio 1.5 (plan 22.38 GB) died with ALLOC_FAILED on the 23.65 GB free, which is why the study grades at ratio 2 (plan 20.51 GB). Source volume rfx-fdfd-gpu-r-20260916, tarball rfx-src-r.tgz sha256 cddd468a28234ef8."
+ },
+ {
+  "id": "369367261263",
+  "name": "rfx-fdfd-gpu-r1",
+  "lane": "r1",
+  "preset": "gpu-rtx4090",
+  "state": "completed",
+  "submitted_utc": "2026-09-15T17:33:12Z",
+  "finished_utc": "2026-09-15T18:00:05Z",
+  "wall_minutes": 26.9,
+  "lane_seconds": 1495.3,
+  "artifacts": "validation/vessl/runs/fdfd-gpu-r1-20260915T173345Z/",
+  "use": true,
+  "note": "parts A/B with the silicon graded at ratio 2: level-1 thickness sensitivity 120/190/300 um + uniform silicon; levels 1-2 at 2.45 GHz (level 2: N = 772892, 77 s per three-fixture forward, 22.54 GB device in use); L_diff/Q_diff gradients at level 2 (one forward + two reverse passes, 228 s); FD4 in r_out and width (8 forwards, 578 s); the 0.5-8 GHz sweep; level 2 at 120 um; cuDSS plans of levels 2 and 3 (106.71 GB at level 3)."
+ },
+ {
+  "id": "369367261268",
+  "name": "rfx-fdfd-gpu-r2",
+  "lane": "r2",
+  "preset": "gpu-rtx4090",
+  "state": "completed",
+  "submitted_utc": "2026-09-15T18:00:44Z",
+  "finished_utc": "2026-09-15T18:56:39Z",
+  "wall_minutes": 55.9,
+  "lane_seconds": 3250.9,
+  "artifacts": "validation/vessl/runs/fdfd-gpu-r2-20260915T180113Z/",
+  "use": true,
+  "note": "part C design loop in ONE job at the resolved level: L-BFGS-B (scipy, jac=True) on jax.value_and_grad through cuDSS from the paper values, lam = 100, q_ref = 23.630784354814097; 22 objective evaluations (147-159 s each), 14 accepted iterates, converged on the relative-reduction criterion. Tarball rfx-src-r.tgz sha256 09727158672c411c."
+ },
+ {
+  "id": "369367261273",
+  "name": "rfx-fdfd-gpu-r3",
+  "lane": "r3",
+  "preset": "gpu-rtx4090",
+  "state": "completed",
+  "submitted_utc": "2026-09-15T18:58:21Z",
+  "finished_utc": "2026-09-15T19:45:51Z",
+  "wall_minutes": 47.5,
+  "lane_seconds": 2764.5,
+  "artifacts": "validation/vessl/runs/fdfd-gpu-r3-20260915T185843Z/",
+  "use": true,
+  "note": "part C at the resolved level: L_diff/Q_diff gradients at the design optimum (one forward + two reverse passes) and FD4 in r_out and width (8 forwards), then the 3x3x3 baseline sweep of the design box (27 forward solves, 72 s each). Tarball rfx-src-r.tgz sha256 1d6dcdf630771de0."
+ },
+ {
+  "id": "369367261276",
+  "name": "rfx-fdfd-gpu-r4",
+  "lane": "r4",
+  "preset": "gpu-a6000-1",
+  "state": "completed",
+  "submitted_utc": "2026-09-15T19:46:39Z",
+  "finished_utc": "2026-09-15T20:17:11Z",
+  "wall_minutes": 30.5,
+  "lane_seconds": 1685.7,
+  "artifacts": "validation/vessl/runs/fdfd-gpu-r4-20260915T194704Z/",
+  "use": true,
+  "note": "the finer grids on the 48 GB card: at the design optimum, x/y at level 3 with z at level 2 on 3 W walls (N = 1253063, plan 34.71 GB, 283 s) and its level-2 reference on the same box, z at level 3 with x/y at level 2 on the study's 10 W walls (N = 1150967, plan 38.77 GB, 396 s), level 1; at the paper values, the level-1 -> 2 step on 3 W walls (box check), x/y-only and z-only level-1 -> 2 steps on 10 W (additivity check) and both finer grids. The full level 3 (N = 2577198, plan 106.71 GB) does not fit this preset (48 GB device, 32 GiB host limit) and was not attempted. Tarball rfx-src-r.tgz sha256 0501c2102fb3a2f7."
+ }
+]

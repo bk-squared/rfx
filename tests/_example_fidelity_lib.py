@@ -396,12 +396,22 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/fdfd/gpu_scaling.py": Entry(
         "no_simulation",
         "assembles the harvested VESSL GPU lane JSONs into the extended spiral ladder -- no solve, no Simulation"),
+    "validation/fdfd/invariant_ladder.py": Entry(
+        "no_simulation",
+        "rfx.fdfd level-invariant spiral fixture study: builds rfx.fdfd.spiral models, reads the "
+        "harvested VESSL GPU lanes, evaluates the Greenhouse referee -- no Simulation"),
     "validation/fdfd/memory_probe.py": Entry(
         "no_simulation",
         "rfx.fdfd.linear_solve memory probe (SuperLU thread affinity) -- no Simulation"),
     "validation/fdfd/rfic_spiral.py": Entry(
         "no_simulation",
-        "rfx.fdfd paper-parameter spiral study on an SG13G2-like stack -- no Simulation"),
+        "rfx.fdfd paper-scale RFIC spiral study (parts A/B): builds rfx.fdfd.spiral models, "
+        "assembles the harvested VESSL GPU lane JSONs and runs level-1 rfx.fdfd wall / "
+        "remesh checks on the CPU -- no Simulation"),
+    "validation/fdfd/rfic_design.py": Entry(
+        "no_simulation",
+        "rfx.fdfd paper-scale RFIC spiral gradient design (part C): L-BFGS-B on "
+        "rfx.fdfd.spiral, assembles the harvested VESSL GPU lane JSONs -- no Simulation"),
     "validation/fdfd/spiral_convergence.py": Entry(
         "no_simulation",
         "rfx.fdfd frequency-domain spiral validation study -- builds rfx.fdfd.spiral models, never the FDTD Simulation"),
@@ -426,6 +436,19 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/vessl/lane_j2_paper.py": Entry(
         "no_simulation",
         "VESSL GPU lane J2: rfx.fdfd paper-geometry spiral levels -- no Simulation"),
+    "validation/vessl/lane_p0_probe.py": Entry(
+        "no_simulation",
+        "VESSL GPU lane P0: rfx.fdfd invariant-fixture probe (plans, walls, P6, plateau) -- no Simulation"),
+    "validation/vessl/lane_p1_ladder.py": Entry(
+        "no_simulation",
+        "VESSL GPU lane P1: rfx.fdfd invariant-fixture joint convergence ladder -- no Simulation"),
+    "validation/vessl/lane_p2_paper.py": Entry(
+        "no_simulation",
+        "VESSL GPU lane P2: rfx.fdfd paper-geometry spiral on the invariant fixture -- no Simulation"),
+    "validation/vessl/lane_r_rfic.py": Entry(
+        "no_simulation",
+        "VESSL GPU lane R: rfx.fdfd paper-scale RFIC spiral (levels, sweep, gradients, "
+        "design loop) through cuDSS -- no Simulation"),
     "validation/crossval/comparators/fdfd_hplane.py": Entry(
         "no_simulation",
         "plain numpy/scipy.sparse FDFD comparator -- no rfx import at all"),

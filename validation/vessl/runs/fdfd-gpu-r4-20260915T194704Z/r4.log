@@ -1,0 +1,15 @@
++ timeout 5100 python -u /root/work/rfx-fdfd-gpu-r4/validation/vessl/_lane_embedded.py
+=== block fine ===
+  fine opt_m3z2_w3: N=1253063 plan 34.71 GB L=3693.012 pH Q=23.82748 (283 s)
+  fine opt_m2_w3: N=559864 plan 12.93 GB L=3668.693 pH Q=23.17631 (81 s)
+  fine opt_m2z3_w10: N=1150967 plan 38.77 GB L=4042.467 pH Q=24.61608 (396 s)
+  fine opt_m1_w10: N=100126 plan 1.25 GB L=3766.334 pH Q=21.27114 (6 s)
+  fine nom_m1_w3: N=72856 plan 0.82 GB L=2935.746 pH Q=20.80934 (4 s)
+  fine nom_m2_w3: N=559864 plan 12.93 GB L=3150.635 pH Q=23.14669 (81 s)
+  fine nom_m1z2_w10: N=196021 plan 3.50 GB L=3427.091 pH Q=23.28201 (17 s)
+  fine nom_m2z1_w10: N=394817 plan 6.63 GB L=3373.456 pH Q=21.79590 (32 s)
+  fine nom_m2z3_w10: N=1150967 plan 38.77 GB L=3544.800 pH Q=24.48776 (398 s)
+  fine nom_m3z2_w3: N=1253063 plan 34.71 GB L=3174.871 pH Q=23.61661 (282 s)
+  block fine: 1685 s
+lane done in 1686 s -> /root/workspace/claude-workspace/rfx/runs/fdfd-gpu-r4-20260915T194704Z/r4_fine.json
++ echo 0
