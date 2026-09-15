@@ -148,3 +148,47 @@ REFUTED; it is run because "expected" is not measured.
 one-cell PEC Box was a sheet there and is a filled slab with both faces here -- the preflight
 text differs on exactly that), so a fa3a99bd-vs-main difference could not be attributed to
 the CPML work. That confounder is the reason for the c0435798 baseline.
+
+---
+
+## Addendum C — second job, pre-declared while the first was still running
+
+Written after arms 1-3 of VESSL 369367261204 reported and before anything else was
+submitted, so the ladder below is not a reaction to its own result.
+
+Arms 1-3 read: `main_cpml8` -43.37 dB SETTLED, `main_cpml16` -45.83 dB SETTLED,
+`pre1047_cpml8` -43.37 dB SETTLED with the same four per-probe values as `main_cpml8`.
+Two things follow, and they pull in opposite directions:
+
+* H1 is **REFUTED** on its strongest branch: pre-#1047 and main agree digit for digit, so
+  neither #1047 nor #1057 touched this configuration. (Bit-identity of the raw series is
+  checked separately from the .npz files.)
+* The pre-declared cheap falsifier **FAILED**: the 16-layer control reads -45.83 dB where
+  the issue recorded -51.60 dB, 5.77 dB away from its 1 dB band. The realized board is not
+  the same board: `cavity_cells` 5 -> 4, `cavity_um` 983.75 -> 787.00, `sum(d/eps)` 291.05
+  -> 232.84 um, `walls_um` one plane -> four. That is #931's lattice-ownership contract --
+  the one-cell PEC ground was a sheet at fa3a99bd and is a filled slab with walls on both
+  faces on main. So "the arm settles on main" does NOT establish that #801's mechanism is
+  gone; it establishes that this fixture no longer excites it, on a board that changed for
+  an unrelated reason. `main_cpml8` also settles by only 3.4 dB against the bar.
+
+**H3 (attempt 1): does the +10h/2n-cell instability still exist on main's board at some
+lateral clearance?** The issue's own discriminator is the pad ladder, so run it on main:
+pad = +6h, +8h, +10h, +12h, +14h, +16h at `cpml_layers = 2n = 8`, and +14h/+16h again at
+16 layers as the paired control. 150 periods, everything else the rig.
+
+**Gate, committed before the run.** Growth is present on an arm iff its worst-probe
+`settling_db > -40 dB` AND its last-30% log rate is positive on all four probes (the
+recorded unstable arms share a rate to three significant figures -- +4.39e-4/step at
+n4 pad10, +1.27e-3/step at n3 pad10 -- which is one eigenvalue of the update operator, not
+a probe-position artefact; a single positive probe is not the signature).
+
+* **STILL PRESENT** iff at least one 8-layer arm shows growth by that definition while its
+  16-layer sibling does not. Residual `r = max(-40 - max_settling_db_over_8layer_arms, 0)`;
+  0 = still present.
+* **NOT REPRODUCIBLE ON MAIN'S BOARD** iff every 8-layer arm settles. Residual
+  `r = max(worst settling_db over the 8-layer arms + 40, 0)`; 0 = all settled.
+
+Falsifier for the ladder itself: `+6h` and `+8h` at 8 layers settled on the old board
+(-51.39 / -50.09 dB) and must settle here too; an arm that grew where the old board was
+comfortably stable would say the ladder is measuring the board change, not the absorber.

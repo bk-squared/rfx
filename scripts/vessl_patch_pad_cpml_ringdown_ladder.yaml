@@ -1,0 +1,109 @@
+name: rfx-patch-pad-cpml-ringdown-ladder
+description: "Issue #801 follow-on, pre-declared in Addendum C of scripts/diagnostics/_artifacts/patch_pad_cpml_ringdown/PREDECLARATION.md: does the thin-absorber ring-down instability still exist on main's board at some lateral clearance? The first job (VESSL 369367261204) showed the +10h arm settles on main AND that pre-#1047 agrees with it digit for digit, so the CPML work did not touch this configuration -- but it also showed main's realized cavity is 787.00 um where fa3a99bd's was 983.75 um (#931 lattice ownership: the one-cell PEC ground was a sheet, it is now a filled slab with walls on both faces), so 'settles on main' is a statement about a different board. This job runs the issue's own discriminator, the lateral-pad ladder, on main: +6h/+8h/+10h/+12h/+14h/+16h at cpml_layers = 2n = 8, plus +14h/+16h at 16 layers as the paired control. MEASUREMENT ONLY. gpu-rtx4090; each arm was 0.43-0.67 min of solve in the first job."
+tags: [rfx, issue-801, cpml, ring-down, patch, measurement, ladder]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: "Agg"
+  JAX_ENABLE_X64: "0"
+  RFX_DRIVER_BRANCH: "diag/801-patch-ringdown-padding"
+  RFX_DRIVER_SHA: "FILL_AFTER_PUSH"
+  RFX_TREE_MAIN: "fc7f7202567e2cf78a65ab90a709e4ff45b185f1"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #801 lateral-pad ladder on main, thin vs default absorber ==="
+  date
+  if [ "$RFX_DRIVER_SHA" = "FILL_AFTER_PUSH" ]; then
+    echo "FATAL: RFX_DRIVER_SHA still holds the FILL_AFTER_PUSH placeholder"
+    exit 3
+  fi
+  echo "driver branch (informational): $RFX_DRIVER_BRANCH"
+  echo "driver commit: $RFX_DRIVER_SHA"
+  echo "tree main: $RFX_TREE_MAIN"
+
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  git config --global --add safe.directory '*' || true
+
+  fetch_sha() {
+    git init -q "$1"
+    cd "$1"
+    git fetch -q --depth 1 https://github.com/bk-squared/rfx.git "$2"
+    git checkout -q FETCH_HEAD
+    got=$(git rev-parse HEAD)
+    if [ "$got" != "$2" ]; then
+      echo "FATAL: $1 is at $got, wanted $2"
+      exit 3
+    fi
+    echo "fetched $2 into $1"
+    cd /
+  }
+  rm -rf /tmp/rfx-801l-driver /tmp/rfx-801l-main
+  fetch_sha /tmp/rfx-801l-driver "$RFX_DRIVER_SHA"
+  fetch_sha /tmp/rfx-801l-main "$RFX_TREE_MAIN"
+
+  DRVDIR=/tmp/rfx-801l-driver/scripts/diagnostics
+  test -f "$DRVDIR/patch_pad_cpml_ringdown.py" || { echo "FATAL: driver missing"; exit 3; }
+  test -f "$DRVDIR/patch_pad_cpml_ringdown_summary.py" || { echo "FATAL: summary missing"; exit 3; }
+  test -f "$DRVDIR/_artifacts/patch_pad_cpml_ringdown/PREDECLARATION.md" || { echo "FATAL: pre-declaration missing"; exit 3; }
+  cp "$DRVDIR/patch_pad_cpml_ringdown.py" /tmp/rfx-801l-main/scripts/diagnostics/
+
+  echo "=== runtime deps ==="
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  python -c "import jax; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| devices', jax.devices(), '| x64', jax.config.x64_enabled)"
+
+  SHORT=$(echo "$RFX_DRIVER_SHA" | cut -c1-8)
+  OUT="/root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-ladder-$(date -u +%Y%m%dT%H%M%SZ)-$SHORT"
+  mkdir -p "$OUT"
+  echo "artifacts: $OUT"
+  echo "$RFX_DRIVER_SHA" > "$OUT/driver_commit.txt"
+  echo "$RFX_TREE_MAIN" > "$OUT/tree_main_commit.txt"
+  cp "$DRVDIR/_artifacts/patch_pad_cpml_ringdown/PREDECLARATION.md" "$OUT/"
+
+  # tag:pad:cpml  -- 'd' means the rig default, cpml_layers = 2n = 8.
+  ARMS="pad6_cpml8:6:8
+  pad8_cpml8:8:8
+  pad10_cpml8:10:8
+  pad12_cpml8:12:8
+  pad14_cpml8:14:8
+  pad16_cpml8:16:8
+  pad14_cpml16:14:16
+  pad16_cpml16:16:16"
+
+  cd /tmp/rfx-801l-main
+  PYTHONPATH=/tmp/rfx-801l-main
+  export PYTHONPATH
+  fails=0
+  for A in $ARMS; do
+    TAG=$(echo "$A" | cut -d: -f1)
+    PAD=$(echo "$A" | cut -d: -f2)
+    CPML=$(echo "$A" | cut -d: -f3)
+    echo "===== arm $TAG (pad ${PAD}h, cpml $CPML) ====="
+    date
+    { timeout 7200 python -u scripts/diagnostics/patch_pad_cpml_ringdown.py \
+        --n 4 --pad "$PAD" --periods 150 --cpml "$CPML" \
+        --tag "$TAG" --out-dir "$OUT" \
+        --rfx-tree-sha "$RFX_TREE_MAIN" --expect-rfx-root /tmp/rfx-801l-main 2>&1
+      echo "$?" > "$OUT/$TAG.rc"
+    } | tee "$OUT/$TAG.log"
+    rc=$(cat "$OUT/$TAG.rc")
+    echo "arm $TAG rc=$rc"
+    if [ "$rc" -ne 0 ]; then fails=$((fails + 1)); fi
+  done
+
+  echo "===== per-arm numbers (quoted from the JSONs; no verdict here) ====="
+  cd /tmp/rfx-801l-driver
+  python -u scripts/diagnostics/patch_pad_cpml_ringdown_summary.py \
+    --dir "$OUT" --json-out "$OUT/summary.json" | tee "$OUT/summary.txt"
+
+  ls -la "$OUT"
+  echo "artifacts persisted (mounted, survives teardown): $OUT"
+  echo "patch_pad_cpml_ladder_failed_arms=$fails"
+  [ "$fails" -eq 0 ]
