@@ -1174,6 +1174,18 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         #    divergent step 4, the causal arrival) to 1.894e-06 (step 50),
         #    which is the interior-source control's own lane-difference
         #    floor of 1.629e-06 on this geometry.
+        #
+        #    The defect is ONE-SIDED, which is worth knowing before reading
+        #    any lock result. Only the RIGHT E ghost is live: rank d-1's H
+        #    at its last REAL cell consumes it. A rank's LEFT E ghost feeds
+        #    only its own H at that same index, and the H exchange
+        #    (stage 3 / stage 2) overwrites that H with the neighbour's
+        #    authoritative value before anything reads it. So a source in
+        #    rank d's LAST real cell was never affected -- measured
+        #    bit-identical between the two orderings on both bodies -- and
+        #    that is exactly where every distributed_v2_* fixture of the
+        #    #1038 bit-identity lock puts its source, which is why that lock
+        #    stays 13/13 green through this change.
         st = lax.cond(
             do_exchange,
             lambda s: _exchange_e_ghosts_shmap(s, mesh, n_devices),
@@ -1250,7 +1262,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         #    Same measurement as step_fn_cpml above, boundary="pec": the
         #    probe 4 cells into the neighbouring rank went from 1.859e-01
         #    relative (first divergent step 4) to 4.858e-06 (step 43),
-        #    against an interior-source floor of 5.100e-06.
+        #    against an interior-source floor of 5.100e-06. Same one-sided
+        #    reachability as step_fn_cpml: a source in rank d's LAST real
+        #    cell is unaffected either way (measured bit-identical).
         #    The PEC half of the move is inert on THIS lane and was measured
         #    to be so (#1041 fixture P, bit-identical): apply_pec_face_shmap
         #    zeroes the y/z faces on every x row INCLUDING the ghosts, and

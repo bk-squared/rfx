@@ -25,6 +25,16 @@ divided by the single-device probe peak):
     seam / cpml, r0   1.653e-01        1.894e-06        1.629e-06
     seam / cpml, r1   1.039e-01        1.948e-06        2.529e-05
 
+THE DEFECT IS ONE-SIDED, and the third test here pins that. Only the RIGHT E
+ghost is live: rank d-1's H at its LAST REAL cell consumes it. A rank's LEFT
+E ghost feeds only its own H at that same index, and the H exchange overwrites
+that H with the neighbour's authoritative value before anything reads it. So a
+source in rank 0's LAST real cell was never wrong -- measured bit-identical
+between the two orderings, 1.469e-06 / 1.008e-05 (pec) and 1.180e-06 /
+3.485e-06 (cpml) against the single-device lane either way. That is also why
+the #1038 bit-identity lock stays 13/13 green through this change: every
+``distributed_v2_*`` fixture in it puts its source exactly there.
+
 ``GATE = 1e-3`` is 13x the worst lane floor (7.450e-05, the interior-source
 control's rank-1 probe on the same geometry) and 206x the worst post-fix seam
 error (4.858e-06); the pre-fix ordering sits 186x ABOVE it. The gate is set
@@ -61,6 +71,7 @@ DX = 1e-3
 NX_CELLS = 31        # -> nx = 32 nodes, so nx_per_rank = 16 and pad_x = 0
 NYZ_CELLS = 15       # -> ny = nz = 16
 SEAM_X = 16e-3       # global x node 16 == rank 1's FIRST real cell
+SEAM_LO_X = 15e-3    # global x node 15 == rank 0's LAST real cell
 INTERIOR_X = 8e-3    # 8 cells from the seam, inside rank 0
 PROBE_LO_X = 12e-3   # 4 cells inside rank 0
 PROBE_HI_X = 20e-3   # 4 cells inside rank 1
@@ -135,3 +146,22 @@ def test_interior_source_control_sets_the_floor(boundary):
         f"boundary={boundary}: the interior-source lane floor is {rel}, "
         f"within a decade of the seam gate {GATE:.0e}. Re-derive the gate "
         "before trusting test_seam_cell_source_reaches_the_neighbouring_rank.")
+
+
+@pytest.mark.parametrize("boundary", ["pec", "cpml"])
+def test_last_cell_source_is_the_side_that_was_never_wrong(boundary):
+    """The mirror placement, and the reason the #1038 lock did not move.
+
+    A source in rank 0's LAST real cell is exchanged into rank 1's LEFT
+    ghost, whose only consumer is rank 1's H at that index -- which the H
+    exchange overwrites with rank 0's authoritative H before the next E
+    update reads it. Measured bit-identical between the two orderings. If
+    this ever reds while the seam test above is green, the left ghost has
+    acquired a consumer and the asymmetry documented in ``step_fn_cpml``
+    stage 7 no longer holds.
+    """
+    rel = _rel_per_probe(SEAM_LO_X, boundary)
+    assert np.all(rel < GATE / 10), (
+        f"boundary={boundary}: source at rank 0's last real cell deviates "
+        f"by {rel} from the single-device lane; this placement is supposed "
+        "to be insensitive to the E-exchange hook point (#1041).")

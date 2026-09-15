@@ -42,6 +42,14 @@ S  uniform 31x15x15 mm at dx = 1 mm -> nx = 32, ny = nz = 16, 2 ranks,
    FIRST real cell.
    S-seam      : ez source AT x = 16 mm (rank 1's first real cell);
                  probes at x = 12 mm (rank 0) and x = 20 mm (rank 1).
+   S-seamlo    : the MIRROR placement, source at x = 15 mm (rank 0's LAST
+                 real cell). Its exchanged copy lands in rank 1's LEFT ghost,
+                 whose only consumer is rank 1's H at that index -- which the
+                 H exchange overwrites with rank 0's authoritative H. So the
+                 left E ghost is dead and this placement is expected to be
+                 order-insensitive. It is also where every distributed_v2_*
+                 fixture of the #1038 bit-identity lock puts its source,
+                 which is why that lock stays green through this change.
    S-interior  : the same probes with the source moved to x = 8 mm
                  (8 cells inside rank 0) -- the control that shows the effect
                  is seam-specific, not "any signal crossing the seam".
@@ -192,7 +200,8 @@ def load_v2(rev: str | None, repo: Path, tmpdir: Path):
 DX = 1e-3
 NX_CELLS = 31          # -> nx = 32 nodes, EVEN, so pad_x = 0 at 2 devices
 NYZ_CELLS = 15         # -> ny = nz = 16
-SEAM_X = 16e-3         # global node 16 == rank 1's first real cell
+SEAM_X = 16e-3         # global node 16 == rank 1's FIRST real cell
+SEAM_LO_X = 15e-3      # global node 15 == rank 0's LAST real cell
 PROBE_LO_X = 12e-3     # 4 cells INSIDE rank 0 (signal must cross the seam)
 PROBE_HI_X = 20e-3     # 4 cells inside rank 1
 INTERIOR_X = 8e-3      # 8 cells from the seam, inside rank 0
@@ -344,6 +353,8 @@ def main():
     print("\n## preflight (verbatim)")
     for label, bnd, sx in (("S-seam/pec", "pec", SEAM_X),
                            ("S-seam/cpml", "cpml", SEAM_X),
+                           ("S-seamlo/pec", "pec", SEAM_LO_X),
+                           ("S-seamlo/cpml", "cpml", SEAM_LO_X),
                            ("S-interior/pec", "pec", INTERIOR_X),
                            ("S-interior/cpml", "cpml", INTERIOR_X)):
         sim = build_sim(bnd, sx)
@@ -376,6 +387,15 @@ def main():
     cases = [
         ("S-seam/pec", "pec", SEAM_X),
         ("S-seam/cpml", "cpml", SEAM_X),
+        # The MIRROR placement. A source in rank 0's LAST real cell is
+        # exchanged into rank 1's LEFT ghost -- a row whose only consumer is
+        # rank 1's H at that same index, which the H exchange overwrites with
+        # rank 0's authoritative H before anything reads it. So the left E
+        # ghost is dead and this placement should be order-insensitive. That
+        # is also why the #1038 bit-identity lock stays green: every
+        # distributed_v2_* fixture puts its source exactly here.
+        ("S-seamlo/pec", "pec", SEAM_LO_X),
+        ("S-seamlo/cpml", "cpml", SEAM_LO_X),
         ("S-interior/pec", "pec", INTERIOR_X),
         ("S-interior/cpml", "cpml", INTERIOR_X),
         # Fixture P: domain-face PEC, source 8 cells from the seam. The only
