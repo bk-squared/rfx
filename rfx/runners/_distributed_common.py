@@ -34,6 +34,8 @@ from rfx.core.yee import EPS_0, MU_0
 __all__ = [
     "cpml_coeff_e_vacuum",
     "cpml_coeff_h_vacuum",
+    "split_array_x",
+    "gather_array_x",
     "zeros_psi_stacked",
     "exchange_component_shmap",
     "shard_stacked",
@@ -42,6 +44,95 @@ __all__ = [
     "inject_sources_shmap",
     "sample_probes_shmap",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Domain splitting / gathering (x-axis slabs with ghost cells)
+# ---------------------------------------------------------------------------
+#
+# #1038 leg 2. Moved VERBATIM from ``distributed.py``, where they sat at
+# L58/L107 -- ten lines AFTER that module's own import of this one. Nothing
+# about them was duplicated; they move because they are the x-slab primitives
+# every shared helper in this module that touches slabs has to call, and a
+# shared body could not reach them at their old address without a circular
+# import. ``distributed.py`` re-exports both at the position they were
+# defined, so ``rfx.runners.distributed.split_array_x`` / ``.gather_array_x``
+# still resolve for its external importers.
+#
+# Both are closure-free and use only ``jnp``, so this module stays the
+# dependency-DAG leaf (inventory §2.5): it imports nothing from
+# ``rfx.runners.*``.
+
+
+def split_array_x(arr, n_devices, ghost=1, pad_value=0.0):
+    """Split a 3D array into N slabs along x with ghost cells.
+
+    Parameters
+    ----------
+    arr : ndarray, shape (nx, ny, nz)
+    n_devices : int
+    ghost : int
+        Number of ghost cells on each side.
+    pad_value : float
+        Value used for ghost cells at the physical boundary (device 0
+        left ghost and device N-1 right ghost).  Default 0.0 is correct
+        for field arrays; use 1.0 for eps_r and mu_r to avoid division
+        by zero in the Yee update.
+
+    Returns
+    -------
+    slabs : ndarray, shape (n_devices, nx_local + 2*ghost, ny, nz)
+    """
+    nx = arr.shape[0]
+    nx_per = nx // n_devices
+    slabs = []
+    for i in range(n_devices):
+        x_start = i * nx_per
+        x_end = x_start + nx_per
+
+        # Desired range including ghosts
+        want_lo = x_start - ghost
+        want_hi = x_end + ghost
+
+        # Clamp to valid array range
+        g_lo = max(0, want_lo)
+        g_hi = min(nx, want_hi)
+
+        slab_data = arr[g_lo:g_hi]
+
+        # Pad where the desired range exceeds array bounds
+        pad_lo = g_lo - want_lo   # > 0 when want_lo < 0
+        pad_hi = want_hi - g_hi   # > 0 when want_hi > nx
+
+        if pad_lo > 0 or pad_hi > 0:
+            pad_widths = [(pad_lo, pad_hi)] + [(0, 0)] * (arr.ndim - 1)
+            slab_data = jnp.pad(slab_data, pad_widths, mode='constant',
+                                constant_values=pad_value)
+
+        slabs.append(slab_data)
+    return jnp.stack(slabs)
+
+
+def gather_array_x(slabs, ghost=1):
+    """Gather slabs back into a single array, stripping ghost cells.
+
+    Parameters
+    ----------
+    slabs : ndarray, shape (n_devices, nx_local + 2*ghost, ny, nz)
+    ghost : int
+
+    Returns
+    -------
+    arr : ndarray, shape (nx, ny, nz)
+    """
+    # Strip ghost cells from each slab and concatenate
+    inner = slabs[:, ghost:-ghost, :, :]  # (n_devices, nx_per, ny, nz)
+    n_devices = inner.shape[0]
+    # Reshape: merge device and x dims
+    nx_per = inner.shape[1]
+    ny = inner.shape[2]
+    nz = inner.shape[3]
+    return inner.reshape(n_devices * nx_per, ny, nz)
 
 
 # ---------------------------------------------------------------------------

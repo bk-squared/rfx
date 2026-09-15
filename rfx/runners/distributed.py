@@ -48,6 +48,8 @@ from rfx.materials.lorentz import LorentzCoeffs, LorentzState
 from rfx.runners._distributed_common import (
     cpml_coeff_e_vacuum,
     cpml_coeff_h_vacuum,
+    gather_array_x,
+    split_array_x,
     zeros_psi_stacked,
 )
 
@@ -56,75 +58,19 @@ from rfx.runners._distributed_common import (
 # Domain splitting / gathering
 # ---------------------------------------------------------------------------
 
-def split_array_x(arr, n_devices, ghost=1, pad_value=0.0):
-    """Split a 3D array into N slabs along x with ghost cells.
-
-    Parameters
-    ----------
-    arr : ndarray, shape (nx, ny, nz)
-    n_devices : int
-    ghost : int
-        Number of ghost cells on each side.
-    pad_value : float
-        Value used for ghost cells at the physical boundary (device 0
-        left ghost and device N-1 right ghost).  Default 0.0 is correct
-        for field arrays; use 1.0 for eps_r and mu_r to avoid division
-        by zero in the Yee update.
-
-    Returns
-    -------
-    slabs : ndarray, shape (n_devices, nx_local + 2*ghost, ny, nz)
-    """
-    nx = arr.shape[0]
-    nx_per = nx // n_devices
-    slabs = []
-    for i in range(n_devices):
-        x_start = i * nx_per
-        x_end = x_start + nx_per
-
-        # Desired range including ghosts
-        want_lo = x_start - ghost
-        want_hi = x_end + ghost
-
-        # Clamp to valid array range
-        g_lo = max(0, want_lo)
-        g_hi = min(nx, want_hi)
-
-        slab_data = arr[g_lo:g_hi]
-
-        # Pad where the desired range exceeds array bounds
-        pad_lo = g_lo - want_lo   # > 0 when want_lo < 0
-        pad_hi = want_hi - g_hi   # > 0 when want_hi > nx
-
-        if pad_lo > 0 or pad_hi > 0:
-            pad_widths = [(pad_lo, pad_hi)] + [(0, 0)] * (arr.ndim - 1)
-            slab_data = jnp.pad(slab_data, pad_widths, mode='constant',
-                                constant_values=pad_value)
-
-        slabs.append(slab_data)
-    return jnp.stack(slabs)
-
-
-def gather_array_x(slabs, ghost=1):
-    """Gather slabs back into a single array, stripping ghost cells.
-
-    Parameters
-    ----------
-    slabs : ndarray, shape (n_devices, nx_local + 2*ghost, ny, nz)
-    ghost : int
-
-    Returns
-    -------
-    arr : ndarray, shape (nx, ny, nz)
-    """
-    # Strip ghost cells from each slab and concatenate
-    inner = slabs[:, ghost:-ghost, :, :]  # (n_devices, nx_per, ny, nz)
-    n_devices = inner.shape[0]
-    # Reshape: merge device and x dims
-    nx_per = inner.shape[1]
-    ny = inner.shape[2]
-    nz = inner.shape[3]
-    return inner.reshape(n_devices * nx_per, ny, nz)
+# #1038 leg 2: ``split_array_x`` and ``gather_array_x`` moved VERBATIM to
+# rfx/runners/_distributed_common.py and are re-exported here, at the position
+# they were defined, so ``rfx.runners.distributed.split_array_x`` and
+# ``...gather_array_x`` keep resolving for the three external importers
+# (tests/unit/runners/test_distributed.py, test_distributed_v2_gather_traceable.py,
+# and distributed_v2.py:57). They had to move before any consolidation of the
+# helpers that CALL them: ``_distributed_common`` is imported by distributed.py
+# ten lines above their old definitions, so a shared body calling them could not
+# import them from here. Measured, not assumed:
+#   ImportError: cannot import name 'gather_array_x' from partially initialized
+#   module 'rfx.runners.distributed' (most likely due to a circular import)
+# Both are closure-free module-level functions whose only global is ``jnp``, so
+# the move needs no signature change.
 
 
 def _split_state(state, n_devices, ghost=1):

@@ -832,6 +832,15 @@ _SHARED_HELPER_BINDINGS = (
     # setup-time, so this row guards a de-duplication with no jaxpr exposure.
     ("zeros_psi_stacked", "rfx.runners.distributed", "zeros_psi_stacked"),
     ("zeros_psi_stacked", "rfx.runners.distributed_nu", "zeros_psi_stacked"),
+    # #1038 leg 2 -- the x-slab primitives. Not a de-duplication: these were
+    # single definitions in distributed.py that had to move BELOW the shared
+    # module so that shared bodies calling them (leg 2b's unstack_and_gather,
+    # leg 2c's split_poles_x) can import them without a cycle. distributed.py
+    # re-exports both at their old position, so these rows are what says the
+    # re-export is the same object and not a resurrected copy.
+    ("split_array_x", "rfx.runners.distributed", "split_array_x"),
+    ("gather_array_x", "rfx.runners.distributed", "gather_array_x"),
+    ("gather_array_x", "rfx.runners.distributed_v2", "gather_array_x"),
 )
 
 
