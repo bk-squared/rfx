@@ -6,6 +6,39 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased — 2.0.0]
 
+### Fixed — a source on a `boundary="pec"` wall now raises the P1.6 advisory (#1075)
+
+- `_validate_cfg_source_on_reflector_plane` (code `source_decoupled`) took its reflector
+  faces from `Simulation._pec_faces`, which only an explicit `pec_faces=` kwarg or a
+  per-face `BoundarySpec` fills in. The scalar `boundary="pec"` — a PEC box on all six
+  faces — left that set empty, so the check was **skipped entirely** on the commonest way
+  of asking for a PEC wall. The face set now comes from the canonical
+  `Simulation._boundary_spec`, which covers all three spellings and carries `periodic`
+  (not `pec`) on periodic axes, so those are excluded by construction.
+- **Who is affected**: a model with a source or port whose position lies on a whole-boundary
+  PEC face, driving a tangential E, now gets a WARNING-severity advisory (`run()`/`forward()`
+  print it through the preflight banner) and `sim.preflight(strict=True)` **raises** where it
+  previously passed. The remedy is unchanged: drive normal E at that face, or offset the
+  source one cell off the plane. Nothing about a source off the face changed, no step
+  ordering on any lane changed, and PMC needed no counterpart change (there is no
+  whole-boundary PMC mode, and the PMC face set was already read off the same spec).
+- The advisory's text said the source is "silently discarded". That is true on the
+  distributed lanes and false on the single-device one, so it now names both. Measured
+  (`scripts/diagnostics/issue1075_source_on_face.py`, 20×15×15 cells at dx = 1 mm, `ez` on
+  the x_lo wall, 400 steps): the distributed lanes — which apply the PEC face after
+  injection since #1041/#1055 — return a probe peak of **exactly 0**; the single-device
+  lane, which applies it before injection, returns **8.92558e5** against **4.00560e6** for
+  the same source one cell inside. On that lane the source is not discarded at all; it
+  drives a component the mirror is supposed to hold at zero, which makes the result
+  numerically inconsistent rather than silent. No retention percentage is quoted in the
+  message: it is a cavity-mode amplitude, not a constant — swept over probe distance the
+  same fixture gives peak ratios from 0.074 (4 mm) to 2.026 (12 mm).
+- Frozen emission-site totals are unchanged (113 / 74); no new `code=` site. Extending the
+  face set left all 66 existing snapshots byte-identical, which is the measurement saying
+  no committed fixture stood on a whole-boundary PEC face; a 67th fixture now witnesses
+  that placement. One snapshot, `source_decoupled.json`, is re-blessed for the message
+  rewrite alone.
+
 ### Fixed — the waveguide reference-plane device-overlap advisory could never fire (#1024)
 
 - `_validate_cfg_waveguide_reference_plane`'s third emission site read `g.bounds` off
