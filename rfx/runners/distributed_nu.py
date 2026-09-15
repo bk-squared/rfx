@@ -47,6 +47,7 @@ from rfx.boundaries.pec import (
     _volume_occupancy_masks,
 )
 from rfx.runners._distributed_common import (
+    apply_pec_face_shmap,
     cpml_coeff_e_vacuum,
     cpml_coeff_h_vacuum,
     exchange_component_shmap,
@@ -645,72 +646,12 @@ def _exchange_e_ghosts_nu(state: FDTDState, mesh, n_devices: int) -> FDTDState:
     )
 
 
-def _apply_pec_face_nu_shmap(state: FDTDState, mesh, n_devices: int,
-                             nx_local_with_ghost: int,
-                             pad_x: int = 0) -> FDTDState:
-    """Apply PEC on physical domain faces (x_lo, x_hi, y, z) using shard_map.
-
-    Mirrors ``rfx/runners/distributed_v2.py::_apply_pec_shmap`` exactly:
-    Y- and Z-face PEC is local to every rank; X-face PEC is rank-
-    conditional (only rank 0 zeroes x_lo, only rank N-1 zeroes x_hi).
-
-    Critically, the X-face PEC acts on the **first real cell**
-    (``ghost``) and the **last real cell**
-    (``nx_local_with_ghost - 1 - ghost - pad_x``), NOT on the seam
-    ghost cells (which belong to neighbouring ranks) and NOT on the
-    alignment-pad cells (which are
-    beyond the real domain face — #622: with ``pad_x > 0`` the last
-    rank's slab carries ``pad_x`` inert cells past global node
-    ``nx - 1``; the physical face stays at that real node, not at the
-    padded slab end). This is V3 bullet 7 ("Hard PEC only acts on
-    physical boundary or masked cells, not on seam ghosts") and V3
-    bullet 6 ("Hard PEC does not re-zero interior seam cells of
-    neighbouring ranks").
-    """
-    @partial(
-        shard_map,
-        mesh=mesh,
-        in_specs=(P("x"), P("x"), P("x")),
-        out_specs=(P("x"), P("x"), P("x")),
-        check_rep=False,
-    )
-    def _pec(ex, ey, ez):
-        ghost = 1
-
-        # Y-axis PEC (every rank — the y boundary is local to all ranks)
-        ex = ex.at[:, 0, :].set(0.0)
-        ex = ex.at[:, -1, :].set(0.0)
-        ez = ez.at[:, 0, :].set(0.0)
-        ez = ez.at[:, -1, :].set(0.0)
-
-        # Z-axis PEC (every rank — z boundary is local to all ranks)
-        ex = ex.at[:, :, 0].set(0.0)
-        ex = ex.at[:, :, -1].set(0.0)
-        ey = ey.at[:, :, 0].set(0.0)
-        ey = ey.at[:, :, -1].set(0.0)
-
-        device_idx = lax.axis_index("x")
-
-        # X-lo PEC: only rank 0; act on first REAL cell (skip ghost)
-        is_first = (device_idx == 0)
-        ey_xlo = jnp.where(is_first, 0.0, ey[ghost, :, :])
-        ez_xlo = jnp.where(is_first, 0.0, ez[ghost, :, :])
-        ey = ey.at[ghost, :, :].set(ey_xlo)
-        ez = ez.at[ghost, :, :].set(ez_xlo)
-
-        # X-hi PEC: only rank N-1; act on last REAL cell (skip ghost AND
-        # the alignment pad — #622).
-        is_last = (device_idx == n_devices - 1)
-        last_real = nx_local_with_ghost - 1 - ghost - pad_x
-        ey_xhi = jnp.where(is_last, 0.0, ey[last_real, :, :])
-        ez_xhi = jnp.where(is_last, 0.0, ez[last_real, :, :])
-        ey = ey.at[last_real, :, :].set(ey_xhi)
-        ez = ez.at[last_real, :, :].set(ez_xhi)
-
-        return ex, ey, ez
-
-    ex, ey, ez = _pec(state.ex, state.ey, state.ez)
-    return state._replace(ex=ex, ey=ey, ez=ez)
+# #1038 leg 3. ``_apply_pec_face_nu_shmap``'s body now lives as
+# ``apply_pec_face_shmap`` in ``_distributed_common.py``; it was a copy of
+# ``distributed_v2.py::_apply_pec_shmap`` differing only in the parameter
+# spelling (renamed in the preceding commit) and three comments. Kept as a
+# module-local alias so the existing call sites are unchanged.
+_apply_pec_face_nu_shmap = apply_pec_face_shmap
 
 
 def _apply_pmc_face_nu_shmap(state: FDTDState, mesh, n_devices: int,

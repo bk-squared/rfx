@@ -68,6 +68,7 @@ from rfx.runners.distributed import (
     _apply_cpml_h_distributed,
 )
 from rfx.runners._distributed_common import (
+    apply_pec_face_shmap,
     exchange_component_shmap,
     inject_sources_shmap,
     sample_probes_shmap,
@@ -152,66 +153,12 @@ def _exchange_e_ghosts_shmap(state: FDTDState, mesh: Mesh, n_devices: int) -> FD
 # Device-conditional PEC inside shard_map
 # ---------------------------------------------------------------------------
 
-def _apply_pec_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
-                     nx_local_with_ghost: int, pad_x: int = 0) -> FDTDState:
-    """Apply PEC boundary conditions using shard_map for device identity.
-
-    ``pad_x`` (#622): when the last rank's slab carries alignment-pad
-    cells past the real x-hi face (global node ``nx - 1``), the face
-    must act on that real node, not on the padded slab end.
-    """
-
-    @partial(
-        shard_map,
-        mesh=mesh,
-        in_specs=(
-            P("x"),  # ex
-            P("x"),  # ey
-            P("x"),  # ez
-        ),
-        out_specs=(
-            P("x"),
-            P("x"),
-            P("x"),
-        ),
-        check_rep=False,
-    )
-    def _pec(ex, ey, ez):
-        ghost = 1
-
-        # Y-axis PEC (all devices)
-        ex = ex.at[:, 0, :].set(0.0)
-        ex = ex.at[:, -1, :].set(0.0)
-        ez = ez.at[:, 0, :].set(0.0)
-        ez = ez.at[:, -1, :].set(0.0)
-
-        # Z-axis PEC (all devices)
-        ex = ex.at[:, :, 0].set(0.0)
-        ex = ex.at[:, :, -1].set(0.0)
-        ey = ey.at[:, :, 0].set(0.0)
-        ey = ey.at[:, :, -1].set(0.0)
-
-        device_idx = lax.axis_index("x")
-
-        # X-lo PEC: device 0 only
-        is_first = (device_idx == 0)
-        ey_xlo = jnp.where(is_first, 0.0, ey[ghost, :, :])
-        ez_xlo = jnp.where(is_first, 0.0, ez[ghost, :, :])
-        ey = ey.at[ghost, :, :].set(ey_xlo)
-        ez = ez.at[ghost, :, :].set(ez_xlo)
-
-        # X-hi PEC: device N-1 only (skip ghost AND alignment pad, #622)
-        is_last = (device_idx == n_devices - 1)
-        last_real = nx_local_with_ghost - 1 - ghost - pad_x
-        ey_xhi = jnp.where(is_last, 0.0, ey[last_real, :, :])
-        ez_xhi = jnp.where(is_last, 0.0, ez[last_real, :, :])
-        ey = ey.at[last_real, :, :].set(ey_xhi)
-        ez = ez.at[last_real, :, :].set(ez_xhi)
-
-        return ex, ey, ez
-
-    ex, ey, ez = _pec(state.ex, state.ey, state.ez)
-    return state._replace(ex=ex, ey=ey, ez=ez)
+# #1038 leg 3. ``_apply_pec_shmap``'s body now lives as
+# ``apply_pec_face_shmap`` in ``_distributed_common.py`` (the NU runner
+# carried a copy that differed only in its parameter spelling and three
+# comments). Kept as a module-local alias so the existing call sites are
+# unchanged.
+_apply_pec_shmap = apply_pec_face_shmap
 
 
 def _apply_pmc_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
