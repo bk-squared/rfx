@@ -29,7 +29,7 @@ harness correctness is established by the two discriminating witnesses the gate
 checks: the 4-ka zero-straddle and the monotone h-refinement convergence.)
 """
 import json
-import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -45,6 +45,13 @@ POL = np.array([0.0, 0.0, 1.0])    # E || z, |E_inc| = 1
 KA_LADDER = (0.8, 1.0, 1.5, 2.0)   # E4 ladder (matches rcs_mie_e4)
 
 _HERE = Path(__file__).resolve().parent
+_REPO = _HERE.parents[2]
+# Run directly and only this directory is on sys.path; the shared provenance
+# helper (#1013) and any co-located repo module would be invisible.
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
+from tests._fixture_provenance import capture  # noqa: E402
+
 _RFX_FINE = _HERE.parent / "rcs_sphere_mie" / "fixture.json"
 
 
@@ -108,8 +115,7 @@ def main():
     rfx_val = rfx_fine["monostatic"]["rfx_sigma_over_pi_a2"]
     mie1 = mie_ratio(1.0)
     bempp1 = next(r["sigma_bempp_over_pi_a2"] for r in ladder if r["ka"] == 1.0)
-    sha = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
-                         text=True).stdout.strip()
+    prov = capture(_REPO, generator="tests/fixtures/rcs_sphere_three_way/generate_bempp.py")
 
     fixture = {
         "schema": "rfx.rcs_sphere_three_way", "schema_version": 1,
@@ -197,7 +203,7 @@ def main():
         # BEMPP run only, so it cannot date such an edit (PR #1005 review,
         # finding 10).
         "provenance": {
-            "rfx_commit": sha,
+            **prov,
             "rfx_commit_scope": (
                 "The commit of the BEMPP run. Every number under `bempp` was produced "
                 "by generate_bempp.py at this sha and is untouched since. It does NOT "

@@ -10,6 +10,7 @@
  "generated_at": "2026-09-05T15:15:48.745227+00:00",
  "provenance": {
   "commit": "f914a7caf1ff8c63cac6f5f8c975b7f9f420a0c7",
+  "rfx_code_tree": "7d93cbe022da003de9ed375f809cdecadf72ce73",
   "run_id": "369367258638",
   "run_lane": "vessl",
   "jax_version": "0.4.33.dev20241023+e3c6d6430",
@@ -17682,6 +17683,7 @@
      ],
      "provenance": {
       "commit": "f914a7caf1ff8c63cac6f5f8c975b7f9f420a0c7",
+      "rfx_code_tree": "7d93cbe022da003de9ed375f809cdecadf72ce73",
       "run_id": "369367258638",
       "run_lane": "vessl",
       "jax_default_backend": "gpu"
@@ -17702,6 +17704,7 @@
      ],
      "provenance": {
       "commit": "f914a7caf1ff8c63cac6f5f8c975b7f9f420a0c7",
+      "rfx_code_tree": "7d93cbe022da003de9ed375f809cdecadf72ce73",
       "run_id": "369367258638",
       "run_lane": "vessl",
       "jax_default_backend": "gpu"
@@ -17724,6 +17727,7 @@
      ],
      "provenance": {
       "commit": "f914a7caf1ff8c63cac6f5f8c975b7f9f420a0c7",
+      "rfx_code_tree": "7d93cbe022da003de9ed375f809cdecadf72ce73",
       "run_id": "369367258638",
       "run_lane": "vessl",
       "jax_default_backend": "gpu"
@@ -17746,6 +17750,7 @@
      ],
      "provenance": {
       "commit": "f914a7caf1ff8c63cac6f5f8c975b7f9f420a0c7",
+      "rfx_code_tree": "7d93cbe022da003de9ed375f809cdecadf72ce73",
       "run_id": "369367258638",
       "run_lane": "vessl",
       "jax_default_backend": "gpu"
@@ -21351,6 +21356,7 @@
   },
   "provenance": {
    "commit": "f914a7caf1ff8c63cac6f5f8c975b7f9f420a0c7",
+   "rfx_code_tree": "7d93cbe022da003de9ed375f809cdecadf72ce73",
    "jax_version": "0.4.33.dev20241023+e3c6d6430",
    "jax_devices": [
     "cuda:0"

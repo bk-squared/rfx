@@ -66,10 +66,42 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from tests import _fixture_provenance as PROV  # noqa: E402
+
 from rfx.harminv import _decimation_plan, harminv  # noqa: E402
 
 CV02_RECORD = REPO_ROOT / "validation/crossval/_02_ring_resonator_results/crossval.json"
+
+
 HARMINV_SOURCE = REPO_ROOT / "rfx/harminv.py"
+
+
+def _source_code_tree(record: dict) -> dict:
+    """The rfx/ code-tree witness for the cv02 record's own commit (#1013).
+
+    ``record["commit"]`` is 296cabad, which origin refuses outright
+    ("upload-pack: not our ref") -- the sha in the ladder fixture is a copy of a
+    pointer that is already dangling. Preference order: the witness the source
+    record carries, else derive it from the source commit if THIS clone can
+    resolve it, else say plainly that neither worked. The last branch writes a
+    null and a reason rather than nothing, so the reachability gate turns red
+    and names the file instead of the site quietly disappearing.
+
+    The durable repair is for ``_02_ring_resonator_results/crossval.json`` to
+    record the witness itself; that file is outside this gate's scope
+    (tests/fixtures/ only) and is named in the #1013 follow-up.
+    """
+    carried = record.get(PROV.CODE_TREE_KEY)
+    if isinstance(carried, str) and len(carried) == 40:
+        return {PROV.CODE_TREE_KEY: carried, f"{PROV.CODE_TREE_KEY}_source": "source record"}
+    derived = PROV.code_tree_of(record["commit"], REPO_ROOT)
+    if derived:
+        return {PROV.CODE_TREE_KEY: derived,
+                f"{PROV.CODE_TREE_KEY}_source": f"derived from {record['commit'][:8]} in this clone"}
+    return {PROV.CODE_TREE_KEY: None,
+            f"{PROV.CODE_TREE_KEY}_absent_reason":
+                (f"{CV02_RECORD.name} carries no {PROV.CODE_TREE_KEY} and this clone cannot "
+                 f"resolve {record['commit'][:8]} to derive one")}
 
 #: The ladder from #907's 2026-09-10 comment, verbatim, so the rungs the
 #: withdrawn numbers were attached to are the rungs re-measured here.
@@ -215,6 +247,7 @@ def main() -> int:
         "source_record": {
             "path": str(CV02_RECORD.relative_to(REPO_ROOT)),
             "commit": record["commit"],
+            **_source_code_tree(record),
             "date_utc": record["date_utc"],
         },
         "signal": {
