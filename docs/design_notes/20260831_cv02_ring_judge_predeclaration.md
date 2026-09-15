@@ -384,6 +384,9 @@ length reproduces all five gates PASS. The run-length contingency #907
 describes is still present and still pinned by
 `test_verdict_lane_q_gate_is_run_length_contingent`, which remains a
 characterization test of current behaviour.
+> **Superseded by Correction 6 below (#907).** That test is deleted; the
+> contingency it pinned is now declared permanent rather than characterized as
+> pending. The sentence above is kept as the record of what was believed here.
 
 ---
 
@@ -477,7 +480,11 @@ rather than refresh it.
 
 The run-length contingency #907 describes is untouched, and
 `test_verdict_lane_q_gate_is_run_length_contingent` stays a characterization
-test of current behaviour: on that fixture the frequency term is `-2.8e-4`
+test of current behaviour
+> **Superseded by Correction 6 below (#907).** The test is deleted and the
+> contingency is declared permanent. Retained for the record.
+
+: on that fixture the frequency term is `-2.8e-4`
 against a window that shrinks from `0.7472` to `0.0642`, so the longer record
 still fails. The frequency term is not the fix for #907 and is not offered as
 one.
@@ -487,3 +494,158 @@ Pinned by `test_issue945_a_frequency_error_is_not_charged_to_the_q_gate`
 (the mirror: at an exact frequency, a rate 1.5x the declared scale off still
 fails, both sides), `test_issue945_the_row_reports_the_frequency_term_and_the_rate_term`
 and `test_issue945_the_frequency_term_is_refused_on_an_unphysical_frequency`.
+
+---
+
+## Correction 6 (2026-09-15) — #907's remainder closes on the declaration, not on a floor
+
+**Supersedes**, in Corrections 4 and 5 above, only the two sentences that say
+`test_verdict_lane_q_gate_is_run_length_contingent` "remains"/"stays a
+characterization test of current behaviour". That test is deleted here (see
+*What happened to the characterization test* below). Everything else in those
+corrections stands, including 4(d)'s reason for pinning the retained record.
+
+#907's last comment states the choice precisely: *"Derive ingredient 1 (the
+estimator's real uncertainty law, per side) and declare ingredient 3 (a
+discretization budget), **or** state permanently that the cv02 Q gate is a
+two-solver consistency envelope."* **The second is taken.**
+
+`Q_GATE_INGREDIENTS[2].kind` stays `absent`. No floor is added. The judge's
+behaviour is byte-for-byte unchanged — every gate value, every bound, every
+verdict on both boards. What changed is prose, one deleted test, one new
+diagnostic and its fixture.
+
+### Why not option (a)
+
+Two candidate ingredients could widen the gate. Both were measured, and
+**neither accounts for the gap it would have to license.**
+
+**Ingredient 1, the estimator.** The Cramér–Rao bound on `ln Q` for a damped
+exponential with an unknown amplitude, at cv02's own record
+(`T = 260.9798793571893`, `N = 3728`, so `dt = 0.0700053` Meep units):
+
+| mode | `tau` | `T/tau` | exact `sigma_lnQ` (`rho = 1e6`) | long-record form `2 sqrt(dt/(rho tau))` | ratio | observed \|lnQ\| | `rho` that would reach it |
+|---|---|---|---|---|---|---|---|
+| m=3 | 208.31 | 1.2528 | 6.1063e-05 | 3.6664e-05 | 1.7× | 0.0582 | 1.1 |
+| m=4 | 738.45 | 0.3534 | 1.3572e-04 | 1.9473e-05 | 7.0× | 0.0479 | 8.0 |
+| m=5 | 3174.78 | 0.0822 | 5.0856e-04 | 9.3916e-06 | 54.2× | 0.0761 | 44.7 |
+
+Two readings, and the second is the one that matters:
+
+* the **long-record** form is the `T -> infinity` limit and must not be quoted
+  at cv02's record — at `T/tau = 0.08` it understates the bound by 54×;
+* with the exact finite-`T` Fisher information the floor is still ~15× below
+  the slowest mode's observed gap at a per-sample SNR of `1e4`. It is **not**
+  absurdly below: the `rho` that would make the bound reach each gap is
+  1.1 / 8.0 / 44.7, all ordinary SNRs. So this is not a refutation of option
+  (a); it is the statement that the gap cannot be attributed to estimator
+  noise **without measuring `rho` on the real multi-mode record**, which is
+  exactly the first of ingredient 3's three missing artifacts.
+
+And the correct law makes the complaint #907 opened with *sharper*, not
+weaker. In cv02's regime (`alpha T << 1`) the sums give
+`e0 ~ N`, `e1 ~ N T/2`, `e2 ~ N T^2/3`, hence
+
+```
+sigma_lnQ  ~  tau * sqrt(6 dt / rho) * T^(-3/2)
+```
+
+— it shrinks with record length **faster** than this gate's `tau/T`. An
+honestly derived ingredient 1 would make the Q gate *tighter* as the record
+grows, not looser. "Derive ingredient 1" is not a route to a wider gate.
+
+**Ingredient 3, a discretization budget transported from the frequency
+tolerance.** `scripts/diagnostics/cv02_exact_annulus_qnm.py` solves the exact
+2-D TM quasi-normal modes of the same annulus (`n = 3.4`, `1 < r < 2`) from a
+4×4 Bessel/Hankel matching determinant:
+
+| m | `f_exact` | `Q_exact` | rfx `dlnf` | rfx `dlnQ` | Meep `dlnf` | Meep `dlnQ` |
+|---|---|---|---|---|---|---|
+| 3 | 0.11819169 | 77.2554 | −1.026e−3 | +0.0579 | −1.541e−3 | −0.0003 |
+| 4 | 0.14743103 | 343.9165 | −1.480e−3 | +0.0406 | −1.786e−3 | −0.0073 |
+| 5 | 0.17577937 | 1634.2056 | −2.680e−3 | −0.0088 | −3.039e−3 | +0.0672 |
+
+The transport needs `|dlnQ/dlnf|`, and **that is not a number, it is an
+interval**:
+
+| m | `dlnf/dlnn` | `dlnQ/dlnn` | index-channel leverage | `dlnf/dlnR` | `dlnQ/dlnR` | radius-channel leverage |
+|---|---|---|---|---|---|---|
+| 3 | −0.935238 | +4.652272 | 4.9744 | −1.000000 | +0.000000 | 0 |
+| 4 | −0.953749 | +6.586382 | 6.9058 | −1.000000 | −0.000000 | 0 |
+| 5 | −0.967331 | +8.565122 | 8.8544 | −1.000000 | −0.000000 | 0 |
+
+Uniform radius scaling moves every frequency at full leverage and **no** `Q`
+at all — Maxwell's scale invariance, exact to the digits printed. So the same
+permitted frequency error buys anywhere from `0` to `8.85` times as much
+permitted `|lnQ|`, depending on which channel a given solver's geometry error
+is assumed to live in. That is an assumption about the solver, not an
+analytic property of the annulus, and a budget that picks the top of the range
+is choosing the answer.
+
+Even at the top of the range the transport falls short at every mode:
+
+| m | rfx−Meep `|dlnf|` × L | both solvers vs exact, summed, × L | observed `|lnQ|` |
+|---|---|---|---|
+| 3 | 0.0026 | 0.0128 | 0.0582 (22.7× / 4.6× short) |
+| 4 | 0.0021 | 0.0226 | 0.0479 (22.7× / 2.1× short) |
+| 5 | 0.0032 | 0.0506 | 0.0761 (23.9× / 1.5× short) |
+
+Reported as a negative result and not rounded up: the most generous branch
+gets within a factor 1.5 of the slowest mode's gap. "Frequency error at
+maximum leverage" is therefore *unproven*, not absurd — and proving it needs
+the converged mesh ladder that does not exist.
+
+**Both branches say the same thing: the observed Q gap is not explained by
+either candidate ingredient.** A floor wide enough to cover it would have to
+be read off the gap, and then the gate certifies the agreement it exists to
+test. That was refused in 2026-09 and is refused here.
+
+### The convergence criterion is normalized, on purpose
+
+The oracle's `|det|` has no implementation-independent scale: rescaling one
+matching equation, or one basis function, multiplies it without moving a root.
+Three independent implementations of this same 4×4 report, at the *same*
+roots, `|det| = 1.4e−10`, `~7e−18` and `~5e−18` — seven orders apart, all
+correct. The committed criterion is therefore the smallest singular value of
+the matrix after equilibration to unit row **and** column norms, which is
+invariant under exactly that class of rewrites. Measured: under a random
+row/column rescaling spanning 10^4–10^5, the residual is unchanged to `1e−14`
+relative while the determinant moves by 7–14 orders of magnitude
+(`test_the_annulus_residual_is_invariant_under_row_and_column_rescaling`).
+**Do not pin a bare `|det| < eps` on this matrix.**
+
+### What happened to the characterization test
+
+`test_verdict_lane_q_gate_is_run_length_contingent` is **deleted**, and
+replaced by `test_the_q_gate_is_the_only_gate_that_moves_with_record_length`
+plus `test_the_q_gate_is_declared_a_permanent_consistency_envelope`.
+
+Its own docstring offered two exits — invert it, or delete it along with the
+contingency — and neither fired literally, so the choice needs stating.
+**Inverting is unavailable**: inversion asserts that a longer, better-settled
+record keeps the PASS, and only a floor in the judge produces that. The
+behaviour it pinned is unchanged. What changed is its *status*: a
+characterization test is a promissory note against a repair, and after this
+declaration there is no repair pending. Keeping it under that name would tell
+the next reader a fix is coming when the repo has declared it is not.
+
+Nothing it asserted is lost. The successor widens the sweep from two record
+lengths on one board to five on both, pins the full 10-cell table (**5 of 10
+`q` False**, measured — not 4), and keeps every invariance assertion: the four
+other gates, `mean_err_pct`, every row's `|ln Q|` and every row's frequency
+error are identical across a 3800× range in `T`. It adds one the old test did
+not make: the set of Q-gated rows **grows** with `T` and never shrinks, so a
+longer record reds the gate while judging strictly more of the physics.
+
+### What this correction does NOT settle
+
+* The retained record is stale in schema and cannot re-derive its own bounds
+  (filed separately). It stays pinned as-is for the reason Correction 4(d)
+  gives; the fix is not to regenerate it.
+* rfx's `Q` on this annulus does not converge to the continuum under mesh
+  refinement (filed separately, with the ladder measured and three confounds
+  closed). Until that is understood, ingredient 3's third artifact cannot
+  exist, which is the load-bearing reason this declaration is permanent rather
+  than provisional.
+* The Meep reference still runs Harminv while the source is on. Unfixed, and
+  it is why no reference-side uncertainty law can be built.

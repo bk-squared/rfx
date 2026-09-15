@@ -23,7 +23,10 @@ Exit codes (rfx crossval convention):
       record actually observed. That interval is asymmetric and is unbounded
       above on the high-Q side once s >= 1 (#945). The q gate is a two-solver
       consistency heuristic, not a Q-accuracy guarantee: see
-      ring_mode_judge.Q_GATE_INGREDIENTS (#907).
+      ring_mode_judge.Q_GATE_INGREDIENTS (#907). That reading was DECLARED
+      PERMANENT on 2026-09-15 -- the q gate is a consistency ENVELOPE, no
+      discretization budget is declared, and ingredient 3 stays 'absent'
+      until the three artifacts named there exist.
   1 = rfx self-check failed (rfx Harminv found no ring modes — broken physics)
   2 = rfx self-check OK but Meep reference is unavailable — inconclusive
       crossval, NOT a pass. CI must not treat this as green.
@@ -338,21 +341,43 @@ source_off_time = 2.0 * wf_main.t0
 #     evidence: at T/tau=0.126 the judge's own floor calls it UNRESOLVED, i.e.
 #     not a measurement.)
 #     So a LONGER, better-settled record would red a physically sound case.
-#     That is a comparator defect, not an rfx defect. It is STILL PRESENT.
-#     Issue #907 was closed on 2026-09-13 as a design item, not as a repair:
-#     the separable mathematical defect inside it (the rate-to-Q transform)
-#     was fixed under #945, and the three remaining ingredients -- the rfx
-#     estimator's real SNR / model-order uncertainty, a source-free Meep
-#     reference record regenerated under the same conditions, and a
-#     spatial/timestep discretization budget against the exact annulus --
-#     were deferred to a pre-declared campaign rather than settled by
-#     choosing a floor. A floor set from the observed rfx-vs-Meep gap would
-#     have made the gate certify the agreement it is supposed to test, so it
-#     was refused. Consequently the verdict lane's PASS remains contingent on
-#     the record staying short (see ring_mode_judge.q_window "Known
-#     limitation" and Q_GATE_INGREDIENTS), and this comment is the record of
-#     that. Read a cv02 q PASS as two-solver consistency, not as a bound on
-#     rfx's Q accuracy.
+#     That behaviour is STILL PRESENT, and as of 2026-09-15 it is DECLARED,
+#     not pending.
+#
+#     History, and then the declaration. #907's separable mathematical defect
+#     (the rate-to-Q transform) was fixed under #945. Its honesty half landed
+#     under #1001, which labelled the gate's three ingredients. The issue was
+#     briefly closed on 2026-09-13 and reopened the same week; what remained
+#     was a choice between deriving ingredient 1 with a declared ingredient 3,
+#     and stating permanently that the q gate is a two-solver consistency
+#     envelope. THE SECOND WAS TAKEN (2026-09-15).
+#
+#     Why, in two measured lines -- both reproducible from
+#     scripts/diagnostics/cv02_exact_annulus_qnm.py and the frozen fixture
+#     tests/fixtures/cv02_ring_judge/exact_annulus_qnm.json:
+#       (1) The exact finite-record Cramer-Rao bound for a damped exponential,
+#           at THIS case's T and sampling, is ~5e-3 in |lnQ| for the slowest
+#           mode at per-sample SNR 1e4 -- about 15x smaller than that mode's
+#           observed |lnQ| = 0.076, so estimator noise cannot license the
+#           gap. It also falls as T**-1.5, FASTER than this gate's tau/T, so
+#           deriving ingredient 1 honestly would TIGHTEN the gate with record
+#           length, not widen it.
+#       (2) The exact annulus (f = 0.11819169 / 0.14743103 / 0.17577937,
+#           Q = 77.2554 / 343.9165 / 1634.2056) transports the measured
+#           rfx-vs-Meep frequency difference to only 0.0026/0.0021/0.0032 in
+#           |lnQ| -- 23x short -- and both solvers' full error against the
+#           continuum, added at the largest leverage, to 0.013/0.023/0.051,
+#           still short at every mode. And the leverage is a choice: the
+#           annulus gives |dlnQ/dlnf| = 4.97/6.91/8.85 for an index error and
+#           exactly 0 for a uniform radius error.
+#     Neither candidate ingredient explains the gap, so any floor wide enough
+#     to cover it would have to be read off the gap -- which would make the
+#     gate certify the agreement it exists to test. That was refused in
+#     2026-09 and is refused again. Consequently the verdict lane's PASS is
+#     contingent on the record staying short, by declared design (see
+#     ring_mode_judge.q_window "Known limitation" and Q_GATE_INGREDIENTS),
+#     and this comment is the record of that. Read a cv02 q PASS as
+#     two-solver consistency, not as a bound on rfx's Q accuracy.
 #
 #   * Meep ABSENT (exit 2, inconclusive -- there is NO verdict to preserve):
 #     the record is scaled at runtime to the slowest RESOLVED in-band mode's
