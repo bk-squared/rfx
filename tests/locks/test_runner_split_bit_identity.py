@@ -105,6 +105,12 @@ Thirteen and not the inventory's twelve: §7.3 files the ``pad_x`` fixture under
 geometry is kept, runs on v2 where the pad lane actually lives, and v1 gets a
 second even-nx fixture of its own.
 
+Fifteen since #1053 leg 0. That issue ports ``distributed_nu``'s realized-PEC
+mask stage onto ``distributed_v2``, and the two rows it adds
+(``distributed_v2_pec_body_seam`` / ``…_interior``) pin the kernel on the body
+geometry v2 acquires, captured on the pre-move tree. The thirteen #1038 rows
+above are untouched by that capture and keep their original digests.
+
 Every snapshot is checked for non-vacuity BEFORE it is stored
 (``_assert_snapshot_can_bind``): an all-zero baseline would compare identical
 to an all-zero result forever.
@@ -522,6 +528,68 @@ def _f_distributed_nu_pec_mask_seam():
     }
 
 
+# --- 14/15: #1053 leg 0. The realized-PEC-body geometry ``distributed_v2``
+#     acquires in leg 2, captured BEFORE the kernel moves.
+#
+#     Kernel-level on purpose. The end-to-end route is unreachable at leg 0:
+#     ``distributed_v2.run_distributed`` raises NotImplementedError on any
+#     declared PEC volume (rfx/runners/distributed_v2.py:573), and that refusal
+#     does not lift until leg 4. A baseline captured after the refusal lifts
+#     would be captured on the post-move tree, which is not a baseline. So
+#     these call the applier directly on a sharded state, exactly as fixture 12
+#     does, and the end-to-end physics is gated separately by
+#     tests/unit/runners/test_distributed_v2_pec_body_seam.py.
+#
+#     They differ from fixture 12 in the body GEOMETRY, which is what leg 2
+#     puts on v2: a solid 2-cell-thick block, once STRADDLING the rank seam
+#     (x nodes 3-4, with nx_per_rank = 4 the seam sits between 3 and 4) and
+#     once wholly INSIDE rank 0 (x nodes 1-2). The interior fixture is the
+#     control: it exercises the same kernel with no ghost row carrying a PEC
+#     cell, so a seam-only regression shows up as one red row and not two.
+#     Fixture 12's body is a thin x-bar plus two z-face plates and does not
+#     cover either case.
+#
+#     The import is ``rfx.runners.distributed_nu`` at leg 0 because that is
+#     where the kernel is DEFINED on the capture tree. Leg 2 moves the body to
+#     ``_distributed_common`` and repoints this import at v2's binding; the
+#     two spellings are then the same function object (pinned by the
+#     _SHARED_HELPER_BINDINGS rows), and these two baselines are what says the
+#     v2-side binding reproduces the pre-move arrays bit for bit.
+def _v2_body_mask(x_lo, x_hi):
+    """A solid rectangular PEC block, x in [x_lo, x_hi), y 2:5, z 1:4."""
+    m = np.zeros((_SEAM_NX, _SEAM_NY, _SEAM_NZ), bool)
+    m[x_lo:x_hi, 2:5, 1:4] = True
+    return m
+
+
+def _f_distributed_v2_pec_body(gmask):
+    from jax.sharding import Mesh
+
+    from rfx.core.yee import init_state
+    from rfx.runners.distributed_nu import _apply_pec_mask_nu_shmap
+
+    n_devices = 2
+    slabs, nx_local = _seam_slabs(gmask, n_devices, bool, False)
+    mesh = Mesh(np.asarray(jax.devices()[:n_devices]).reshape(n_devices),
+                ("x",))
+    shape = (n_devices * nx_local, _SEAM_NY, _SEAM_NZ)
+    state = init_state(shape)
+    one = jnp.ones(shape, jnp.float32)
+    live = state._replace(ex=one, ey=one, ez=one)
+    return {
+        "hard": _apply_pec_mask_nu_shmap(live, jnp.asarray(slabs), mesh,
+                                         n_devices, nx_local),
+    }
+
+
+def _f_distributed_v2_pec_body_seam():
+    return _f_distributed_v2_pec_body(_v2_body_mask(3, 5))
+
+
+def _f_distributed_v2_pec_body_interior():
+    return _f_distributed_v2_pec_body(_v2_body_mask(1, 3))
+
+
 # --- 13: tests/unit/subgrid/test_subgrid_source_injection_dtype.py:123
 #     (_coarse_shadow_source_subgrid_sim). Chosen over the inventory's
 #     suggestion (test_subgrid_fine_shape_parity.py's builders) because those
@@ -567,6 +635,10 @@ _FIXTURES = (
     ("distributed_nu_pec_mask_seam", _f_distributed_nu_pec_mask_seam,
      "distributed_nu", True),
     ("subgridded_coarse_shadow", _f_subgridded, "subgridded", False),
+    ("distributed_v2_pec_body_seam", _f_distributed_v2_pec_body_seam,
+     "distributed_v2", True),
+    ("distributed_v2_pec_body_interior", _f_distributed_v2_pec_body_interior,
+     "distributed_v2", True),
 )
 
 _NONE_KEY = "__none_fields__"
