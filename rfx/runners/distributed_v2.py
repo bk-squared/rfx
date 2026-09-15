@@ -36,7 +36,6 @@ import numpy as np
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
 from jax.experimental.shard_map import shard_map
 
-from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import (
     FDTDState,
     MaterialArrays,
@@ -529,20 +528,32 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         or getattr(sim, "_dx_profile", None) is not None
         or getattr(sim, "_dy_profile", None) is not None
     )
-    # PRE-EXISTING GAP, not a #931 regression (verified 2026-09-07): this
-    # lane assembles ``pec_mask`` and never applies it. Its step body only
-    # calls the DOMAIN-FACE PEC (``_apply_pec_shmap``); no geometry PEC —
-    # volume, sheet or wire — reaches the field update here. #931 did not
-    # introduce this and does not fix it; threading sheets in would only
-    # make the drop harder to see.
+    # Declared PEC on this lane, after #1053: VOLUMES are realized, SHEETS
+    # and WIRES are not.
     #
-    # What #931 DID introduce was a refusal that named "redraw it as a
-    # volume" as the remedy — advice that on this lane produces a run with
-    # the metal still missing and no sign of it (measured: a two-device run
-    # probing inside a declared PEC Box returns a trace bit-identical to
-    # the same model with the Box deleted). Since the drop is the same for
-    # all three kinds, the refusal is the same for all three: a declared
-    # PEC volume is refused here too rather than solved away.
+    # A volume is carried as ``pec_mask``, which #1053 legs 1-2 shard next
+    # to the material arrays and apply in both step bodies through
+    # ``apply_pec_mask_shmap`` — after source injection and the domain
+    # faces, immediately before the E ghost exchange, i.e. distributed_nu's
+    # stage 8 at the #1041 ordering. Gated end-to-end against the
+    # single-device lane by tests/unit/runners/
+    # test_distributed_v2_pec_body_seam.py (three bodies; seam-face body
+    # 3.074e-05 relative against a 1e-3 gate, 3.203e-01 with the stage one
+    # step late).
+    #
+    # A sheet and a sub-cell wire own no cell, so the mask carries neither.
+    # Nothing else on this lane does either: the step body's only other PEC
+    # is the DOMAIN FACE (``_apply_pec_shmap``). Declaring one here would
+    # put metal in the model that is absent from every rank with no sign of
+    # it, so both are still refused.
+    #
+    # The pre-#1053 refusal covered volumes too, because the mask was
+    # assembled and then dropped (measured then: a two-device run probing
+    # inside a declared PEC Box returned a trace bit-identical to the same
+    # model with the Box deleted). It also had to warn that redrawing a
+    # sheet as a volume did NOT help. Both statements are now false HERE
+    # and both stay true of the pmap lane in ``distributed.py``, whose copy
+    # of the message is a separate string and is out of #1053 scope (#1055).
     _d_pec_sheets: list = []
     _d_pec_wires: list = []
     if is_nu:
@@ -560,27 +571,24 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             sim._assemble_materials(grid, pec_sheets=_d_pec_sheets,
                                     pec_wires=_d_pec_wires)
         )
-    _d_pec_volume = (pec_mask is not None
-                     and not is_tracer(pec_mask)
-                     and bool(jnp.any(pec_mask)))
-    if _d_pec_sheets or _d_pec_wires or _d_pec_volume:
+    if _d_pec_sheets or _d_pec_wires:
         _d_declared = []
         if _d_pec_sheets:
             _d_declared.append(f"{len(_d_pec_sheets)} PEC sheet(s)")
         if _d_pec_wires:
             _d_declared.append(f"{len(_d_pec_wires)} sub-cell wire(s)")
-        if _d_pec_volume:
-            _d_declared.append(
-                f"a PEC volume of {int(jnp.sum(pec_mask))} cell(s)")
         raise NotImplementedError(
-            "run_distributed_v2() does not realize declared PEC geometry of "
-            "ANY kind (#931): this lane carries geometry PEC only as a cell "
-            "mask, its step body applies domain-face PEC alone, and a sheet "
-            "or a wire owns no cell to begin with. Declared here: "
-            f"{', '.join(_d_declared)} — all of it would be absent from "
-            "every rank with no sign of it. Redrawing a sheet as a volume "
-            "does NOT help on this lane (measured: a probe inside a declared "
-            "PEC Box reads a trace bit-identical to empty geometry). Use "
+            "run_distributed_v2() does not realize declared PEC SHEETS or "
+            "sub-cell WIRES: this lane carries geometry PEC only as a cell "
+            "mask, and a sheet or a wire owns no cell to begin with, so it "
+            "would be absent from every rank with no sign of it. Declared "
+            f"here: {', '.join(_d_declared)}. A declared PEC VOLUME is a "
+            "different case and DOES run here: since #1053 this lane shards "
+            "pec_mask and applies it in both step bodies, at the #1041 "
+            "ordering. So redrawing a sheet as a volume does realize metal "
+            "on this lane — but a volume is not the same object as a sheet "
+            "(it shorts the normal E edge between its two faces, #690), so "
+            "redraw only if that is the conductor you meant. Otherwise use "
             "sim.run() without devices=, which realizes all three, or model "
             "the conductor as a sigma fill, which rides in the material "
             "arrays this lane does shard.")
@@ -1306,8 +1314,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # 4. Source injection
         st = _inject_sources_shmap(st, src_vals)
 
-        # 5. PEC boundaries (domain faces only -- this lane refuses declared
-        #    PEC geometry, see the NotImplementedError in run_distributed).
+        # 5. PEC boundaries (domain faces only; a declared PEC VOLUME is
+        #    realized at stage 5b below, and declared sheets/wires are
+        #    refused -- see the NotImplementedError in run_distributed).
         #    Injection runs BEFORE the face, matching distributed_nu stage 7.
         #    The two lanes therefore both differ from the single-device lane,
         #    which applies the faces before its soft-source loop; the
