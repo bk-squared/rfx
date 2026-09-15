@@ -51,6 +51,15 @@ on gpu-rtx4090:
 vessl run create -f scripts/vessl_gpu_suite.yaml
 ```
 
+**What it tests: `origin/main`, exported with `git archive` into a scratch dir** — NOT
+the HEAD of the pod's primary checkout, and it never touches that checkout. Override
+the ref with `RFX_GPU_SUITE_REF=<sha|branch>` in the run's `env` when validating a
+branch. (Before 2026-09-15 the harness ran the primary checkout's HEAD as it stood;
+a "post-merge" run then silently tested code 6 commits behind main — VESSL run
+369367261080. The provenance block prints both the suite ref and the primary HEAD so
+the log itself says what was tested.) Artifacts still land under the primary
+checkout's `.omx/gpu-suite/<utc>-<short sha>/` on the shared volume.
+
 **Cadence**: per release tag AND after any GPU-touching merge. Record pass/fail
 counts in tracked release notes or a committed validation artifact suitable
 for the claim.
