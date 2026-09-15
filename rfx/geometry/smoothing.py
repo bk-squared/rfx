@@ -455,6 +455,18 @@ def smoothed_shape_pairs(sim, grid):
         from rfx.geometry.rasterize_grid import coords_from_uniform_grid
         coords = coords_from_uniform_grid(grid)
     node_coords = (coords.x, coords.y, coords.z)
+    # A traced mesh (mesh-as-design-variable: a dz profile that is an
+    # optimization variable) makes these node positions tracers, and the reach
+    # test reads them as Python floats. Rather than force a concretization --
+    # which would raise inside a jit and make the pad depend on a value the
+    # tape is differentiating through -- the continuation is skipped and the
+    # pairs come back untouched: exactly the behaviour every traced-mesh run
+    # had before this change, and no silent geometry move under a gradient.
+    # Box corners themselves are always concrete (``Box._axis_mask`` relies on
+    # it: ``extent = float(hi - lo)``), so only the grid side needs this.
+    from rfx.core.jax_utils import is_tracer
+    if any(is_tracer(axis) for axis in node_coords):
+        return pairs, []
     pads = ((grid.pad_x_lo, grid.pad_x_hi),
             (grid.pad_y_lo, grid.pad_y_hi),
             (grid.pad_z_lo, grid.pad_z_hi))
