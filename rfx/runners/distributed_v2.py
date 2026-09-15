@@ -69,6 +69,7 @@ from rfx.runners.distributed import (
 )
 from rfx.runners._distributed_common import (
     apply_pec_face_shmap,
+    apply_pec_mask_shmap,
     apply_pmc_face_shmap,
     exchange_component_shmap,
     inject_sources_shmap,

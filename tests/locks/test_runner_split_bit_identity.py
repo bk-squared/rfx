@@ -951,6 +951,19 @@ _SHARED_HELPER_BINDINGS = (
      "_apply_pmc_shmap"),
     ("apply_pmc_face_shmap", "rfx.runners.distributed_nu",
      "_apply_pmc_face_nu_shmap"),
+    # #1053 leg 2 -- the realized-PEC CELL-MASK kernel, as opposed to the
+    # domain-face one two rows up. Moved out of distributed_nu.py by value so
+    # v2 could stop refusing declared PEC volumes; it was already
+    # runner-agnostic, so nothing became a parameter. These two rows are what
+    # forbids the failure this port exists to avoid: v2 growing its own
+    # spelling of the four-incident-cell rule. distributed_nu.py keeps a
+    # module-local alias under the old name because its own call site and the
+    # distributed_nu_pec_mask_seam fixture both resolve it there; v2 imports
+    # the shared name directly.
+    ("apply_pec_mask_shmap", "rfx.runners.distributed_nu",
+     "_apply_pec_mask_nu_shmap"),
+    ("apply_pec_mask_shmap", "rfx.runners.distributed_v2",
+     "apply_pec_mask_shmap"),
     # #1038 leg 4 (prerequisite) -- the two local NU Yee kernels. Not a
     # de-duplication: single definitions in distributed_nu.py that had to move
     # BELOW the shared module so leg 4's shared NU shard wrappers can call
