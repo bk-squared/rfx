@@ -173,33 +173,66 @@ jobs:
           VESSL_ORGANIZATION: ${{ vars.VESSL_ORGANIZATION }}
           VESSL_PROJECT: ${{ vars.VESSL_PROJECT }}
         run: |
-          set -uo pipefail
-          vessl configure -t "$VESSL_ACCESS_TOKEN" -o "$VESSL_ORGANIZATION" -p "$VESSL_PROJECT" >/dev/null || { echo "vessl configure failed"; exit 1; }
-          sed "s|RFX_SHA: \"origin/main\"|RFX_SHA: \"${GITHUB_SHA}\"|" scripts/vessl_validation_lane_a6000.yaml > /tmp/lane.yaml
-          grep -q "RFX_SHA: \"${GITHUB_SHA}\"" /tmp/lane.yaml || { echo "could not pin the SHA into the lane file"; exit 1; }
-          OUT=$(vessl run create -f /tmp/lane.yaml 2>&1 || true)
-          printf '%s\n' "$OUT" | grep -vi token || true
-          RID=$(printf '%s\n' "$OUT" | grep -oE 'runs/[^/]+/[0-9]+' | grep -oE '[0-9]+$' | head -1 || true)
-          [ -n "$RID" ] || { echo "could not parse a run id from the create output (a YAML verification failure prints nothing at exit 0)"; exit 1; }
-          echo "VESSL run $RID"
-          # Whatever ends this step -- give-up, cancellation, the job timeout --
-          # must not leave the a6000 seat held (two-seat lab policy).
-          trap 'if [ "${DONE:-0}" != 1 ]; then echo "terminating VESSL run $RID"; vessl run terminate "$RID" </dev/null >/dev/null 2>&1 || true; fi' EXIT
-          ST=""; MISSES=0
-          for i in $(seq 1 330); do
-            ST=$(vessl run read "$RID" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -E '^\s*Status\s' | head -1 | awk '{print $2}' || true)
-            if [ -z "$ST" ]; then
-              MISSES=$((MISSES+1)); echo "$(date -u +%H:%M) status unreadable ($MISSES in a row)"
-              [ "$MISSES" -ge 15 ] && { echo "status unreadable 15 times in a row; giving up"; exit 1; }
-            else
-              MISSES=0; echo "$(date -u +%H:%M) status=$ST"
-              case "$ST" in completed|failed|terminated|stopped) break;; esac
-            fi
-            sleep 60
-          done
-          vessl run logs "$RID" --tail 400 2>/dev/null | grep -vi token | tail -60 || true
-          case "$ST" in completed|failed|terminated|stopped) DONE=1;; *) echo "a6000 lane still $ST after the poll budget; terminating"; exit 1;; esac
-          [ "$ST" = completed ] || { echo "a6000 lane ended with status $ST"; exit 1; }
+          # Shared with crossval-solvers-lane below. The EXIT trap that releases
+          # the seat under the two-seat lab policy is the part that must not drift
+          # between copies; tests/contracts/test_vessl_lane_submission_is_shared.py
+          # pins that no job re-derives it.
+          scripts/ci/vessl_submit_and_wait.sh \
+            scripts/vessl_validation_lane_a6000.yaml \
+            RFX_SHA \
+            a6000-lane \
+            330
+
+  # ---------------------------------------------------------------------------
+  # Weekly two-solver crossval lane (#717 item 2, PI decision 2026-09-15 option
+  # (b)). Wired here only AFTER the lane was measured by hand -- putting a
+  # never-executed lane on this cron would have auto-filed a red tracking issue
+  # every Monday through the notify job below.
+  #
+  # WHAT IT OWNS: the 13 external legs in the four gpu-marked crossval files,
+  # which executed in no lane before this one. Inventory and the option costing:
+  # docs/design_notes/717_crossval_lane_decision.md.
+  #
+  # CPU, not a GPU preset: meep and openEMS are CPU-only solvers and dominate,
+  # rfx's five own tests in those files take ~31 s on CPU, and the lab has only
+  # two GPU nodes -- weekly-a6000-lane already holds one every Monday.
+  #
+  # The `if:` matches crossval-external's, and for the same reason given at
+  # :232-234: the gate is on the trigger, never on a cron literal, and it exists
+  # so that adding a push/pull_request trigger to this workflow does not put a
+  # multi-hour solver job on every push. It is true for both current triggers,
+  # so this job never skips and the notify job's skipped-is-not-green rule at
+  # :386-393 stays satisfiable.
+  crossval-solvers-lane:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    environment: vessl
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install the VESSL CLI
+        run: pip install -q vessl
+      - name: Submit the two-solver crossval lane at this SHA and wait for it
+        env:
+          VESSL_ACCESS_TOKEN: ${{ secrets.VESSL_ACCESS_TOKEN }}
+          VESSL_ORGANIZATION: ${{ vars.VESSL_ORGANIZATION }}
+          VESSL_PROJECT: ${{ vars.VESSL_PROJECT }}
+        run: |
+          # The fifth argument pulls the lane's own verdict line into the job
+          # summary. Without it the only thing that crosses from the pod is 60
+          # lines of tail, and the gate's per-node table plus the summary JSON
+          # both live on the NFS mount, which this runner cannot read.
+          scripts/ci/vessl_submit_and_wait.sh \
+            scripts/vessl_crossval_solvers_lane.yaml \
+            RFX_CROSSVAL_SOLVERS_REF \
+            crossval-solvers-lane \
+            330 \
+            'CROSSVAL_SOLVER_LANE_VERDICT|GATE (PASS|FAIL)'
 
   # ---------------------------------------------------------------------------
   # Scheduled / manual external-reference crossval lane (roadmap W2.5b).
@@ -401,7 +434,7 @@ jobs:
   # that must at least show up as an annotation on the run. `core.error` cannot
   # red the job on its own, so the "never red the run" rule still holds.
   notify:
-    needs: [slow-tests, weekly-a6000-lane, crossval-external]
+    needs: [slow-tests, weekly-a6000-lane, crossval-solvers-lane, crossval-external]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
