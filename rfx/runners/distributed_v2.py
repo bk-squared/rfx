@@ -13,6 +13,13 @@ sources, point probes, lumped ports, and dispersive materials
 Single-device fallback: when only 1 device is available, sharding is skipped
 and a plain jit path is used.
 
+Declared PEC (#1053): a PEC VOLUME is realized here.  ``pec_mask`` is
+sharded with the material arrays and applied in both step bodies after
+source injection and immediately before the E ghost exchange, which is
+``distributed_nu``'s stage 8 at the #1041 ordering.  Declared SHEETS and
+sub-cell WIRES own no cell, this lane has no other carrier for them, and
+they are refused rather than silently dropped.
+
 Known limitations (transparent single-device fallback):
 - TFSF plane-wave sources: require full-domain field injection, not
   compatible with slab decomposition.  Detected and warned at runtime.
@@ -20,6 +27,7 @@ Known limitations (transparent single-device fallback):
   cross-section on one device.  Detected and warned at runtime.
 - Non-divisible nx: automatically padded to nearest multiple of n_devices
   with PEC-filled cells, then trimmed after gathering.
+- Declared PEC sheets and sub-cell wires: refused (see above).
 
 The public entry point ``run_distributed`` has an identical signature to the
 pmap version in ``distributed.py`` so callers need no changes.

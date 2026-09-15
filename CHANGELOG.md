@@ -34,6 +34,42 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   `rfx.runners._distributed_common` (which only `distributed.py` imported
   eagerly). Both still import on demand by full path.
 
+### Added — `sim.run(devices=...)` realizes declared PEC volumes (#1053)
+
+- The `shard_map` distributed lane (`rfx.runners.distributed_v2`) now realizes a
+  declared PEC **volume**. `pec_mask` is sharded alongside the material arrays
+  and applied in both step bodies through the shared
+  `_distributed_common.apply_pec_mask_shmap`, after source injection and the
+  domain faces and immediately **before** the E ghost exchange — the same stage
+  and the same position `distributed_nu` uses, at the #1041 ordering.
+- Before this, the lane assembled `pec_mask` and dropped it: its step bodies
+  applied the domain-face PEC alone. Rather than solve a board without its
+  metal it refused every kind of declared PEC, so a PEC `Box` could not run on
+  `devices=` at all.
+- Gate, `tests/unit/runners/test_distributed_v2_pec_body_seam.py`: three bodies
+  on a 31×15×15-cell domain at dx = 1 mm split across 2 ranks, each compared to
+  the same model on one device, `max|multi − single| / peak(|single|)`. Seam-face
+  body (metal face on rank 1's first real cell) **3.074e-05**, straddling body
+  **3.483e-05**, interior control **4.148e-05** with `boundary="pec"`; 1.954e-05
+  / 1.385e-05 / 3.826e-05 with CPML. The gate is **1e-3**, eleven times the
+  8.889e-05 no-body lane floor. With the stage removed the same three read
+  1.375e+00 / 1.435e+00 / 1.062e+00 (pec), and with it moved one step later, to
+  after the ghost exchange, the seam-face body reads 3.203e-01 — the placement
+  is load-bearing, and only a body whose face lands on rank 1's first real cell
+  witnesses it.
+- On the lane parity contract (`tests/contracts/test_pec_lane_parity_numeric.py`)
+  the distributed lane reads 5.48792118e-03 where the uniform lane reads
+  5.48786437e-03 for the same declared volume, 1.035e-05 relative over a
+  1.472e-06 empty-domain floor.
+- **Still refused on this lane**: declared PEC **sheets** and sub-cell **wires**.
+  Each owns no cell, the cell mask is the lane's only carrier, and nothing else
+  there realizes them. The refusal message now names those two kinds, says that
+  a volume does run, and warns that a volume is not the same conductor as a
+  sheet (it shorts the normal E edge between its two faces, #690). Use `sim.run()`
+  without `devices=`, which realizes all three.
+- The `jax.pmap` runner `rfx.runners.distributed` is unchanged: it still drops
+  the mask, so it still refuses all three kinds (#1055).
+
 ### BREAKING — `PreflightReport` refuses boolean evaluation (#980)
 
 - `bool(report)` now raises `TypeError`. `PreflightReport` is a `list` of
