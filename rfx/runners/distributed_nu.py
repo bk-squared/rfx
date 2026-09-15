@@ -60,6 +60,7 @@ from rfx.runners._distributed_common import (
     shard_stacked_poles,
     shard_stacked_psi,
     unstack_and_gather,
+    update_h_nu_shmap,
     zeros_psi_stacked,
 )
 
@@ -2113,35 +2114,15 @@ def run_nonuniform_distributed_pec(
     # Per-step shmap-wrapped helpers
     # ------------------------------------------------------------------
     def _update_h_shmap(st, mat):
-        @partial(
-            shard_map,
-            mesh=mesh,
-            in_specs=(
-                P("x"), P("x"), P("x"),  # ex, ey, ez
-                P("x"), P("x"), P("x"),  # hx, hy, hz
-                P(),                     # step
-                P("x"), P("x"), P("x"),  # eps_r, sigma, mu_r
-                P("x"), P(None), P(None),  # inv_dx, inv_dy, inv_dz
-                P("x"), P(None), P(None),  # inv_dx_h, inv_dy_h, inv_dz_h
-            ),
-            out_specs=(P("x"), P("x"), P("x"), P()),
-            check_rep=False,
-        )
-        def _h(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r,
-               invdx, invdy, invdz, invdxh, invdyh, invdzh):
-            _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
-            _mat = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
-            new_st = _update_h_local_nu(
-                _st, _mat, dt, invdx, invdy, invdz, invdxh, invdyh, invdzh)
-            return new_st.hx, new_st.hy, new_st.hz, new_st.step
-
-        hx, hy, hz, step = _h(
-            st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
-            mat.eps_r, mat.sigma, mat.mu_r,
+        # #1038 leg 4: body moved VERBATIM to
+        # _distributed_common.update_h_nu_shmap, which distributed_v2.py's
+        # `if is_nu:` branch also calls now. The eight locals this closure read
+        # are passed explicitly; the call sites below did not move.
+        return update_h_nu_shmap(
+            st, mat, mesh, dt,
             inv_dx_sharded, inv_dy_rep, inv_dz_rep,
             inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep,
         )
-        return st._replace(hx=hx, hy=hy, hz=hz, step=step)
 
     def _update_e_shmap(st, mat):
         @partial(

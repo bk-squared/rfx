@@ -886,6 +886,16 @@ _SHARED_HELPER_BINDINGS = (
      "_update_h_local_nu"),
     ("_update_e_local_nu", "rfx.runners.distributed_nu",
      "_update_e_local_nu"),
+    # #1038 leg 4 -- the NU H shard wrapper (inventory §2.4). v2 carried a
+    # renamed copy (`_h_nu`) of the NU runner's own `_h` inside its `if is_nu:`
+    # branch; both were nested closures, so the eight locals they read (mesh,
+    # dt and the six inv-spacing arrays) became explicit parameters and each
+    # site keeps a same-named `_update_h_shmap` forwarder. TRACED: this one
+    # runs inside the jitted step body, so the jaxpr's shape changed with it --
+    # fixture 9 (distributed_v2_nu_branch) and fixtures 11-12 are what say the
+    # arrays did not move with it.
+    ("update_h_nu_shmap", "rfx.runners.distributed_nu", "update_h_nu_shmap"),
+    ("update_h_nu_shmap", "rfx.runners.distributed_v2", "update_h_nu_shmap"),
 )
 
 
