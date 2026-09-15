@@ -46,6 +46,12 @@ Save: validation/crossval/01_waveguide_bend.png
 
 Re-judge a retained record without solving anything:
   python 01_waveguide_bend.py --replay <record.json> --out-dir <dir>
+
+Re-run the rfx legs and BORROW the Meep leg from a record that already carries
+one, instead of re-running Meep (issue #813). The record's Meep inputs are
+asserted against this run's before a single number is taken, and --out-dir is
+required so the borrowed-from record can never be overwritten:
+  python 01_waveguide_bend.py --meep-from-record <record.json> --out-dir <dir>
 """
 
 import os
@@ -158,6 +164,46 @@ if "--replay" in sys.argv[1:]:
     # this file still takes _rc (the shape the #946 contract tests read).
     _rc = _replay(sys.argv[1:])
     sys.exit(_rc)
+
+
+# ---------------------------------------------------------------------------
+# Borrowing the Meep leg from a record that already carries one (issue #813).
+#
+# The two legs answer to different code. Nothing on the rfx side can move a
+# number Meep produced, so when the rfx legs are re-measured on a changed
+# solver, re-running Meep is not what makes the comparison valid -- the Meep
+# arrays a record already holds are, PROVIDED the inputs that produced them are
+# the inputs this run would hand Meep. That proviso is a check, not a promise:
+# `_borrow_meep_leg` below refuses the record unless its Meep rig block equals
+# the one this run builds, unless the rfx-side quantities the Meep geometry is
+# derived from still hold, unless the record's own frequency axis reproduces
+# this run's eval mask, and unless its headline band mean recomputes from its
+# own per-bin array.
+#
+# `--out-dir` is REQUIRED with it and refused inside the committed evidence
+# tree, so a borrowed-leg run always writes a NEW record and can never
+# overwrite the one it borrowed from -- the same guard --replay carries
+# (#967 / PR #977).
+# ---------------------------------------------------------------------------
+MEEP_FROM_RECORD_FLAG = "--meep-from-record"
+
+
+def _parse_borrow_args(argv):
+    """``(record path, out dir)`` for a borrowed-leg run, else ``(None, None)``."""
+    if MEEP_FROM_RECORD_FLAG not in argv:
+        return None, None
+    import argparse
+    parser = argparse.ArgumentParser(
+        prog="01_waveguide_bend.py " + MEEP_FROM_RECORD_FLAG)
+    parser.add_argument(MEEP_FROM_RECORD_FLAG, required=True, metavar="RECORD",
+                        dest="record")
+    parser.add_argument("--out-dir", required=True)
+    parsed = parser.parse_args(argv)
+    return (os.path.abspath(parsed.record),
+            _exit_evidence.refuse_evidence_tree(parsed.out_dir, "--out-dir"))
+
+
+_MEEP_RECORD, _OUT_DIR_OVERRIDE = _parse_borrow_args(sys.argv[1:])
 
 # Everything below here is the live run. The imports sit AFTER the --replay
 # dispatch on purpose: a replay re-judges a record and must not need jax, a
@@ -443,47 +489,177 @@ print(f"Bend T (normalized):    {mean_T:.4f}  "
 # =============================================================================
 # Meep reference (single-run method)
 # =============================================================================
-meep_mean = None
-try:
-    import meep as mp
-    print("\nRunning Meep reference (single-run)...", flush=True)
-    cell = mp.Vector3(sx / a + 2, sy / a + 2)
-    pml_m = [mp.PML(1.0)]
-    geo_m = [
-        mp.Block(size=mp.Vector3(sx / (2 * a) + 0.5, 1),
-                 center=mp.Vector3(-sx / (4 * a) + 0.25, 0),
-                 material=mp.Medium(epsilon=12)),
-        mp.Block(size=mp.Vector3(1, sy / (2 * a) + 0.5),
-                 center=mp.Vector3(0, sy / (4 * a) - 0.25),
-                 material=mp.Medium(epsilon=12)),
-    ]
-    src_m = [mp.Source(mp.GaussianSource(0.15, fwidth=0.1), component=mp.Ez,
-                       center=mp.Vector3(-sx / (2 * a) + 0.1, 0),
-                       size=mp.Vector3(0, 1))]
-    sim_m = mp.Simulation(cell_size=cell, boundary_layers=pml_m,
-                          geometry=geo_m, sources=src_m, resolution=10)
-    fi_m = sim_m.add_flux(0.15, 0.1, 200,
-                          mp.FluxRegion(center=mp.Vector3(-4, 0),
-                                        size=mp.Vector3(0, sy / a)))
-    fo_m = sim_m.add_flux(0.15, 0.1, 200,
-                          mp.FluxRegion(center=mp.Vector3(0, sy / (2 * a) - 1.5),
-                                        size=mp.Vector3(sx / a, 0)))
-    sim_m.run(until_after_sources=mp.stop_when_fields_decayed(
-        50, mp.Ez, mp.Vector3(0, sy / (2 * a) - 1.5), 1e-3))
-    T_meep = np.array(mp.get_fluxes(fo_m)) / np.maximum(
-        np.abs(np.array(mp.get_fluxes(fi_m))), 1e-30)
-    f_ref = np.array(mp.get_flux_freqs(fi_m))
+def _meep_leg_rig():
+    """The Meep leg's rig block -- spelled ONCE, read by two.
+
+    The retained record writes it, and a borrowed-leg run compares a donor
+    record's copy against it field by field. Two literal copies of the same
+    seven numbers is how a donor stops being checked against what this script
+    would actually run.
+    """
+    return {
+        "resolution": 10,
+        "pml_over_a": 1.0,
+        "cell_over_a": [float(sx / a + 2), float(sy / a + 2)],
+        "fcen_c_over_a": 0.15, "df_c_over_a": 0.1, "n_freqs": 200,
+        "stop_when_fields_decayed": [50, 1e-3],
+    }
+
+
+def _borrow_meep_leg(path):
+    """Take a record's Meep leg, or refuse it for not being THIS run's leg.
+
+    Returns ``(f_ref, T_meep, above_r, meep_mean, meep_version, source)``.
+
+    What is checked, and why each one is here:
+
+    * the schema, so a file of some other shape cannot be read key by key;
+    * ``measured.meep.present``, so an exit-2 record cannot donate a leg it
+      never had;
+    * the rfx-side rig fields the Meep geometry is DERIVED from -- eps, guide
+      width, resolution and both domain extents. The Meep block builds its
+      cell, its blocks and its flux regions out of ``sx``, ``sy``, ``a`` and
+      hard-coded 12/1, so a donor written at other values describes another
+      structure even though its own ``meep_leg`` block would still match;
+    * ``rig.meep_leg`` itself, field by field, against ``_meep_leg_rig()``;
+    * the eval mask, RECOMPUTED from the donor's own frequency axis with this
+      run's ``f_cutoff`` -- a band change shows up here and nowhere else;
+    * the headline band mean, RECOMPUTED from the donor's own per-bin array
+      through this script's own smoothing. A record whose scalar does not
+      follow from its own array is refused rather than quoted.
+
+    What is deliberately NOT checked: the donor's ``rig.boundary`` and
+    ``rig.boundary_layers``. Those are rfx-side only and never reach Meep, so
+    the ``RFX_BOUNDARY=cpml`` variant borrowing the UPML record's leg is
+    correct, not a mismatch.
+    """
+    import hashlib
+    import json as _j
+    raw = open(path, "rb").read()
+    doc = _j.loads(raw.decode("utf-8"))
+
+    def refuse(what):
+        raise SystemExit(
+            f"{MEEP_FROM_RECORD_FLAG} refuses {path}: {what}. The Meep leg is "
+            "reusable only while the inputs that produced it are the inputs "
+            "this run would hand Meep; nothing was taken from this file.")
+
+    if doc.get("schema") != "cv01-waveguide-bend/v1":
+        refuse(f"schema is {doc.get('schema')!r}, not 'cv01-waveguide-bend/v1'")
+    leg = (doc.get("measured") or {}).get("meep")
+    if not (leg or {}).get("present"):
+        refuse("its measured.meep block is absent or not present=true")
+
+    rig = doc.get("rig") or {}
+    derived_from = {
+        "eps_wg": float(eps_wg),
+        "w_wg_over_a": float(w_wg / a),
+        "resolution_cells_per_a": int(round(a / dx)),
+        "domain_over_a": [float(sx / a), float(sy / a)],
+    }
+    rig_mismatch = {k: (rig.get(k), v) for k, v in derived_from.items()
+                    if rig.get(k) != v}
+    if rig_mismatch:
+        refuse("the rfx-side rig the Meep geometry is derived from differs "
+               f"(recorded, this run): {rig_mismatch}")
+    expected_leg = _meep_leg_rig()
+    leg_mismatch = {k: (rig.get("meep_leg", {}).get(k), v)
+                    for k, v in expected_leg.items()
+                    if rig.get("meep_leg", {}).get(k) != v}
+    if leg_mismatch:
+        refuse(f"rig.meep_leg differs (recorded, this run): {leg_mismatch}")
+
+    f_ref = np.array(leg["freqs_c_over_a"], dtype=float)
+    T_meep = np.array(leg["T"], dtype=float)
+    if f_ref.shape != T_meep.shape or f_ref.size != expected_leg["n_freqs"]:
+        refuse(f"its Meep axis is {f_ref.size} long and its T is "
+               f"{T_meep.size} long; both must be {expected_leg['n_freqs']}")
     above_r = (f_ref > f_cutoff + 0.005) & (f_ref < 0.20)
-    meep_mean = float(np.mean(uniform_filter1d(T_meep, size=20)[above_r]))
-    print(f"  Meep T = {meep_mean:.4f}")
-except Exception as _e:
-    # Catch ImportError AND any exception raised while importing/running Meep
-    # (e.g. a Meep wheel compiled against NumPy 1.x crashing under NumPy 2.x
-    # raises ImportError "numpy.core.multiarray failed to import"). The rfx
-    # self-checks above have already run; this only disables the reference.
-    print(f"\n[SKIP] external reference unavailable (Meep: {type(_e).__name__}: "
-          f"{_e}) — exit 2")
-    print("       rfx self-checks still run; this is NOT a crossval PASS.")
+    if [bool(v) for v in above_r] != [bool(v) for v in leg["eval_mask"]]:
+        refuse("the eval mask recomputed from its own frequency axis with "
+               f"this run's f_cutoff={f_cutoff:.6f} is not the mask it stored")
+    recomputed = float(np.mean(uniform_filter1d(T_meep, size=20)[above_r]))
+    stored = float(leg["mean_T_smoothed_over_band"])
+    if abs(recomputed - stored) > 1e-12 * max(1.0, abs(stored)):
+        refuse(f"its stored band mean {stored!r} does not recompute from its "
+               f"own per-bin T through this script's smoothing ({recomputed!r})")
+
+    source = {
+        "path": os.path.relpath(
+            path, os.path.dirname(os.path.dirname(SCRIPT_DIR))),
+        "abspath": path,
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "donor_commit": doc.get("commit"),
+        "donor_date_utc": doc.get("date_utc"),
+        "donor_meep_version": (doc.get("provenance") or {}).get("meep_version"),
+        "donor_rfx_boundary": (doc.get("provenance") or {}).get("rfx_boundary"),
+        "meep_was_re_run": False,
+        "checked": {
+            "schema": True, "meep_present": True,
+            "rfx_rig_the_meep_geometry_is_derived_from": derived_from,
+            "meep_leg": expected_leg,
+            "eval_mask_recomputed_from_donor_axis": True,
+            "band_mean_recomputed_from_donor_per_bin": recomputed,
+        },
+        "note": ("the rfx legs above were solved by THIS run; the Meep arrays "
+                 "come from the donor record named here and Meep did not run. "
+                 "Nothing rfx changes can move a Meep number, so the leg is "
+                 "reusable once its inputs are proven to be this run's -- "
+                 "which is what `checked` records (issue #813)."),
+    }
+    return (f_ref, T_meep, above_r, stored,
+            source["donor_meep_version"], source)
+
+
+meep_mean = None
+_meep_version = None
+_meep_leg_source = None
+if _MEEP_RECORD is not None:
+    (f_ref, T_meep, above_r, meep_mean, _meep_version,
+     _meep_leg_source) = _borrow_meep_leg(_MEEP_RECORD)
+    print(f"\nMeep leg BORROWED from {_MEEP_RECORD} (Meep did not run)")
+    print(f"  Meep T = {meep_mean:.4f}  (recorded by Meep {_meep_version})")
+else:
+    try:
+        import meep as mp
+        print("\nRunning Meep reference (single-run)...", flush=True)
+        cell = mp.Vector3(sx / a + 2, sy / a + 2)
+        pml_m = [mp.PML(1.0)]
+        geo_m = [
+            mp.Block(size=mp.Vector3(sx / (2 * a) + 0.5, 1),
+                     center=mp.Vector3(-sx / (4 * a) + 0.25, 0),
+                     material=mp.Medium(epsilon=12)),
+            mp.Block(size=mp.Vector3(1, sy / (2 * a) + 0.5),
+                     center=mp.Vector3(0, sy / (4 * a) - 0.25),
+                     material=mp.Medium(epsilon=12)),
+        ]
+        src_m = [mp.Source(mp.GaussianSource(0.15, fwidth=0.1), component=mp.Ez,
+                           center=mp.Vector3(-sx / (2 * a) + 0.1, 0),
+                           size=mp.Vector3(0, 1))]
+        sim_m = mp.Simulation(cell_size=cell, boundary_layers=pml_m,
+                              geometry=geo_m, sources=src_m, resolution=10)
+        fi_m = sim_m.add_flux(0.15, 0.1, 200,
+                              mp.FluxRegion(center=mp.Vector3(-4, 0),
+                                            size=mp.Vector3(0, sy / a)))
+        fo_m = sim_m.add_flux(0.15, 0.1, 200,
+                              mp.FluxRegion(center=mp.Vector3(0, sy / (2 * a) - 1.5),
+                                            size=mp.Vector3(sx / a, 0)))
+        sim_m.run(until_after_sources=mp.stop_when_fields_decayed(
+            50, mp.Ez, mp.Vector3(0, sy / (2 * a) - 1.5), 1e-3))
+        T_meep = np.array(mp.get_fluxes(fo_m)) / np.maximum(
+            np.abs(np.array(mp.get_fluxes(fi_m))), 1e-30)
+        f_ref = np.array(mp.get_flux_freqs(fi_m))
+        above_r = (f_ref > f_cutoff + 0.005) & (f_ref < 0.20)
+        meep_mean = float(np.mean(uniform_filter1d(T_meep, size=20)[above_r]))
+        print(f"  Meep T = {meep_mean:.4f}")
+    except Exception as _e:
+        # Catch ImportError AND any exception raised while importing/running Meep
+        # (e.g. a Meep wheel compiled against NumPy 1.x crashing under NumPy 2.x
+        # raises ImportError "numpy.core.multiarray failed to import"). The rfx
+        # self-checks above have already run; this only disables the reference.
+        print(f"\n[SKIP] external reference unavailable (Meep: {type(_e).__name__}: "
+              f"{_e}) — exit 2")
+        print("       rfx self-checks still run; this is NOT a crossval PASS.")
 
 # =============================================================================
 # Validation
@@ -547,7 +723,8 @@ try:
     _rfx_version = getattr(_rfx_pkg, "__version__", None)
 except Exception:
     _rfx_version = None
-_meep_version = getattr(mp, "__version__", None) if meep_mean is not None else None
+if meep_mean is not None and _meep_leg_source is None:
+    _meep_version = getattr(mp, "__version__", None)
 
 _doc = {
     "schema": "cv01-waveguide-bend/v1",
@@ -592,13 +769,7 @@ _doc = {
         "eval_band": "f_cutoff + 0.005 < f (c/a) < 0.20",
         "smoothing_window_bins": 20,
         "method": "single-run input/output flux normalization; T = (out/in)_bend / (out/in)_straight",
-        "meep_leg": {
-            "resolution": 10,
-            "pml_over_a": 1.0,
-            "cell_over_a": [float(sx / a + 2), float(sy / a + 2)],
-            "fcen_c_over_a": 0.15, "df_c_over_a": 0.1, "n_freqs": 200,
-            "stop_when_fields_decayed": [50, 1e-3],
-        } if meep_mean is not None else None,
+        "meep_leg": _meep_leg_rig() if meep_mean is not None else None,
     },
     "measured": {
         "freqs_c_over_a": [float(v) for v in f_meep],
@@ -661,7 +832,12 @@ _doc = {
         "all_gates_ok": bool(PASS),
     },
 }
-_out_dir = os.path.join(SCRIPT_DIR, "_01_waveguide_bend_results")
+if _meep_leg_source is not None:
+    # Only on the borrowed-leg path, so a default run's record keeps exactly
+    # the key set the committed one has and stays comparable to it key for key.
+    _doc["meep_leg_source"] = _meep_leg_source
+_out_dir = (os.path.join(SCRIPT_DIR, "_01_waveguide_bend_results")
+            if _OUT_DIR_OVERRIDE is None else _OUT_DIR_OVERRIDE)
 _artifact = os.path.join(_out_dir, "crossval.json")
 # write_record puts exit_code and summary INTO the verdict block and arms the
 # finalizer that amends them if this process ends with a different status
