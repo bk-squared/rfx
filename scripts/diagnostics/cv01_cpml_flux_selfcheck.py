@@ -224,7 +224,16 @@ RIG_LINES = (
     "res_s = sim_s.run(n_steps=n_steps, subpixel_smoothing=True)",
     "T_self_smooth = uniform_filter1d(T_self, size=20)",
     "mean_self = float(np.mean(T_self_smooth[above]))",
-    "if 0.95 <= mean_self <= 1.05:",
+    # G2's band and the comparison that applies it. Until 2026-09-15 this was
+    # the single literal ``if 0.95 <= mean_self <= 1.05:``; PR #1040 (main
+    # 9866bafd) lifted cv01's three gates into a ``_gates()`` helper so a
+    # record's exit code could be the process's own, and that line no longer
+    # exists. The band and the quantity are unchanged -- the two lines below
+    # pin BOTH halves (the numbers, and that ``mean_self`` is what they are
+    # applied to), where the old single line pinned them together. Anyone
+    # re-splitting the helper has to keep both.
+    "G2_SELF_T_BAND = (0.95, 1.05)",
+    "G2_SELF_T_BAND[0] <= mean_self <= G2_SELF_T_BAND[1]",
 )
 
 
@@ -406,8 +415,18 @@ ARMS = (
 
 ARMS_ADDED_POST_HOC = ("upml_aperture",)
 
-# The committed UPML run this driver's control must reproduce.
+# The committed UPML run this driver's control must reproduce. This one is NOT
+# re-pointed: it names cv01's committed crossval record
+# (validation/crossval/_01_waveguide_bend_results/crossval.json), which this
+# change does not re-run and does not touch. #1043 stage B moves what the
+# driver MEASURES for that arm -- 0.9891610388008335 -> 0.9910752993577158,
+# +0.194 % -- so the reproduce check now records a difference instead of a
+# match, and the difference is the point rather than a failure. Adopting the
+# new value here would be re-pointing a record this change never re-ran.
 COMMITTED_UPML_MEAN_SELF = 0.9891610388008335
+#: What this driver measures for that arm after the pad continuation. Reported
+#: beside the committed value, never substituted for it.
+MEASURED_UPML_MEAN_SELF_AFTER_PAD_CONTINUATION = 0.9910752993577158
 
 # --- layer sweep (pre-declaration addendum, Arm 1) ---------------------------
 LAYER_SWEEP = (10, 16, 20, 40)
@@ -418,11 +437,40 @@ LAYER_SWEEP = (10, 16, 20, 40)
 SWEEP_GATE_MEAN_SELF_AT_40 = 0.90906
 
 # The 10-layer arm of the sweep is cv01's own rig, so it doubles as the sweep's
-# control: it must reproduce both of these from the committed six-arm artifact
-# (scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck.json), or no other
-# layer count is readable.
-SWEEP_BASELINE_CPML_FULL_MEAN_SELF = 0.7488520140093946
-SWEEP_BASELINE_OUTSIDE_FRACTION_PCT = -26.041819705557895
+# control: it must reproduce both of these from the committed six-arm artifact,
+# or no other layer count is readable.
+#
+# RE-POINTED 2026-09-15 (#1043 stage B), explicitly and not by editing a value
+# in place. The two constants below describe the PRE-#1043 solver, which solved
+# this guide with vacuum in its own absorber pad; they still describe
+# selfcheck.json exactly, and that file is unchanged. What they no longer
+# describe is what this driver measures, so the control was re-pointed at the
+# post-continuation revision rather than left silently failing or silently
+# re-keyed. Both revisions are recorded in every artifact this driver writes,
+# so a reader can see which one a run reproduces.
+SWEEP_BASELINE_REVISION = "r2"
+SWEEP_BASELINE_ARTIFACT = {
+    "r1": "scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck.json",
+    "r2": "scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck_r2.json",
+}
+# r1 -- pre-#1043, kept as named history, never as the live control again.
+SWEEP_BASELINE_CPML_FULL_MEAN_SELF_R1 = 0.7488520140093946
+SWEEP_BASELINE_OUTSIDE_FRACTION_PCT_R1 = -26.041819705557895
+# r2 -- measured on the tree that continues a boundary-touching dielectric
+# through its pad (PR for #1043 stage B), same rig, same 25000 steps.
+SWEEP_BASELINE_CPML_FULL_MEAN_SELF_R2 = 0.9876177418925891
+SWEEP_BASELINE_OUTSIDE_FRACTION_PCT_R2 = 0.9442985029538306
+
+SWEEP_BASELINE_CPML_FULL_MEAN_SELF = SWEEP_BASELINE_CPML_FULL_MEAN_SELF_R2
+SWEEP_BASELINE_OUTSIDE_FRACTION_PCT = SWEEP_BASELINE_OUTSIDE_FRACTION_PCT_R2
+
+#: Below this spread across the four layer counts the ladder carries no
+#: depth dependence a verdict could turn on, so the sweep must NOT attribute a
+#: deficit to absorber depth. 0.05 is G2's own half-width (the gate is
+#: 0.95-1.05): a ladder whose entire spread is smaller than that cannot move an
+#: arm across the band it is judged by. Measured: the pre-#1043 ladder spread
+#: 0.198 (0.748852 to 0.947345), the post-continuation ladder 0.0018.
+LADDER_SPREAD_FOR_DEPTH_ATTRIBUTION = 0.05
 
 # rfx pads the grid OUTSIDE the declared 16 um x 16 um domain, so the interior
 # must not move as cpml_layers does. 16 um / (a/10) + 1 = 161 -- the `+ 1` is
@@ -756,13 +804,45 @@ def run_layer_sweep(args, rig: dict, provenance_check: dict,
         "rfx_provenance_check": provenance_check,
         "held_fixed_m": HELD_PLANES_M,
         "control": {
-            "source": "scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck.json",
+            "revision": SWEEP_BASELINE_REVISION,
+            "source": SWEEP_BASELINE_ARTIFACT[SWEEP_BASELINE_REVISION],
             "cpml_full_mean_self": SWEEP_BASELINE_CPML_FULL_MEAN_SELF,
             "outside_aperture_fraction_percent": SWEEP_BASELINE_OUTSIDE_FRACTION_PCT,
             "upml_full_mean_self": COMMITTED_UPML_MEAN_SELF,
             "note": ("the 10-layer arm below IS cv01's rig, so it must "
                      "reproduce the two cpml numbers or nothing else here is "
                      "readable"),
+            # Both revisions ride in every artifact, so which one a run
+            # reproduces is readable from the record rather than inferred from
+            # the driver's source at that commit (#1043 stage B).
+            "revisions": {
+                "r1": {
+                    "source": SWEEP_BASELINE_ARTIFACT["r1"],
+                    "cpml_full_mean_self": SWEEP_BASELINE_CPML_FULL_MEAN_SELF_R1,
+                    "outside_aperture_fraction_percent":
+                        SWEEP_BASELINE_OUTSIDE_FRACTION_PCT_R1,
+                    "describes": ("the pre-#1043 solver: this guide touches "
+                                  "both x faces and was solved with vacuum in "
+                                  "its own absorber pad"),
+                },
+                "r2": {
+                    "source": SWEEP_BASELINE_ARTIFACT["r2"],
+                    "cpml_full_mean_self": SWEEP_BASELINE_CPML_FULL_MEAN_SELF_R2,
+                    "outside_aperture_fraction_percent":
+                        SWEEP_BASELINE_OUTSIDE_FRACTION_PCT_R2,
+                    "describes": ("#1043 stage B: the guide is continued "
+                                  "through its pad, so the seam facet is gone"),
+                },
+            },
+            "committed_upml_record": {
+                "path": "validation/crossval/_01_waveguide_bend_results/crossval.json",
+                "mean_self_smoothed_over_band": COMMITTED_UPML_MEAN_SELF,
+                "measured_after_pad_continuation":
+                    MEASURED_UPML_MEAN_SELF_AFTER_PAD_CONTINUATION,
+                "note": ("the record is NOT re-pointed -- this change does not "
+                         "re-run cv01's crossval case. The measured value is "
+                         "reported beside it, never substituted for it."),
+            },
         },
         "provenance": provenance,
         "layers": {},
@@ -825,13 +905,39 @@ def run_layer_sweep(args, rig: dict, provenance_check: dict,
         monotone = bool(all(mags[i + 1] <= mags[i] + 1e-12
                             for i in range(len(mags) - 1)))
         flat_3_points = bool((max(fracs) - min(fracs)) <= 3.0)
+        # NOT re-pointed with the control above, deliberately. This is the
+        # PRE-DECLARED falsifier -- "mean_self stays within 0.03 of 0.748852"
+        # -- and 0.748852 is the number the pre-declaration froze, not "the
+        # current baseline". Letting it follow the re-pointed constant would
+        # have silently redefined a frozen falsifier into "within 0.03 of
+        # whatever we just measured", which always holds and never fires.
         near_baseline = bool(
-            abs(m40 - SWEEP_BASELINE_CPML_FULL_MEAN_SELF) <= 0.03)
+            abs(m40 - SWEEP_BASELINE_CPML_FULL_MEAN_SELF_R1) <= 0.03)
         falsified = bool(near_baseline and flat_3_points)
-        if gate_pass:
+        # 2026-09-15 (#1043 stage B): the pass sentence used to end "the
+        # absorber's own reflection is the source of the deficit"
+        # UNCONDITIONALLY. That attribution was read off a ladder measured on
+        # the pre-#1043 solver, where the 10-layer arm sat at 0.748852 and the
+        # gap closed with depth. With the pad continuation in place the ladder
+        # is flat (0.9876 / 0.9890 / 0.9894 / 0.9889, spread 0.0018) and there
+        # is no depth-dependent deficit left to attribute to anything -- the
+        # depth dependence was the seam facet. A canned mechanism sentence
+        # printed on a gate pass is the surface-metric verdict R5 forbids, so
+        # the attribution is now conditional on a spread the run measures.
+        # This narrows what the driver CLAIMS; it does not move the gate.
+        ladder_spread = max(means) - min(means)
+        if gate_pass and ladder_spread >= LADDER_SPREAD_FOR_DEPTH_ATTRIBUTION:
             verdict = ("GATE PASS -- mean_self at 40 layers >= "
                        f"{SWEEP_GATE_MEAN_SELF_AT_40}; the absorber's own "
-                       "reflection is the source of the deficit")
+                       "reflection is the source of the deficit "
+                       f"(ladder spread {ladder_spread:.4f})")
+        elif gate_pass:
+            verdict = ("GATE PASS -- mean_self at 40 layers >= "
+                       f"{SWEEP_GATE_MEAN_SELF_AT_40}, and the ladder is FLAT "
+                       f"(spread {ladder_spread:.4f} over "
+                       f"{LAYER_SWEEP[0]}..{LAYER_SWEEP[-1]} layers, below "
+                       f"{LADDER_SPREAD_FOR_DEPTH_ATTRIBUTION}): there is NO "
+                       "depth-dependent deficit to attribute to the absorber")
         elif falsified:
             verdict = ("FALSIFIED -- mean_self within 0.03 of 0.748852 AND the "
                        "fraction flat within 3 points; candidate (a), a far-x "

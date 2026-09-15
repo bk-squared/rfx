@@ -664,3 +664,121 @@ a new pre-declaration naming its own mechanism.
 
 The `upml_aperture` control quoted above is
 `scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck.json::arms.upml_aperture.mean_self = 0.992737`.
+
+---
+
+## Result after #1043 — the deficit this note was built to explain was a vacuum facet
+
+Appended 2026-09-15 (KST), after #1043 stage B. Everything above stays as it was
+written; this section does not edit a number, a gate or a verdict in it. The
+artifacts it cites are new files, and `layer_sweep.json`, `selfcheck.json` and
+`residual_split.json` are untouched, so every citation above still resolves
+against the run that produced it.
+
+### What changed in the tree
+
+`run(subpixel_smoothing=True)` rebuilt the update permittivity from the declared
+geometry and applied no CPML pad extension to the rebuilt array. cv01's guide
+spans the full x extent, so it touched both x faces and was solved with
+`eps_r = 1` in its own absorber — an end facet at the interior/pad seam. Stage B
+continues the geometry through the pad, so the array the E update reads carries
+the guide's permittivity there. Nothing about cv01's rig, recipe, planes or
+step count moved.
+
+### The table, before and after
+
+| `cpml_layers` | `mean_self` before | after | G2 (0.95–1.05) before | after |
+|---:|---:|---:|---|---|
+| 10 — cv01 today | 0.748852 | 0.987618 | FAIL | PASS |
+| 16 — rfx default | 0.884100 | 0.989020 | FAIL | PASS |
+| 20 | 0.919530 | 0.989431 | FAIL | PASS |
+| 40 | 0.947345 | 0.988931 | FAIL | PASS |
+
+Outside-aperture fraction, the reported non-gating observable, over the same
+four: −26.04182 / −8.56374 / −4.90301 / −1.93523 % before, +0.94430 / +0.92090 /
++0.92229 / +0.98043 % after.
+
+### What this does to the reading above, stated plainly
+
+The "Result 2026-09-14" section reads a ladder that climbs with absorber depth
+and attributes the deficit to the absorber's own reflection. **That ladder no
+longer exists.** After the pad continuation `mean_self` is flat across
+10 → 40 layers — spread 0.001813, against G2's own half-width of 0.05 — and the
+outside-aperture fraction is flat and no longer negative. The depth dependence
+the section measured was the seam facet: a deeper pad has a smaller first-cell
+conductivity (σ falls as N⁻³), so it loaded the facet less and the facet
+reflected closer to its unloaded value, which reads on this observable as the
+absorber "improving" with depth.
+
+The pre-declared gate still passes — `mean_self` at 40 layers is 0.988931
+against 0.90906 — but it now passes for a different reason than the section
+argues, and saying so is the point of this append. The pre-declared falsifier
+still does not fire, and it is the same falsifier: `mean_self` within 0.03 of
+0.748852, which 0.988931 is not.
+
+#1027's monotone trend was flagged in #1043's body as *not* explained by this
+lane, on the ground that a flux ratio is blind to a standing wave by
+construction. It was re-measured rather than reasoned about, as that body asked,
+and the trend is gone — so the facet did explain it.
+
+### Six arms, same rig, 10 layers
+
+| arm | before | after | G2 before | after |
+|---|---:|---:|---|---|
+| `upml_full` | 0.989162 | 0.991075 | PASS | PASS |
+| `cpml_full` | 0.748852 | 0.987618 | FAIL | PASS |
+| `upml_interior` | 0.989174 | 0.991270 | PASS | PASS |
+| `cpml_interior` | 0.759391 | 0.987925 | FAIL | PASS |
+| `cpml_aperture` | 0.991232 | 1.001047 | PASS | PASS |
+| `upml_aperture` | 0.992737 | 1.000007 | PASS | PASS |
+
+**#813's headline number passes G2.** The UPML control moves too — cv01's guide
+touches both x faces under UPML as well, so UPML carried a facet, a smaller one.
+cv01's committed crossval record is the UPML run and is **not** re-run or
+re-pointed by this change: the driver constant naming it keeps
+0.9891610388008335, and the measured 0.9910752993577158 (+0.194 %) rides beside
+it rather than replacing it.
+
+### Control, re-pointed explicitly
+
+The sweep's control constants described the pre-#1043 solver. They are
+re-pointed as a named revision, not edited in place:
+`SWEEP_BASELINE_REVISION = "r2"`, with `..._R1` and `..._R2` both kept in the
+driver and both written into every artifact it produces. The pre-declared
+falsifier's reference value stays at r1's 0.748852 — a frozen falsifier that
+follows the current baseline is one that never fires.
+
+### R2
+
+One attempt, and it is not a further attempt on this note's own hypothesis
+chain: the mechanism, the intervention family and the observable all changed —
+the array the solver receives, not the absorber that acts on it. Full write-up:
+`issue1043_pad_continuation_results.md`.
+
+### Numeric provenance, after #1043
+
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep_r2.json::layers.10.mean_self_full = 0.987618`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep_r2.json::layers.16.mean_self_full = 0.989020`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep_r2.json::layers.20.mean_self_full = 0.989431`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep_r2.json::layers.40.mean_self_full = 0.988931`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep_r2.json::layers.10.outside_aperture.fraction_percent = 0.94430`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep_r2.json::layers.16.outside_aperture.fraction_percent = 0.92090`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep_r2.json::layers.20.outside_aperture.fraction_percent = 0.92229`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep_r2.json::layers.40.outside_aperture.fraction_percent = 0.98043`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep_r2.json::verdict.gate_pass`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep_r2.json::verdict.gate_threshold = 0.90906`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep_r2.json::verdict.mean_self_at_40 = 0.988931`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep_r2.json::n_steps = 25000`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck_r2.json::arms.upml_full.mean_self = 0.991075`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck_r2.json::arms.cpml_full.mean_self = 0.987618`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck_r2.json::arms.upml_interior.mean_self = 0.991270`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck_r2.json::arms.cpml_interior.mean_self = 0.987925`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck_r2.json::arms.cpml_aperture.mean_self = 1.001047`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck_r2.json::arms.upml_aperture.mean_self = 1.000007`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck_r2.json::committed_upml_reference.mean_self_smoothed_over_band = 0.9891610388008335`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck_r2.json::control_reproduces_committed_run.measured = 0.9910752993577158`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck_r2.json::control_reproduces_committed_run.rel_diff = 0.0019352`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep_r2.json::control.revision`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep_r2.json::control.revisions.r1.cpml_full_mean_self = 0.7488520140093946`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep_r2.json::control.revisions.r2.cpml_full_mean_self = 0.9876177418925891`,
+`scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck_r2.json::gate_verdict_cpml_full`.
