@@ -1,7 +1,7 @@
 import json
 import sys
 
-D = "scripts/diagnostics/_artifacts/cv03_far_end_return_831/"
+D = "scripts/diagnostics/_artifacts/cv03_seam_facet/"
 stage, key = sys.argv[1], sys.argv[2]
 v = json.load(open(D + f"{stage}.json"))["stages"][stage][key]
 print("=== preflight stdout ===")

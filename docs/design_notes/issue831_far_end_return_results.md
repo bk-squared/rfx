@@ -6,10 +6,10 @@ Measured 2026-09-15 (KST) on `diag/831-cv03-far-end-return`, forked from
 that it judges; section 7 of that note is the one append, and it was written
 before the arm it declares ran.
 
-Driver `scripts/diagnostics/cv03_far_end_return/far_end_return.py`, artifacts
-`scripts/diagnostics/_artifacts/cv03_far_end_return_831/{profile,tof,sweep,noext,bprime}.json`,
-figure `scripts/diagnostics/_artifacts/cv03_far_end_return_831/far_end_return.png`
-(rendered by `scripts/diagnostics/cv03_far_end_return/plot_far_end_return.py`). No file under
+Driver `scripts/diagnostics/cv03_seam_facet/seam_facet.py`, artifacts
+`scripts/diagnostics/_artifacts/cv03_seam_facet/{profile,tof,sweep,noext,bprime}.json`,
+figure `scripts/diagnostics/_artifacts/cv03_seam_facet/seam_facet.png`
+(rendered by `scripts/diagnostics/cv03_seam_facet/plot_seam_facet.py`). No file under
 `rfx/` or `validation/` is modified in this lane, and no cv03 gate, tolerance or
 record moves.
 
@@ -26,17 +26,55 @@ record moves.
 | H1 | guide-material continuation through the pad | void / replaced | see 3 | **CONFIRMED as the cause**, `r_B1 = 0`, `r_B1t = 0` |
 
 **Cause.** cv03's guide is terminated by a **vacuum end facet at the
-interior/pad seam**, not by the absorber. `run(subpixel_smoothing=True)`
-rebuilds the update's permittivity from `sim._geometry` with
-`background_eps = 1.0` (`rfx/runners/uniform.py:266-271`) and therefore
-discards the CPML pad material extension that `_assemble_materials` built. A
-`n_eff = 2.8389 -> 1` step reflects `|r| = 0.479` by the plane-wave Fresnel
-value; cv03 measures 0.524-0.531 at 20 layers.
+interior/pad seam**, not by the absorber. When `subpixel_smoothing` is truthy
+the update's permittivity is rebuilt from `sim._geometry`, and **no pad
+replication step is applied to that rebuilt array**, so the CPML pad material
+extension `_assemble_materials` built never reaches the solver. The defect is
+the MISSING replication, not the `background_eps = 1.0` argument: that argument
+is correct (it is the background OUTSIDE the declared geometry, and setting it
+to `eps_wg` would flood the whole vacuum cladding with `eps_r = 12`). Three
+sites share the gap — `rfx/runners/uniform.py:237-248` (the Stage-2
+`kottke_pec` tensor), `:266-273` (the Stage-1 smoothed array), and
+`rfx/runners/nonuniform.py:852-859` (the NU mirror).
+
+**Where the array is consumed matters, and for cv03 it is not the obvious
+place.** `update_e_aniso` (`rfx/simulation.py:419-422`) is reached only when
+`debye is None and lorentz is None`, and it is **dead on the UPML branch**
+altogether: on that branch the smoothed array reaches the solver through
+`init_upml(grid, materials, axes=..., aniso_eps=aniso_eps)`
+(`rfx/simulation.py:914-915`), which builds `eps_abs_ex/ey/ez` from it
+(`rfx/boundaries/upml.py:213-217`) and feeds `apply_upml_e`. cv03 runs UPML, so
+that is the route its number came through. Both consumption sites have to be
+named, or a fix aimed at one of them misses the other.
+
+**Order of magnitude, not agreement.** A `n_eff = 2.8389 -> 1` step gives
+`|r| = 0.479` by the plane-wave Fresnel value, against a measured 0.524-0.531
+at 20 layers. That is an ORDER CHECK and nothing more: a guided-mode facet is
+not a plane-wave interface, and this one is a two-step transition through a
+Kottke half-cell — the solved centre row reads `... 12, 12, 6.5, 1, 1 ...`
+across the seam — into a lossy pad. The arithmetic does not bound a second
+contributor and is not offered as if it did. **What bounds one is arm B1**:
+with the facet removed and nothing else changed, `|B/A|` is 0.0296, so at most
+that much of the 0.53 belongs to anything else.
 
 **The depth trend is that facet being loaded by near-seam absorption.**
-`sigma_max ~ 1/N` holds `int sigma dx` fixed, so at a fixed physical distance
-behind the facet the conductivity collapses as N grows. Measured directly, on
-the hi face, `|Ez|` 10 cells (1a) into the pad over `|Ez|` at the seam:
+The conductivity the first pad cell carries collapses as **N^-3**, measured on
+the assembled UPML profile: **42.975 / 5.372 / 1.592 S/m** at 20 / 40 / 60,
+ratios 8.000 / 3.375 / 27.000 against N^-3's 8 / 3.375 / 27.
+
+That exponent is two effects, and the smaller one is the famous one.
+`sigma_max ~ 1/N` (the `d = n_layers * dx` normalisation that holds
+`int sigma dx` fixed) contributes **N^-1**: 65365 / 33526 / 22540 S/m. The
+polynomial grading contributes the other **N^-2**, because the first cell sits
+at normalised position `0.5/N` and `sigma ~ (0.5/N)^m` with `m = 2`. So
+**two thirds of the collapse in log terms is the grading normalisation, not
+`sigma_max`** — and a fixed-`sigma_max` absorber would still lose N^-2 at the
+seam, i.e. **it would not invert this trend**, only weaken it. (CPML falls
+faster still: its `rho = 1 - i/(n-1)` puts an exact zero in the innermost pad
+cell, and the next one goes as N^-4 — 13.366 / 0.773 / 0.149 S/m.)
+
+Measured on the fields, on the hi face, `|Ez|` 10 cells (1a) into the pad over
+`|Ez|` at the seam:
 
 | `cpml_layers` | 20 | 40 | 60 |
 |---|---:|---:|---:|
@@ -62,22 +100,30 @@ estimator, to four decimals:
 | `tof_sx40_dft400_return_in_window` | 400 a/c0 | **0.4979** | -22.31 dB |
 
 Round trip `docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.tof_round_trip_a_over_c0.src_to_far_end_and_back_64a = 230.93`
-a/c0, and `...src_to_far_end_to_fit_window_75a = 270.62` a/c0, at
-`...::oracle.n_group_at_carrier_bin = 3.6083`.
+a/c0, and `docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.tof_round_trip_a_over_c0.src_to_far_end_to_fit_window_75a = 270.62` a/c0, at
+`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.n_group_at_carrier_bin = 3.6083`.
 
 Arm A reproduces the section 8 sweep as well, including its SWR to three
 figures (#831 reported 3.33 / 3.98 / 4.38; measured 3.326 / 3.977 / 4.382).
 So **the section 8 trend is not an artefact of the uncommitted round-1
 driver** — the A-ABSENT branch declared in the plan is falsified.
 
-| arm | `\|B/A\|` | SWR | band-mean `T` | `settling_db` |
-|---|---:|---:|---:|---:|
-| `sweep_upml_20` | 0.5311 | 3.326 | 0.9657 | -37.33 |
-| `sweep_upml_40` | 0.5918 | 3.977 | 0.9470 | -32.87 |
-| `sweep_upml_60` | 0.6221 | 4.382 | 0.9357 | -30.33 |
-| `sweep_cpml_20` | 0.5240 | 3.256 | 0.9509 | -38.84 |
-| `sweep_cpml_40` | 0.6006 | 4.060 | 0.9330 | -32.75 |
-| `sweep_cpml_60` | 0.6309 | 4.487 | 0.9315 | -29.88 |
+| arm | `\|B/A\|` | SWR | band-mean `T` (G2) | G1 band-max dev | `settling_db` | exit |
+|---|---:|---:|---:|---:|---:|---:|
+| `sweep_upml_20` | 0.5311 | 3.326 | 0.9657 PASS | 0.262 % | -37.33 | 2 |
+| `sweep_upml_40` | 0.5918 | 3.977 | 0.9470 FAIL | 0.296 % | -32.87 | 1 |
+| `sweep_upml_60` | 0.6221 | 4.382 | 0.9357 FAIL | 0.321 % | -30.33 | 1 |
+| `sweep_cpml_20` | 0.5240 | 3.256 | 0.9509 PASS | 0.244 % | -38.84 | 2 |
+| `sweep_cpml_40` | 0.6006 | 4.060 | 0.9330 FAIL | 0.300 % | -32.75 | 1 |
+| `sweep_cpml_60` | 0.6309 | 4.487 | 0.9315 FAIL | 0.328 % | -29.88 | 1 |
+
+**Read the exit codes before reading a fix as a rescue.** The committed recipe
+(`upml`, 20 layers) exits **2** — Meep unavailable on this host, with **G1 and
+G2 both PASSED**. The 40- and 60-layer arms exit **1** on G2 alone (band-mean
+`T` 0.9470 / 0.9357, below the 0.95 floor); G1 passes everywhere, at 0.24-0.33 %
+against its 2.0 % gate, and the two-wave residual is 0.0074-0.0147 against 0.05.
+So a fix **moves values; it does not turn a red green.** The committed
+configuration is not currently failing its own gates.
 
 Two things the sweep settles that were open in the plan:
 
@@ -136,7 +182,8 @@ significant figures** to the extension-ON arms (0.5311 / 0.5918 / 0.6221, same
 SWR, same `settling_db`). The wrapper was verified to be reached and to change
 the array it targets (centre row `eps_r = 12` in 201/201 cells -> 160/201).
 
-`run(subpixel_smoothing=True)` does not use that array:
+`run(subpixel_smoothing=True)` does not use that array. The rebuilt
+permittivity gets no pad replication step after it is computed:
 
 ```python
 # rfx/runners/uniform.py:266-271
@@ -162,6 +209,14 @@ The `_assemble_materials` column is what #831's elimination 3 and section 8's
 rasterization check both read. **Neither was reading the array the run
 solved**, so both are retired: the guide does end in a bare facet.
 
+The same gap sits at two more sites: `rfx/runners/uniform.py:237-248`, the
+Stage-2 `kottke_pec` inverse-permittivity tensor, and
+`rfx/runners/nonuniform.py:852-859`, the NU mirror. And on cv03's UPML branch
+the array is consumed by `init_upml` (`rfx/simulation.py:914-915` ->
+`rfx/boundaries/upml.py:213-217`), not by `update_e_aniso`, which
+`rfx/simulation.py:419-422` gates behind "no Debye and no Lorentz" and which
+the UPML branch never reaches at all.
+
 ### 3.2 Arm B-prime: continue the guide in the array the update reads
 
 Two witnesses that do not share the suspect quantity — B1 widens the declared
@@ -183,8 +238,15 @@ alone and sets `subpixel_smoothing=False`, which routes the update through
   but the conclusion.
 - `settling_db` goes to **-138.3 / -141.3 / -144.4 dB**: no cavity, nothing
   ringing, the settling witness passes by 100 dB.
-- B2's band-mean `T` is **0.9943 / 0.9922 / 0.9917** — cv03's flux identity is
-  clean once the guide is genuinely terminated by the absorber.
+- **B1's band-mean `T` does NOT recover**, and saying otherwise would be the
+  same surface-metric mistake this lane exists to catch. B1 reads **0.9682 /
+  0.9596 / 0.9558** against the committed 0.9657 / 0.9470 / 0.9357 — it moves
+  by less than 0.003 at 20 layers and **still degrades with depth**. Only B2,
+  which also turns subpixel smoothing off, reaches **0.9943 / 0.9922 /
+  0.9917**. So removing the facet fixes the reflection and does not, on its
+  own, fix the flux deficit: what remains in B1 is a second effect this lane
+  did not isolate, and the `T` column is the place a reader should expect it to
+  show up.
 
 ### 3.3 What this vindicates
 
@@ -253,13 +315,44 @@ particular reading does not discriminate and is reported without a verdict.
 ## 5. Scope: what else is built this way
 
 `grep -l "subpixel_smoothing=True" validation/crossval/*.py` returns cv01, cv02
-and cv03. cv01 builds `Box((0, ...), (sx, ...))`
-(`validation/crossval/01_waveguide_bend.py:382`) exactly as cv03 does, so its
-straight guide carries the same vacuum facet. Its swept observable
-(`mean_self`, a net flux ratio) is blind to a standing wave by construction, so
-the defect can be present there and invisible — which is consistent with
-#1027's monotone improvement and is NOT an explanation of it. cv01's own trend
-was not measured in this lane and belongs to #813's.
+and cv03.
+
+**cv02 is CLEAR, by construction rather than by hope.** Its ring is centred at
+6a with outer radius `r + w = 2a` in a 12a interior
+(`validation/crossval/02_ring_resonator.py:165-188`), so there is 4a of vacuum
+between the geometry and every interior edge. No shape touches a pad, so there
+is nothing for a missing pad replication to drop.
+
+**cv05 is off this path by default and one environment variable away from a
+different one.** `SUBPIXEL_SMOOTHING = _sps_env if _sps_env else False`
+(`validation/crossval/05_patch_antenna.py:150-151`) leaves it off, so cv05 as run is not
+affected; set `RFX_SUBPIXEL_SMOOTHING=kottke_pec` and it enters the Stage-2
+site (`rfx/runners/uniform.py:237-248`), which carries the same gap.
+
+**cv01 carries the same construction**, `Box((0, ...), (sx, ...))` under
+`subpixel_smoothing=True` (`validation/crossval/01_waveguide_bend.py:382`).
+Section 6 measures that rather than reading it. A fix moves **three**
+surfaces there, not one:
+
+1. the driver constants —
+   `scripts/diagnostics/cv01_cpml_flux_selfcheck.py:410`
+   (`COMMITTED_UPML_MEAN_SELF = 0.9891610388008335`), `:418`
+   (`SWEEP_GATE_MEAN_SELF_AT_40 = 0.90906`) and `:424`
+   (`SWEEP_BASELINE_CPML_FULL_MEAN_SELF = 0.7488520140093946`);
+2. the committed case record —
+   `validation/crossval/_01_waveguide_bend_results/crossval.json:2283`,
+   `mean_self_smoothed_over_band = 0.9891610388008335`;
+3. the **26** values the numeric-provenance contract resolves out of
+   `scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json`
+   (`tests/contracts/test_evidence_numeric_provenance.py`, the
+   `("Numeric provenance", 26)` floor), plus the 19 of the residual-split
+   section.
+
+`mean_self` is a net flux ratio and is blind to a standing wave by
+construction, so the defect can be present in cv01 and invisible to its own
+gate. That is consistent with #1027's monotone improvement and is **not** an
+explanation of it; #1027's trend has to be re-measured after a fix, not
+reasoned about.
 
 The condition is general: **any run with `subpixel_smoothing=True` whose
 geometry touches the domain boundary is solved with vacuum in the absorber pad,
@@ -270,7 +363,7 @@ smoothing is on in every crossval that has a dielectric.
 
 ---
 
-## 6. R2 accounting, and what is NOT decided here
+## 7. R2 accounting, and what is NOT decided here
 
 Attempts: H4 1, depth sweep 1, H2 1 (no FDTD), H3 1 (read off the sweep's own
 trace), H1 1 void with a named instrument defect + 1 licensed replacement.

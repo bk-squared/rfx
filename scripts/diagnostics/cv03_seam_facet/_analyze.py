@@ -3,7 +3,7 @@ import sys
 
 import numpy as np
 
-D = "scripts/diagnostics/_artifacts/cv03_far_end_return_831/"
+D = "scripts/diagnostics/_artifacts/cv03_seam_facet/"
 stage = sys.argv[1] if len(sys.argv) > 1 else "sweep"
 sw = json.load(open(D + f"{stage}.json"))["stages"][stage]
 for k, v in sw.items():

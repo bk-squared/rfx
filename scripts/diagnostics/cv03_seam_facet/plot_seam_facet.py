@@ -8,7 +8,7 @@ shown rather than asserted.
 
 Run:
     PYTHONPATH=<repo> python3 \
-        scripts/diagnostics/cv03_far_end_return/plot_far_end_return.py
+        scripts/diagnostics/cv03_seam_facet/plot_seam_facet.py
 """
 from __future__ import annotations
 
@@ -22,8 +22,8 @@ import numpy as np  # noqa: E402
 
 HERE = pathlib.Path(__file__).resolve().parent
 REPO = HERE.parents[2]
-ART = HERE.parent / "_artifacts" / "cv03_far_end_return_831"
-OUT = ART / "far_end_return.png"
+ART = HERE.parent / "_artifacts" / "cv03_seam_facet"
+OUT = ART / "seam_facet.png"
 
 prof = json.load(open(ART / "profile.json"))["stages"]["profile"]
 sweep = json.load(open(ART / "sweep.json"))["stages"]["sweep"]

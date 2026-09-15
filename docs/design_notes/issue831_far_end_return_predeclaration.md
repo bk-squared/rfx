@@ -146,7 +146,7 @@ imitating `scripts/diagnostics/cv03_flux/tof_reflection_free.py`. The committed
 `validation/crossval/03_straight_waveguide_flux.py` is not modified, and no
 gate, tolerance or record of it moves in this lane.
 
-Driver: `scripts/diagnostics/cv03_far_end_return/far_end_return.py`, with the
+Driver: `scripts/diagnostics/cv03_seam_facet/seam_facet.py`, with the
 repo-root provenance assert that
 `scripts/diagnostics/cv01_cpml_flux_selfcheck.py:239-262` uses (`import rfx`
 must resolve under this worktree or the run aborts).
@@ -181,8 +181,8 @@ Two FDTD runs, reproducing #831's own localisation on THIS tree with the
 COMMITTED estimator: `sx = 40a`, fit window Meep `[-16, -8]`, DFT window
 150 a/c0 (reflection-free) and 400 a/c0 (return admitted). The round trip is
 `docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.tof_round_trip_a_over_c0.src_to_far_end_and_back_64a = 230.93`
-a/c0, and `...src_to_far_end_to_fit_window_75a = 270.62` a/c0, at
-`...::oracle.n_group_at_carrier_bin = 3.6083`.
+a/c0, and `docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.tof_round_trip_a_over_c0.src_to_far_end_to_fit_window_75a = 270.62` a/c0, at
+`docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.n_group_at_carrier_bin = 3.6083`.
 
 ### Arm A — the depth sweep, re-measured with the committed estimator
 
@@ -478,3 +478,105 @@ Neither is filed as an issue here; both are decisions, not findings.
    its own ring-down witness cannot fire. With one added, every committed arm
    reports the witness FAILING at -37 to -30 dB. A crossval whose DFT-derived
    headline has no settling witness is judging an unsettled record.
+
+---
+
+## 9. APPEND (2026-09-15 KST) — Arm E: does cv01 carry the same facet?
+
+Append-only, written before the arm runs. Sections 0-8 stand.
+
+Section 5 of the results note said cv01 "carries the same facet" from reading
+`validation/crossval/01_waveguide_bend.py:382`. That is a reading. This arm
+measures it, on cv01's own committed rig, by importing
+`scripts/diagnostics/cv01_cpml_flux_selfcheck.py` and calling its `run_arm`
+rather than copying its constants.
+
+### 9.1 What runs
+
+cv01 Run 1 only (`run_arm("cpml", None)`), at cv01's committed absorber depth
+(`cpml_layers = 20` for the `cpml` boundary), twice:
+
+- **control** — exactly as committed;
+- **widened** — the guide `Box` widened from `(0 … sx)` to `(-2a … sx + 2a)`,
+  past the 20-cell (2a) pad, with `subpixel_smoothing=True` left alone.
+
+Both arms are instrumented, through one explicit `Simulation` subclass that
+adds probes at `run()` and delegates, so cv01's geometry, source, monitors and
+flux arithmetic stay the committed ones:
+
+- a DFT plane probe on the guide centre line, read with the SAME estimator cv03
+  uses (`validation/crossval/comparators/slab_te_dispersion.py::measure_neff_two_wave`),
+  fit window rfx `x in [5a, 13a]` — 8a, between cv01's monitors at 4a and
+  14.5a, inset by 1a at each end, the same construction cv03's window uses;
+- a point probe at the fit-window centre so `settling_db` has a record.
+
+A no-FDTD instrument check runs first: dump the centre-row permittivity that
+`compute_smoothed_eps` hands the solver, for both builds.
+
+### 9.2 Gates, frozen before the run
+
+**Instrument check (dispositive on its own, no threshold needed).** cv01
+carries the facet if, on the committed build, the solved centre-row pad columns
+are vacuum while `_assemble_materials` carries `eps_r = 12`.
+
+**Reflection — the quantity that can see a facet.**
+- **CARRIES THE SAME FACET**: `bA_control >= 0.30` AND `bA_widened <= 0.10`.
+  residual `r_E = max(0, 0.30 - bA_control) + max(0, bA_widened - 0.10)`; gate 0.
+- **DOES NOT**: `bA_control <= 0.10`.
+- in between: INCONCLUSIVE, declared now.
+
+**`mean_self` — the comparison the review asked for, with both outcomes
+declared because the evidence already in hand says it may not move.**
+- Readability control: the committed arm must reproduce
+  `SWEEP_BASELINE_CPML_FULL_MEAN_SELF = 0.7488520140093946`
+  (`scripts/diagnostics/cv01_cpml_flux_selfcheck.py:424`) to within 0.005, or
+  neither row is readable.
+- **MOVES**: `mean_self_widened >= 0.85`, i.e. well above the committed
+  0.748852 and toward the UPML control 0.989161
+  (`scripts/diagnostics/cv01_cpml_flux_selfcheck.py:410`).
+  residual `r_E2 = max(0, 0.85 - mean_self_widened)`; gate 0.
+- **DOES NOT MOVE**: `|mean_self_widened - 0.748852| <= 0.02`.
+- in between: INCONCLUSIVE, declared now.
+
+**Declared expectation, written down so a null is not misread.** `mean_self` is
+a net flux ratio, and net flux in a lossless section is `|A|^2 - |B|^2` at every
+plane, so it is blind to a standing wave by construction. Arm B1 already
+measured what that means: removing cv03's facet moved `|B/A|` 0.5311 -> 0.0296
+while band-mean `T` moved only 0.9657 -> 0.9682. **I therefore expect
+MEAN_SELF DOES NOT MOVE, and the `|B/A|` pair to carry the verdict.** A null on
+`mean_self` is NOT evidence that cv01 is clean; only `bA_control <= 0.10`
+would be.
+
+### 9.3 R2
+
+One attempt on one new hypothesis. No re-run without another append.
+
+### 9.4 APPEND — Arm E's first run is void, for a named instrument defect
+
+Written before the re-run. The first Arm E run returned `mean_self = nan` on
+both rows and `|B/A| = nan` on the widened row, with this from cv01's own
+driver:
+
+> flux_spectrum returned exactly 0.0 at all 200 frequencies, but the DFT
+> accumulators are healthy and a float64 recompute of the same sum gives
+> nonzero flux (peak |flux| = 3.937e-56). The per-cell E x H* products
+> underflowed the float32 minimum normal (~1.18e-38) and were flushed to zero
+> (issue #304).
+
+cv01's rig integrates fluxes around 1e-56 and depends on x64;
+`scripts/diagnostics/cv01_cpml_flux_selfcheck.py:150` sets
+`JAX_ENABLE_X64=1` on its own first line for exactly this reason. This lane's
+driver runs the cv01 stage IN-PROCESS and had imported rfx before setting it,
+so JAX was already initialised at float32 — the committed rig, solved by a
+different solver. The widened row went further and returned NaN outright: with
+the facet removed the field leaves faster, so the DFT plane underflowed too.
+
+That is an identified implementation defect in the instrument, the same licence
+R2 accepts as for Arm B. The fix is one line at the top of the driver, before
+any import that can pull JAX in. **Every stage is re-run after it**, not just
+Arm E: an in-process stage that was solving at the wrong precision makes the
+whole artifact set unreadable as a single record, and the re-run also puts
+`provenance.commit` on a commit that contains the plan.
+
+No gate in section 9.2 moves. Attempts on Arm E's hypothesis: 1 void with a
+named defect + 1 licensed replacement = **1 counting attempt**.

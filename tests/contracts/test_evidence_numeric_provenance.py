@@ -315,6 +315,16 @@ AUX_ECHO_NOTE = "docs/design_notes/20260904_aux_echo_record_invariant.md"
 # section quotes the four-point cpml_layers sweep -- the numbers that decide a
 # pre-declared gate -- so they are resolved here rather than retyped.
 CV01_CPML_NOTE = "docs/design_notes/cv01_cpml_flux_selfcheck_predeclaration.md"
+# 2026-09-15 (#831 seam-facet lane): the pre-declaration and the results
+# note both argue from the cv03 time-of-flight oracle, citing
+# issue812_cv03_dispersion_matched_frequency.json by key with the value
+# inline. They were written with the round-trip keys elided to "..."; the
+# paths are spelled out so this gate can resolve them rather than letting
+# an unparseable span excuse the documents from the gate.
+ISSUE831_NOTES = (
+    "docs/design_notes/issue831_far_end_return_predeclaration.md",
+    "docs/design_notes/issue831_far_end_return_results.md",
+)
 # 2026-09-06 (#928): the public benchmarks page is the single largest carrier of
 # measured numbers in the repository (93 references) and was NOT under this gate.
 # Every public "Validated comparison" row quotes an artifact value; a page that
@@ -370,6 +380,8 @@ MARKDOWN_SITES: dict[str, str] = {
     # exactly the shape this gate exists for, so the note is opted in with the
     # section that carries them.
     CV01_CPML_NOTE: r"^#+\s+(.*\S)\s*$",
+    # 2026-09-15 (#831): see ISSUE831_NOTES above.
+    **{note: r"^#+\s+(.*\S)\s*$" for note in ISSUE831_NOTES},
 }
 
 DOCUMENTS = (MANIFEST, *MARKDOWN_SITES)
@@ -703,6 +715,7 @@ CLASSIFICATION: dict[str, str] = {
     "docs/design_notes/issue812_cv17_cv18_geometry_sensitivity_predeclaration.md": GATED,
     "docs/design_notes/issue812_phase_identity_predeclaration.md": GATED,
     "docs/design_notes/issue812_phase_identity_results.md": GATED,
+    **{note: GATED for note in ISSUE831_NOTES},
     "docs/design_notes/mixed_refplane_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/portgrid_m0m1_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/portgrid_m0m1_results.md": NO_ARTIFACT_REFERENCE,
