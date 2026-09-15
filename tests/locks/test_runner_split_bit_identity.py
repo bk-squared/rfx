@@ -812,6 +812,20 @@ _SHARED_HELPER_BINDINGS = (
      "shard_stacked_poles"),
     ("shard_stacked_psi", "rfx.runners.distributed_nu", "shard_stacked_psi"),
     ("shard_stacked_psi", "rfx.runners.distributed_v2", "shard_stacked_psi"),
+    # #1038 leg 1 -- the two shard_map helpers called from inside the jitted
+    # step body. These are the leg's real jaxpr-shape change: four locals
+    # (mesh, n_{src,prb}, *_local_specs, *_device_ids) became parameters, and
+    # the *_specs/*_ids Python loops are unrolled at trace time, so the traced
+    # graph depends on their values. The 13 baseline rows above are what says
+    # the arrays did not move with the jaxpr.
+    ("inject_sources_shmap", "rfx.runners.distributed_nu",
+     "inject_sources_shmap"),
+    ("inject_sources_shmap", "rfx.runners.distributed_v2",
+     "inject_sources_shmap"),
+    ("sample_probes_shmap", "rfx.runners.distributed_nu",
+     "sample_probes_shmap"),
+    ("sample_probes_shmap", "rfx.runners.distributed_v2",
+     "sample_probes_shmap"),
 )
 
 

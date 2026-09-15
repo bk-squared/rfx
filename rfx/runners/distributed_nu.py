@@ -50,6 +50,8 @@ from rfx.runners._distributed_common import (
     cpml_coeff_e_vacuum,
     cpml_coeff_h_vacuum,
     exchange_component_shmap,
+    inject_sources_shmap,
+    sample_probes_shmap,
     shard_stacked,
     shard_stacked_poles,
     shard_stacked_psi,
@@ -2581,68 +2583,15 @@ def run_nonuniform_distributed_pec(
             return new_state, new_db_st, new_lr_st
 
     def _inject_sources_shmap(st, src_vals_step):
-        if n_src == 0:
-            return st
-
-        @partial(
-            shard_map,
-            mesh=mesh,
-            in_specs=(P("x"), P("x"), P("x"), P()),
-            out_specs=(P("x"), P("x"), P("x")),
-            check_rep=False,
+        return inject_sources_shmap(
+            st, src_vals_step, mesh, n_src,
+            src_local_specs, src_device_ids,
         )
-        def _inject(ex, ey, ez, sv):
-            device_idx = lax.axis_index("x")
-            for idx_s in range(n_src):
-                li, lj, lk, lc = src_local_specs[idx_s]
-                dev_id = src_device_ids[idx_s]
-                val = jnp.where(device_idx == dev_id, sv[idx_s], 0.0)
-                if lc == "ex":
-                    ex = ex.at[li, lj, lk].add(val)
-                elif lc == "ey":
-                    ey = ey.at[li, lj, lk].add(val)
-                elif lc == "ez":
-                    ez = ez.at[li, lj, lk].add(val)
-            return ex, ey, ez
-
-        ex, ey, ez = _inject(st.ex, st.ey, st.ez, src_vals_step)
-        return st._replace(ex=ex, ey=ey, ez=ez)
 
     def _sample_probes_shmap(st):
-        if n_prb == 0:
-            return jnp.zeros(0, dtype=jnp.float32)
-
-        @partial(
-            shard_map,
-            mesh=mesh,
-            in_specs=(P("x"), P("x"), P("x"),
-                      P("x"), P("x"), P("x")),
-            out_specs=P(),
-            check_rep=False,
+        return sample_probes_shmap(
+            st, mesh, n_prb, prb_local_specs, prb_device_ids,
         )
-        def _sample(ex, ey, ez, hx, hy, hz):
-            device_idx = lax.axis_index("x")
-            samples = []
-            for idx_p in range(n_prb):
-                li, lj, lk, lc = prb_local_specs[idx_p]
-                dev_id = prb_device_ids[idx_p]
-                if lc == "ex":
-                    raw = ex[li, lj, lk]
-                elif lc == "ey":
-                    raw = ey[li, lj, lk]
-                elif lc == "ez":
-                    raw = ez[li, lj, lk]
-                elif lc == "hx":
-                    raw = hx[li, lj, lk]
-                elif lc == "hy":
-                    raw = hy[li, lj, lk]
-                else:
-                    raw = hz[li, lj, lk]
-                val = jnp.where(device_idx == dev_id, raw, 0.0)
-                samples.append(val)
-            return lax.psum(jnp.stack(samples), "x")
-
-        return _sample(st.ex, st.ey, st.ez, st.hx, st.hy, st.hz)
 
     # ------------------------------------------------------------------
     # Phase 2C: shmap-wrapped CPML helpers (no-op when CPML disabled)
