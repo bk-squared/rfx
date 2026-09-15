@@ -17,11 +17,17 @@ The bar is re-derived below, two-sided, from the measurement.
 `|S11|` on the same rig, both trees, as the record is lengthened. This is the
 independent axis, and it settles the question by itself.
 
-| periods | `origin/main` `\|S11\|` range | this tree `\|S11\|` range |
-|---:|---|---|
-| 40 | [0.9942, **1.0278**] | [0.9877, 1.0145] |
-| 80 | [0.5724, **2.8001**] | [0.9969, 1.0014] |
-| 160 | [**9.3597, 12.0899**] | [0.9637, 1.0014] |
+Every number below is a value-checked citation into the committed artifacts,
+so a transcription slip here fails the provenance contract rather than sitting
+in prose. (One did, and did sit in prose: the 80-period head range read
+[0.9969, 1.0014] until review — 0.9969 is bin 0, not the min. Opting this note
+into the gated set is the fix for the class, not just the instance.)
+
+| periods | `origin/main` min | `origin/main` max | this tree min | this tree max |
+|---:|---|---|---|---|
+| 40 | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_main.json::arms.cpml.s11_min = 0.9942` | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_main.json::arms.cpml.s11_max = 1.0278` | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_head.json::arms.cpml.s11_min = 0.9877` | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_head.json::arms.cpml.s11_max = 1.0145` |
+| 80 | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_main.json::arms.cpml_80periods.s11_min = 0.5724` | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_main.json::arms.cpml_80periods.s11_max = 2.8001` | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_head.json::arms.cpml_80periods.s11_min = 0.9552` | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_head.json::arms.cpml_80periods.s11_max = 1.0014` |
+| 160 | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_main.json::arms.cpml_160periods.s11_min = 9.3597` | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_main.json::arms.cpml_160periods.s11_max = 12.0899` | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_head.json::arms.cpml_160periods.s11_min = 0.9637` | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_head.json::arms.cpml_160periods.s11_max = 1.0014` |
 
 And the ring-down witness moves the two ways round:
 
@@ -38,8 +44,53 @@ instability this rig is built to have (§3).
 
 So main's 40-period numbers — mean 1.0032, max 1.0278, *above* unity on a
 lossless passive short — are **early exponential growth stopped before it
-became visible**, not a better answer. head's are the bounded ones: its
-interior bins converge to 1.0000 at 160 periods.
+became visible**, not a better answer. head's are the bounded ones, and its
+interior bins improve monotonically with record length (|dev| 0.0023 → 0.0019
+→ 0.0018). head's band min sits in bin 5 at every record length —
+0.9877 → 0.9552 → 0.9637 — which is the near-cutoff edge bin discussed in §2b,
+not a record-truncation effect.
+
+## 2b. The pre-declared residual r_A' is NOT met — recorded as declared
+
+§5 of the pre-declaration froze
+`r_A' = max(0, D_head(40) - D_main(40)) + max(0, D_head(160) - D_head(40))`
+with gate `r_A' = 0`, where `D = max_bin | |S11| - 1 |`.
+
+| term | value |
+|---|---|
+| `D_head(40)` | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_head.json::arms.cpml.D_max_dev_from_unity = 0.0145` |
+| `D_main(40)` | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_main.json::arms.cpml.D_max_dev_from_unity = 0.0278` |
+| `D_head(160)` | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_head.json::arms.cpml_160periods.D_max_dev_from_unity = 0.0363` |
+| `max(0, 0.0145 - 0.0278)` | 0 |
+| `max(0, 0.0363 - 0.0145)` | **0.0218** |
+| **`r_A'`** | **0.0218** against gate 0 — **NOT MET** |
+
+The first term is met: head is closer to unity than main at the record length
+the committed gate uses. The second is not: `D_head` does not fall
+monotonically with record length (0.0145 → 0.0448 → 0.0363), so the
+pre-declared reading "head is right iff D falls with record length" does not
+license the conclusion on its own terms, and is recorded here as not licensing
+it.
+
+**The interior-restricted reading DOES meet it, and is a RESTRICTION of the
+declared observable, not the declared one.** Restricting `D` to interior bins
+1-4 gives 0.0023 → 0.0019 → 0.0018, monotonically falling, so
+`r_A'(interior) = 0`. That restriction was chosen AFTER seeing the data and is
+therefore not the frozen gate; it is reported as a narrower observable that
+behaves as the gate expected, alongside the full one that does not.
+
+What actually carries the verdict is neither residual but the thing the
+pre-declaration could not have written down in advance: **main diverges**
+(|S11| → 12.09, settling degrading) while head stays bounded. That is a
+categorical difference, not a residual comparison, and §2 is where it is
+measured.
+
+The whole `D_head` non-monotonicity lives in band-edge bin 5 (7.0 GHz, 0.93x
+this guide's TE20/TE01 cutoff at 7.5 GHz) on a port that never reaches the
+-40 dB settling bar: its |S11| runs 0.9877 → 0.9552 → 0.9637. That is a
+near-cutoff extraction limit on an unsettled port, **not** record-length
+truncation — lengthening the record does not remove it, which is why the
+interior bins improve while `D` does not.
 
 ## 3. Why this rig has the defect at all
 
@@ -65,14 +116,18 @@ The reviewer's "passivity self-check got worse" is real and is **not about
 | 4 | 1.0023 | **1.5993** | 1.0146 | 0.9685 |
 | 5 | 0.9877 | **2.1630** | 1.0004 | 0.9715 |
 
-Column power for port 1 = `|S12|² + |S22|²`; at bin 5 that is
-`2.1630² + 0.9715² = 5.62`. **The 5.6226 is the S12 entry and nothing else.**
+Column power for port 1 = |S12|² + |S22|²; at bin 5 that is
+2.1630² + 0.9715² = 5.62, and the recorded maximum is
+`scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_head.json::arms.cpml.max_col_power = 5.6226` with
+`scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_head.json::arms.cpml.max_abs_S = 2.1630`. **That 5.6226 is the S12 entry and nothing
+else.**
 On a PEC short nothing transmits, so S12/S21 are a near-zero amplitude in a
 denominator — and the right port never reaches the −40 dB settling bar on this
 rig at any record length tested (−15.01 dB at 40 periods, −26.62 at 160).
 
-main's own max column power is 3.258 with `max |S| = 1.4875`, i.e. the same
-quantity computed from the same meaningless entry, on a run that is growing.
+main's own `scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_main.json::arms.cpml.max_col_power = 3.2583` with
+`scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_main.json::arms.cpml.max_abs_S = 1.4875` is the same quantity computed from the same
+meaningless entry, on a run that is growing.
 Comparing 3.258 against 5.621 compares two numbers neither of which is about
 the physics the gate names.
 
@@ -110,8 +165,13 @@ New, both in `tests/unit/geometry/test_subpixel_pec.py`:
 
 1. `test_pec_short_s11_with_conformal_face_pec` (40 periods, unchanged rig)
    - all bins: `| |S11| − 1 | <= 0.03` — **two-sided**, which the old bar was
-     not. Provenance: the measured edge worst, 0.0145 here and 0.0278 pre-fix,
-     rounded up to the next percent.
+     not, and **a 40-period envelope only**. Provenance: the measured
+     **40-period** edge worst, 0.0145 here and 0.0278 pre-fix, rounded up to
+     the next percent. It is NOT record-independent: the same rig reads a max
+     |dev| of 0.0448 at 80 periods and 0.0363 at 160, all of it band-edge
+     bin 5, so this bar would not hold at a longer record and must not be
+     quoted as one. The gate runs at 40 periods, which is what makes it
+     applicable.
    - interior bins 1-4: `| |S11| − 1 | <= 0.005` — **tighter than the old
      0.01**. Provenance: the measured interior worst, 0.0033 pre-fix and
      0.0023 here, rounded up to the next half-percent.

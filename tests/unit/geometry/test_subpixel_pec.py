@@ -530,16 +530,22 @@ def _pec_short_sim(*, conformal: bool):
     return sim
 
 
-# Two-sided |S11| envelope for the conformal PEC-short, 40 periods.
-# DERIVED FROM MEASUREMENT (2026-09-15, #1043 / PR #1047), not chosen:
+# Two-sided |S11| envelope for the conformal PEC-short. DERIVED FROM
+# MEASUREMENT (2026-09-15, #1043 / PR #1047), not chosen:
 #   interior bins 1-4, measured |dev| -- head 0.0017/0.0012/0.0019/0.0023,
 #                                        pre-fix 0.0007/0.0029/0.0023/0.0033
 #   band-edge bins 0 and 5           -- head 0.0145 / 0.0123
 # The interior bar is the measured interior worst (0.0033) rounded up to the
-# next half-percent; the all-bin bar is the measured edge worst (0.0145 here,
-# 0.0278 pre-fix) rounded up to the next percent.
+# next half-percent.
+#
+# The all-bin bar is the **40-PERIOD** edge worst (0.0145 here, 0.0278 pre-fix)
+# rounded up to the next percent, and it is only a 40-period envelope. The same
+# rig reads a max |dev| of 0.0448 at 80 periods and 0.0363 at 160, all of it in
+# band-edge bin 5 -- so this bar would NOT hold at a longer record and must not
+# be quoted as a record-independent envelope. The gate below runs at 40
+# periods, which is what makes it applicable here.
 _PEC_SHORT_DEV_INTERIOR = 0.005
-_PEC_SHORT_DEV_ALL_BINS = 0.03
+_PEC_SHORT_DEV_ALL_BINS_AT_40_PERIODS = 0.03
 # Band edges of the 5-7 GHz sweep. Bin 5 (7.0 GHz) sits just under the guide's
 # second-mode cutoff (40 mm x 20 mm -> TE20/TE01 at 7.5 GHz), and bin 0 is the
 # low edge; both carry the largest extraction deviation on every tree measured.
@@ -584,7 +590,7 @@ def test_pec_short_s11_with_conformal_face_pec():
     periods  pre-fix |S11| range      this tree |S11| range
     ====== ======================== ========================
     40       [0.9942, 1.0278]         [0.9877, 1.0145]
-    80       [0.5724, 2.8001]         [0.9969, 1.0014]
+    80       [0.5724, 2.8001]         [0.9552, 1.0014]
     160      [9.3597, 12.0899]        [0.9637, 1.0014]
     ====== ======================== ========================
 
@@ -594,12 +600,18 @@ def test_pec_short_s11_with_conformal_face_pec():
     So the pre-fix 40-period numbers were early exponential growth stopped
     before it showed, which is also why their mean sat ABOVE 1 (1.0032).
 
-    The interior bins converge to 1.0000 on this tree at 160 periods; the two
-    band-edge bins carry the residual, and the right port never reaches the
-    -40 dB settling bar on this rig at any record length tested, so the edge
-    bins are gated loosely and the interior tightly. The gate that catches the
-    growth is ``test_pec_short_conformal_stays_bounded_over_a_long_record``
-    below — this one is the envelope, that one is the physics."""
+    On this tree the residual is **entirely the top band-edge bin 5** (7.0 GHz,
+    0.93x this guide's TE20/TE01 cutoff at 7.5 GHz), on a port that never
+    reaches the -40 dB settling bar at any record length tested. Its |S11| runs
+    0.9877 -> 0.9552 -> 0.9637 across the three records, while the interior
+    bins 1-4 fall monotonically, 0.0023 -> 0.0019 -> 0.0018 |dev|. So the
+    band-edge residual is a near-cutoff extraction limit on an unsettled port,
+    NOT record-length truncation -- lengthening the record does not remove it.
+    That is why the edge bins are gated loosely and the interior tightly.
+
+    The gate that catches the growth is
+    ``test_pec_short_conformal_stays_bounded_over_a_long_record`` below — this
+    one is the 40-period envelope, that one is the physics."""
     sim = _pec_short_sim(conformal=True)
     res = sim.compute_waveguide_s_matrix(num_periods=40, normalize=False)
     s11 = np.abs(np.asarray(res.s_params)[0, 0, :])
@@ -608,13 +620,15 @@ def test_pec_short_s11_with_conformal_face_pec():
           f"[{s11.min():.4f}, {s11.max():.4f}] mean={s11.mean():.4f} "
           f"max|dev|={dev.max():.4f} interior|dev|="
           f"{dev[_PEC_SHORT_INTERIOR_BINS].max():.4f}")
-    assert dev.max() <= _PEC_SHORT_DEV_ALL_BINS, (
+    assert dev.max() <= _PEC_SHORT_DEV_ALL_BINS_AT_40_PERIODS, (
         f"PEC-short |S11| with conformal=True left its two-sided envelope: "
         f"per-bin |S11| = {[round(float(v), 4) for v in s11]}, "
-        f"max |dev| = {dev.max():.4f} (bar {_PEC_SHORT_DEV_ALL_BINS}). A "
-        f"lossless short is |S11| = 1 exactly, so BOTH directions matter — "
-        f"above 1 is a passivity violation, below 1 is loss the structure "
-        f"does not have."
+        f"max |dev| = {dev.max():.4f} (bar "
+        f"{_PEC_SHORT_DEV_ALL_BINS_AT_40_PERIODS}, a 40-PERIOD envelope — the "
+        f"same rig reads 0.0448 at 80 periods and 0.0363 at 160, all in "
+        f"band-edge bin 5, so this bar is not record-independent). A lossless "
+        f"short is |S11| = 1 exactly, so BOTH directions matter — above 1 is a "
+        f"passivity violation, below 1 is loss the structure does not have."
     )
     assert dev[_PEC_SHORT_INTERIOR_BINS].max() <= _PEC_SHORT_DEV_INTERIOR, (
         f"PEC-short |S11| drifted in the INTERIOR bins, where this rig is "

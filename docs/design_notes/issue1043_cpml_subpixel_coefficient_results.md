@@ -40,9 +40,9 @@ a full-span eps 12 guide, cv01 Run 1's topology at quarter size).
 
 | arm | `K_eff_norm` min | negative cells | FDTD on main | FDTD on this branch |
 |---|---:|---:|---|---|
-| `cpml_baseline` (today, no pad replication) | **+0.007941** | 0 | finite | finite |
-| `cpml_padrep` (Stage-B replication on `aniso_eps`) | **−0.838213** | 21 | **848 non-finite, first probe index 352** | **finite** |
-| `cpml_subpixel_off` | **+0.000662** | 0 | finite | finite |
+| `cpml_baseline` (today, no pad replication) | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/coefficients_main.json::arms.cpml_baseline.coefficients.K_eff_norm_min = 0.007941` | 0 | finite | finite |
+| `cpml_padrep` (Stage-B replication on `aniso_eps`) | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/coefficients_main.json::arms.cpml_padrep.coefficients.K_eff_norm_min = -0.838213` | 21 | **`scripts/diagnostics/_artifacts/cpml_subpixel_stability/coefficients_main.json::arms.cpml_padrep.fdtd.n_nonfinite = 848` non-finite, first probe index `scripts/diagnostics/_artifacts/cpml_subpixel_stability/coefficients_main.json::arms.cpml_padrep.fdtd.first_nonfinite_index = 352`** | **finite** |
+| `cpml_subpixel_off` | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/coefficients_main.json::arms.cpml_subpixel_off.coefficients.K_eff_norm_min = 0.000662` | 0 | finite | finite |
 | `upml_padrep` | (not defined — `apply_cpml_e` never runs) | — | finite | finite |
 
 `r_A = 0`; `r_D = 0` against the pre-fix table on main and against the
@@ -87,8 +87,8 @@ every case including vacuum, and was caught by exactly this check.)
 
 | case | `rho` | |
 |---|---:|---|
-| `eps_a = 6.5`, `eps_b = 1.0` (the measured failing cell) | **2.208604** | unstable |
-| `eps_a = eps_b = 6.5` (the fix) | **1.000000** | marginal |
+| `eps_a = 6.5`, `eps_b = 1.0` (the measured failing cell) | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/amplification.json::gates.G_C.rho_old = 2.2086` | unstable |
+| `eps_a = eps_b = 6.5` (the fix) | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/amplification.json::gates.G_C.rho_new = 1.0000` | marginal |
 | `eps_a = 1`, `eps_b = 12` (today's cv01 pad) | 1.000000 | marginal — wrong but not amplifying |
 | `eps_a = eps_b` at 1, 2, 4, 6.5, 12, 30, 80 | 1.000000 | H2 falsified |
 
@@ -174,8 +174,8 @@ the pre-declaration. Measured on the same rig, both trees, in
 
 | tree | `mean_self` (20 layers) | delta vs committed |
 |---|---:|---:|
-| `origin/main` (499c8e1e) | 0.9195301017439319 | — |
-| this branch | 0.9166511849380675 | **−0.0028789168058643844** (−0.31 %) |
+| `origin/main` (499c8e1e) | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/cv01_main.json::mean_self = 0.9195301017439319` | — |
+| this branch | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/cv01_head.json::mean_self = 0.9166511849380675` | **−0.0028789168058643844** (−0.31 %) |
 
 Why, shown rather than argued (dumped from the committed build): in the x pads
 the guide's centre row reads `materials.eps_r = 12` (the pad extension put it
@@ -190,8 +190,8 @@ facet-dominated.**
 
 | tree | band min | band max |
 |---|---:|---:|
-| `origin/main` | 0.8850 | 0.9289 |
-| this branch | **0.8725** | 0.9280 |
+| `origin/main` | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/cv01_main.json::band_trace.min = 0.8850` | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/cv01_main.json::band_trace.max = 0.9289` |
+| this branch | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/cv01_head.json::band_trace.min = 0.8725` | `scripts/diagnostics/_artifacts/cpml_subpixel_stability/cv01_head.json::band_trace.max = 0.9280` |
 
 The band max barely moves (−0.0009) while the min drops (−0.0125). That is
 **more ripple — an interference change across the band, not a uniform offset**,
@@ -298,7 +298,7 @@ env, and the repo's own note says xdist loadfile workers accumulate XLA state).
 | run | result |
 |---|---|
 | the three directories, 8 shards, full pass | **3175 passed, 8 skipped, 17 xfailed, 1 failed** |
-| the one failure: `test_evidence_numeric_provenance.py::test_every_enumerated_document_is_classified` — that contract enumerates every `docs/design_notes/*.md` and refuses an unclassified one, and it caught both new notes | fixed by classifying both as `NO_ARTIFACT_REFERENCE` (neither cites an artifact key: no backtick span of the artifact-path-then-double-colon-then-key form the parser resolves); **its shard re-run 606 passed / 0 failed**, and the whole contract file re-run **1422 passed** |
+| the one failure: the provenance contract's `test_every_enumerated_document_is_classified` — that contract enumerates every `docs/design_notes/*.md` and refuses an unclassified one, and it caught both new notes | fixed by classifying both as `NO_ARTIFACT_REFERENCE` (neither cites an artifact key: no backtick span of the artifact-path-then-double-colon-then-key form the parser resolves); **its shard re-run 606 passed / 0 failed**, and the whole contract file re-run **1422 passed** |
 | the new test file re-run in full after its last edit | **6 passed** (fast) + **2 passed** (slow) |
 | `tests/unit/boundaries/ -m slow` | **7 passed, 211 deselected** — the three `test_cpml_reflectivity_regression` cases, `test_pole_extension_divergence_repro_636` (the #636 pole-pad divergence lock on the neighbouring mechanism), `test_clamped_per_face_absorber_actually_absorbs`, and both new `..._stays_finite` cases |
 | `tests/unit/nonuniform/` — the other edited path | **399 passed, 11 deselected, 1 xfailed** |
