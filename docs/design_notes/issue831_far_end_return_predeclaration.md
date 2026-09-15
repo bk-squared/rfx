@@ -851,3 +851,92 @@ worth one run.
 ### 11.4 R2
 
 One attempt, one new question. No re-run without another append.
+
+---
+
+## 12. APPEND (2026-09-15 KST) — Arm F result: BLOCKED
+
+Ran against section 11's frozen gate.
+Artifacts `scripts/diagnostics/_artifacts/cv03_seam_facet/pad_replication_probe.json`
+and `..._shape.json`.
+
+### 12.1 Verdict
+
+**BLOCKED.** `r_F = 3.0`, gate 0.
+
+| leg | measured |
+|---|---|
+| finite through 25000 steps | **no** — 24,601 non-finite, first at time-series index **399** |
+| `settling_db <= -40 dB` | **none** — "settling witness has INVALID RECORDS: probe0(ez): non-finite samples" |
+| `\|mean_self - 0.9887\| <= 0.01` | **NaN** |
+
+> [run] result contains non-finite values in time_series (24601 value(s)) — the
+> FDTD likely diverged.
+
+First amplitude decile already `2.61e+13`; every later decile NaN.
+
+**And the #61 check did not fire**, as section 11 required: the preflight banner
+carries only the four `cells per lambda_eff` / lossless-in-open-domain
+advisories, with no geometry-in-absorber line, because no declared geometry
+changed. So the divergence is **not** an artefact of the widened-`Box` proxy's
+preflight trip, and section 10's "the proxy may not represent the fix" caveat is
+now closed in the direction of the proxy being representative: the proxy
+diverges at step 402, the fix itself at index 399.
+
+The declared expectation in 11.3 was divergence, and it is recorded as having
+been declared before the run rather than discovered after it.
+
+### 12.2 What this means for the landing
+
+**The assembly fix alone is not landable.** #1043 must say it is blocked on a
+CPML + subpixel coefficient fix, and the place to start is the epsilon
+disagreement between the two halves of one timestep:
+`rfx/simulation.py:1464-1466` passes `materials=materials` into
+`apply_cpml_e`, and `rfx/boundaries/cpml.py:621-632` builds
+`_ce_full = dt / (materials.eps_r * EPS_0)` from it, while the Yee half uses
+`aniso_eps`.
+
+One new piece of evidence for that reading: the probe put **6.5** in the pad
+(12.1.1 below), the widened-`Box` arms put **12**, and both diverge within three
+steps of each other. **The divergence is insensitive to the pad's permittivity
+value**, which is what an inconsistent-coefficient mechanism looks like and is
+not what a material-mismatch mechanism would look like.
+
+### 12.3 The fix's shape, measured (no FDTD)
+
+The probe reused `extend_cpml_pad_materials` on the smoothing output, which is
+the obvious shape and is **wrong**: that function replicates the **interior-edge
+slice**, and on the smoothed array that column is the Kottke half-cell, not the
+material. cv01's committed build, guide centre row, x-lo seam:
+
+| variant | pad value | row across the seam | cells at `eps_r = 12` |
+|---|---:|---|---:|
+| committed (no replication) | 1.000 | `1.0, 1.0, 6.5, 12.0, 12.0` | 159 |
+| naive `extend_cpml_pad_materials` on the smoothed array | **6.500** | `6.5, 6.5, 6.5, 12.0, 12.0` | 159 |
+| sourced one column inward | 12.000 | `12.0, 12.0, 6.5, 12.0, 12.0` | 199 |
+| reference: `_assemble_materials` (the interior route) | 12.000 | `12.0, 12.0, 12.0, 12.0, 12.0` | 201 |
+
+Sourcing one column inward gets the pad right but strands the 6.5 half-cell
+*inside* the absorber — a one-cell film between the guide and its own matched
+pad, which is precisely the #655 failure mode the interior route already had to
+repair. **So the fix is to smooth the ALREADY-EXTENDED array**, not to
+post-process the smoothing output. That is the only one of the three that
+reproduces the reference row.
+
+This does not change 12.1's verdict — the probe's 6.5 and the proxy's 12 both
+diverge — but it is the shape #1043 should carry, and it is measured rather
+than reasoned.
+
+### 12.4 One reporting defect in the probe, recorded
+
+`probe_pad_replication.py`'s instrument check counted only cells at
+`eps_r = 12`, so it printed "159/201 both ways" and read as though the patch had
+not taken effect, while `solved_first3` in the same record showed `6.5`. The
+run had in fact changed (the committed configuration is stable; this diverged).
+The counter is the defect, not the patch. `pad_replication_shape.py` is the
+companion that reports the pad's actual value, and it runs no FDTD, so no R2
+attempt was spent on the repair.
+
+### 12.5 R2
+
+Arm F: one attempt, closed on its pre-declared gate. Not re-run.
