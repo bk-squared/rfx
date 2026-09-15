@@ -246,12 +246,30 @@ def _get_normal_fn(shape: Shape):
 
 
 #: A face counts as REACHING a padded boundary when the shape's bounding box
-#: comes within this many local cells of the outermost interior node plane.
-#: Half a cell is the rasterizer's own tie width: inside it the staircase lane
-#: either replicates the boundary column (lo face) or promotes one column
-#: inward (hi face, the #627a half-open fallback), so the two lanes continue
-#: the same structures.
-_PAD_REACH_TOL_CELLS = 0.5
+#: gets to the outermost interior node plane. The rule is exactly that -- "the
+#: declared face reaches the boundary" -- and this constant is only the
+#: numerical slack that makes the comparison decidable, in local cells: a
+#: corner spelled ``a - n*dx`` can land an f64 ulp off the algebraically
+#: identical ``m*dx`` (see ``Box``'s docstring on knife-edge corners), and one
+#: ulp must not decide whether a structure is continued. 1e-6 cells is ~1e-13 m
+#: at rfx's finer meshes -- eight orders above ulp noise and eight below any
+#: geometry anyone draws on purpose.
+#:
+#: Deliberately NOT half a cell. A face drawn 0.3 cells inside the boundary is
+#: 0.3 cells inside it, and resolving that is what subpixel smoothing is FOR;
+#: continuing it would move the structure to the boundary and throw away the
+#: resolution the lane exists to provide.
+#:
+#: The consequence, stated rather than left to be found: on the hi face the two
+#: lanes disagree over a one-cell window. The staircase lane's rule is a
+#: cell-centre test, so ``extend_cpml_pad_materials``' #627a fallback continues
+#: any box with ``corner_hi > interior_hi - dx`` (the half-open convention drops
+#: the last node, and the fallback promotes from one column inward); this lane
+#: continues only ``corner_hi >= interior_hi``. No tolerance makes them agree
+#: everywhere, because one rule is a cell-centre test and the other is sub-cell.
+#: A structure meant to reach the boundary should be drawn to it, and then both
+#: lanes continue it.
+_PAD_REACH_TOL_CELLS = 1e-6
 
 #: How far past the array the continued face is pushed, in local cells. The
 #: outermost pad sample must sit at least half a cell inside the continued

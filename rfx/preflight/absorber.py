@@ -955,7 +955,12 @@ def _validate_cfg_dielectric_at_absorber_seam(
     from rfx.geometry.csg import Box, Cylinder
 
     pec_sigma = float(getattr(self, "_PEC_SIGMA_THRESHOLD", float("inf")))
-    tol = 0.5 * float(dx)
+    # The same "reaches the boundary" rule the continuation itself applies
+    # (``rfx.geometry.smoothing._PAD_REACH_TOL_CELLS``): the declared face gets
+    # to the interior boundary, with only enough slack that one f64 ulp does
+    # not decide it. An advisory that fired on a different rule than the code
+    # it warns about would be worse than silence.
+    tol = 1e-6 * float(dx)
     findings = []
     for idx, entry in enumerate(self._geometry):
         shape = entry.shape

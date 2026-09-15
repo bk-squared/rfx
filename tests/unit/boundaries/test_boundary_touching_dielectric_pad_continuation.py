@@ -325,6 +325,55 @@ def test_continuation_is_an_identity_for_an_interior_dielectric():
         "an interior dielectric was rewritten by the pad continuation")
 
 
+@pytest.mark.parametrize("gap_cells", [0.3, 1.0])
+def test_a_face_drawn_inside_the_boundary_is_not_moved_to_it(gap_cells):
+    """The reach rule is "the declared face reaches the boundary", not "nearly".
+
+    A face drawn 0.3 cells inside the domain edge IS 0.3 cells inside it, and
+    resolving that is what subpixel smoothing is for. A half-cell tolerance
+    here would quietly move such a structure onto the boundary and continue it,
+    which is the class of silent geometry change the Box docstring, #802 and
+    #325 all exist about. Only the numerical slack that keeps one f64 ulp from
+    deciding the question is allowed.
+
+    The consequence is a one-cell window on the hi face where this lane and the
+    staircase lane disagree — the staircase rule is a cell-centre test and this
+    one is sub-cell, so no tolerance makes them agree everywhere. Pinned here
+    so the disagreement is a recorded choice rather than a discovery.
+    """
+    from rfx.geometry.smoothing import smoothed_shape_pairs
+
+    sim = Simulation(freq_max=0.25 * C0 / A, domain=(SX, SY, DX), dx=DX,
+                     boundary=BoundarySpec.uniform("cpml"),
+                     cpml_layers=CPML_LAYERS, mode="2d_tmz")
+    sim.add_material("wg", eps_r=EPS_WG)
+    inset = Box((gap_cells * DX, WG_Y - W_WG / 2, 0),
+                (SX - gap_cells * DX, WG_Y + W_WG / 2, DX))
+    sim.add(inset, material="wg")
+    grid = sim._build_grid()
+    pairs, _ = smoothed_shape_pairs(sim, grid)
+    assert pairs[0][0] is inset, (
+        f"a face {gap_cells} cells inside the boundary was moved to it")
+
+
+def test_a_face_on_the_boundary_survives_the_float_route():
+    """``corner_hi = SX`` and the node builder's last interior node are the
+    same point by two different arithmetic routes, and the reach test must not
+    be decided by which one rounds last. This is the knife-edge the Box
+    docstring names; the rule carries 1e-6 cells of slack for it and no more.
+    """
+    from rfx.geometry.smoothing import smoothed_shape_pairs
+
+    sim = _build("cpml")
+    grid = sim._build_grid()
+    pairs, _ = smoothed_shape_pairs(sim, grid)
+    box = pairs[0][0]
+    assert box is not sim._geometry[0].shape, (
+        "the boundary-touching guide was not continued — the reach test lost "
+        "to a float route")
+    assert box.corner_lo[0] < 0.0 and box.corner_hi[0] > SX
+
+
 def test_continuation_is_an_identity_without_absorbing_pads():
     """PEC walls have no pad to continue into, so nothing is rewritten."""
     from rfx.geometry.smoothing import smoothed_shape_pairs
