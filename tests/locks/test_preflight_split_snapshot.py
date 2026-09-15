@@ -188,9 +188,11 @@ fourteen were entered (53 to 55 of the 57 fixtures each, the unconditional
 spine again) and seven of those emitted nothing. Two of the seven emit
 nothing BY CONSTRUCTION and are not holes: ``_wire_port_cell_centers`` is a
 helper that returns ``(centers, midpoint_index)`` and has no emission site at
-all, and ``_validate_cfg_ntff_min_steps`` only writes the instance attribute
+all, and ``_validate_cfg_ntff_min_steps`` only wrote the instance attribute
 ``self._ntff_min_steps_hint`` (which ``rfx/interop/_design.py``'s
-``EXCLUDED_SIMULATION_ATTRS`` then names as transient run-time state). Five
+``EXCLUDED_SIMULATION_ATTRS`` then named as transient run-time state; issue
+#1030 deleted producer, attribute and exclusion row together once a census
+found the attribute had no consumer). Five
 fixtures close the other five, and three more close codes belonging to bodies
 that already spoke.
 
@@ -749,15 +751,20 @@ _REBOUND_ON_MIXIN = {
     # self._wire_port_cell_centers (intra-module) plus the module-global
     # _component_is_dead, which this leg put in rfx/preflight/_common.py
     # rather than beside it because _RealizedPEC still reads it too.
-    # Leg 6, third module. _validate_cfg_ntff_min_steps is the one rebound
-    # name in the whole split with NO emission site: it writes the instance
-    # attribute self._ntff_min_steps_hint, which rfx/interop/_design.py names
-    # in EXCLUDED_SIMULATION_ATTRS. An instance write is unaffected by where
-    # the body is defined, so the rebind below is all that has to hold, and
-    # the snapshot has nothing of its own to pin.
+    # Leg 6, third module. _validate_cfg_ntff_min_steps was the one rebound
+    # name in the whole split with NO emission site: it wrote the instance
+    # attribute self._ntff_min_steps_hint, which rfx/interop/_design.py named
+    # in EXCLUDED_SIMULATION_ATTRS. Issue #1030 DELETED it -- a census found
+    # that attribute had no consumer, so its only readers were that exclusion
+    # row and the test asserting the exclusion. It is dropped from this tuple
+    # rather than commented, because this map pins what rfx/api/__init__.py
+    # must rebind and a deleted function is nothing to rebind; the removal IS
+    # commented in place in tests/locks/test_preflight_registry_sequence.py,
+    # and the reasoning lives in rfx/preflight/ntff.py's module docstring.
+    # The snapshot corpus is unaffected: the body emitted nothing, so no
+    # committed report byte moves.
     "rfx.preflight.ntff": (
         "_validate_cfg_ntff_absorber_overlap",
-        "_validate_cfg_ntff_min_steps",
         "_validate_ntff_inverse_design",
         "_validate_ntff_small_ground_plane",
     ),
@@ -1946,7 +1953,8 @@ _FIXTURES = (
     # did -- and SEVEN of those thirteen emitting nothing at all. Two of the
     # seven emit nothing by construction and need no fixture:
     # _wire_port_cell_centers is a helper that returns cell centres, and
-    # _validate_cfg_ntff_min_steps only writes self._ntff_min_steps_hint. The
+    # _validate_cfg_ntff_min_steps only wrote self._ntff_min_steps_hint
+    # (deleted by #1030; it emitted nothing, so no fixture here moves). The
     # remaining five are closed here, together with the three codes of
     # already-speaking bodies that this corpus had never reached
     # (refplane_partial_optin, wire_port_end_gap_to_conductor,

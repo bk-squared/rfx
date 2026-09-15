@@ -1574,22 +1574,21 @@ class _PreflightMixin:
     from rfx.preflight.sources import _validate_cfg_source_on_reflector_plane
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 6: the #500 NTFF-box-in-the-absorber check and the
-    # P1.7 minimum-steps hint moved VERBATIM to ``rfx/preflight/ntff.py``,
-    # bound back at their original positions. The P1.5 comment that used to
-    # sit between them is part of the first body's suite and travelled with
-    # it.
+    # #980 Phase 3 leg 6: the #500 NTFF-box-in-the-absorber check moved
+    # VERBATIM to ``rfx/preflight/ntff.py``, bound back at its original
+    # position. The P1.5 comment that used to sit after it is part of that
+    # body's suite and travelled with it.
     #
-    # ``_validate_cfg_ntff_min_steps`` emits nothing: it writes
-    # ``self._ntff_min_steps_hint``, an INSTANCE attribute, which is
-    # unaffected by where the body is defined -- ``rfx/interop/_design.py``
-    # reads that name out of ``EXCLUDED_SIMULATION_ATTRS`` and keeps doing
-    # so.
+    # The P1.7 minimum-steps hint travelled with it and was then DELETED by
+    # issue #1030: ``_validate_cfg_ntff_min_steps`` emitted nothing, it only
+    # wrote the instance attribute ``self._ntff_min_steps_hint``, and a
+    # census found that attribute had no consumer -- its only readers were
+    # ``rfx/interop/_design.py``'s ``EXCLUDED_SIMULATION_ATTRS`` (which named
+    # it to keep it OUT of the design document) and the test asserting that
+    # exclusion. Producer, registry row and exclusion row all went together;
+    # the reasoning is in ``rfx/preflight/ntff.py``'s module docstring.
     # ------------------------------------------------------------------
-    from rfx.preflight.ntff import (
-        _validate_cfg_ntff_absorber_overlap,
-        _validate_cfg_ntff_min_steps,
-    )
+    from rfx.preflight.ntff import _validate_cfg_ntff_absorber_overlap
 
     def _validate_cfg_settling_witness_present(self, _w) -> None:
         """Warn when the declared inputs cannot produce a ring-down witness.

@@ -74,7 +74,10 @@ LOCK_PROVENANCE = {
     # between the two returned 0 -- identical trees, hashes only. The durable
     # reference is therefore the BRANCH in "generator", or after the stack
     # lands, the parent of this leg's first commit. Re-deriving from any of
-    # them gives the same 37 rows.
+    # them gives the same 37 rows; the tuple below is now 36, being those 37
+    # less the two deleted checks (#1047 ``_validate_cfg_conformal_fine_dx``,
+    # #1030 ``_validate_cfg_ntff_min_steps``, both commented in place) plus the
+    # one appended after them (#1043 stage B).
     "fixture": "none",
     "generator": (
         "ast walk of _PreflightMixin._validate_simulation_config in "
@@ -98,10 +101,12 @@ import pytest
 _HERE = Path(__file__).resolve()
 _REPO = _HERE.parents[2]
 
-#: The 37 checks ``_validate_simulation_config`` called, in body order, with
-#: the CONTEXT FIELD each positional argument became, at the leg-7 tip. See
-#: the module docstring for how this was derived and for why the argument
-#: lists are pinned here rather than left to the report snapshots.
+#: The checks ``_validate_simulation_config`` calls, in body order, with the
+#: CONTEXT FIELD each positional argument became. 37 rows at the leg-7 tip;
+#: 36 now -- two deleted (#1047, #1030) and left commented in place, one
+#: appended (#1043 stage B). See the module docstring for how this was
+#: derived and for why the argument lists are pinned here rather than left to
+#: the report snapshots.
 _CALL_SEQUENCE_AT_LEG7_TIP = (
     ("_validate_cfg_precision_x64", ("warn",)),
     ("_validate_cfg_pec_faces_with_finite_pec", ("warn",)),
@@ -113,7 +118,18 @@ _CALL_SEQUENCE_AT_LEG7_TIP = (
     ("_validate_cfg_source_on_reflector_plane", ("warn", "dx", "pmc_faces")),
     ("_validate_cfg_ntff_absorber_overlap",
      ("warn", "cpml_thickness", "cpml_thick_lo", "cpml_thick_hi", "absorber_label")),
-    ("_validate_cfg_ntff_min_steps", ("dx",)),
+    # 2026-09-15 (#1030): ``_validate_cfg_ntff_min_steps`` ("dx",) stood HERE
+    # and was DELETED -- the second removal from this sequence, following the
+    # #1047 one below, and commented out rather than erased for the same
+    # reason. It was the one check in the whole suite with NO emission site:
+    # it computed a cubic-cell CFL step estimate and wrote
+    # ``self._ntff_min_steps_hint``, an instance attribute whose only readers
+    # were ``rfx/interop/_design.py``'s ``EXCLUDED_SIMULATION_ATTRS`` (naming
+    # it to keep it OUT of the design document) and the test asserting that
+    # exclusion. A removal SHORTENS the sequence and reorders nothing, and
+    # because this body emitted nothing, NO snapshot byte and no frozen
+    # emission total moves with it: measured 113 sites / 74 literal codes
+    # before and after.
     ("_validate_cfg_settling_witness_present", ("warn",)),
     ("_validate_cfg_geometry_in_cpml",
      ("warn", "cpml_thickness", "cpml_thick_lo", "cpml_thick_hi", "absorber_label")),

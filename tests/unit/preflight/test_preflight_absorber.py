@@ -327,6 +327,79 @@ def test_ntff_absorber_overlap_fires_when_corner_crosses_domain_edge():
 
 
 # --------------------------------------------------------------------- #
+# 4b. Issue #1030 — the deleted NTFF minimum-steps hint.
+#
+# ``_validate_cfg_ntff_min_steps`` sat next to the overlap check above and
+# emitted NOTHING: it computed ``int(10 / min(ntff_freqs) / (dx / (C0 *
+# 1.732) * 0.99))`` and wrote it to ``self._ntff_min_steps_hint``. A census
+# over rfx/, tests/, validation/, scripts/ and examples/ found no consumer
+# for that attribute -- its only readers were
+# ``rfx/interop/_design.py``'s ``EXCLUDED_SIMULATION_ATTRS``, which named it
+# to keep it OUT of the design document, and the test asserting that
+# exclusion. Producer, registry row and exclusion row were deleted together.
+#
+# This test pins the DECISION rather than the absence of a warning, because
+# an absence-of-warning test would have passed before the deletion too: the
+# body never warned. What it asserts is that preflight leaves no unread
+# state behind on the Simulation, on the fixture that made the old body take
+# its innermost branch (an NTFF box WITH explicit freqs -- the only input
+# shape that reached the write).
+#
+# Red-before, measured on the pre-deletion tree (rfx/ reverted, tests kept):
+# both tests below fail -- the first at its leak assert, which listed
+# ``['_ntff_min_steps_hint', '_pf_campaign_ctx']``, and the second at
+# ``hasattr(Simulation, '_validate_cfg_ntff_min_steps')``. That run is also
+# where the allowlist below came from: ``_pf_campaign_ctx`` was measured, not
+# guessed, and then traced to its reader.
+# --------------------------------------------------------------------- #
+
+#: State ``preflight()`` may leave on the ``Simulation``, each with the
+#: reader that makes it state rather than litter. Measured, not assumed:
+#: ``_pf_campaign_ctx`` is a keyed memo written AND read by
+#: ``rfx/preflight/realization.py`` (``getattr(self, "_pf_campaign_ctx",
+#: None)`` at its line 686, assigned at 690), so repeated checks in one
+#: preflight share one realization instead of rebuilding it per check.
+_PREFLIGHT_WRITES_WITH_A_READER = {
+    "_pf_campaign_ctx": "rfx/preflight/realization.py (keyed memo, same file)",
+}
+
+
+def test_preflight_leaves_no_unread_state_on_the_simulation():
+    """#1030: the write-only NTFF step hint is gone, producer and all."""
+    sim = _ntff_sim(0.01)
+    before = set(vars(sim))
+    sim.preflight(strict=False)
+    leaked = sorted(set(vars(sim)) - before - set(_PREFLIGHT_WRITES_WITH_A_READER))
+    assert leaked == [], (
+        f"preflight() left unread attribute(s) on Simulation: {leaked}. "
+        "#1030 deleted _validate_cfg_ntff_min_steps because the one "
+        "attribute it wrote (_ntff_min_steps_hint) had no consumer; a check "
+        "that stores state nobody reads is a trap. Either give the new "
+        "attribute a reader and add it to "
+        "_PREFLIGHT_WRITES_WITH_A_READER above, naming that reader, or do "
+        "not write it."
+    )
+    assert not hasattr(sim, "_ntff_min_steps_hint")
+
+
+def test_ntff_min_steps_check_is_gone_from_the_api_and_the_registry():
+    """#1030: no method, no registry row, no interop exclusion row."""
+    from rfx.interop._design import EXCLUDED_SIMULATION_ATTRS
+    from rfx.preflight._registry import CORE_CONFIG_CHECKS
+    import rfx.preflight.ntff as _ntff_mod
+
+    assert not hasattr(Simulation, "_validate_cfg_ntff_min_steps")
+    assert not hasattr(_ntff_mod, "_validate_cfg_ntff_min_steps")
+    assert "_validate_cfg_ntff_min_steps" not in {
+        c.name for c in CORE_CONFIG_CHECKS
+    }
+    assert "_ntff_min_steps_hint" not in EXCLUDED_SIMULATION_ATTRS, (
+        "the interop exclusion row outlived the attribute it excluded; "
+        "EXCLUDED_SIMULATION_ATTRS must not name state nothing can write"
+    )
+
+
+# --------------------------------------------------------------------- #
 # 5. Consumer 4 — _validate_cfg_waveguide_reference_plane.
 #
 # This is the exact check issue #500 repro-1 documents. Its absorber-
