@@ -1,0 +1,141 @@
+{
+ "arm": "isolated patch, n = 4, dx = h/4, dt from the recorded run",
+ "dx_m": 0.00019675,
+ "dt_s": 3.751186055802254e-13,
+ "eps_substrate": 3.38,
+ "model_owner": "tests/unit/boundaries/test_cpml_subpixel_coefficient_consistency.py::amplification_rho",
+ "comparator": {
+  "rho_lossless_no_absorber": 1.0000000000000029,
+  "rho_vacuum_consistent_cpml_8": 1.0
+ },
+ "cases": [
+  {
+   "cpml_layers": 6,
+   "case": "as the arm assembles it: subpixel OFF, pad eps consistent",
+   "eps_a": 3.38,
+   "eps_b": 3.38,
+   "rho": 1.0000000000000002,
+   "unstable": false
+  },
+  {
+   "cpml_layers": 6,
+   "case": "counterfactual #1043 pair: Yee half sees the substrate, psi sees vacuum",
+   "eps_a": 3.38,
+   "eps_b": 1.0,
+   "rho": 2.244599671760064,
+   "unstable": true
+  },
+  {
+   "cpml_layers": 6,
+   "case": "counterfactual reversed: Yee half vacuum, psi sees the substrate",
+   "eps_a": 1.0,
+   "eps_b": 3.38,
+   "rho": 1.0,
+   "unstable": false
+  },
+  {
+   "cpml_layers": 6,
+   "case": "vacuum pad, consistent (the +x pad this arm actually has at pad = 10h)",
+   "eps_a": 1.0,
+   "eps_b": 1.0,
+   "rho": 1.0000000000000004,
+   "unstable": false
+  },
+  {
+   "cpml_layers": 8,
+   "case": "as the arm assembles it: subpixel OFF, pad eps consistent",
+   "eps_a": 3.38,
+   "eps_b": 3.38,
+   "rho": 1.0000000000000036,
+   "unstable": false
+  },
+  {
+   "cpml_layers": 8,
+   "case": "counterfactual #1043 pair: Yee half sees the substrate, psi sees vacuum",
+   "eps_a": 3.38,
+   "eps_b": 1.0,
+   "rho": 2.2784506775913167,
+   "unstable": true
+  },
+  {
+   "cpml_layers": 8,
+   "case": "counterfactual reversed: Yee half vacuum, psi sees the substrate",
+   "eps_a": 1.0,
+   "eps_b": 3.38,
+   "rho": 1.0,
+   "unstable": false
+  },
+  {
+   "cpml_layers": 8,
+   "case": "vacuum pad, consistent (the +x pad this arm actually has at pad = 10h)",
+   "eps_a": 1.0,
+   "eps_b": 1.0,
+   "rho": 1.0,
+   "unstable": false
+  },
+  {
+   "cpml_layers": 16,
+   "case": "as the arm assembles it: subpixel OFF, pad eps consistent",
+   "eps_a": 3.38,
+   "eps_b": 3.38,
+   "rho": 1.000000000000002,
+   "unstable": false
+  },
+  {
+   "cpml_layers": 16,
+   "case": "counterfactual #1043 pair: Yee half sees the substrate, psi sees vacuum",
+   "eps_a": 3.38,
+   "eps_b": 1.0,
+   "rho": 2.2498823855132524,
+   "unstable": true
+  },
+  {
+   "cpml_layers": 16,
+   "case": "counterfactual reversed: Yee half vacuum, psi sees the substrate",
+   "eps_a": 1.0,
+   "eps_b": 3.38,
+   "rho": 1.0,
+   "unstable": false
+  },
+  {
+   "cpml_layers": 16,
+   "case": "vacuum pad, consistent (the +x pad this arm actually has at pad = 10h)",
+   "eps_a": 1.0,
+   "eps_b": 1.0,
+   "rho": 1.0,
+   "unstable": false
+  },
+  {
+   "cpml_layers": 32,
+   "case": "as the arm assembles it: subpixel OFF, pad eps consistent",
+   "eps_a": 3.38,
+   "eps_b": 3.38,
+   "rho": 1.0,
+   "unstable": false
+  },
+  {
+   "cpml_layers": 32,
+   "case": "counterfactual #1043 pair: Yee half sees the substrate, psi sees vacuum",
+   "eps_a": 3.38,
+   "eps_b": 1.0,
+   "rho": 2.0921272030645044,
+   "unstable": true
+  },
+  {
+   "cpml_layers": 32,
+   "case": "counterfactual reversed: Yee half vacuum, psi sees the substrate",
+   "eps_a": 1.0,
+   "eps_b": 3.38,
+   "rho": 1.0,
+   "unstable": false
+  },
+  {
+   "cpml_layers": 32,
+   "case": "vacuum pad, consistent (the +x pad this arm actually has at pad = 10h)",
+   "eps_a": 1.0,
+   "eps_b": 1.0,
+   "rho": 1.0000000000000044,
+   "unstable": false
+  }
+ ]
+}

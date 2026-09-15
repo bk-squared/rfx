@@ -1,0 +1,184 @@
+[
+ {
+  "shape": [
+   217,
+   157,
+   81
+  ],
+  "n_cells_x_from_ratio": 200.0,
+  "n_cells_y_from_ratio": 140.0,
+  "xlo_pad_eps": 3.380000114440918,
+  "xhi_pad_eps": 3.380000114440918,
+  "ylo_pad_eps": 3.380000114440918,
+  "yhi_pad_eps": 3.380000114440918,
+  "n_vacuum_nodes_x": 0,
+  "n_vacuum_nodes_y": 0,
+  "facet_faces": [],
+  "pad_h": 6,
+  "variant": "as declared",
+  "shrink_ulp": [
+   0,
+   0
+  ]
+ },
+ {
+  "shape": [
+   217,
+   157,
+   81
+  ],
+  "n_cells_x_from_ratio": 199.99999999999997,
+  "n_cells_y_from_ratio": 140.0,
+  "xlo_pad_eps": 3.380000114440918,
+  "xhi_pad_eps": 3.380000114440918,
+  "ylo_pad_eps": 3.380000114440918,
+  "yhi_pad_eps": 3.380000114440918,
+  "n_vacuum_nodes_x": 0,
+  "n_vacuum_nodes_y": 0,
+  "facet_faces": [],
+  "pad_h": 6,
+  "variant": "domain length shrunk by one ULP on both axes",
+  "shrink_ulp": [
+   1,
+   1
+  ]
+ },
+ {
+  "shape": [
+   233,
+   174,
+   81
+  ],
+  "n_cells_x_from_ratio": 216.0,
+  "n_cells_y_from_ratio": 156.00000000000003,
+  "xlo_pad_eps": 3.380000114440918,
+  "xhi_pad_eps": 3.380000114440918,
+  "ylo_pad_eps": 3.380000114440918,
+  "yhi_pad_eps": 1.0,
+  "n_vacuum_nodes_x": 0,
+  "n_vacuum_nodes_y": 10,
+  "facet_faces": [
+   "y-hi"
+  ],
+  "pad_h": 8,
+  "variant": "as declared",
+  "shrink_ulp": [
+   0,
+   0
+  ]
+ },
+ {
+  "shape": [
+   233,
+   173,
+   81
+  ],
+  "n_cells_x_from_ratio": 215.99999999999994,
+  "n_cells_y_from_ratio": 156.0,
+  "xlo_pad_eps": 3.380000114440918,
+  "xhi_pad_eps": 3.380000114440918,
+  "ylo_pad_eps": 3.380000114440918,
+  "yhi_pad_eps": 3.380000114440918,
+  "n_vacuum_nodes_x": 0,
+  "n_vacuum_nodes_y": 0,
+  "facet_faces": [],
+  "pad_h": 8,
+  "variant": "domain length shrunk by one ULP on both axes",
+  "shrink_ulp": [
+   1,
+   1
+  ]
+ },
+ {
+  "shape": [
+   250,
+   189,
+   81
+  ],
+  "n_cells_x_from_ratio": 232.00000000000003,
+  "n_cells_y_from_ratio": 172.0,
+  "xlo_pad_eps": 3.380000114440918,
+  "xhi_pad_eps": 1.0,
+  "ylo_pad_eps": 3.380000114440918,
+  "yhi_pad_eps": 3.380000114440918,
+  "n_vacuum_nodes_x": 10,
+  "n_vacuum_nodes_y": 0,
+  "facet_faces": [
+   "x-hi"
+  ],
+  "pad_h": 10,
+  "variant": "as declared",
+  "shrink_ulp": [
+   0,
+   0
+  ]
+ },
+ {
+  "shape": [
+   249,
+   189,
+   81
+  ],
+  "n_cells_x_from_ratio": 231.99999999999997,
+  "n_cells_y_from_ratio": 171.99999999999997,
+  "xlo_pad_eps": 3.380000114440918,
+  "xhi_pad_eps": 3.380000114440918,
+  "ylo_pad_eps": 3.380000114440918,
+  "yhi_pad_eps": 3.380000114440918,
+  "n_vacuum_nodes_x": 0,
+  "n_vacuum_nodes_y": 0,
+  "facet_faces": [],
+  "pad_h": 10,
+  "variant": "domain length shrunk by one ULP on both axes",
+  "shrink_ulp": [
+   1,
+   1
+  ]
+ },
+ {
+  "shape": [
+   265,
+   206,
+   81
+  ],
+  "n_cells_x_from_ratio": 248.0,
+  "n_cells_y_from_ratio": 188.00000000000003,
+  "xlo_pad_eps": 3.380000114440918,
+  "xhi_pad_eps": 3.380000114440918,
+  "ylo_pad_eps": 3.380000114440918,
+  "yhi_pad_eps": 1.0,
+  "n_vacuum_nodes_x": 0,
+  "n_vacuum_nodes_y": 10,
+  "facet_faces": [
+   "y-hi"
+  ],
+  "pad_h": 12,
+  "variant": "as declared",
+  "shrink_ulp": [
+   0,
+   0
+  ]
+ },
+ {
+  "shape": [
+   265,
+   205,
+   81
+  ],
+  "n_cells_x_from_ratio": 247.99999999999997,
+  "n_cells_y_from_ratio": 188.0,
+  "xlo_pad_eps": 3.380000114440918,
+  "xhi_pad_eps": 3.380000114440918,
+  "ylo_pad_eps": 3.380000114440918,
+  "yhi_pad_eps": 3.380000114440918,
+  "n_vacuum_nodes_x": 0,
+  "n_vacuum_nodes_y": 0,
+  "facet_faces": [],
+  "pad_h": 12,
+  "variant": "domain length shrunk by one ULP on both axes",
+  "shrink_ulp": [
+   1,
+   1
+  ]
+ }
+]

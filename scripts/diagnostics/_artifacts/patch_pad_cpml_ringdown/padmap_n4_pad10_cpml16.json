@@ -1,0 +1,114 @@
+{
+ "tag": "padmap_n4_pad10_cpml16",
+ "rfx": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-acc39a30f061a5325/rfx/__init__.py",
+ "shape": [
+  266,
+  205,
+  97
+ ],
+ "cpml_layers": 16,
+ "n": 4,
+ "pad_h": 10,
+ "subpixel_requested": false,
+ "k_gnd": 36,
+ "k_patch": 41,
+ "k_substrate_mid": 39,
+ "interior_index_range": [
+  16,
+  249
+ ],
+ "eps_x_row_at_substrate": [
+  [
+   3.380000114440918,
+   0,
+   248
+  ],
+  [
+   1.0,
+   248,
+   18
+  ]
+ ],
+ "eps_y_row_at_substrate": [
+  [
+   3.380000114440918,
+   0,
+   205
+  ]
+ ],
+ "cond_x_row_at_ground": [
+  [
+   false,
+   0,
+   16
+  ],
+  [
+   true,
+   16,
+   232
+  ],
+  [
+   false,
+   248,
+   18
+  ]
+ ],
+ "cond_y_row_at_ground": [
+  [
+   false,
+   0,
+   16
+  ],
+  [
+   true,
+   16,
+   172
+  ],
+  [
+   false,
+   188,
+   17
+  ]
+ ],
+ "eps_z_column_in_xlo_pad": [
+  [
+   1.0,
+   0,
+   36
+  ],
+  [
+   3.380000114440918,
+   36,
+   5
+  ],
+  [
+   1.0,
+   41,
+   56
+  ]
+ ],
+ "eps_z_column_in_xhi_pad": [
+  [
+   1.0,
+   0,
+   97
+  ]
+ ],
+ "eps_z_column_interior": [
+  [
+   1.0,
+   0,
+   36
+  ],
+  [
+   3.380000114440918,
+   36,
+   5
+  ],
+  [
+   1.0,
+   41,
+   56
+  ]
+ ]
+}
