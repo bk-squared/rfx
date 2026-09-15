@@ -657,6 +657,51 @@ def _validate_cfg_waveguide_reference_plane(
     ("[P2.7]") don't break and as a reminder that the fix is
     regression-locked via tests/unit/runners/test_silent_drop_warnings.py and
     tests/unit/boundaries/test_boundary_pmc_hi_faces.py.
+
+    Issue #1024 -- the three emission sites, and which of them can speak
+    ------------------------------------------------------------------
+    Site 3 (the device-overlap advisory) was the defect: it read
+    ``g.bounds`` off a ``_GeometryEntry`` wrapper, which has no such
+    attribute, under a bare ``except Exception``. Fixed at the site; see
+    the comment there for the measurement.
+
+    Sites 1 and 2 stay as deliberate no-ops, re-measured rather than
+    assumed:
+
+    * Site 1, the ``PreflightConfigError`` raise, is SHADOWED, not dead.
+      ``add_waveguide_port`` rejects an out-of-domain ``x_position``
+      (``rfx/api/__init__.py``, "outside the {axis}-domain") and an
+      out-of-domain ``reference_plane`` (same message, own check) with
+      ``ValueError`` before preflight can run, so nothing reaching it
+      through the public builder can trip this raise. It is kept because
+      it is the ONLY range check on any path that populates
+      ``self._waveguide_ports`` WITHOUT that builder --
+      ``rfx/convergence.py``'s ``sim_factory`` copies the entry list onto
+      a fresh ``Simulation`` wholesale, and a fixture may assign the list
+      directly (``tests/locks/test_preflight_split_snapshot.py``'s
+      ``waveguide_layout_near_cutoff`` does). Neither currently produces
+      an out-of-domain plane -- the clone keeps ``domain=sim._domain``
+      unchanged, measured -- so the raise stays shadowed today; it is kept
+      because it is what would catch the first such path, at the cost of
+      one comparison per port. ``rfx/interop/_design.py`` rehydrates
+      through ``sim.add_waveguide_port`` and is therefore re-validated.
+    * Site 2, the CPML-overlap warning, is unreachable by ALGEBRA rather
+      than by coincidence: ``_absorber_boundary_for_axis`` returns
+      literally ``(0.0 if ct_lo > 0 else None, domain_extent if ct_hi > 0
+      else None)``, so its predicate ``effective < 0.0 or effective >
+      domain_ext`` is character-for-character site 1's raise condition and
+      site 1 has already raised. Its own comment block below already
+      records that decision and the P2.7 precedent for keeping such a
+      branch routed through the canonical helper.
+
+    Neither deletion would change a user-visible number, and both would
+    shrink the frozen surface in
+    ``tests/unit/preflight/test_preflight_advisory_emission_contract.py``
+    for no behavioural gain, so the frozen totals are UNCHANGED by #1024
+    (113 sites / 74 literal codes). What #1024 changes is that
+    ``waveguide_reference_plane`` is now witnessable at all:
+    ``tests/locks/test_preflight_split_snapshot.py``'s
+    ``waveguide_refplane_in_slab`` fixture renders site 3.
     """
     if self._waveguide_ports:
         axis_map = {"x": 0, "y": 1, "z": 2}
@@ -711,21 +756,58 @@ def _validate_cfg_waveguide_reference_plane(
                     ),
                     stacklevel=3,
                 )
-            # Device overlap warning: check if any geometry box spans
-            # the port's x-plane.
+            # Device overlap warning: check if any geometry entry spans
+            # the port's reference plane.
+            #
+            # Issue #1024. This used to read ``g.bounds`` off the LIST
+            # ELEMENT, but ``self._geometry`` holds
+            # ``_GeometryEntry(shape, material_name)`` wrappers with no
+            # ``bounds`` attribute (``rfx/api/__init__.py``'s ``add()`` is
+            # the only append site), and the resulting ``AttributeError``
+            # was swallowed by a bare ``except Exception: continue`` on the
+            # next line -- so this advisory could not fire for ANY
+            # configuration. Measured on the pre-fix tree: a 4-cell
+            # eps_r=4 slab drawn across a WR-90 port's reference plane at
+            # 20.32 mm emitted ``['mesh_resolution' x3, 'lossless_q']``
+            # and no ``waveguide_reference_plane``.
+            #
+            # The bounds now come off ``g.shape`` through the shape
+            # protocol's own ``bounding_box()``, which is how the sibling
+            # geometry reader in this package does it
+            # (``rfx/preflight/absorber.py``'s
+            # ``_validate_cfg_geometry_in_cpml``) and what
+            # ``rfx/preflight/realization.py::_shape_bounds`` falls back to
+            # for a non-``Box``. The caught exceptions are that API's own
+            # two, copied from the same sibling: ``NotImplementedError``
+            # (``rfx.geometry.csg.Shape.bounding_box``'s default, for a
+            # shape that reports no box) and ``TypeError`` (a traced
+            # coordinate -- ``jax.errors.ConcretizationTypeError`` is a
+            # ``TypeError``). ``AttributeError`` is deliberately NOT caught
+            # any more: reading the wrong attribute off the wrapper is the
+            # defect this issue is, and it must fail loudly rather than
+            # read as "this entry has no bounds".
+            #
+            # The corners are min/max'd per axis rather than trusted as
+            # ``(lo, hi)``: ``Box.bounding_box()`` returns the declared
+            # ``(corner_lo, corner_hi)`` unsorted, and
+            # ``_sorted_box_corners`` sorts for exactly that reason.
             if self._geometry:
                 for g in self._geometry:
-                    try:
-                        lo, hi = g.bounds
-                    except Exception:
+                    if not hasattr(g.shape, "bounding_box"):
                         continue
-                    if lo[ax_i] <= effective <= hi[ax_i]:
+                    try:
+                        c1, c2 = g.shape.bounding_box()
+                        lo_c = min(float(c1[ax_i]), float(c2[ax_i]))
+                        hi_c = max(float(c1[ax_i]), float(c2[ax_i]))
+                    except (NotImplementedError, TypeError):
+                        continue
+                    if lo_c <= effective <= hi_c:
                         _w.warn(
                             PreflightWarning(
                                 f"waveguide_port reference plane at "
                                 f"{effective*1e3:.3g} mm intersects geometry "
-                                f"'{getattr(g, 'material', '?')}' "
-                                f"(bounds {lo[ax_i]*1e3:.3g}–{hi[ax_i]*1e3:.3g} mm "
+                                f"'{g.material_name}' "
+                                f"(bounds {lo_c*1e3:.3g}–{hi_c*1e3:.3g} mm "
                                 f"on {direction[-1]}). Modal decomposition "
                                 f"assumes a uniform cross-section at the port "
                                 f"plane; reported S-params will mix modes. Move "

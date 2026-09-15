@@ -398,6 +398,152 @@ def test_waveguide_reference_plane_silent_at_mixin_level_near_edge():
 
 
 # --------------------------------------------------------------------- #
+# 5b. The SAME check's third emission site — the device-overlap advisory
+#     (issue #1024).
+#
+# Sites 1 and 2 above are the shadowed raise and the algebraically dead
+# absorber branch. Site 3 is the one that was supposed to speak on a real
+# configuration and could not: it read ``g.bounds`` off the list element,
+# but ``Simulation._geometry`` holds ``_GeometryEntry(shape,
+# material_name)`` wrappers with no ``bounds`` attribute, and the
+# ``AttributeError`` was swallowed by a bare ``except Exception:
+# continue``. Measured on the pre-fix tree with the straddling builder
+# below: the report carried ``['mesh_resolution', 'mesh_resolution',
+# 'mesh_resolution', 'lossless_q']`` and no ``waveguide_reference_plane``.
+#
+# Three tests: the positive control (the slab straddles the plane), the
+# non-firing control (the same slab moved clear of it -- the property the
+# fix must not trade away), and the anti-regression for the bare except
+# itself (a wrapper the check cannot read must raise, not read as "no
+# bounds"). The text witness is
+# tests/locks/test_preflight_split_snapshot.py::waveguide_refplane_in_slab,
+# which imports the straddling builder from here.
+# --------------------------------------------------------------------- #
+
+_WG_RP_DX = 0.00254            # WR-90 broad wall / 9
+_WG_RP_A = 0.02286             # WR-90 broad wall (y)
+_WG_RP_B = 0.01016             # WR-90 narrow wall (z)
+_WG_RP_DOMAIN_X = 48 * _WG_RP_DX          # 0.12192 m
+_WG_RP_PORT_L = 5 * _WG_RP_DX             # 0.01270 m, +x launch
+_WG_RP_PORT_R = 43 * _WG_RP_DX            # 0.10922 m, -x launch
+_WG_RP_REF_L = 8 * _WG_RP_DX              # 0.02032 m  <- the plane at issue
+_WG_RP_REF_R = 40 * _WG_RP_DX             # 0.10160 m
+# The slab is 4 coarse cells thick either way; only its x placement moves.
+_WG_RP_SLAB_STRADDLING = (6 * _WG_RP_DX, 10 * _WG_RP_DX)   # 15.24..25.40 mm
+_WG_RP_SLAB_CLEAR = (22 * _WG_RP_DX, 26 * _WG_RP_DX)       # 55.88..66.04 mm
+
+
+def _waveguide_refplane_sim(slab_x):
+    """Two-port WR-90 guide with an eps_r=4 slab at ``slab_x`` on x.
+
+    Every x coordinate is an integer multiple of ``dx``, so the slab faces
+    and both reference planes land on nodes at this rung and the printed
+    bounds are the drawn bounds. The band (8.4-11.6 GHz) sits 1.28x above
+    the TE10 cutoff of this guide, which is the regime
+    ``waveguide_setup_thru`` is in and NOT the near-cutoff regime that made
+    ``waveguide_layout_near_cutoff`` x64-sensitive: nothing in the rendered
+    report divides by ``sqrt(1 - (f_c/f)^2)`` near zero.
+    """
+    sim = Simulation(freq_max=11.6e9,
+                     domain=(_WG_RP_DOMAIN_X, _WG_RP_A, _WG_RP_B),
+                     dx=_WG_RP_DX, boundary="cpml", cpml_layers=10)
+    sim.add_material("diel", eps_r=4.0, sigma=0.0)
+    sim.add(Box((slab_x[0], 0.0, 0.0), (slab_x[1], _WG_RP_A, _WG_RP_B)),
+            material="diel")
+    common = dict(mode=(1, 0), mode_type="TE",
+                  freqs=np.linspace(8.4e9, 11.6e9, 5), f0=10e9,
+                  bandwidth=0.5, ref_offset=3, probe_offset=10)
+    sim.add_waveguide_port(_WG_RP_PORT_L, direction="+x", name="left",
+                           reference_plane=_WG_RP_REF_L, **common)
+    sim.add_waveguide_port(_WG_RP_PORT_R, direction="-x", name="right",
+                           reference_plane=_WG_RP_REF_R, **common)
+    return sim
+
+
+def _waveguide_refplane_in_slab_sim():
+    """The straddling case: slab x in [15.24, 25.40] mm contains 20.32 mm."""
+    return _waveguide_refplane_sim(_WG_RP_SLAB_STRADDLING)
+
+
+def _waveguide_refplane_clear_of_slab_sim():
+    """The control: the same slab moved to [55.88, 66.04] mm."""
+    return _waveguide_refplane_sim(_WG_RP_SLAB_CLEAR)
+
+
+def _refplane_findings(sim):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        report = sim.preflight(strict=False)
+    return [i for i in report if i.code == "waveguide_reference_plane"]
+
+
+def test_waveguide_reference_plane_device_overlap_fires_on_straddling_slab():
+    """Issue #1024 positive control: one advisory, for the left port only.
+
+    The right port's plane (101.60 mm) is nowhere near the slab, so a
+    second finding would mean the loop had stopped keying on the port.
+    """
+    found = _refplane_findings(_waveguide_refplane_in_slab_sim())
+    assert len(found) == 1, f"expected exactly one finding, got {found!r}"
+    msg = str(found[0])
+    assert "reference plane at 20.3 mm intersects geometry 'diel'" in msg, msg
+    assert "bounds 15.2–25.4 mm on x" in msg, msg
+    assert found[0].severity == "warning", found[0].severity
+    assert found[0].source == "_validate_cfg_waveguide_reference_plane"
+
+
+def test_waveguide_reference_plane_device_overlap_silent_when_slab_is_clear():
+    """Non-firing control: the same slab 40.6 mm further down the guide."""
+    found = _refplane_findings(_waveguide_refplane_clear_of_slab_sim())
+    assert not found, f"a slab clear of both planes must not warn; got {found!r}"
+
+
+def test_waveguide_reference_plane_device_overlap_does_not_swallow_a_bad_entry():
+    """The bare ``except Exception`` that hid issue #1024 must not return.
+
+    An entry whose ``shape`` cannot be read is a defect in the caller, not
+    a geometry entry with no bounds: it has to raise here rather than be
+    skipped, which is exactly what did NOT happen for the life of the
+    check.
+    """
+    fake = SimpleNamespace(
+        _domain=(_WG_RP_DOMAIN_X, _WG_RP_A, _WG_RP_B),
+        _geometry=[SimpleNamespace(material_name="diel")],   # no .shape
+        _waveguide_ports=[_fake_wg_port("+x", _WG_RP_PORT_L,
+                                        reference_plane=_WG_RP_REF_L)],
+    )
+    with pytest.raises(AttributeError, match="shape"):
+        _PreflightMixin._validate_cfg_waveguide_reference_plane(
+            fake, warnings, [10 * _WG_RP_DX, 0.0, 0.0],
+            [10 * _WG_RP_DX, 0.0, 0.0])
+
+
+def test_waveguide_reference_plane_device_overlap_skips_a_shape_with_no_bbox():
+    """A shape that reports no bounding box is skipped, not fatal.
+
+    ``rfx.geometry.csg.Shape.bounding_box`` raises ``NotImplementedError``
+    by default, and that is the one shape-API outcome this site is allowed
+    to swallow.
+    """
+    class _NoBBox:
+        def bounding_box(self):
+            raise NotImplementedError("no box")
+
+    fake = SimpleNamespace(
+        _domain=(_WG_RP_DOMAIN_X, _WG_RP_A, _WG_RP_B),
+        _geometry=[SimpleNamespace(shape=_NoBBox(), material_name="diel")],
+        _waveguide_ports=[_fake_wg_port("+x", _WG_RP_PORT_L,
+                                        reference_plane=_WG_RP_REF_L)],
+    )
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        _PreflightMixin._validate_cfg_waveguide_reference_plane(
+            fake, warnings, [10 * _WG_RP_DX, 0.0, 0.0],
+            [10 * _WG_RP_DX, 0.0, 0.0])
+    assert not rec, f"a bbox-less shape must be skipped silently; got {rec}"
+
+
+# --------------------------------------------------------------------- #
 # 6. Consumer 5 — _check_msl_port_geometry (checks 1 & 3: distance to
 #    the nearest absorbing/reflecting boundary).
 #
