@@ -1,0 +1,265 @@
+"""A lossless patch in an open domain must not gain energy late in the ring-down.
+
+THE INVARIANT.  The fixture is a lossless dielectric, perfect conductors and a CPML.  After
+the source is over, every physical path removes energy and none adds any, so the late-time
+envelope can only decay.  A run whose envelope turns and climbs is not a resonance, a beat or
+a truncated transient -- it is the update operator with an eigenvalue outside the unit circle,
+and the only question is how long you have to wait to see it.
+
+WHY THIS FIXTURE.  An isolated patch on a grounded substrate with the lateral domain padded and
+a thin absorber is the configuration that produced rfx's longest unexplained growth record.  The
+diagnosis (branch ``diag/801-patch-ringdown-padding``, artifacts under
+``scripts/diagnostics/_artifacts/patch_pad_cpml_ringdown/``) attributed it by bisect to
+``a3e4dba4`` -- the #931 lattice-ownership contract -- and then to one measurable difference:
+the pre-#931 edge rule shorted a one-edge-wide ring of TANGENTIAL edges one node past each
+conductor's hi-face footprint (500 of them on the reference arm), and that overhang ring plus a
+thin absorber grew.  Neither alone does.  Nothing pinned any of it; the growth stopped as a side
+effect of a contract change made for other reasons.  This is that pin.
+
+WHY THE FULL RECORD, AND WHY THE GPU LANE.  The unstable mode is seeded at round-off, so it
+only becomes visible once it overtakes the decaying physical field.  With the measured rates
+(-1.9e-4 per step decaying, +4.4e-4 per step growing) a seed at ~1e-7 of the peak needs
+ln(1e7) / 6.3e-4 ~ 2.6e4 steps to cross over -- which is the whole 150-period record, and is why
+the observed turn-up sits near 17000 steps.  A "reduced record" cannot work for a source-driven
+seed, and this was measured rather than assumed: at 40 periods BOTH rules still decay
+(n = 3: 0.942 shipped against 0.986 mutated; n = 4 on CPU is ~15 min for even that).  The full
+arm is 26 s on rtx4090 and ~55 min on this CPU pod, so the gate lives on the GPU lane.
+
+TWO-SIDED, because a one-sided reflection bar has already pinned a diverging run in this repo:
+the assertion is ``settling_db <= -40`` AND a negative fitted decay rate on every probe.  The
+rate is fitted log-linearly on BLOCK MAXIMA -- the series oscillates at ~f0, so ``env[::k]``
+aliases and can render a growing envelope flat -- and over the last half, which makes it immune
+to the TM010/TM001 beat that reads as an "upturn" of ~2.7 on a perfectly healthy run (measured,
+and the reason a bare no-upturn check is not used).
+
+THE FALSIFIER IS IN THIS FILE.  ``test_the_gate_is_red_under_the_pre_931_edge_rule`` runs the
+same arm with one mutation -- ``rfx.boundaries.pec._volume_edge_masks`` replaced by the
+``a3e4dba4^`` body -- and requires the rate to come out POSITIVE.  A gate whose red state has
+never been observed is not known to measure anything (this repo has been bitten by exactly that;
+see the "a physics gate can bind an artifact" lesson).  Keep the two together: if the mutation
+test stops being red, this gate has stopped discriminating and the green one means nothing.
+
+Related: #801 (the growth record), #931 (the contract change that ended it), #1070 (a separate
+absorber-pad defect found on the same fixture).
+"""
+from __future__ import annotations
+
+import math
+
+import numpy as np
+import pytest
+
+# Fixture geometry, in units of the substrate thickness, so every length lands on a lattice
+# node at every resolution (the refinement-ladder property the original rig was built around).
+H = 0.787e-3                  # substrate thickness; the unit of every length
+EPS_R = 3.38                  # RO4003C
+L_H, W_H = 11, 13             # patch 11h x 13h
+DOMX_H, DOMY_H, DOMZ_H = 38, 23, 16
+ZGND_H, XP0_H = 5, 16
+PAD_H = 10                    # lateral padding each side, in h -- the growing arm's value
+N_CELLS_PER_H = 4             # dx = h / N_CELLS_PER_H; the resolution the record was taken at
+F0, BW = 8.5e9, 1.6
+
+# The record the growth was measured on: 150 periods = 26659 steps.  Not reducible -- see the
+# module docstring's crossover arithmetic.
+NUM_PERIODS = 150.0
+
+# Gate, two-sided.
+# (1) The shipped ring-down witness's own bar.  Measured on this arm: -43.37 dB shipped,
+#     0.00 dB mutated.
+SETTLING_DB_BAR = -40.0
+# (2) The late-time decay rate must be negative.  Measured: about -1.9e-4 per step shipped,
+#     +4.4e-4 per step mutated.  The bar sits an order of magnitude inside that gap, so a rate
+#     that is merely "not very negative" fails too.
+MAX_LOG_RATE_PER_STEP = -2.0e-5
+
+
+def _build(n=N_CELLS_PER_H, pad_h=PAD_H, cpml=None):
+    """The isolated patch: ground plane, substrate, patch, interior dipole, parity probe quad.
+
+    Ground and patch are declared as one-cell PEC Boxes, which is what the growth record used
+    and what #931 realizes as filled slabs with walls on both faces.  Every coordinate carries
+    the same -0.1 cell nudge the original rig used so that no declared bound sits exactly on a
+    node (float32 half-open Box bounds are otherwise not deterministic).
+    """
+    from rfx import Box, Simulation
+    from rfx.sources import GaussianPulse
+
+    dx = H / n
+    cpml = 2 * n if cpml is None else cpml
+    nudge = -0.1 * dx
+    px = py = pad_h * H
+    domx, domy, domz = DOMX_H * H + 2 * px, DOMY_H * H + 2 * py, DOMZ_H * H
+    L, W = L_H * H, W_H * H
+    x0 = XP0_H * H + px + nudge
+    y0 = (DOMY_H / 2 - W_H / 2) * H + py + nudge
+    z_gnd = ZGND_H * H + nudge
+    z_sub_lo = z_gnd + dx
+    z_sub_hi = z_sub_lo + H
+    z_patch_hi = z_sub_hi + dx
+
+    sim = Simulation(freq_max=15e9, domain=(domx, domy, domz), dx=dx,
+                     cpml_layers=cpml, boundary="cpml")
+    sim.add_material("ro4003c", eps_r=EPS_R, sigma=0.0)
+    sim.add(Box((nudge, nudge, z_gnd), (domx + nudge, domy + nudge, z_sub_lo)), material="pec")
+    sim.add(Box((nudge, nudge, z_gnd), (domx + nudge, domy + nudge, z_sub_hi)),
+            material="ro4003c")
+    sim.add(Box((x0, y0, z_sub_hi), (x0 + L, y0 + W, z_patch_hi)), material="pec")
+
+    z_mid = 0.5 * (z_sub_lo + z_sub_hi)
+    sim.add_source(position=(x0 + 0.31 * L, y0 + W / 2 - 0.27 * W, z_mid),
+                   component="ez", amplitude_kind="field",
+                   waveform=GaussianPulse(f0=F0, bandwidth=BW))
+    xc, yc = x0 + L / 2, y0 + W / 2
+    for qx, qy in ((xc - 3.5 * H, yc - 3.5 * H), (xc + 3.5 * H, yc - 3.5 * H),
+                   (xc - 3.5 * H, yc + 3.5 * H), (xc + 3.5 * H, yc + 3.5 * H)):
+        sim.add_probe(position=(qx, qy, z_mid), component="ez")
+    return sim
+
+
+def _legacy_volume_edge_masks(cell_mask, periodic):
+    """``a3e4dba4^:rfx/boundaries/pec.py::tangential_edge_masks``.
+
+    A component is PEC iff the body has an occupied neighbour along THAT COMPONENT'S OWN axis.
+    Copied from the same historical body already carried by
+    ``scripts/diagnostics/slow_931_farfield_attribution.py``.  On a one-cell-thick Box this
+    selects only the in-plane components -- and, on the Box's hi rim, one node further out than
+    the shipped incidence rule, which is the overhang ring this gate exists for.
+    """
+    from rfx.boundaries import pec
+
+    return tuple(cell_mask & (pec._shift(cell_mask, axis, periodic, +1)
+                              | pec._shift(cell_mask, axis, periodic, -1))
+                 for axis in range(3))
+
+
+def _late_time_log_rate_per_step(time_series, n_blocks=40, fit_fraction=0.5):
+    """Per-probe exponential rate of the late-time envelope, from block maxima.
+
+    Returns one rate per probe: the slope of ``log(block max)`` against step number over the
+    last ``fit_fraction`` of the record.  Negative = decaying.  A non-finite sample makes the
+    rate ``+inf`` for that probe rather than NaN, because a NaN reaching a ``< 0`` comparison
+    reads as a pass.
+    """
+    raw = np.asarray(time_series, dtype=float)
+    env = np.abs(np.where(np.isfinite(raw), raw, 0.0))
+    blown = (~np.isfinite(raw)).any(axis=0)
+    n_steps = env.shape[0]
+    block = max(1, n_steps // n_blocks)
+    n_full = n_steps // block
+    maxima = np.array([env[i * block:(i + 1) * block].max(axis=0) for i in range(n_full)])
+    centres = (np.arange(n_full) + 0.5) * block
+    first = int(n_full * (1.0 - fit_fraction))
+    rates = []
+    for p in range(maxima.shape[1]):
+        if blown[p]:
+            rates.append(float("inf"))
+            continue
+        y, t = maxima[first:, p], centres[first:]
+        ok = y > 0
+        rates.append(float(np.polyfit(t[ok], np.log(y[ok]), 1)[0]) if ok.sum() > 2
+                     else float("inf"))
+    return rates
+
+
+def _settling_db(time_series):
+    """Worst-probe end-of-run envelope against peak, the shipped witness's arithmetic.
+
+    A probe that reached inf/NaN scores ``+inf``, never NaN: a NaN reaching a ``<= -40``
+    comparison reads as settled, which is the failure #885 closed.
+    """
+    raw = np.asarray(time_series, dtype=float)
+    env = np.abs(np.where(np.isfinite(raw), raw, 0.0))
+    blown = (~np.isfinite(raw)).any(axis=0)
+    tail = env[int(env.shape[0] * 0.95):].max(axis=0)
+    peak = env.max(axis=0)
+    return max(float("inf") if bad
+               else 20 * math.log10(max(float(t), 1e-300) / max(float(p), 1e-300))
+               for t, p, bad in zip(tail, peak, blown))
+
+
+def _run_rates(monkeypatch=None, legacy=False):
+    sim = _build()
+    if legacy:
+        from rfx.boundaries import pec
+        monkeypatch.setattr(pec, "_volume_edge_masks", _legacy_volume_edge_masks)
+    # The preflight is part of the result, so it is READ rather than skipped blind: this
+    # fixture is a deliberate anti-pattern (one-cell PEC volumes, a lossless dielectric in an
+    # open domain, a thin absorber) and must keep saying so. An empty preflight here would mean
+    # the board changed under the test, which is the thing the gate cannot afford to miss.
+    findings = [str(v) for v in sim.preflight()]
+    assert findings, (
+        "preflight reported NOTHING on a fixture built to trip it (one-cell PEC volumes, a "
+        "lossless dielectric in an open CPML domain). The board this test scores is not the "
+        "board it was written for.")
+    # Re-run without the advisory pass; it has already been read.
+    result = sim.run(num_periods=NUM_PERIODS, skip_preflight=True)
+    series = np.asarray(result.time_series)
+    assert series.ndim == 2 and series.shape[1] == 4, f"unexpected probe record {series.shape}"
+    return _late_time_log_rate_per_step(series), _settling_db(series), findings
+
+
+@pytest.mark.gpu
+@pytest.mark.slow_physics
+def test_lossless_open_domain_ringdown_decays_on_every_probe():
+    """The gate: a passive lossless open-domain ring-down must not gain energy.
+
+    Two-sided on purpose. A one-sided bar has pinned a diverging run in this repo before.
+    """
+    rates, settling, preflight = _run_rates()
+    worst = max(rates)
+    assert settling <= SETTLING_DB_BAR, (
+        f"ring-down did not settle: worst-probe end/peak {settling:.2f} dB against the bar "
+        f"{SETTLING_DB_BAR:.0f} dB, per-probe late-time log rates {rates} per step. "
+        f"Preflight on this arm, verbatim: {preflight}. See issue #801.")
+    assert worst < MAX_LOG_RATE_PER_STEP, (
+        f"ring-down settled but the late-time envelope is not decaying: per-probe log rates "
+        f"{rates} per step, worst {worst:.3e} against the bar {MAX_LOG_RATE_PER_STEP:.1e} "
+        f"(settling {settling:.2f} dB). A lossless structure in an open domain cannot gain "
+        f"energy, so a non-negative rate is the update operator, not the physics. "
+        f"Preflight on this arm, verbatim: {preflight}. See issue #801.")
+
+
+@pytest.mark.gpu
+@pytest.mark.slow_physics
+def test_the_gate_is_red_under_the_pre_931_edge_rule(monkeypatch):
+    """The falsifier: with the pre-#931 edge rule the same arm must GROW.
+
+    One mutation, and it is the one the bisect landed on. If this ever passes quietly, the gate
+    above has stopped discriminating and its green tells you nothing.
+    """
+    rates, settling, _preflight = _run_rates(monkeypatch=monkeypatch, legacy=True)
+    assert min(rates) > 0.0 and settling > SETTLING_DB_BAR, (
+        f"the pre-#931 edge rule no longer makes this arm grow: per-probe log rates {rates} "
+        f"per step (best {min(rates):.3e}), settling {settling:.2f} dB. Either the mutation "
+        f"stopped reaching the solve (check that rfx.boundaries.pec._volume_edge_masks is still "
+        f"what realized_pec_edge_masks calls) or the fixture stopped exciting the instability -- "
+        f"in both cases the companion gate is no longer known to measure anything.")
+
+
+if __name__ == "__main__":  # measurement helper, not part of the suite
+    import sys
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _patched(legacy):
+        from rfx.boundaries import pec
+        original = pec._volume_edge_masks
+        if legacy:
+            pec._volume_edge_masks = _legacy_volume_edge_masks
+        try:
+            yield
+        finally:
+            pec._volume_edge_masks = original
+
+    for use_legacy in (False, True):
+        with _patched(use_legacy):
+            sim_ = _build()
+            res_ = sim_.run(num_periods=NUM_PERIODS, skip_preflight=True)
+            ts_ = np.asarray(res_.time_series)
+        r = _late_time_log_rate_per_step(ts_)
+        settle = _settling_db(ts_)
+        print(f"n={N_CELLS_PER_H} pad={PAD_H} periods={NUM_PERIODS} steps={ts_.shape[0]} "
+              f"legacy={use_legacy!s:5s} -> rates {[f'{v:+.3e}' for v in r]} "
+              f"worst {max(r):+.3e} settling {settle:.2f} dB", flush=True)
+    sys.exit(0)
