@@ -769,8 +769,18 @@ def main(argv=None) -> int:
     }
     upml_doc["cpml_variant"] = cpml_doc
 
+    # Written through the case's own writer, with `arm=False` because this
+    # process's exit status is the DRIVER's and not the case's. Not cosmetic:
+    # tests/crossval/test_crossval_exit_code_is_the_process_exit_code.py takes
+    # every committed record apart and puts it back together through this same
+    # helper, comparing bytes, so a revision written with a hand-rolled
+    # json.dump (a trailing newline is enough) reds that contract. One writer,
+    # one set of bytes.
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(upml_doc, indent=1) + "\n", encoding="utf-8")
+    verdict = upml_doc["verdict"]
+    _exit_evidence.write_record(
+        str(out_path), upml_doc, exit_code=verdict["exit_code"],
+        summary=verdict.get("summary"), arm=False)
     print(f"\nrevision written: {out_path.relative_to(REPO)}")
     print(f"  upml  mean_T={upml_doc['measured']['mean_T_smoothed_over_band']!r}")
     print(f"  upml  gates={upml_doc['gates']}")

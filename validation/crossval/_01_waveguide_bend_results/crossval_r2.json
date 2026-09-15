@@ -1,8 +1,8 @@
 {
  "schema": "cv01-waveguide-bend/v1",
  "case_id": "01_waveguide_bend",
- "commit": "e7125c0d40e5f0d824880bea2486b46957c42255",
- "date_utc": "2026-09-15T19:37:08Z",
+ "commit": "a45bab4f7e451164e28fec541e415bf08f40edf5",
+ "date_utc": "2026-09-15T20:00:14Z",
  "provenance": {
   "rfx_version": "1.8.0",
   "meep_version": "1.34.0",
@@ -10,7 +10,7 @@
   "rfx_boundary": "upml",
   "python": "3.10.12",
   "platform": "Linux-5.15.0-187-generic-x86_64-with-glibc2.35",
-  "wall_s_since_bend_run_start": 29.429486989974976
+  "wall_s_since_bend_run_start": 30.32453203201294
  },
  "rig": {
   "a_m": 1e-06,
@@ -3042,8 +3042,8 @@
     "summary": "SOME CHECKS FAILED",
     "boundary": "upml",
     "boundary_layers": 10,
-    "commit": "e7125c0d40e5f0d824880bea2486b46957c42255",
-    "date_utc": "2026-09-15T19:37:08Z"
+    "commit": "a45bab4f7e451164e28fec541e415bf08f40edf5",
+    "date_utc": "2026-09-15T20:00:14Z"
    },
    "revision_cpml_variant": {
     "mean_T_smoothed_over_band": 0.7017475699461292,
@@ -3061,8 +3061,8 @@
     "summary": "SOME CHECKS FAILED",
     "boundary": "cpml",
     "boundary_layers": 20,
-    "commit": "e7125c0d40e5f0d824880bea2486b46957c42255",
-    "date_utc": "2026-09-15T19:39:56Z"
+    "commit": "a45bab4f7e451164e28fec541e415bf08f40edf5",
+    "date_utc": "2026-09-15T20:02:58Z"
    },
    "deltas_upml": {
     "mean_T_smoothed_over_band": 0.039364329948547216,
@@ -3592,7 +3592,7 @@
        181,
        1
       ],
-      "wall_s": 35.0
+      "wall_s": 35.7
      },
      "bend": {
       "which": "bend",
@@ -4033,7 +4033,7 @@
        181,
        1
       ],
-      "wall_s": 29.6
+      "wall_s": 30.5
      }
     },
     "mean_self_smoothed_over_band": 0.9910752993577158,
@@ -4493,7 +4493,7 @@
        201,
        1
       ],
-      "wall_s": 138.2
+      "wall_s": 48.8
      },
      "bend": {
       "which": "bend",
@@ -4934,7 +4934,7 @@
        201,
        1
       ],
-      "wall_s": 50.1
+      "wall_s": 43.8
      }
     },
     "mean_self_smoothed_over_band": 0.9894314610377936,
@@ -4955,24 +4955,24 @@
   "run_logs": {
    "upml": {
     "path": "validation/crossval/_01_waveguide_bend_logs/20260915_r2_upml_run.log",
-    "sha256": "bc4cc88d58aee0f58279cf2105e7f86f1f87ec7378d675a3c0472b161581f6f9",
+    "sha256": "d59b6bb9eb3786fc2fc5efe684f7f338a7af83c35a34924058ce277c10f854c3",
     "returncode": 1,
-    "wall_s": 67.0
+    "wall_s": 68.2
    },
    "cpml": {
     "path": "validation/crossval/_01_waveguide_bend_logs/20260915_r2_cpml_run.log",
-    "sha256": "be2b368cf4977f7c6b9050fd2c22e9690f67590c6c34c3b5e35375a5600a72fb",
+    "sha256": "b512f33c894cb0e6922952d3b59f6c446e012563cf9ebbd05106664e50ed8b8a",
     "returncode": 1,
-    "wall_s": 103.8
+    "wall_s": 97.4
    }
   },
   "cpml_variant_note": "cv01's committed claim is the UPML run; the CPML variant is the diagnostic arm RFX_BOUNDARY=cpml selects, at 20 absorber layers since #813/#1027. Its whole record is carried under `cpml_variant` so `--replay` on THIS file still re-judges the UPML arm, which is the one the case is defined by.",
   "provenance": {
-   "commit": "e7125c0d40e5f0d824880bea2486b46957c42255",
+   "commit": "a45bab4f7e451164e28fec541e415bf08f40edf5",
    "branch": "evidence/813-cv01-record-on-fixed-solver",
    "dirty": true,
-   "case_sha256": "42075c819ee504ffa5a1ade12fa535b51af289b39ff7beb7132678be62218655",
-   "driver_sha256": "c19799e7cc83125481cd4534e2df45c081fb6a3bff588e2febf30b56d41de895",
+   "case_sha256": "2c0b3f8a06e629d5f1b9a3b21a6255bb07dcbdd57d471b2917991968454abb7e",
+   "driver_sha256": "2553ef159eed78136a4b590d5afdc2a675f91c5a90b64f103bc6807a220a5fdd",
    "python": "3.10.12",
    "platform": "Linux-5.15.0-187-generic-x86_64-with-glibc2.35",
    "argv": [
@@ -4984,7 +4984,7 @@
     "--log-dir",
     "validation/crossval/_01_waveguide_bend_logs"
    ],
-   "date_utc": "2026-09-15T19:43:06Z",
+   "date_utc": "2026-09-15T20:04:32Z",
    "rfx_provenance_check": {
     "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a991c068ad0d0fb85/rfx/__init__.py",
     "under_repo_root": true,
@@ -5000,8 +5000,8 @@
  "cpml_variant": {
   "schema": "cv01-waveguide-bend/v1",
   "case_id": "01_waveguide_bend",
-  "commit": "e7125c0d40e5f0d824880bea2486b46957c42255",
-  "date_utc": "2026-09-15T19:39:56Z",
+  "commit": "a45bab4f7e451164e28fec541e415bf08f40edf5",
+  "date_utc": "2026-09-15T20:02:58Z",
   "provenance": {
    "rfx_version": "1.8.0",
    "meep_version": "1.34.0",
@@ -5009,7 +5009,7 @@
    "rfx_boundary": "cpml",
    "python": "3.10.12",
    "platform": "Linux-5.15.0-187-generic-x86_64-with-glibc2.35",
-   "wall_s_since_bend_run_start": 48.62800121307373
+   "wall_s_since_bend_run_start": 45.28881311416626
   },
   "rig": {
    "a_m": 1e-06,

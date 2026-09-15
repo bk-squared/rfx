@@ -539,7 +539,13 @@ def _borrow_meep_leg(path):
     doc = _j.loads(raw.decode("utf-8"))
 
     def refuse(what):
-        raise SystemExit(
+        # sys.exit, never `raise SystemExit`: CPython handles SystemExit before
+        # sys.excepthook, so a bare raise is invisible to the #946 finalizer,
+        # and tests/contracts/test_crossval_exit_code_evidence.py forbids it in
+        # any script that writes an exit code into a record. Nothing is
+        # persisted on this path -- the refusal fires before the record is
+        # written -- but the door has to be the same door.
+        sys.exit(
             f"{MEEP_FROM_RECORD_FLAG} refuses {path}: {what}. The Meep leg is "
             "reusable only while the inputs that produced it are the inputs "
             "this run would hand Meep; nothing was taken from this file.")
