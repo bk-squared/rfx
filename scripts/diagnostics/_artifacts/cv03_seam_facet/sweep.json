@@ -4,17 +4,17 @@
   "predeclaration": "docs/design_notes/issue831_far_end_return_predeclaration.md",
   "runs_fdtd": true,
   "provenance": {
-    "commit": "9866bafdd4e3a0ea41e2b88c32270988f9bbca04",
+    "commit": "09fb112711441b8e472399f2a124488b46b92ee6",
     "branch": "diag/831-cv03-far-end-return",
     "dirty": true,
     "case_sha": "3a807f24f31fd314ccd978b89511d0a9346e51ec",
     "python": "3.10.12",
     "argv": [
-      "scripts/diagnostics/cv03_far_end_return/far_end_return.py",
+      "scripts/diagnostics/cv03_seam_facet/seam_facet.py",
       "--stage",
       "sweep",
       "--output",
-      "scripts/diagnostics/cv03_far_end_return/_stage_sweep.json"
+      "scripts/diagnostics/_artifacts/cv03_seam_facet/sweep.json"
     ]
   },
   "rfx_provenance_check": {
@@ -863,7 +863,7 @@
         "pad_extension_forced_off": false,
         "why": "Arm A: cv03 recipe, boundary=upml, absorber 20 cells",
         "exit_code": 2,
-        "wall_s": 19.9,
+        "wall_s": 19.7,
         "edits": [
           [
             "cpml_n = int(dpml * resolution)",
@@ -1789,7 +1789,7 @@
         "pad_extension_forced_off": false,
         "why": "Arm A: cv03 recipe, boundary=upml, absorber 40 cells",
         "exit_code": 1,
-        "wall_s": 20.5,
+        "wall_s": 20.3,
         "edits": [
           [
             "cpml_n = int(dpml * resolution)",
@@ -2795,7 +2795,7 @@
         "pad_extension_forced_off": false,
         "why": "Arm A: cv03 recipe, boundary=upml, absorber 60 cells",
         "exit_code": 1,
-        "wall_s": 20.6,
+        "wall_s": 21.7,
         "edits": [
           [
             "cpml_n = int(dpml * resolution)",
@@ -4571,7 +4571,7 @@
         "pad_extension_forced_off": false,
         "why": "Arm A: cv03 recipe, boundary=cpml, absorber 40 cells",
         "exit_code": 1,
-        "wall_s": 27.3,
+        "wall_s": 27.4,
         "edits": [
           [
             "cpml_n = int(dpml * resolution)",
@@ -5581,7 +5581,7 @@
         "pad_extension_forced_off": false,
         "why": "Arm A: cv03 recipe, boundary=cpml, absorber 60 cells",
         "exit_code": 1,
-        "wall_s": 32.5,
+        "wall_s": 32.9,
         "edits": [
           [
             "cpml_n = int(dpml * resolution)",

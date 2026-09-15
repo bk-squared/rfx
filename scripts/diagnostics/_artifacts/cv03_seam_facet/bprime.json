@@ -4,17 +4,17 @@
   "predeclaration": "docs/design_notes/issue831_far_end_return_predeclaration.md",
   "runs_fdtd": true,
   "provenance": {
-    "commit": "db713959247608861d5cbe68be98f3e5498191b4",
+    "commit": "09fb112711441b8e472399f2a124488b46b92ee6",
     "branch": "diag/831-cv03-far-end-return",
     "dirty": true,
     "case_sha": "3a807f24f31fd314ccd978b89511d0a9346e51ec",
     "python": "3.10.12",
     "argv": [
-      "scripts/diagnostics/cv03_far_end_return/far_end_return.py",
+      "scripts/diagnostics/cv03_seam_facet/seam_facet.py",
       "--stage",
       "bprime",
       "--output",
-      "scripts/diagnostics/cv03_far_end_return/_stage_bprime.json"
+      "scripts/diagnostics/_artifacts/cv03_seam_facet/bprime.json"
     ]
   },
   "rfx_provenance_check": {
@@ -862,7 +862,7 @@
         "pad_extension_forced_off": false,
         "why": "Arm B1: cv03 recipe, upml, absorber 20 cells, guide Box widened past the pad so the SUBPIXEL path (the one the update reads) carries eps_r=12 through the absorber",
         "exit_code": 2,
-        "wall_s": 20.1,
+        "wall_s": 19.8,
         "edits": [
           [
             "cpml_n = int(dpml * resolution)",
@@ -1791,7 +1791,7 @@
         "pad_extension_forced_off": false,
         "why": "Arm B1: cv03 recipe, upml, absorber 40 cells, guide Box widened past the pad so the SUBPIXEL path (the one the update reads) carries eps_r=12 through the absorber",
         "exit_code": 2,
-        "wall_s": 20.9,
+        "wall_s": 20.0,
         "edits": [
           [
             "cpml_n = int(dpml * resolution)",
@@ -3649,7 +3649,7 @@
         "pad_extension_forced_off": false,
         "why": "Arm B2 cross-check: cv03 recipe, upml, absorber 20 cells, subpixel_smoothing=False so the update reads base_materials and therefore the CPML pad extension. Confounded (smoothing also sets interface convergence order) -- read for SIGN only.",
         "exit_code": 2,
-        "wall_s": 18.0,
+        "wall_s": 17.5,
         "edits": [
           [
             "cpml_n = int(dpml * resolution)",
@@ -4578,7 +4578,7 @@
         "pad_extension_forced_off": false,
         "why": "Arm B2 cross-check: cv03 recipe, upml, absorber 40 cells, subpixel_smoothing=False so the update reads base_materials and therefore the CPML pad extension. Confounded (smoothing also sets interface convergence order) -- read for SIGN only.",
         "exit_code": 2,
-        "wall_s": 18.1,
+        "wall_s": 17.8,
         "edits": [
           [
             "cpml_n = int(dpml * resolution)",
@@ -5587,7 +5587,7 @@
         "pad_extension_forced_off": false,
         "why": "Arm B2 cross-check: cv03 recipe, upml, absorber 60 cells, subpixel_smoothing=False so the update reads base_materials and therefore the CPML pad extension. Confounded (smoothing also sets interface convergence order) -- read for SIGN only.",
         "exit_code": 2,
-        "wall_s": 18.9,
+        "wall_s": 19.0,
         "edits": [
           [
             "cpml_n = int(dpml * resolution)",

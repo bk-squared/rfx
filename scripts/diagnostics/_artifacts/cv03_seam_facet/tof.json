@@ -4,17 +4,17 @@
   "predeclaration": "docs/design_notes/issue831_far_end_return_predeclaration.md",
   "runs_fdtd": true,
   "provenance": {
-    "commit": "9866bafdd4e3a0ea41e2b88c32270988f9bbca04",
+    "commit": "09fb112711441b8e472399f2a124488b46b92ee6",
     "branch": "diag/831-cv03-far-end-return",
     "dirty": true,
     "case_sha": "3a807f24f31fd314ccd978b89511d0a9346e51ec",
     "python": "3.10.12",
     "argv": [
-      "scripts/diagnostics/cv03_far_end_return/far_end_return.py",
+      "scripts/diagnostics/cv03_seam_facet/seam_facet.py",
       "--stage",
       "tof",
       "--output",
-      "scripts/diagnostics/cv03_far_end_return/_stage_tof.json"
+      "scripts/diagnostics/_artifacts/cv03_seam_facet/tof.json"
     ]
   },
   "rfx_provenance_check": {
@@ -1342,7 +1342,7 @@
         "pad_extension_forced_off": false,
         "why": "Arm C0 control: 40a domain, DFT stopped at 150 a/c0, before the 230.93 a/c0 round trip (oracle.tof_round_trip_a_over_c0.src_to_far_end_and_back_64a)",
         "exit_code": 2,
-        "wall_s": 18.6,
+        "wall_s": 18.7,
         "edits": [
           [
             "sx = 16.0",
@@ -2684,7 +2684,7 @@
         "pad_extension_forced_off": false,
         "why": "Arm C0 control: the same 40a domain with the window long enough to admit the return (270.62 a/c0 to re-enter the fit window)",
         "exit_code": 1,
-        "wall_s": 21.0,
+        "wall_s": 21.6,
         "edits": [
           [
             "sx = 16.0",

@@ -28,6 +28,7 @@ OUT = ART / "seam_facet.png"
 prof = json.load(open(ART / "profile.json"))["stages"]["profile"]
 sweep = json.load(open(ART / "sweep.json"))["stages"]["sweep"]
 bprime = json.load(open(ART / "bprime.json"))["stages"]["bprime"]
+cv01 = json.load(open(ART / "cv01.json"))["stages"]["cv01"]
 
 fig, axes = plt.subplots(2, 2, figsize=(15, 9))
 
@@ -61,6 +62,11 @@ try:
 except Exception as exc:  # pragma: no cover - figure-only fallback
     ax.text(0.5, 0.5, f"rfx unavailable: {exc}", ha="center", va="center",
             transform=ax.transAxes)
+_ic = cv01["instrument_check"]["control"]
+ax.plot([], [], " ",
+        label=(f"cv01, same build: solved {_ic['solved_n_at_eps_wg']}"
+               f"/{_ic['nx']} vs built {_ic['built_n_at_eps_wg']}"
+               f"/{_ic['nx']}"))
 ax.axvspan(-6, 0, color="0.9", zorder=0)
 ax.axvspan(16, 22, color="0.9", zorder=0, label="absorber pad")
 ax.set_xlabel("x (a), 0 = interior lo edge")
@@ -152,17 +158,23 @@ ax.plot(ns, ba_nosub, "^--", color="tab:cyan", lw=1.5,
         label="|B/A|, subpixel off (B2)")
 ax.plot(ns, att, "d:", color="0.4", lw=1.5,
         label=r"$|E_z|$ 10 cells into the pad / at the seam")
+_ba01 = cv01["arms"]["control"]["b_over_a_carrier_bin"]
+ax.plot([20], [_ba01], "*", color="k", ms=16, zorder=5,
+        label=f"cv01 committed rig (Arm E): |B/A| = {_ba01:.4f}")
 ax.set_yscale("log")
 ax.set_xticks(ns)
 ax.set_xlabel("cpml_layers")
 ax.set_ylabel("amplitude ratio")
 ax.set_title("D. The trend is the facet being loaded by near-seam loss.\n"
              "Remove the facet and depth helps again (0.030 -> 0.002)")
+ax.set_ylim(1e-3, 1.2)
 ax.legend(fontsize=7)
 ax.grid(alpha=0.3, which="both")
 
-fig.suptitle("Issue #831 — cv03's far-end return is a vacuum end facet the "
-             "subpixel path leaves at the interior/pad seam", fontweight="bold")
+fig.suptitle("Issue #831 — the far-end return is a vacuum end facet left at "
+             "the interior/pad seam when subpixel smoothing is on\n"
+             "(cv03 measured at three depths under two absorber families; "
+             "cv01's committed rig carries the same facet)", fontweight="bold")
 fig.tight_layout()
 fig.savefig(OUT, dpi=140)
 print(f"wrote {OUT}")

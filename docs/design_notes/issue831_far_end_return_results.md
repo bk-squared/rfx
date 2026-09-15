@@ -363,12 +363,108 @@ smoothing is on in every crossval that has a dielectric.
 
 ---
 
+## 6. Arm E — cv01 carries the same facet, measured (not read)
+
+Pre-declaration section 9. cv01's rig is **imported, never copied**: the arm
+calls `scripts/diagnostics/cv01_cpml_flux_selfcheck.py`'s own `run_arm`, so the
+geometry, source, monitors and the `mean_self` arithmetic are the committed
+ones. Two probes are attached through one explicit `Simulation` subclass that
+delegates to `super().run()`.
+
+### 6.1 The instrument check — dispositive, and it is met
+
+cv01's committed build, centre row, `eps_r = 12` cell count:
+
+| build | `_assemble_materials` | solved (`compute_smoothed_eps`) | pad columns solved |
+|---|---:|---:|---|
+| control (committed) | 201/201 | **159/201** | `1.0, 1.0, 1.0` both faces |
+| widened Box | 201/201 | 199/201 | `6.5, 12, 12` / `12, 12, 6.5` |
+
+**cv01's straight guide ends in a vacuum facet at the seam, exactly as cv03's
+does.** This was section 5's reading; it is now the array.
+
+### 6.2 The control reproduces the committed record bit-identically
+
+`mean_self = 0.9195301017439319`, against
+`scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json`,
+`layers.20.full.mean_self = 0.9195301017439319` — all 16 digits. (Section 9.5
+of the pre-declaration records that 9.2's readability control had named the
+10-layer constant 0.748852 while declaring a 20-layer run; the gate's form is
+unchanged and the number that belongs to the declared depth is the one above.)
+
+Two things follow. The probes did not perturb the rig. And the arm is readable.
+
+### 6.3 The reflection, which is what can see a facet
+
+On cv01's committed rig: **`|B/A| = 0.5218`** at the carrier bin, two-wave
+relative residual 0.0049, SWR 3.227 over the fit window (rfx `x in [5a, 13a]`,
+grid index `[70, 150]`, 81 samples). `settling_db = -89.35 dB` — this record IS
+settled, unlike cv03's committed arms.
+
+cv01's straight guide carries a `|B/A| = 0.52` standing wave, against cv03's
+0.5311 at 20 layers and 0.5240 under CPML. Same construction, same number.
+**The pre-declared "DOES NOT carry the facet" branch (`bA_control <= 0.10`) is
+refuted by a factor of 5.**
+
+Preflight, verbatim (control):
+
+```
+[PREFLIGHT] dielectric 'wg' on x: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+[PREFLIGHT] dielectric 'wg' on y: 11.5 cells per λ_eff ... (same)
+[PREFLIGHT] dielectric 'wg' on z: 11.5 cells per λ_eff ... (same)
+[PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+```
+
+Nothing there says the guide ends at the seam either.
+
+### 6.4 The widened counterfactual DIVERGED, and that is a finding for the fix
+
+The widened row returned NaN everywhere. Not underflow — divergence, verbatim
+from the run:
+
+> [run] result contains non-finite values in time_series (24598 value(s)) — the
+> FDTD likely diverged. Common causes: dt above CFL, conformal=True at fine dx
+> (a known NaN), PEC inside the CPML region, or a sub-cell PEC feature.
+
+> ring-down settling witness has INVALID RECORDS: probe0(ez): non-finite
+> samples. The witness is unavailable; other records cannot establish a pass.
+
+So the composite gate "CARRIES THE SAME FACET" (`bA_control >= 0.30` AND
+`bA_widened <= 0.10`) has one leg met at 0.5218 and one leg **unreadable**. By
+the letter of section 9.2 the composite is INCONCLUSIVE, and it is recorded
+that way rather than rounded up. The question it was built to answer is
+nonetheless answered — by 6.1, which section 9.2 declared dispositive on its
+own, corroborated by 6.3.
+
+**Why this matters more than the missing number.** Widening the `Box` past the
+pad is what the obvious fix *emulates*: put the interior material in the pad
+columns of the array the solver reads. On cv03's UPML rig over 5913 steps that
+was stable in both arms. On cv01's **CPML** rig over **25000** steps it
+diverged. This lane did not isolate which of the three differences carries it —
+boundary family, record length, or a `Box` declared past the domain edge — and
+does not guess. The code already records a neighbouring case:
+`rfx/api/_compile.py:319-325` says extending a high-Q Lorentz pole into the pad
+"turns a stable edge-touching simulation into a divergent one ... with no NaN
+and no exception, so nothing downstream catches it" (#627b, tried and
+reverted). #801 is absorber-depth instability from the other direction.
+
+**So the landing needs a stability gate, not only a correctness gate.** That is
+written into section 8.5 of the pre-declaration.
+
 ## 7. R2 accounting, and what is NOT decided here
 
 Attempts: H4 1, depth sweep 1, H2 1 (no FDTD), H3 1 (read off the sweep's own
-trace), H1 1 void with a named instrument defect + 1 licensed replacement.
+trace), H1 1 void with a named instrument defect + 1 licensed replacement,
+Arm E 1 void with a named instrument defect (x64 not enabled before rfx was
+imported, so cv01's 1e-56 fluxes underflowed float32) + 1 licensed replacement.
 No arm was re-run to chase a number, and every arm closed on a pre-declared
-gate.
+gate or was recorded as unreadable against one. Arm E's widened row diverged
+and is NOT re-run: a third attempt would need another named falsifier, and the
+divergence is itself the result worth carrying (6.4).
+
+Every FDTD number in this note was produced twice — once before the review and
+once at `09fb1127` after it — and reproduced bit-identically on every per-bin
+trace.
 
 **This lane stops at the diagnosis.** The fix is in `rfx/runners/uniform.py`,
 i.e. solver-side, not a cv03 rig fix, and it changes physics for every

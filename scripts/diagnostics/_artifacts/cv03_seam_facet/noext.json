@@ -4,17 +4,17 @@
   "predeclaration": "docs/design_notes/issue831_far_end_return_predeclaration.md",
   "runs_fdtd": true,
   "provenance": {
-    "commit": "9866bafdd4e3a0ea41e2b88c32270988f9bbca04",
+    "commit": "09fb112711441b8e472399f2a124488b46b92ee6",
     "branch": "diag/831-cv03-far-end-return",
     "dirty": true,
     "case_sha": "3a807f24f31fd314ccd978b89511d0a9346e51ec",
     "python": "3.10.12",
     "argv": [
-      "scripts/diagnostics/cv03_far_end_return/far_end_return.py",
+      "scripts/diagnostics/cv03_seam_facet/seam_facet.py",
       "--stage",
       "noext",
       "--output",
-      "scripts/diagnostics/cv03_far_end_return/_stage_noext.json"
+      "scripts/diagnostics/_artifacts/cv03_seam_facet/noext.json"
     ]
   },
   "rfx_provenance_check": {
@@ -863,7 +863,7 @@
         "pad_extension_forced_off": true,
         "why": "Arm B: cv03 recipe, upml, absorber 20 cells, include_cpml_pad_extension=False (bare facet at the seam)",
         "exit_code": 2,
-        "wall_s": 19.3,
+        "wall_s": 18.8,
         "edits": [
           [
             "cpml_n = int(dpml * resolution)",
@@ -1793,7 +1793,7 @@
         "pad_extension_forced_off": true,
         "why": "Arm B: cv03 recipe, upml, absorber 40 cells, include_cpml_pad_extension=False (bare facet at the seam)",
         "exit_code": 1,
-        "wall_s": 19.6,
+        "wall_s": 19.8,
         "edits": [
           [
             "cpml_n = int(dpml * resolution)",
@@ -2803,7 +2803,7 @@
         "pad_extension_forced_off": true,
         "why": "Arm B: cv03 recipe, upml, absorber 60 cells, include_cpml_pad_extension=False (bare facet at the seam)",
         "exit_code": 1,
-        "wall_s": 20.7,
+        "wall_s": 20.9,
         "edits": [
           [
             "cpml_n = int(dpml * resolution)",

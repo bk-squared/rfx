@@ -405,34 +405,82 @@ Written 2026-09-15 (KST) after the arms closed. Results:
 implemented here.** The lane stops at the diagnosis because the fix is
 solver-side and moves physics for existing committed numbers.
 
-### 8.1 The defect, stated in one sentence
+### 8.1 The defect, stated as the thing to file
 
-`run(subpixel_smoothing=True)` rebuilds the update's permittivity from
-`sim._geometry` with `background_eps = 1.0`
-(`rfx/runners/uniform.py:266-271`) and so discards the CPML pad material
-extension, leaving every geometry that touches the domain boundary terminated
-by a vacuum facet at the interior/pad seam — whatever
-`include_cpml_pad_extension` says. The extension exists, in its own words, "so
-that guided modes in dielectric waveguides see an impedance-matched absorber"
-(`rfx/api/_compile.py:310-313`). This is the right-guard-MIS-GATED shape the
-2026-07-08 footgun audit named.
+**The CPML pad material extension — on by default, and there "so that guided
+modes in dielectric waveguides see an impedance-matched absorber"
+(`rfx/api/_compile.py:310-313`) — is silently bypassed for the update
+permittivity whenever `subpixel_smoothing` is truthy.** Every geometry that
+touches the domain boundary is then terminated by a vacuum facet at the
+interior/pad seam. This is the right-guard-MIS-GATED shape the 2026-07-08
+footgun audit named.
+
+Two things this is NOT, both worth stating so the fix lands in the right place:
+
+- It is **not** `background_eps = 1.0`. That argument is correct: it is the
+  background outside the declared geometry, and setting it to the guide's
+  permittivity would flood the whole vacuum cladding. The defect is the
+  **absence of a pad replication step on the rebuilt array**, after it is
+  computed.
+- It is **not** "the `include_cpml_pad_extension` flag does not reach the
+  solver". That flag is a private `_assemble_materials` keyword with one
+  in-tree caller (`rfx/vmap_sweep.py:355`), and it does exactly what it says on
+  the array it is given. Filing the flag would produce a fix that changes
+  nothing.
+
+**Three sites share the gap**, and a fix that closes one leaves the others:
+
+| site | what it builds |
+|---|---|
+| `rfx/runners/uniform.py:237-248` | Stage-2 `kottke_pec` inverse-permittivity tensor |
+| `rfx/runners/uniform.py:266-273` | Stage-1 smoothed `aniso_eps` |
+| `rfx/runners/nonuniform.py:852-859` | the NU mirror |
+
+**Two consumption sites**, and for cv03 it is the second one:
+
+- `update_e_aniso` (`rfx/simulation.py:419-422`), reached only when
+  `debye is None and lorentz is None`;
+- `init_upml(grid, materials, axes=..., aniso_eps=aniso_eps)`
+  (`rfx/simulation.py:914-915`), which builds `eps_abs_ex/ey/ez` from the array
+  (`rfx/boundaries/upml.py:213-217`) and feeds `apply_upml_e`. On the UPML
+  branch `update_e_aniso` is never reached at all, and cv03 runs UPML.
 
 ### 8.2 Why the gates did not catch it
 
 `tests/unit/boundaries/test_cpml_pad_material_extension.py` has 11 tests. Nine
 assert on the array `_assemble_materials` returns; the two that run the solver
 (`:406`, `:563`) both pass `subpixel_smoothing=False`. **No test exercises the
-feature on the path every crossval with a dielectric actually uses.** Any fix
-should close that first, because a fix landed against the same gates would be
-unfalsifiable by them.
+feature on the path every crossval with a dielectric actually uses.**
+
+**And flipping those two to `subpixel_smoothing=True` is not the remedy** —
+measured, not assumed: a copy of the file with both flipped gives *10 passed, 1
+deselected*. It cannot fail, because both fixtures carry Lorentz poles and
+`rfx/simulation.py:415` gates the anisotropic branch behind
+`debye is None and lorentz is None`; the smoothed array is never consulted, so
+whether the pad is in it does not matter.
+
+The gate a fix needs is a **NEW test**, and it has to be built from a
+**static** dielectric:
+
+1. a static dielectric `Box` that touches the domain boundary, `cpml_layers`
+   set, `subpixel_smoothing=True`;
+2. assert the **solved** pad column carries the interior material — the
+   `compute_smoothed_eps` / `compute_inv_eps_tensor_diag` output, not
+   `_assemble_materials`'s array, which is what made this invisible for the
+   life of the feature;
+3. and/or a round-trip assertion, `|B/A| <= 0.03` on a guided mode, which is
+   what arm B1 measured.
+
+One case per site of the three in 8.1, or a parametrisation over them.
 
 ### 8.3 What a fix would move, and what has to be re-measured
 
-- `rfx/runners/uniform.py` — `compute_smoothed_eps` would need the pad
-  extension applied to its output (or the smoothing to run on the extended
-  array). The NU mirror shares the extension through
-  `extend_cpml_pad_materials`; check whether `rfx/runners/nonuniform.py` has
-  the same gap before choosing where the fix lives.
+- `rfx/` — a pad replication step on the rebuilt array, at all three sites in
+  8.1. `extend_cpml_pad_materials` already exists and is where the interior
+  path does it, so the likely shape is to call it on the smoothing output (or
+  to smooth the already-extended array) rather than to write a second copy of
+  the replication logic. #627 exists because that logic was hand-duplicated
+  once before.
 - **cv03** — `|B/A|` moves 0.53 -> ~0.03 and band-mean `T` moves 0.9657 ->
   ~0.99. G2's gate (`T in [0.95, 1.05]`) still passes; its *value* moves and
   the case's committed record must be re-measured, not edited. G1 and the
@@ -440,22 +488,38 @@ unfalsifiable by them.
   BECAUSE `|B/A| ~ 0.53` falsified the single-mode fit (section 7 of the #812
   note), so whether it stays the right estimator is a live question once the
   standing wave is gone. Do not re-open G1's 2.0 % threshold.
-- **cv01 / #813** — `validation/crossval/01_waveguide_bend.py:382` builds the
-  same boundary-touching `Box` under `subpixel_smoothing=True`, so its straight
-  guide carries the same facet. Its committed numbers
-  (`SWEEP_BASELINE_CPML_FULL_MEAN_SELF = 0.7488520140093946`,
-  `COMMITTED_UPML_MEAN_SELF = 0.9891610388008335`,
-  `SWEEP_GATE_MEAN_SELF_AT_40 = 0.90906` in
-  `scripts/diagnostics/cv01_cpml_flux_selfcheck.py`) and the artifacts under
-  `scripts/diagnostics/_artifacts/cv01_cpml_813/` are all measured on the
-  facet-terminated rig and would move. #1027's monotone `mean_self` trend is
-  NOT explained by this lane — cv01's observable is blind to the reflection —
-  so that trend has to be re-measured after a fix, not reasoned about.
-- **cv02** also runs `subpixel_smoothing=True`; whether its ring touches the
-  boundary was not checked here.
-- `tests/contracts/test_evidence_numeric_provenance.py` and
-  `tests/fixtures/waveguide_chain_battery/fixture.json` reference the cv01
-  numbers above and would need the same re-measurement pass.
+- **cv01 / #813** — measured in Arm E, not read: its committed rig solves with
+  vacuum in 42 of 201 centre-row cells and carries `|B/A| = 0.5218`. A fix
+  moves **three** surfaces, and missing any one of them leaves a number with
+  nothing behind it:
+  1. the driver constants —
+     `scripts/diagnostics/cv01_cpml_flux_selfcheck.py:410`
+     (`COMMITTED_UPML_MEAN_SELF = 0.9891610388008335`), `:418`
+     (`SWEEP_GATE_MEAN_SELF_AT_40 = 0.90906`), `:424`
+     (`SWEEP_BASELINE_CPML_FULL_MEAN_SELF = 0.7488520140093946`);
+  2. the committed case record —
+     `validation/crossval/_01_waveguide_bend_results/crossval.json:2283`,
+     `mean_self_smoothed_over_band = 0.9891610388008335`;
+  3. the **26** values `tests/contracts/test_evidence_numeric_provenance.py`
+     resolves out of
+     `scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json` (the
+     `("Numeric provenance", 26)` floor), plus the **19** of its residual-split
+     section — both floors are reproduced counts, so a re-measurement that
+     drops citations reds the contract.
+
+  #1027's monotone `mean_self` trend is NOT explained by this lane — that
+  observable is blind to the reflection — so it has to be re-measured after a
+  fix, not reasoned about.
+- **cv02 is CLEAR, by construction.** Its ring is centred at 6a with outer
+  radius `r + w = 2a` in a 12a interior
+  (`validation/crossval/02_ring_resonator.py:165-188`): 4a of vacuum to every
+  interior edge, no shape touching a pad, nothing for a missing replication to
+  drop. It needs no re-measurement.
+- **cv05 is off this path by default** —
+  `validation/crossval/05_patch_antenna.py:150-151` sets
+  `SUBPIXEL_SMOOTHING = _sps_env if _sps_env else False` — but
+  `RFX_SUBPIXEL_SMOOTHING=kottke_pec` puts it on the Stage-2 site, which
+  carries the same gap.
 
 ### 8.4 The cheap falsifier for any fix
 
@@ -465,7 +529,48 @@ at 20 layers, the depth trend points down (60 layers below 20), and
 `settling_db` clears -100 dB — the three numbers arm B1 already produced by
 widening the `Box` by hand.
 
-### 8.5 Also for the PI, separately: two preflight gaps this exposed
+**Report band-mean `T` alongside, and do not expect it to move.** B1 moved it
+only 0.9657 -> 0.9682 and it still degraded with depth (0.9682 / 0.9596 /
+0.9558); only B2, which also turns subpixel smoothing off, reached 0.994. A fix
+that reports `T` recovering to 0.99 has changed something else as well, and a
+fix that leaves `T` at 0.96 has not failed. Either way the number belongs in
+the report, because it is where the second, unisolated effect shows up.
+
+### 8.5 The fix is not free: the configuration it emulates diverged once
+
+Arm E (section 9, results note section 6.4) widened cv01's guide `Box` past the
+pad — which is what the fix emulates — and that run **diverged**: *"result
+contains non-finite values in time_series (24598 value(s)) — the FDTD likely
+diverged"*. On cv03's UPML rig over 5913 steps the same change was stable in
+both arms; on cv01's CPML rig over 25000 steps it was not. The lane did not
+isolate which of the three differences carries it (boundary family, record
+length, or a `Box` declared past the domain edge) and does not guess.
+
+There is a neighbouring case already in the code:
+`rfx/api/_compile.py:319-325` records that extending a high-Q Lorentz pole into
+the pad "turns a stable edge-touching simulation into a divergent one ... with
+no NaN and no exception, so nothing downstream catches it" (#627b, tried and
+reverted). #801 is absorber-depth instability from the other direction.
+
+**So the landing needs a stability gate as well as a correctness gate**: a
+long-record run (25000 steps at cv01's scale) on a boundary-touching dielectric
+under both absorber families, asserting a finite result and a settling witness
+that resolves. A fix that makes the permittivity right and the simulation
+divergent is worse than the facet.
+
+### 8.6 If this lands it is the first of its kind in the case ledger
+
+`docs/agent-memory/rfx-known-issues.md:4343` is the comparator-bug case ledger,
+currently 13 of 13 closed as comparator/extractor defects, and
+`research/CLAUDE.md` states that as an invariant rather than a tally. This one
+would close as a **solver-assembly** defect: the comparator (cv03's two-wave
+estimator) was right, the extractor was right, the oracle was right, and the
+array the solver received was wrong.
+
+The ledger and that invariant sentence live in gitignored memory, which this
+lane does not edit. Flagged here for the PI to update after landing.
+
+### 8.7 Also for the PI, separately: two preflight gaps this exposed
 
 Neither is filed as an issue here; both are decisions, not findings.
 
@@ -505,7 +610,12 @@ adds probes at `run()` and delegates, so cv01's geometry, source, monitors and
 flux arithmetic stay the committed ones:
 
 - a DFT plane probe on the guide centre line, read with the SAME estimator cv03
-  uses (`validation/crossval/comparators/slab_te_dispersion.py::measure_neff_two_wave`),
+  uses (`measure_neff_two_wave` in
+  `validation/crossval/comparators/slab_te_dispersion.py` -- named with the
+  file and the symbol separately on purpose. The double-colon spelling is a
+  symbol reference, which the numeric-provenance parser rejects by
+  construction, and one of those in a backtick span takes the whole note out
+  of the gate),
   fit window rfx `x in [5a, 13a]` — 8a, between cv01's monitors at 4a and
   14.5a, inset by 1a at each end, the same construction cv03's window uses;
 - a point probe at the fit-window centre so `settling_db` has a record.
@@ -580,3 +690,29 @@ whole artifact set unreadable as a single record, and the re-run also puts
 
 No gate in section 9.2 moves. Attempts on Arm E's hypothesis: 1 void with a
 named defect + 1 licensed replacement = **1 counting attempt**.
+
+### 9.5 APPEND — the readability control in 9.2 named the wrong committed number
+
+Written after Arm E ran, append-only; 9.2 stands as written and is superseded
+on this one point.
+
+9.2 says the committed arm must reproduce
+`SWEEP_BASELINE_CPML_FULL_MEAN_SELF = 0.7488520140093946`. That constant is the
+**10-layer** arm — `scripts/diagnostics/cv01_cpml_flux_selfcheck.py:420-424`
+calls it "the sweep's control" and `run_arm`'s own docstring says
+`cpml_layers` "defaults to cv01's `cpml_n` = 10". 9.1 declared the run at
+cv01's **committed** depth for the `cpml` boundary, which
+`cv01_cpml_flux_selfcheck.py:208` fixes at **20**. So the gate named a number
+from a different depth than the one it gated.
+
+The gate's FORM does not move: the committed arm must reproduce the committed
+`mean_self` for the depth it runs, to within 0.005. The number that belongs to
+20 layers is `scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json`,
+`layers.20.full.mean_self = 0.9195301017439319`.
+
+Measured: **0.9195301017439319** — bit-identical to all 16 digits. Residual
+0.0 exactly. That also settles a question the arm had to answer about itself:
+the instrumented `Simulation` subclass, which attaches a point probe and a DFT
+plane probe before delegating, **did not perturb the rig**.
+
+No other gate in 9.2 moves, and the `|B/A|` bars are untouched.
