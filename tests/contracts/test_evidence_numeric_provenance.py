@@ -421,6 +421,12 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # the 10-layer pair they are compared against, so the floor is the
     # reproduced count of value-carrying citations (19).
     (CV01_CPML_NOTE, "Numeric provenance, residual split"): 19,
+    # 2026-09-15 (#813, cv01's committed record re-measured after #1057): the
+    # note's third result section states a before/after gate table -- including
+    # a gate that CHANGES verdict -- and resolves every cell of it against
+    # validation/crossval/_01_waveguide_bend_results/crossval_r2.json. The
+    # floor is the reproduced count of value-carrying citations (31 of its 45).
+    (CV01_CPML_NOTE, "Numeric provenance, after #1057"): 31,
     (MANIFEST, "11_waveguide_port_wr90"): 4,
     (MANIFEST, "15_patch_antenna_rt5880"): 3,
     (MANIFEST, "17_dielectric_sphere_mie"): 2,
@@ -520,9 +526,19 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # what the comment above each floor asks for -- but whoever hits it is not
 # looking at a bug. Lower the floor in the same commit as the removal and say
 # why, exactly as this block does.
-MIN_REFERENCES = 1270
-MIN_VALUE_CHECKED = 1207
-MIN_DISTINCT_ARTIFACTS = 77
+# 2026-09-15 (#813, cv01's record re-measured after #1057): +45 references over
+# +1 distinct artifact (validation/crossval/_01_waveguide_bend_results/
+# crossval_r2.json, cited here for the first time), 31 of them value-checked --
+# the pre-declaration's "Result after #1057" section, whose table carries a gate
+# verdict that CHANGED and must not be readable without the artifact behind it.
+# Raised by the delta, in the same commit that adds them, as the two entries
+# above did. The block above says these floors were left EQUAL to the actuals in
+# September; they are not any more -- the actuals had drifted to 1409 / 1326 / 89
+# by other PRs before this one, and absorbing that slack is not this change's to
+# make, so the delta is added to the floors and the slack is left where it is.
+MIN_REFERENCES = 1315
+MIN_VALUE_CHECKED = 1238
+MIN_DISTINCT_ARTIFACTS = 78
 
 
 # --------------------------------------------------------------------------
