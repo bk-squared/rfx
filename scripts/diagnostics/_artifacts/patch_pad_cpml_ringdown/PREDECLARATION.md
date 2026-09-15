@@ -313,3 +313,78 @@ check, not an investigation. No further hypothesis is opened in this lane.
 
 **Sharding.** Not applicable: a bisect step cannot start until the previous one reports. Serial
 in one job, ~12 arms (2 endpoints + ~10 steps) at 26 s of solve each.
+
+---
+
+## Addendum F — one round on the LIVE thin-absorber growth (PI-approved 2026-09-15 KST)
+
+Written before any arm of this round ran. The subject is **not** the #931-fixed `n = 4 /
+cpml 8` arm (settled, and gated by PR #1077). It is the growth that is **still live on current
+main**, established by the independent reviewer's ladder (imported unchanged with provenance to
+`thin_absorber_ladder_review2/`, not re-run): at 150 periods with a `+10h` lateral pad,
+`n = 3 / cpml 6` reads **0.00 dB at +8.53e-4 per step** and `n = 2 / cpml 4` reads **0.00 dB at
++2.73e-3**, while `n = 2 / cpml 8`, `n = 2 / cpml 16`, `n = 2 / cpml 4 with pad = 0` and
+`n = 4 / cpml 8` all settle. `n = 3 / cpml 6` is one of **#801's own recorded arms**.
+
+What that ladder already settles, so no attempt is spent re-deriving it: it is **not**
+under-resolution (dx held at n = 2, only the layer count moves), **not** the physical absorber
+thickness on its own (1.574 mm grows at 4 and 6 cells and settles at 8), and **not** #1070 at
+n = 4 (the vacuum pad is present in growing and settling arms alike).
+
+**Reference arm for every hypothesis below: `n = 3, +10h pad, cpml_layers = 6`, 150 periods =
+19994 steps, board as declared.** One arm per hypothesis, one attempt each, on `gpu-rtx4090`
+(~30 s per arm), scored with PR #1077's own metric functions.
+
+**Shared verdict rule, committed now.** An arm **GROWS** iff worst-probe `settling_db > -40 dB`
+AND the fitted last-half block-max log rate is positive on **all four** probes. It **SETTLES**
+iff `settling_db <= -40 dB` AND that rate is negative on all four. Anything else is
+**non-closing** and is recorded as such rather than reinterpreted.
+
+### H1 — the conductor's tangential edges at the absorber seam
+
+The ground spans the full declared domain, so it is flush against the absorber on x-lo/y-lo.
+**Test:** inset every conductor 2 cells from every lateral pad, so no conductor edge is inside
+or adjacent to the absorber. Nothing else changes.
+*CONFIRMED* iff the inset arm SETTLES while the reference arm GROWS — residual
+`max(settling_inset + 40, 0)`, 0 = confirmed. *REFUTED* iff it still GROWS.
+If confirmed, the mechanism is the conductor-at-absorber seam and the landing candidate is a
+preflight refusal plus a documented clearance, not a CPML coefficient change.
+
+### H2 — absorber layer COUNT at fixed dx and fixed geometry
+
+**Test:** the same arm at `cpml_layers` 8 and 12 (dx, geometry and padding all held).
+*CONFIRMED* iff 8 and/or 12 SETTLE while 6 GROWS, locating a threshold in cells — residual
+`max(settling_12 + 40, 0)`. *REFUTED* iff 12 layers still GROWS, which would mean the layer
+count is not the governing variable at this dx and the ladder's correlation is a proxy.
+Two rungs, one hypothesis, one attempt.
+
+### H3 — the CPML profile itself at few layers (no FDTD)
+
+`_cpml_profile` sets `sigma_max = -ln(R)(m+1)/(2*eta*d)` with `d = n_layers*dx`, and
+`alpha = 0.05*(1-rho)` — an absolute CFS value that does not scale with the layer count.
+**Test:** rfx's own one-step amplification operator (the model that owns the #1047 analysis,
+`tests/unit/boundaries/test_cpml_subpixel_coefficient_consistency.py::amplification_rho`),
+extended with a PEC termination so the slice is a PEC-backed pad cell adjacent to a conductor
+edge, evaluated at 4 / 6 / 8 / 16 layers at this arm's dx and dt.
+*CONFIRMED* iff `rho > 1 + 1e-6` appears at 4 and 6 layers and not at 8 or 16 — the ladder's
+own boundary. *REFUTED* iff `rho <= 1` at every layer count (the 1-D model does not carry the
+mechanism) or `rho > 1` at every count (it does not reproduce the boundary).
+**Comparator first:** the PEC-terminated model must return `rho = 1` to 1e-6 for a lossless
+slice with no absorber before any absorber row is read.
+
+### H4 — the #1070 vacuum node, re-checked at n = 3
+
+Refuted at n = 4 (0.07 dB). **Test:** the reference arm with `--shrink-domain-ulp 1`, which
+removes the extra cell and the vacuum pad.
+*CONFIRMED* iff the snapped arm SETTLES while the reference GROWS. *REFUTED* iff both GROW with
+`|settling difference| <= 3 dB` — residual `max(|delta| - 3, 0)`.
+
+### Stopping rule, fixed now
+
+If one hypothesis closes and the fix lands in `rfx/boundaries/cpml.py` or `rfx/boundaries/pec.py`,
+this lane **STOPS at the diagnosis** and writes a landing pre-declaration for the PI. If none
+closes after one attempt each, it STOPS as well, and proposes as interim protection an
+append-only preflight advisory (family module + `register_config_check`) reading *"cpml_layers
+< 8 with a padded lateral domain and a conductor reaching the absorber boundary: known growth
+class (#801)"* — an advisory, not a refusal, because the supported envelope is not yet known.
+No second attempt on any hypothesis without a named new falsifier in writing.

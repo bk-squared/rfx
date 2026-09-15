@@ -1,0 +1,323 @@
+{
+ "arm": "n = 3, dx = h/3, dt from the recorded n3 run",
+ "dx_m": 0.00026233333333333333,
+ "dt_s": 5.001581407736339e-13,
+ "model_owner": "tests/unit/boundaries/test_cpml_subpixel_coefficient_consistency.py::amplification_rho",
+ "extension_check": {
+  "max_abs_diff_vs_owned_model": 0.0
+ },
+ "comparator": {
+  "lossless_no_absorber": 1.000000000000002,
+  "lossless_no_absorber_pec_end": 1.0000000000000022
+ },
+ "cases": [
+  {
+   "n_layers": 4,
+   "pec_placement": "no PEC (control)",
+   "pec_node": null,
+   "eps": 1.0,
+   "rho": 1.0,
+   "unstable": false
+  },
+  {
+   "n_layers": 4,
+   "pec_placement": "no PEC (control)",
+   "pec_node": null,
+   "eps": 3.38,
+   "rho": 1.0,
+   "unstable": false
+  },
+  {
+   "n_layers": 4,
+   "pec_placement": "PEC inside the absorber (n_layers-1)",
+   "pec_node": 3,
+   "eps": 1.0,
+   "rho": 1.0000000000000024,
+   "unstable": false
+  },
+  {
+   "n_layers": 4,
+   "pec_placement": "PEC inside the absorber (n_layers-1)",
+   "pec_node": 3,
+   "eps": 3.38,
+   "rho": 1.0000000000000024,
+   "unstable": false
+  },
+  {
+   "n_layers": 4,
+   "pec_placement": "PEC at the absorber seam (n_layers)",
+   "pec_node": 4,
+   "eps": 1.0,
+   "rho": 1.0000000000000024,
+   "unstable": false
+  },
+  {
+   "n_layers": 4,
+   "pec_placement": "PEC at the absorber seam (n_layers)",
+   "pec_node": 4,
+   "eps": 3.38,
+   "rho": 1.0000000000000007,
+   "unstable": false
+  },
+  {
+   "n_layers": 4,
+   "pec_placement": "PEC one cell inside the interior",
+   "pec_node": 5,
+   "eps": 1.0,
+   "rho": 1.0000000000000022,
+   "unstable": false
+  },
+  {
+   "n_layers": 4,
+   "pec_placement": "PEC one cell inside the interior",
+   "pec_node": 5,
+   "eps": 3.38,
+   "rho": 1.0000000000000022,
+   "unstable": false
+  },
+  {
+   "n_layers": 6,
+   "pec_placement": "no PEC (control)",
+   "pec_node": null,
+   "eps": 1.0,
+   "rho": 1.0000000000000007,
+   "unstable": false
+  },
+  {
+   "n_layers": 6,
+   "pec_placement": "no PEC (control)",
+   "pec_node": null,
+   "eps": 3.38,
+   "rho": 1.0,
+   "unstable": false
+  },
+  {
+   "n_layers": 6,
+   "pec_placement": "PEC inside the absorber (n_layers-1)",
+   "pec_node": 5,
+   "eps": 1.0,
+   "rho": 1.000005161639802,
+   "unstable": true
+  },
+  {
+   "n_layers": 6,
+   "pec_placement": "PEC inside the absorber (n_layers-1)",
+   "pec_node": 5,
+   "eps": 3.38,
+   "rho": 1.0000046499620154,
+   "unstable": true
+  },
+  {
+   "n_layers": 6,
+   "pec_placement": "PEC at the absorber seam (n_layers)",
+   "pec_node": 6,
+   "eps": 1.0,
+   "rho": 1.0000051099502312,
+   "unstable": true
+  },
+  {
+   "n_layers": 6,
+   "pec_placement": "PEC at the absorber seam (n_layers)",
+   "pec_node": 6,
+   "eps": 3.38,
+   "rho": 1.0000045357871432,
+   "unstable": true
+  },
+  {
+   "n_layers": 6,
+   "pec_placement": "PEC one cell inside the interior",
+   "pec_node": 7,
+   "eps": 1.0,
+   "rho": 1.0000050602135975,
+   "unstable": true
+  },
+  {
+   "n_layers": 6,
+   "pec_placement": "PEC one cell inside the interior",
+   "pec_node": 7,
+   "eps": 3.38,
+   "rho": 1.0000044313712937,
+   "unstable": true
+  },
+  {
+   "n_layers": 8,
+   "pec_placement": "no PEC (control)",
+   "pec_node": null,
+   "eps": 1.0,
+   "rho": 1.0000000000000007,
+   "unstable": false
+  },
+  {
+   "n_layers": 8,
+   "pec_placement": "no PEC (control)",
+   "pec_node": null,
+   "eps": 3.38,
+   "rho": 1.0,
+   "unstable": false
+  },
+  {
+   "n_layers": 8,
+   "pec_placement": "PEC inside the absorber (n_layers-1)",
+   "pec_node": 7,
+   "eps": 1.0,
+   "rho": 1.0000000000000033,
+   "unstable": false
+  },
+  {
+   "n_layers": 8,
+   "pec_placement": "PEC inside the absorber (n_layers-1)",
+   "pec_node": 7,
+   "eps": 3.38,
+   "rho": 1.0000000000000009,
+   "unstable": false
+  },
+  {
+   "n_layers": 8,
+   "pec_placement": "PEC at the absorber seam (n_layers)",
+   "pec_node": 8,
+   "eps": 1.0,
+   "rho": 1.000000000000001,
+   "unstable": false
+  },
+  {
+   "n_layers": 8,
+   "pec_placement": "PEC at the absorber seam (n_layers)",
+   "pec_node": 8,
+   "eps": 3.38,
+   "rho": 1.000000000000001,
+   "unstable": false
+  },
+  {
+   "n_layers": 8,
+   "pec_placement": "PEC one cell inside the interior",
+   "pec_node": 9,
+   "eps": 1.0,
+   "rho": 1.0000000000000018,
+   "unstable": false
+  },
+  {
+   "n_layers": 8,
+   "pec_placement": "PEC one cell inside the interior",
+   "pec_node": 9,
+   "eps": 3.38,
+   "rho": 1.0000000000000024,
+   "unstable": false
+  },
+  {
+   "n_layers": 16,
+   "pec_placement": "no PEC (control)",
+   "pec_node": null,
+   "eps": 1.0,
+   "rho": 1.0,
+   "unstable": false
+  },
+  {
+   "n_layers": 16,
+   "pec_placement": "no PEC (control)",
+   "pec_node": null,
+   "eps": 3.38,
+   "rho": 1.000000000000001,
+   "unstable": false
+  },
+  {
+   "n_layers": 16,
+   "pec_placement": "PEC inside the absorber (n_layers-1)",
+   "pec_node": 15,
+   "eps": 1.0,
+   "rho": 1.0000000000000033,
+   "unstable": false
+  },
+  {
+   "n_layers": 16,
+   "pec_placement": "PEC inside the absorber (n_layers-1)",
+   "pec_node": 15,
+   "eps": 3.38,
+   "rho": 1.0000000000000036,
+   "unstable": false
+  },
+  {
+   "n_layers": 16,
+   "pec_placement": "PEC at the absorber seam (n_layers)",
+   "pec_node": 16,
+   "eps": 1.0,
+   "rho": 1.0000000000000044,
+   "unstable": false
+  },
+  {
+   "n_layers": 16,
+   "pec_placement": "PEC at the absorber seam (n_layers)",
+   "pec_node": 16,
+   "eps": 3.38,
+   "rho": 1.0000000000000038,
+   "unstable": false
+  },
+  {
+   "n_layers": 16,
+   "pec_placement": "PEC one cell inside the interior",
+   "pec_node": 17,
+   "eps": 1.0,
+   "rho": 1.0000000000000049,
+   "unstable": false
+  },
+  {
+   "n_layers": 16,
+   "pec_placement": "PEC one cell inside the interior",
+   "pec_node": 17,
+   "eps": 3.38,
+   "rho": 1.0000000000000029,
+   "unstable": false
+  }
+ ],
+ "post_hoc_per_arm": [
+  {
+   "n_cells_per_h": 2,
+   "n_layers": 4,
+   "dt_s": 7.502372111604508e-13,
+   "fdtd_verdict": "GROWS",
+   "rho_no_pec": 1.0,
+   "rho_pec_at_seam": 1.000000000000001,
+   "model_unstable": false,
+   "implied_log_rate_per_step": 1.110223024625156e-15
+  },
+  {
+   "n_cells_per_h": 3,
+   "n_layers": 6,
+   "dt_s": 5.001581407736339e-13,
+   "fdtd_verdict": "GROWS",
+   "rho_no_pec": 1.0,
+   "rho_pec_at_seam": 1.0000045357871432,
+   "model_unstable": true,
+   "implied_log_rate_per_step": 4.535776856560279e-06
+  },
+  {
+   "n_cells_per_h": 2,
+   "n_layers": 8,
+   "dt_s": 7.502372111604508e-13,
+   "fdtd_verdict": "settles",
+   "rho_no_pec": 1.0000000000000007,
+   "rho_pec_at_seam": 1.0000000000000016,
+   "model_unstable": false,
+   "implied_log_rate_per_step": 1.554312234475218e-15
+  },
+  {
+   "n_cells_per_h": 2,
+   "n_layers": 16,
+   "dt_s": 7.502372111604508e-13,
+   "fdtd_verdict": "settles",
+   "rho_no_pec": 1.0,
+   "rho_pec_at_seam": 1.0000000000000024,
+   "model_unstable": false,
+   "implied_log_rate_per_step": 2.4424906541753412e-15
+  },
+  {
+   "n_cells_per_h": 4,
+   "n_layers": 8,
+   "dt_s": 3.751186055802254e-13,
+   "fdtd_verdict": "settles",
+   "rho_no_pec": 1.0000000000000036,
+   "rho_pec_at_seam": 1.000000000000002,
+   "model_unstable": false,
+   "implied_log_rate_per_step": 1.9984014443252798e-15
+  }
+ ]
+}

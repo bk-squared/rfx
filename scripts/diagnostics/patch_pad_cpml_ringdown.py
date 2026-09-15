@@ -57,7 +57,7 @@ def balanis(L, W, h, er):
 # --- VERBATIM from refute_nulltf_ladder.py (build) ------------------------------------
 def build(n, shift_x=0.0, shift_y=0.0, pad_h=0, swap=False, cpml=None,
           gnd_cell="dielectric", pad_z_h=0, patch_plane="top", shrink_domain_ulp=0,
-          sheet_conductors=False):
+          sheet_conductors=False, conductor_inset_cells=0):
     """One arm's Simulation.  See the source harness's docstring for the registration,
     ground-cell and cavity reasoning; this copy changes nothing.
 
@@ -74,6 +74,13 @@ def build(n, shift_x=0.0, shift_y=0.0, pad_h=0, swap=False, cpml=None,
     of one-cell volumes, which reconstructs the board this issue's numbers were taken on
     (see the comment at the declaration).  Whether it succeeded is decided by the raster,
     not by the flag: the caller compares the realized wall planes against the recorded ones.
+
+    ``conductor_inset_cells`` pulls every CONDUCTOR in from the lateral domain faces by that
+    many cells, leaving the substrate where it is.  The ground otherwise spans the full
+    declared domain and is therefore flush against the absorber on the lo faces; this is the
+    knob for asking whether a conductor edge at the absorber seam is what grows.  The
+    dielectric is deliberately NOT inset: moving it too would change the guide as well as the
+    seam, and the question is about the seam.
     """
     from rfx import Box, Simulation
     from rfx.sources import GaussianPulse
@@ -105,6 +112,10 @@ def build(n, shift_x=0.0, shift_y=0.0, pad_h=0, swap=False, cpml=None,
                      cpml_layers=cpml, boundary="cpml")
     sim.add_material("ro4003c", eps_r=EPS_R, sigma=0.0)
     o = P(sx, sy)                     # same footprint as the committed fixture: [0, dom)
+    # Conductor-only inset: the substrate keeps the full footprint, the metal steps back.
+    ci = float(conductor_inset_cells) * dx
+    cond_lo = P(sx + ci, sy + ci)
+    cond_hi = P(dom[0] + o[0] - ci, dom[1] + o[1] - ci)
     if sheet_conductors:
         # BOARD RECONSTRUCTION, off by default.  Both PEC Boxes are one cell thick, and
         # #931's lattice-ownership contract realizes such a Box as a filled slab with
@@ -114,9 +125,11 @@ def build(n, shift_x=0.0, shift_y=0.0, pad_h=0, swap=False, cpml=None,
         # itself now advises ("declare a SHEET: a zero-thickness Box via add()"), and it
         # puts the cavity back at 5 cells.  The raster assert below is the falsifier: the
         # reconstruction must reproduce the recorded walls, not merely resemble them.
-        sim.add(Box((o[0], o[1], z_gnd), (dom[0] + o[0], dom[1] + o[1], z_gnd)), material="pec")
+        sim.add(Box((cond_lo[0], cond_lo[1], z_gnd), (cond_hi[0], cond_hi[1], z_gnd)),
+                material="pec")
     else:
-        sim.add(Box((o[0], o[1], z_gnd), (dom[0] + o[0], dom[1] + o[1], z_sub_lo)), material="pec")
+        sim.add(Box((cond_lo[0], cond_lo[1], z_gnd), (cond_hi[0], cond_hi[1], z_sub_lo)),
+                material="pec")
     sim.add(Box((o[0], o[1], z_diel_lo), (dom[0] + o[0], dom[1] + o[1], z_sub_hi)), material="ro4003c")
     a, b = P(x0, y0), P(x0 + L, y0 + W)
     if sheet_conductors:
@@ -138,6 +151,7 @@ def build(n, shift_x=0.0, shift_y=0.0, pad_h=0, swap=False, cpml=None,
                 nudge_cells=-0.1, gnd_cell=gnd_cell, pad_z_h=pad_z_h, patch_plane=patch_plane,
                 shrink_domain_ulp=int(shrink_domain_ulp),
                 sheet_conductors=bool(sheet_conductors),
+                conductor_inset_cells=int(conductor_inset_cells),
                 domx_over_dx=domx / dx, domy_over_dx=domy / dx,
                 pad_h=pad_h, swap=swap, L=L, W=W, h=H, domain=(dom[0], dom[1], domz),
                 z_gnd=z_gnd, z_sub_lo=z_sub_lo, z_sub_hi=z_sub_hi, z_diel_lo=z_diel_lo,
@@ -352,6 +366,10 @@ def main():
     p.add_argument("--gnd-cell", default="dielectric", choices=("dielectric", "vacuum"))
     p.add_argument("--pad-z", type=int, default=0)
     p.add_argument("--patch-plane", default="top", choices=("top", "inner"))
+    p.add_argument("--conductor-inset-cells", type=int, default=0,
+                   help="pull every conductor in from the lateral domain faces by N cells, "
+                        "leaving the substrate in place (H1: is a conductor edge at the "
+                        "absorber seam what grows?); 0 = the rig")
     p.add_argument("--sheet-conductors", action="store_true",
                    help="declare the ground and patch as zero-thickness Boxes (SHEETs) "
                         "instead of one-cell volumes; reconstructs the pre-#931 board")
@@ -387,7 +405,7 @@ def main():
 
     sim, geom = build(a.n, a.shift_x, a.shift_y, a.pad, a.swap_xy, a.cpml, a.gnd_cell,
                       a.pad_z, a.patch_plane, a.shrink_domain_ulp,
-                      a.sheet_conductors)
+                      a.sheet_conductors, a.conductor_inset_cells)
     if a.no_raster:
         ras = {"skipped": "raster read-back disabled (--no-raster)"}
     else:
@@ -395,6 +413,7 @@ def main():
     rec = dict(tag=a.tag, provenance=prov, n=a.n, dx_um=geom["dx"] * 1e6, periods=a.periods,
                pad_h=a.pad, cpml_layers=geom["cpml_layers"], subpixel_smoothing=bool(a.subpixel),
                sheet_conductors=bool(a.sheet_conductors),
+               conductor_inset_cells=int(a.conductor_inset_cells),
                L_mm=geom["L"] * 1e3, W_mm=geom["W"] * 1e3,
                raster=ras, geom={k: v for k, v in geom.items() if k != "quad"},
                status="built")
