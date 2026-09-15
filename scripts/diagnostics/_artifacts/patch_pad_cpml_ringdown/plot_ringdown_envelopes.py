@@ -69,13 +69,17 @@ def panel(ax, rows, title, label_of):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--dir", required=True)
+    p.add_argument("--dir", required=True,
+                   help="directory holding recorded_series_reread.json")
+    p.add_argument("--arms-dir", default=None,
+                   help="directory holding this lane's arm JSONs (default: --dir)")
+    p.add_argument("--arms-title", default="this lane's arms")
     p.add_argument("--out", required=True)
     a = p.parse_args()
 
     rec_path = os.path.join(a.dir, "recorded_series_reread.json")
     rec = load_recorded(rec_path) if os.path.isfile(rec_path) else []
-    arms = load_arms(a.dir)
+    arms = load_arms(a.arms_dir or a.dir)
 
     n = 2 if arms else 1
     fig, axes = plt.subplots(1, n, figsize=(6.6 * n, 4.4), squeeze=False)
@@ -84,7 +88,7 @@ def main():
               "as recorded on tree fa3a99bd (rtx4090), re-scored here",
               lambda r: r["tag"].replace("refute_nulltf_", ""))
     if arms:
-        panel(axes[0][1], arms, "this lane's arms", lambda r: r["tag"])
+        panel(axes[0][1], arms, a.arms_title, lambda r: r["tag"])
     fig.suptitle("Isolated patch, +10h lateral pad, thin CPML: ring-down envelope "
                  "(dashed = the -40 dB settling bar)", fontsize=10)
     fig.tight_layout()

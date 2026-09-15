@@ -17,7 +17,7 @@ env:
   # The driver comes from the diagnosis branch; the two rfx trees under test are
   # pinned by sha. RFX_DRIVER_BRANCH is informational -- the fetch is keyed by sha.
   RFX_DRIVER_BRANCH: "diag/801-patch-ringdown-padding"
-  RFX_DRIVER_SHA: "FILL_AFTER_PUSH"
+  RFX_DRIVER_SHA: "834a43e76feedd28f9aa359d554fa8690d088fd2"
   RFX_TREE_MAIN: "fc7f7202567e2cf78a65ab90a709e4ff45b185f1"
   RFX_TREE_PRE1047: "c043579891e9b1e24b906f9780f5f8433fe89f43"
 mount:
@@ -75,7 +75,7 @@ run: |-
   python -c "import jax; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| devices', jax.devices(), '| x64', jax.config.x64_enabled)"
 
   SHORT=$(echo "$RFX_DRIVER_SHA" | cut -c1-8)
-  OUT="/root/workspace/claude-workspace/rfx/runs/patch_pad_cpml_ringdown/$(date -u +%Y%m%dT%H%M%SZ)-$SHORT"
+  OUT="/root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-ringdown-$(date -u +%Y%m%dT%H%M%SZ)-$SHORT"
   mkdir -p "$OUT"
   echo "artifacts: $OUT"
   echo "$RFX_DRIVER_SHA" > "$OUT/driver_commit.txt"
