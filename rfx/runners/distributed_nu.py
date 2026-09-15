@@ -646,7 +646,8 @@ def _exchange_e_ghosts_nu(state: FDTDState, mesh, n_devices: int) -> FDTDState:
 
 
 def _apply_pec_face_nu_shmap(state: FDTDState, mesh, n_devices: int,
-                             nx_local: int, pad_x: int = 0) -> FDTDState:
+                             nx_local_with_ghost: int,
+                             pad_x: int = 0) -> FDTDState:
     """Apply PEC on physical domain faces (x_lo, x_hi, y, z) using shard_map.
 
     Mirrors ``rfx/runners/distributed_v2.py::_apply_pec_shmap`` exactly:
@@ -654,9 +655,10 @@ def _apply_pec_face_nu_shmap(state: FDTDState, mesh, n_devices: int,
     conditional (only rank 0 zeroes x_lo, only rank N-1 zeroes x_hi).
 
     Critically, the X-face PEC acts on the **first real cell**
-    (``ghost``) and the **last real cell** (``nx_local - 1 - ghost -
-    pad_x``), NOT on the seam ghost cells (which belong to
-    neighbouring ranks) and NOT on the alignment-pad cells (which are
+    (``ghost``) and the **last real cell**
+    (``nx_local_with_ghost - 1 - ghost - pad_x``), NOT on the seam
+    ghost cells (which belong to neighbouring ranks) and NOT on the
+    alignment-pad cells (which are
     beyond the real domain face — #622: with ``pad_x > 0`` the last
     rank's slab carries ``pad_x`` inert cells past global node
     ``nx - 1``; the physical face stays at that real node, not at the
@@ -699,7 +701,7 @@ def _apply_pec_face_nu_shmap(state: FDTDState, mesh, n_devices: int,
         # X-hi PEC: only rank N-1; act on last REAL cell (skip ghost AND
         # the alignment pad — #622).
         is_last = (device_idx == n_devices - 1)
-        last_real = nx_local - 1 - ghost - pad_x
+        last_real = nx_local_with_ghost - 1 - ghost - pad_x
         ey_xhi = jnp.where(is_last, 0.0, ey[last_real, :, :])
         ez_xhi = jnp.where(is_last, 0.0, ez[last_real, :, :])
         ey = ey.at[last_real, :, :].set(ey_xhi)
@@ -712,7 +714,8 @@ def _apply_pec_face_nu_shmap(state: FDTDState, mesh, n_devices: int,
 
 
 def _apply_pmc_face_nu_shmap(state: FDTDState, mesh, n_devices: int,
-                             nx_local: int, pmc_faces: frozenset,
+                             nx_local_with_ghost: int,
+                             pmc_faces: frozenset,
                              pad_x: int = 0) -> FDTDState:
     """Apply PMC (``H_tan = 0``) on physical domain faces using shard_map.
 
@@ -725,9 +728,10 @@ def _apply_pmc_face_nu_shmap(state: FDTDState, mesh, n_devices: int,
 
     Y- and Z-face PMC is local to every rank; X-face PMC is rank-
     conditional (only rank 0 zeroes x_lo, only rank N-1 zeroes x_hi),
-    and acts on the **first real cell** (``ghost``) / **last real cell**
-    (``nx_local - 1 - ghost - pad_x``) — NOT the seam ghost, and NOT
-    the alignment-pad cells (#622, same class as the PEC face fix).
+    and acts on the **first real cell** (``ghost``) / **last real
+    cell** (``nx_local_with_ghost - 1 - ghost - pad_x``) — NOT the seam
+    ghost, and NOT the alignment-pad cells (#622, same class as the PEC
+    face fix).
     """
     if not pmc_faces:
         return state
@@ -760,7 +764,7 @@ def _apply_pmc_face_nu_shmap(state: FDTDState, mesh, n_devices: int,
         device_idx = lax.axis_index("x")
         is_first = (device_idx == 0)
         is_last = (device_idx == n_devices - 1)
-        last_real = nx_local - 1 - ghost - pad_x
+        last_real = nx_local_with_ghost - 1 - ghost - pad_x
         last_inside = last_real - 1
 
         if "x_lo" in pmc_faces:
