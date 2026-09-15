@@ -37,7 +37,7 @@
   }
  },
  "spiral_reference": {
-  "note": "QUOTED from validation/fdfd/spiral_convergence.json (D2) and straight_bar_convergence.json (D2b) for the attribution; NOT measured here. The corner COUNT is measured here, from gds.rect_spiral's own centreline.",
+  "note": "D2 (validation/fdfd/spiral_convergence.json) and D2b (straight_bar_convergence.json) numbers are QUOTED for K5's secondary, superseded comparison; the invariant ladder's residual is READ from validation/fdfd/invariant_ladder.json at run time for K5's primary one (attribution.primary). None of them is measured here. The corner COUNT is measured here, from gds.rect_spiral's own centreline.",
   "referee_deembedded": 3.3305510896906523e-10,
   "both_corrections_rel": [
    -0.07682185547554532,
@@ -46,7 +46,13 @@
   "bar_per_unit_length_ratio_3cells": [
    0.9746,
    0.9808
-  ]
+  ],
+  "invariant_ladder_json": "validation/fdfd/invariant_ladder.json",
+  "invariant_ladder_keys": {
+   "referee": "referee.total",
+   "continuum_limit_rel_range": "residual.limit_rel_range",
+   "after_corrections_rel_range": "residual.after_corrections_rel_range"
+  }
  },
  "levels": {
   "bend": {
@@ -700,7 +706,7 @@
   },
   "passed": true
  },
- "seconds": 1.987001895904541,
+ "seconds": 0.7895572185516357,
  "wall_ladder": {
   "bend": {
    "1": {
@@ -1320,30 +1326,60 @@
   }
  },
  "attribution": {
+  "sign_convention": "FDFD - referee (H) throughout: a negative range is the FDFD LOW. The corner term is n_corners x the per-corner discrepancy [excess]_FDFD - [excess]_referee, +- n_corners x its uncertainty; K5 passes only if that signed interval intersects the signed continuum-limit residual (primary)",
   "n_corners": 8,
   "corner_count_accounting": "4 * n_turns = 8 sides give 8 - 1 = 7 interior joints between sides, all right angles; + 1 right angle where the last side meets the inner extension; + 0 for the lead/side-0 joint (collinear by construction) and + 0 for the strip-to-underpass via (a 180-degree reversal, not a right angle) = 8",
   "spiral_referee_deembedded": 3.3305510896906523e-10,
-  "spiral_both_corrections_rel": [
-   -0.07682185547554532,
-   -0.050649408342909985
-  ],
-  "spiral_deficit_range": [
-   1.6869044214866568e-11,
-   2.5585911446613528e-11
-  ],
-  "bar_per_unit_length_ratio_3cells": [
-   0.9746,
-   0.9808
-  ],
-  "bar_explained_range": [
-   6.3946580922060505e-12,
-   8.45959976781425e-12
-  ],
-  "remainder_range": [
-   8.409444447052318e-12,
-   1.919125335440748e-11
-  ],
-  "remainder_width": 1.078180890735516e-11,
+  "primary": {
+   "what": "the continuum-limit residual of the level-invariant ladder of the same spiral (study P), FDFD - referee; at a continuum limit the discretisation deficits are gone, so nothing is subtracted from it",
+   "source": "validation/fdfd/invariant_ladder.json",
+   "keys": {
+    "referee": "referee.total",
+    "continuum_limit_rel_range": "residual.limit_rel_range",
+    "after_corrections_rel_range": "residual.after_corrections_rel_range"
+   },
+   "referee": 3.3305510896906523e-10,
+   "continuum_limit_rel_range": [
+    -0.04558183445729613,
+    -0.024767389189064404
+   ],
+   "continuum_limit_range": [
+    -1.5181262842184655e-11,
+    -8.248905505243093e-12
+   ],
+   "after_corrections_rel_range": [
+    -0.04646060353004855,
+    -0.025345528232192938
+   ],
+   "after_corrections_range": [
+    -1.5473941371468857e-11,
+    -8.441457667251538e-12
+   ]
+  },
+  "secondary_old_remainder": {
+   "what": "SUPERSEDED, reported, never gated: D2's residual after both of its corrections minus D2b's per-unit-length discretisation deficit at 3-4 cells across W. At a continuum limit that deficit is gone, and the invariant ladder showed D2's plateau to be mainly an unrefined vertical grid, so this construction no longer applies",
+   "spiral_both_corrections_rel": [
+    -0.07682185547554532,
+    -0.050649408342909985
+   ],
+   "spiral_residual_range": [
+    -2.5585911446613528e-11,
+    -1.6869044214866568e-11
+   ],
+   "bar_per_unit_length_ratio_3cells": [
+    0.9746,
+    0.9808
+   ],
+   "bar_explained_range": [
+    -8.45959976781425e-12,
+    -6.3946580922060505e-12
+   ],
+   "remainder_range": [
+    -1.919125335440748e-11,
+    -8.409444447052318e-12
+   ],
+   "remainder_width": 1.078180890735516e-11
+  },
   "finest_admitted": {
    "div": 2.0,
    "cells_across_width": 2.0,
@@ -1352,18 +1388,44 @@
    "per_corner_uncertainty_dominated": true,
    "corners_total": 1.050537039132369e-12,
    "corners_total_uncertainty": 8.201154990029174e-12,
-   "corners_total_over_remainder": [
-    0.054740408025049696,
-    0.12492347690109347
-   ],
-   "explains_remainder_within_uncertainty": true,
-   "explains_remainder_central_value": false,
-   "overlap_range": [
-    8.409444447052318e-12,
+   "corners_interval": [
+    -7.150617950896805e-12,
     9.251692029161543e-12
    ],
-   "overlap_width_over_remainder_width": 0.07811746519961582,
-   "fraction_of_spiral_referee": 0.0031542438798917954
+   "fraction_of_spiral_referee": 0.0031542438798917954,
+   "vs_continuum_limit": {
+    "target_range": [
+     -1.5181262842184655e-11,
+     -8.248905505243093e-12
+    ],
+    "intersects": false,
+    "overlap_range": null,
+    "miss": 1.098287554346288e-12,
+    "central_value_inside": false,
+    "central_value_same_sign": false
+   },
+   "vs_continuum_limit_after_corrections": {
+    "target_range": [
+     -1.5473941371468857e-11,
+     -8.441457667251538e-12
+    ],
+    "intersects": false,
+    "overlap_range": null,
+    "miss": 1.2908397163547336e-12,
+    "central_value_inside": false,
+    "central_value_same_sign": false
+   },
+   "vs_old_remainder": {
+    "target_range": [
+     -1.919125335440748e-11,
+     -8.409444447052318e-12
+    ],
+    "intersects": false,
+    "overlap_range": null,
+    "miss": 1.2588264961555135e-12,
+    "central_value_inside": false,
+    "central_value_same_sign": false
+   }
   },
   "finest_raw_pad4": {
    "div": 3.0,
@@ -1373,18 +1435,47 @@
    "per_corner_uncertainty_dominated": false,
    "corners_total": 2.577511815434619e-11,
    "corners_total_uncertainty": 0.0,
-   "corners_total_over_remainder": [
-    1.3430659102015687,
-    3.065020325258334
+   "corners_interval": [
+    2.577511815434619e-11,
+    2.577511815434619e-11
    ],
-   "explains_remainder_within_uncertainty": false,
-   "explains_remainder_central_value": false,
-   "overlap_range": null,
-   "overlap_width_over_remainder_width": 0.0,
-   "fraction_of_spiral_referee": 0.07738994977176654
+   "fraction_of_spiral_referee": 0.07738994977176654,
+   "vs_continuum_limit": {
+    "target_range": [
+     -1.5181262842184655e-11,
+     -8.248905505243093e-12
+    ],
+    "intersects": false,
+    "overlap_range": null,
+    "miss": 3.402402365958928e-11,
+    "central_value_inside": false,
+    "central_value_same_sign": false
+   },
+   "vs_continuum_limit_after_corrections": {
+    "target_range": [
+     -1.5473941371468857e-11,
+     -8.441457667251538e-12
+    ],
+    "intersects": false,
+    "overlap_range": null,
+    "miss": 3.421657582159773e-11,
+    "central_value_inside": false,
+    "central_value_same_sign": false
+   },
+   "vs_old_remainder": {
+    "target_range": [
+     -1.919125335440748e-11,
+     -8.409444447052318e-12
+    ],
+    "intersects": false,
+    "overlap_range": null,
+    "miss": 3.4184562601398506e-11,
+    "central_value_inside": false,
+    "central_value_same_sign": false
+   }
   },
-  "passed": true,
-  "statement": "8 right-angle corners x (+0.1313 +- 1.0251) pH per corner = +1.051 +- 8.201 pH, at 2 cells across W, against a remainder of [8.41, 19.19] pH: the interval reaches it, so K5 passes, but only through the uncertainty -- the central value is 5.5%-12.5% of the remainder"
+  "passed": false,
+  "statement": "FDFD - referee throughout. 8 right-angle corners x (+0.1313 +- 1.0251) pH per corner at 2 cells across W = +1.051 +- 8.201 pH = [-7.151, +9.252] pH. PRIMARY, the spiral's continuum-limit residual (validation/fdfd/invariant_ladder.json: residual.limit_rel_range x referee.total) = [-15.181, -8.249] pH: the corner interval misses it by 1.098 pH. Reported: [-15.474, -8.441] pH after that study's measured corrections (residual.after_corrections_rel_range): the corner interval misses it by 1.291 pH; SECONDARY (superseded), D2's residual minus D2b's per-unit-length deficit = [-19.191, -8.409] pH: the corner interval misses it by 1.259 pH. K5 FAILS: the corners cannot account for the spiral's residual; their central value has the opposite sign (a positive corner term raises the FDFD spiral and shrinks its deficit)"
  },
  "gradient": {
   "l1": 0.0001,
@@ -1508,11 +1599,16 @@
    "passed": true
   },
   "K3": {
-   "what": "at equal total centreline length a bend has LESS mutual coupling between its halves than a straight bar, so the excess must be NEGATIVE in both tools, at every level",
+   "what": "at equal total centreline length a bend has LESS mutual coupling between its halves than a straight bar, so the excess must be NEGATIVE in both tools at every ADMITTED level (the set K4 and K5 use); a level without a three-point ladder on both legs is reported under excluded_informational and never gated",
+   "admitted_levels": [
+    "W/1",
+    "W/2"
+   ],
    "per_level": {
     "W/1": {
      "excess_fdfd": -7.261100925321932e-12,
      "excess_referee": -7.793402360880554e-12,
+     "basis": "wall-corrected, three-point ladders on both legs",
      "sign_fdfd": -1,
      "sign_referee": -1,
      "agrees": true,
@@ -1521,14 +1617,18 @@
     "W/2": {
      "excess_fdfd": -7.653266356599041e-12,
      "excess_referee": -7.784583486490587e-12,
+     "basis": "wall-corrected, three-point ladders on both legs",
      "sign_fdfd": -1,
      "sign_referee": -1,
      "agrees": true,
      "ratio": 0.9831311296077132
-    },
+    }
+   },
+   "excluded_informational": {
     "W/3": {
      "excess_fdfd": -4.560675205063467e-12,
      "excess_referee": -7.78256497435674e-12,
+     "basis": "raw pad_cells = 4: at least one leg has no wall ladder (EXCLUDED)",
      "sign_fdfd": -1,
      "sign_referee": -1,
      "agrees": true,
@@ -1570,22 +1670,62 @@
    "passed": true
   },
   "K5": {
+   "what": "the SIGNED corner interval, n_corners x (per-corner discrepancy +- its uncertainty), FDFD - referee, must intersect the SIGNED continuum-limit residual of the invariant ladder (primary); the same limit after its corrections and the superseded D2-minus-D2b remainder are reported beside it",
+   "sign_convention": "FDFD - referee (H) throughout: a negative range is the FDFD LOW. The corner term is n_corners x the per-corner discrepancy [excess]_FDFD - [excess]_referee, +- n_corners x its uncertainty; K5 passes only if that signed interval intersects the signed continuum-limit residual (primary)",
    "n_corners": 8,
    "corner_count_accounting": "4 * n_turns = 8 sides give 8 - 1 = 7 interior joints between sides, all right angles; + 1 right angle where the last side meets the inner extension; + 0 for the lead/side-0 joint (collinear by construction) and + 0 for the strip-to-underpass via (a 180-degree reversal, not a right angle) = 8",
-   "spiral_deficit_range": [
-    1.6869044214866568e-11,
-    2.5585911446613528e-11
-   ],
-   "bar_explained_range": [
-    6.3946580922060505e-12,
-    8.45959976781425e-12
-   ],
-   "remainder_range": [
-    8.409444447052318e-12,
-    1.919125335440748e-11
-   ],
-   "statement": "8 right-angle corners x (+0.1313 +- 1.0251) pH per corner = +1.051 +- 8.201 pH, at 2 cells across W, against a remainder of [8.41, 19.19] pH: the interval reaches it, so K5 passes, but only through the uncertainty -- the central value is 5.5%-12.5% of the remainder",
-   "passed": true,
+   "primary": {
+    "what": "the continuum-limit residual of the level-invariant ladder of the same spiral (study P), FDFD - referee; at a continuum limit the discretisation deficits are gone, so nothing is subtracted from it",
+    "source": "validation/fdfd/invariant_ladder.json",
+    "keys": {
+     "referee": "referee.total",
+     "continuum_limit_rel_range": "residual.limit_rel_range",
+     "after_corrections_rel_range": "residual.after_corrections_rel_range"
+    },
+    "referee": 3.3305510896906523e-10,
+    "continuum_limit_rel_range": [
+     -0.04558183445729613,
+     -0.024767389189064404
+    ],
+    "continuum_limit_range": [
+     -1.5181262842184655e-11,
+     -8.248905505243093e-12
+    ],
+    "after_corrections_rel_range": [
+     -0.04646060353004855,
+     -0.025345528232192938
+    ],
+    "after_corrections_range": [
+     -1.5473941371468857e-11,
+     -8.441457667251538e-12
+    ]
+   },
+   "secondary_old_remainder": {
+    "what": "SUPERSEDED, reported, never gated: D2's residual after both of its corrections minus D2b's per-unit-length discretisation deficit at 3-4 cells across W. At a continuum limit that deficit is gone, and the invariant ladder showed D2's plateau to be mainly an unrefined vertical grid, so this construction no longer applies",
+    "spiral_both_corrections_rel": [
+     -0.07682185547554532,
+     -0.050649408342909985
+    ],
+    "spiral_residual_range": [
+     -2.5585911446613528e-11,
+     -1.6869044214866568e-11
+    ],
+    "bar_per_unit_length_ratio_3cells": [
+     0.9746,
+     0.9808
+    ],
+    "bar_explained_range": [
+     -8.45959976781425e-12,
+     -6.3946580922060505e-12
+    ],
+    "remainder_range": [
+     -1.919125335440748e-11,
+     -8.409444447052318e-12
+    ],
+    "remainder_width": 1.078180890735516e-11
+   },
+   "statement": "FDFD - referee throughout. 8 right-angle corners x (+0.1313 +- 1.0251) pH per corner at 2 cells across W = +1.051 +- 8.201 pH = [-7.151, +9.252] pH. PRIMARY, the spiral's continuum-limit residual (validation/fdfd/invariant_ladder.json: residual.limit_rel_range x referee.total) = [-15.181, -8.249] pH: the corner interval misses it by 1.098 pH. Reported: [-15.474, -8.441] pH after that study's measured corrections (residual.after_corrections_rel_range): the corner interval misses it by 1.291 pH; SECONDARY (superseded), D2's residual minus D2b's per-unit-length deficit = [-19.191, -8.409] pH: the corner interval misses it by 1.259 pH. K5 FAILS: the corners cannot account for the spiral's residual; their central value has the opposite sign (a positive corner term raises the FDFD spiral and shrinks its deficit)",
+   "passed": false,
    "finest_admitted": {
     "div": 2.0,
     "cells_across_width": 2.0,
@@ -1594,18 +1734,44 @@
     "per_corner_uncertainty_dominated": true,
     "corners_total": 1.050537039132369e-12,
     "corners_total_uncertainty": 8.201154990029174e-12,
-    "corners_total_over_remainder": [
-     0.054740408025049696,
-     0.12492347690109347
-    ],
-    "explains_remainder_within_uncertainty": true,
-    "explains_remainder_central_value": false,
-    "overlap_range": [
-     8.409444447052318e-12,
+    "corners_interval": [
+     -7.150617950896805e-12,
      9.251692029161543e-12
     ],
-    "overlap_width_over_remainder_width": 0.07811746519961582,
-    "fraction_of_spiral_referee": 0.0031542438798917954
+    "fraction_of_spiral_referee": 0.0031542438798917954,
+    "vs_continuum_limit": {
+     "target_range": [
+      -1.5181262842184655e-11,
+      -8.248905505243093e-12
+     ],
+     "intersects": false,
+     "overlap_range": null,
+     "miss": 1.098287554346288e-12,
+     "central_value_inside": false,
+     "central_value_same_sign": false
+    },
+    "vs_continuum_limit_after_corrections": {
+     "target_range": [
+      -1.5473941371468857e-11,
+      -8.441457667251538e-12
+     ],
+     "intersects": false,
+     "overlap_range": null,
+     "miss": 1.2908397163547336e-12,
+     "central_value_inside": false,
+     "central_value_same_sign": false
+    },
+    "vs_old_remainder": {
+     "target_range": [
+      -1.919125335440748e-11,
+      -8.409444447052318e-12
+     ],
+     "intersects": false,
+     "overlap_range": null,
+     "miss": 1.2588264961555135e-12,
+     "central_value_inside": false,
+     "central_value_same_sign": false
+    }
    },
    "finest_raw_pad4_EXCLUDED": {
     "div": 3.0,
@@ -1615,15 +1781,44 @@
     "per_corner_uncertainty_dominated": false,
     "corners_total": 2.577511815434619e-11,
     "corners_total_uncertainty": 0.0,
-    "corners_total_over_remainder": [
-     1.3430659102015687,
-     3.065020325258334
+    "corners_interval": [
+     2.577511815434619e-11,
+     2.577511815434619e-11
     ],
-    "explains_remainder_within_uncertainty": false,
-    "explains_remainder_central_value": false,
-    "overlap_range": null,
-    "overlap_width_over_remainder_width": 0.0,
-    "fraction_of_spiral_referee": 0.07738994977176654
+    "fraction_of_spiral_referee": 0.07738994977176654,
+    "vs_continuum_limit": {
+     "target_range": [
+      -1.5181262842184655e-11,
+      -8.248905505243093e-12
+     ],
+     "intersects": false,
+     "overlap_range": null,
+     "miss": 3.402402365958928e-11,
+     "central_value_inside": false,
+     "central_value_same_sign": false
+    },
+    "vs_continuum_limit_after_corrections": {
+     "target_range": [
+      -1.5473941371468857e-11,
+      -8.441457667251538e-12
+     ],
+     "intersects": false,
+     "overlap_range": null,
+     "miss": 3.421657582159773e-11,
+     "central_value_inside": false,
+     "central_value_same_sign": false
+    },
+    "vs_old_remainder": {
+     "target_range": [
+      -1.919125335440748e-11,
+      -8.409444447052318e-12
+     ],
+     "intersects": false,
+     "overlap_range": null,
+     "miss": 3.4184562601398506e-11,
+     "central_value_inside": false,
+     "central_value_same_sign": false
+    }
    }
   },
   "K_area": {

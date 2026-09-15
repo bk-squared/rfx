@@ -1,18 +1,26 @@
 """Validation study D2c: does a RIGHT-ANGLE CORNER explain the residual of
 ``validation/fdfd/spiral_convergence.py`` that the straight bar left over?
 
-Answer, up front: NO, not at the resolution this fixture can reach. One
-right-angle corner's discrepancy against the Greenhouse referee is
+Answer, up front: NO. One right-angle corner's discrepancy against the
+Greenhouse referee, ``[excess]_FDFD - [excess]_referee``, is
 +0.532 +- 0.415 pH at one cell across the strip width and +0.131 +- 1.025 pH
-at two cells (wall-extrapolated, three-point ladders). The D2 spiral has
-EIGHT right-angle corners (counted from the polygon, below), so the corner
-term is +1.05 +- 8.20 pH against a remainder of 8.41 to 19.19 pH: the
-central value is 5.5 % to 12.5 % of the remainder, and the interval reaches
-the bottom of it only through an uncertainty eight times its own size. What
-the data DO show positively is that the FDFD gets the corner's PHYSICS
-right while getting the magnitude wrong: it reproduces the referee's corner
-excess to 6.8 % (one cell) and 1.7 % (two cells) at levels where its
-absolute de-embedded L is 25.6 % and 13.4 % low.
+at two cells (wall-extrapolated, three-point ladders): POSITIVE, i.e. the
+FDFD's corner excess is slightly LESS negative than the referee's. The D2
+spiral has EIGHT right-angle corners (counted from the polygon, below), so
+in the one sign convention this study uses throughout -- FDFD minus
+referee, in pH -- the corners contribute +1.051 +- 8.201 pH, the interval
+[-7.151, +9.252] pH, to the spiral's residual. That residual is NEGATIVE
+(the FDFD spiral is LOW): [-15.181, -8.249] pH at the continuum limit of
+the level-invariant ladder of the same spiral (``invariant_ladder.json``,
+K5's primary comparison), [-15.474, -8.441] pH after that study's measured
+corrections, and [-19.191, -8.409] pH for this study's original, now
+superseded, remainder. The corner interval misses all three, by 1.098,
+1.291 and 1.259 pH, and its central value has the wrong sign: a positive
+corner term pushes the FDFD spiral UP, so it would shrink the deficit, not
+explain it. K5 FAILS. What the data DO show positively is that the FDFD
+gets the corner's PHYSICS right while getting the magnitude wrong: it
+reproduces the referee's corner excess to 6.8 % (one cell) and 1.7 % (two
+cells) at levels where its absolute de-embedded L is 25.6 % and 13.4 % low.
 
 Where this study sits
 ---------------------
@@ -25,6 +33,19 @@ deficit (0.83 / 0.93 / 0.98 of the exact uniform-current inductance at
 1 / 2 / 3 cells across the width, wall-extrapolated). D2b's own conclusion
 names the next decomposition: "separating a corner contribution from the
 via would need a corner-only DUT on the same fixture". This is that DUT.
+
+Since then the level-invariant ladder (``invariant_ladder.py``, study P)
+has re-measured the same spiral on a fixture whose walls, short standard
+and port gap are physical coordinates, refined jointly in x, y and z. Its
+gate P6 shows that D2's plateau was mainly a vertical grid that was never
+refined, and its continuum limit sits -4.558 % to -2.477 % from the same
+333.055 pH referee (``residual.limit_rel_range``), -4.646 % to -2.535 %
+after its measured corrections (``residual.after_corrections_rel_range``).
+At a continuum limit the discretisation deficits are gone, so the D2b
+per-unit-length term this study first subtracted from D2's residual no
+longer applies: K5's primary comparison is against that limit, read from
+``invariant_ladder.json`` at run time, and the original D2-minus-D2b
+remainder is kept as a secondary, reported result.
 
 The DUT (``rfx.fdfd.spiral``, ``dut_kind="bend"``, an additive hook)
 -------------------------------------------------------------------
@@ -173,15 +194,16 @@ bar W/3 pad 8 (N = 129684). W/3 consequently has a ONE-point ladder on the
 bend leg and a two-point ladder on the bar leg, so by the three-point rule
 (K1) it is EXCLUDED from every gate and from the attribution; its raw
 ``pad_cells = 4`` numbers are reported. Total measuring cost of everything
-on disk: 34.3 min (``seconds_measuring``); the reassembly run that derives
-everything else and writes the JSON and the PNG takes a couple of seconds
+on disk: 34.3 min (``seconds_measuring``); a ``--from-json`` reassembly,
+which builds and solves nothing, re-derives everything else and writes the
+JSON (and the PNG unless ``--no-figure``) in about a second
 (``seconds``, which is the wall clock of the LAST run and so moves).
 
 Run::
 
     .venv/bin/python validation/fdfd/corner_convergence.py
         [--levels 1 2 3] [--kinds bend bar] [--pads 4 6 8]
-        [--n-max 110000] [--no-gradient] [--fresh]
+        [--n-max 110000] [--no-gradient] [--fresh] [--from-json] [--no-figure]
 
 writes ``corner_convergence.json`` and ``corner_convergence.png`` next to
 this file. Every measured point is written to the JSON as soon as it is
@@ -190,7 +212,11 @@ to start over), so the study is assembled in chunks -- as it was: seven
 invocations, none longer than 600 s -- and an interrupted run loses nothing.
 Everything derived (referee, ladders, excess, attribution, gates, figure) is
 re-derived from scratch on every run, so a reused point can never carry an
-older derivation forward.
+older derivation forward. ``--from-json`` is the strict form of that
+reassembly: it reuses every measured point, every recorded skip and the
+gradient from the JSON, builds and solves NOTHING, and stops with an error
+if a requested point is neither measured nor a recorded skip. Every run
+also reads ``invariant_ladder.json`` for K5 (``INVARIANT_LADDER_PATH``).
 
 Results (every number is in the JSON)
 -------------------------------------
@@ -198,7 +224,7 @@ Referee, de-embedded (strip minus the two arms), per level::
 
   level   arms      bend strip  bend bridge  bend L    bar strip  bar bridge  bar L     excess
   W/1     15.000 um   101.831      8.936     92.895     109.609     8.921    100.689   -7.7934
-  W/2     10.000 um   101.831      4.894     96.937     109.609     4.888    104.722   -7.7846
+  W/2     10.000 um   101.831      4.894     96.937     109.609     4.888    104.721   -7.7846
   W/3      8.333 um   101.831      3.698     98.133     109.609     3.693    105.916   -7.7826
 
 FDFD, de-embedded ``L_diff``, in pH::
@@ -236,10 +262,13 @@ Gates
 K1  STRUCTURAL, PASSES. Only levels with a full ``pad_cells`` 4/6/8 ladder
     on BOTH legs enter a gate: W/1 and W/2 (ladder points [3, 3] each).
     W/3 has [0, 2] -- three of its six grids are above ``N_MAX = 110000``
-    (above) -- and is recorded under the explicit
-    ``*_two_point_EXCLUDED`` keys, kept out of K3's admitted set, out of
-    K4 and out of the attribution. ``wall_ladder_points_per_level`` and
-    ``study["skipped"]`` make the rule auditable from the JSON alone.
+    (above) -- so it is kept out of K3, K4 and K5. Its bend leg has no
+    ladder at all, so it has no wall-corrected excess; only its raw
+    ``pad_cells = 4`` numbers are recorded (``excess_fdfd_pad4``,
+    ``discrepancy_pad4``; a level with a two-point ladder on BOTH legs
+    would carry ``*_two_point_EXCLUDED`` keys instead).
+    ``wall_ladder_points_per_level`` and ``study["skipped"]`` make the rule
+    auditable from the JSON alone.
 K2  PASSES. ``jax.value_and_grad`` of the de-embedded ``L_diff`` of the
     BEND in ``theta = (l1, l2, W)`` against FD4 with 1 % steps (which move
     L by ~1e-2 relative, far above the ~1e-9 LU noise floor) at
@@ -247,73 +276,96 @@ K2  PASSES. ``jax.value_and_grad`` of the de-embedded ``L_diff`` of the
     ``dL/dW`` = -2.2004126e-06 H/m, FD4 gives +4.514578e-07 and
     -2.2004127e-06, agreeing to 1.59e-07 and 4.28e-08 relative (gate
     1e-4); 23 s for the gradient and 134 s for the eight FD solves.
-    ``dL/dl2`` = +3.543002e-07 H/m is NOT equal to ``dL/dl1`` and is not
-    checked against FD: this fixture is not symmetric in ``l1 <-> l2``
-    (the short standard's two arms are both x-directed, so stretching
-    ``l2`` also stretches the cell that sets their length, while
-    stretching ``l1`` only moves them apart in y).
-K3  PASSES. The corner excess is negative in BOTH tools at ALL THREE
-    levels (W/3 included, on its raw pad-4 value), i.e. the FDFD
+    ``dL/dl2`` = +3.543002e-07 H/m is NOT equal to ``dL/dl1`` -- this
+    fixture is not symmetric in ``l1 <-> l2`` (the short standard's two
+    arms are both x-directed, so stretching ``l2`` also stretches the cell
+    that sets their length, while stretching ``l1`` only moves them apart
+    in y) -- and this study never checked it against FD: the JSON has no
+    FD4 for ``l2`` (``gradient.fd_params`` is ``[l1, width]``). An
+    independent verifier later measured FD4 with a 0.5 % step at
+    3.542998e-07 H/m against AD 3.543002e-07, 9.69e-07 relative. That
+    number was supplied by the verifier; it is NOT in the JSON and is not
+    part of K2.
+K3  PASSES. On the ADMITTED levels -- the set K4 and K5 use -- the
+    wall-corrected corner excess is negative in BOTH tools: -7.2611 vs
+    -7.7934 pH at W/1 and -7.6533 vs -7.7846 pH at W/2, i.e. the FDFD
     reproduces the sign and the mechanism: perpendicular halves do not
-    couple, collinear ones do. The wall-corrected RATIO to the referee is
-    0.9317 at one cell across W and 0.9831 at two -- the corner excess is
-    reproduced to 6.8 % and 1.7 % at levels where the absolute L is
-    25.6 % and 13.4 % low, so whatever the FDFD is missing is not the
-    corner.
+    couple, collinear ones do. The RATIO to the referee is 0.9317 at one
+    cell across W and 0.9831 at two -- the corner excess is reproduced to
+    6.8 % and 1.7 % at levels where the absolute L is 25.6 % and 13.4 %
+    low, so whatever the FDFD is missing is not the corner. W/3 has no
+    three-point ladder and does not enter the gate: its raw pad-4 excess,
+    -4.5607 pH against -7.7826 pH (the same sign, ratio 0.5860), is
+    reported under ``excluded_informational`` only.
 K4  PASSES on the admitted series: ``|discrepancy|`` falls 0.5323 ->
     0.1313 pH from one to two cells across W. It FAILS on the raw
     ``pad_cells = 4`` series, which GROWS 1.0977 -> 1.9464 -> 3.2219 pH
     (``raw_pad4_decreases`` is false) -- that growth is the wall bias
     creeping in at different rates on the two shapes, D2b's finding
-    applied to a shape pair, and it is the one number in this study that
-    would have supported the opposite conclusion had the ladders not been
-    run.
-K5  PASSES, MARGINALLY AND ONLY THROUGH THE UNCERTAINTY -- read the
-    numbers, not the boolean. The D2 spiral has 8 right-angle corners,
-    counted from ``gds.rect_spiral``'s own centreline
-    (``corner_count``): the 8 sides of the 2-turn strip give 7 interior
-    joints, all right angles; the last side meets the inner extension at
-    one more; the lead is collinear with side 0 by construction (0); the
-    strip-to-underpass transition is a via with a 180-degree in-plane
-    reversal on the lower metal, not a right angle (0). 8 x the
-    W/2 per-corner discrepancy is +1.051 +- 8.201 pH. D2's residual after
-    both of its corrections is 16.87 to 25.59 pH of its 333.055 pH
-    referee; D2b's per-unit-length deficit at 3-4 cells across W
-    (ratios 0.9746-0.9808) accounts for 6.39 to 8.46 pH of that; the
-    REMAINDER is 8.41 to 19.19 pH. The corner term's central value is
-    5.5 % to 12.5 % of that remainder and its interval
-    [-7.15, +9.25] pH overlaps it only in [8.41, 9.25] pH, 7.8 % of the
-    remainder's width. So: the corners are not excluded as a contributor,
-    but they do not account for the remainder, and this fixture cannot
-    make the statement sharper without a W/3 wall ladder it cannot afford.
-    The value 8 x the raw pad-4 W/3 discrepancy would have given,
-    +25.78 pH (134-307 % of the remainder), is recorded under
-    ``finest_raw_pad4_EXCLUDED`` and is an artifact of the uncorrected
-    walls (K4).
+    applied to a shape pair.
+K5  FAILS. The D2 spiral has 8 right-angle corners, counted from
+    ``gds.rect_spiral``'s own centreline (``corner_count``): the 8 sides
+    of the 2-turn strip give 7 interior joints, all right angles; the last
+    side meets the inner extension at one more; the lead is collinear with
+    side 0 by construction (0); the strip-to-underpass transition is a via
+    with a 180-degree in-plane reversal on the lower metal, not a right
+    angle (0). ONE sign convention throughout: FDFD minus referee, in pH,
+    so a negative range is the FDFD LOW. Each corner adds its discrepancy
+    to the spiral's FDFD-minus-referee, so the corners add
+    8 x (+0.1313 +- 1.0251) pH = +1.051 +- 8.201 pH, the interval
+    [-7.151, +9.252] pH (``finest_admitted``, two cells across W), and K5
+    passes only if that interval intersects the spiral's residual.
+    PRIMARY (the gate): the continuum-limit residual of the level-invariant
+    ladder, ``residual.limit_rel_range`` x ``referee.total`` of
+    ``validation/fdfd/invariant_ladder.json`` (read at run time; its
+    referee is D2's 333.055 pH, checked to 1e-12), [-15.181, -8.249] pH.
+    The corner interval's lower end, -7.151 pH, lies 1.098 pH above its
+    upper end. Reported beside it: the same limit after that study's
+    measured corrections (``residual.after_corrections_rel_range``),
+    [-15.474, -8.441] pH, missed by 1.291 pH. SECONDARY (superseded,
+    reported, never gated): the original construction -- D2's residual
+    after both of its corrections, [-25.586, -16.869] pH, minus D2b's
+    per-unit-length deficit at 3-4 cells across W (ratios 0.9746-0.9808),
+    [-8.460, -6.395] pH -- leaves [-19.191, -8.409] pH, missed by
+    1.259 pH. It no longer applies: the invariant ladder showed D2's
+    plateau to be mainly an unrefined vertical grid, and at a continuum
+    limit the discretisation deficit it subtracted is gone. Against all
+    three the corner term's central value, +1.051 pH, has the OPPOSITE
+    sign: a positive corner term pushes the FDFD spiral up and shrinks its
+    deficit instead of explaining it. (The first version of this study set
+    the signed corner interval against the POSITIVE magnitude of the
+    deficit and reported a marginal pass; that was a sign error.)
+    8 x the raw pad-4 W/3 discrepancy, +25.775 pH, is recorded under
+    ``finest_raw_pad4_EXCLUDED``: further still from every residual, and
+    an artifact of the uncorrected walls (K4).
 K_area PASSES (above).
 
 Conclusion: what the data support
 ---------------------------------
-1. A single right-angle corner is NOT where the spiral study's residual
-   lives. At two cells across the width the FDFD reproduces the referee's
-   corner excess to 1.7 % (-7.653 vs -7.785 pH) while its absolute L is
-   13.4 % low, and the residual discrepancy of one corner is
-   +0.131 +- 1.025 pH. Eight of them are +1.05 +- 8.20 pH against a
-   remainder of 8.41-19.19 pH.
+1. The spiral's residual is NOT in its right-angle corners. At two cells
+   across the width the FDFD reproduces the referee's corner excess to
+   1.7 % (-7.653 vs -7.785 pH) while its absolute L is 13.4 % low, and the
+   discrepancy of one corner is +0.131 +- 1.025 pH. With consistent signs
+   (FDFD minus referee) the 8 corners contribute [-7.151, +9.252] pH,
+   while the spiral's residual is [-15.181, -8.249] pH at the invariant
+   ladder's continuum limit ([-15.474, -8.441] pH after its corrections,
+   [-19.191, -8.409] pH for the superseded remainder). The corners cannot
+   account for it against any of the three -- they miss by about
+   1.1-1.3 pH -- and their central value has the wrong sign.
 2. What the corner DOES cost is large and both tools agree on it: at equal
    total length a bend has 7.1 % less inductance than a straight bar
    (-7.78 pH of 109.61 pH), because its two halves are perpendicular and
    do not couple. The referee's decomposition is -26.99 pH of self plus
    collinear mutual, +19.21 pH given back by the ground images.
-3. The remaining candidates for the spiral's residual are therefore the
-   ones this study did not isolate: the underpass and the via (neither the
-   bend nor the bar has one), the turn-to-turn mutual coupling of a closed
-   loop, the vertical grid (D2 measures +2.7 to +3.1 % for it and D2b
-   +1.6 % for ``base_dz`` 10 -> 5 um, held fixed by all three protocols),
-   and the possibility that D2b's per-unit-length ratio -- measured on
-   20 um-wide bars at 3-4 cells and on 10 um-wide bars only to 2 cells --
-   understates the 10 um strip's deficit at 3 cells. The last of those is
-   the cheapest next measurement.
+3. What the residual IS, this study does not say; it removes the corners
+   from the candidates. The level-invariant ladder has since shown that
+   D2's plateau was mainly its never-refined vertical grid (its gate P6),
+   and its continuum limit still sits -4.558 % to -2.477 % from the
+   referee, which that study reports as unexplained (with the caveat that
+   the residual is the size of its own extrapolation spread). The
+   candidates this study did not isolate remain: the underpass and the via
+   (neither the bend nor the bar has one) and the turn-to-turn mutual
+   coupling of a closed loop.
 4. Method findings, for whoever runs the next decomposition: (a) the wall
    bias of ``pad_cells = 4`` depends on the SHAPE, not just on the level
    (half as large for the L-bend as for the open bar at the same
@@ -337,10 +389,14 @@ which is why the bridge is valued as the two un-shorted arms and why the
 arm-length band is reported; D2's thru probe measured that residual on the
 spiral at 0.5-1.8 % of its referee and no equivalent probe was run here.
 Nothing here validates losses, the frequency dependence or the PEC metal
-model. The D2 and D2b numbers used in the attribution are QUOTED from their
-JSONs (``spiral_reference``); only the corner COUNT is measured here.
-Sizes are CPU-SuperLU sizes and every timing is an upper bound under
-contention.
+model. The D2 and D2b numbers used in K5's secondary comparison are QUOTED
+from their JSONs (``spiral_reference``) and the invariant ladder's residual
+is READ from ``invariant_ladder.json`` at run time (``attribution.primary``
+names the keys); only the corner COUNT is measured here. The corner term set
+against that continuum-limit residual is the finest ADMITTED level's (two
+cells across W), not a continuum limit of its own: two admitted levels
+cannot be extrapolated. Sizes are CPU-SuperLU sizes and every timing is an
+upper bound under contention.
 """
 from __future__ import annotations
 
@@ -377,9 +433,10 @@ LEVELS = (1.0, 2.0, 3.0)
 KINDS = ("bend", "bar")
 # single-solve cap. The bend's box is SQUARE (130 x 130 um meshed), so its
 # LU fill is far worse than the elongated bar and spiral boxes at the same N:
-# measured on this machine, one three-fixture solve peaks at 8.4 GB / 107 s
-# at N = 56455 and 18.8 GB / 438 s at N = 107371, against 505 s for D2b's
-# N = 104888 elongated bar. 110k is therefore the cap on N here as it was
+# measured on this machine, one three-fixture solve peaks at 8.4 GB / 115 s
+# at N = 56455 and 18.8 GB / 466 s at N = 107371 (the times are the JSON's
+# ``levels.bend.2.{4,8}.seconds``), against 505 s for D2b's N = 104888
+# elongated bar. 110k is therefore the cap on N here as it was
 # there, and it is what excludes the bend's W/3 wall ladder (below).
 N_MAX = 110_000
 # the spiral D2 fixture, written out here (never imported: that study's
@@ -390,6 +447,15 @@ SPIRAL_REFEREE = 3.3305510896906523e-10        # gates.V1.referee_deembedded
 SPIRAL_BOTH_REL = (-0.07682185547554532, -0.050649408342909985)   # gates.V1c.with_post_short
 # D2b's wall-extrapolated per-unit-length ratio at 3 cells across W
 BAR_PUL_RATIO_3CELLS = (0.9746, 0.9808)        # 4 cells and 3 cells (W = 20 um)
+# the level-invariant ladder of the SAME spiral (study P, invariant_ladder.py):
+# K5's primary comparison is its continuum-limit residual, READ from this JSON
+# at run time (never written here), under these dotted keys
+INVARIANT_LADDER_PATH = HERE / "invariant_ladder.json"
+INVARIANT_LADDER_KEYS = {
+    "referee": "referee.total",
+    "continuum_limit_rel_range": "residual.limit_rel_range",
+    "after_corrections_rel_range": "residual.after_corrections_rel_range",
+}
 
 
 # ----------------------------------------------------------------------------
@@ -909,89 +975,189 @@ def spiral_corner_count(fixture: dict[str, Any] | None = None) -> dict[str, Any]
     return out
 
 
-def attribution(excess: dict[str, Any], corners: dict[str, Any]) -> dict[str, Any]:
-    """K5: does ``n_corners x`` the per-corner discrepancy account for what
-    the spiral study's residual has left after D2b's per-unit-length term?
+def load_invariant_ladder(path: pathlib.Path = INVARIANT_LADDER_PATH) -> dict[str, Any]:
+    """The level-invariant ladder's residual of the SAME spiral, as K5 uses
+    it, read from ``path`` (``validation/fdfd/invariant_ladder.json``) under
+    ``INVARIANT_LADDER_KEYS``: ``referee.total`` (the 333.055 pH referee),
+    ``residual.limit_rel_range`` (the continuum limit -- that study's
+    Richardson range -- relative to the referee) and
+    ``residual.after_corrections_rel_range`` (the same after its measured
+    signed corrections). Both ranges are returned relative AND in H, as
+    FDFD - referee. The referee must be D2's ``SPIRAL_REFEREE`` to 1e-12
+    relative: the comparison assumes one spiral and one referee."""
+    path = pathlib.Path(path)
+    doc = json.loads(path.read_text())
 
-    D2's own numbers (quoted from ``spiral_convergence.json``, never
-    remeasured here): with both measured corrections applied
-    (``gates.V1.corrections.both`` = ``gates.V1c.with_post_short``) the FDFD
-    is -7.682 % to -5.065 % of the 333.055 pH de-embedded referee, i.e.
-    16.87 to 25.59 pH LOW. D2b measured the strip's per-unit-length deficit
-    at three cells across the width as 1.9-2.5 % of L, i.e. 6.33 to 8.33 pH
-    of that -- already explained. What is left is the REMAINDER this study
-    is asked about."""
+    def dig(dotted: str) -> Any:
+        node = doc
+        for k in dotted.split("."):
+            node = node[k]
+        return node
+
+    ref = float(dig(INVARIANT_LADDER_KEYS["referee"]))
+    if abs(ref / SPIRAL_REFEREE - 1.0) > 1e-12:
+        raise ValueError(f"{path}: referee {ref!r} is not D2's {SPIRAL_REFEREE!r}")
+    lim = sorted(float(v) for v in dig(INVARIANT_LADDER_KEYS["continuum_limit_rel_range"]))
+    aft = sorted(float(v) for v in dig(INVARIANT_LADDER_KEYS["after_corrections_rel_range"]))
+    try:
+        source = path.resolve().relative_to(REPO).as_posix()
+    except ValueError:
+        source = str(path)
+    return {
+        "what": "the continuum-limit residual of the level-invariant ladder of the same "
+                "spiral (study P), FDFD - referee; at a continuum limit the discretisation "
+                "deficits are gone, so nothing is subtracted from it",
+        "source": source, "keys": dict(INVARIANT_LADDER_KEYS), "referee": ref,
+        "continuum_limit_rel_range": lim,
+        "continuum_limit_range": [v * ref for v in lim],
+        "after_corrections_rel_range": aft,
+        "after_corrections_range": [v * ref for v in aft],
+    }
+
+
+def _versus(total: float, unc: float, target: Sequence[float]) -> dict[str, Any]:
+    """The corners' SIGNED interval ``[total - unc, total + unc]`` against one
+    SIGNED residual interval, both FDFD - referee (H). ``miss`` is the gap
+    between the two intervals, 0 when they intersect."""
+    c_lo, c_hi = total - unc, total + unc
+    t_lo, t_hi = float(min(target)), float(max(target))
+    lo_i, hi_i = max(c_lo, t_lo), min(c_hi, t_hi)
+    hit = bool(hi_i >= lo_i)
+    return {"target_range": [t_lo, t_hi], "intersects": hit,
+            "overlap_range": [lo_i, hi_i] if hit else None,
+            "miss": 0.0 if hit else float(max(c_lo - t_hi, t_lo - c_hi)),
+            "central_value_inside": bool(t_lo <= total <= t_hi),
+            "central_value_same_sign": bool(np.sign(total) == np.sign(t_lo + t_hi))}
+
+
+def attribution(excess: dict[str, Any], corners: dict[str, Any],
+                invariant: dict[str, Any] | None = None) -> dict[str, Any]:
+    """K5: can ``n_corners x`` the per-corner discrepancy account for the
+    spiral's residual against its referee?
+
+    ONE sign convention throughout: FDFD minus referee, in H (pH in the
+    prose), so a negative range is the FDFD LOW. Each corner adds its
+    discrepancy ``[excess]_FDFD - [excess]_referee`` to the spiral's
+    FDFD - referee, so the corner term is ``n_corners x`` the per-corner
+    discrepancy with ``n_corners x`` its uncertainty, and K5 passes only if
+    that SIGNED interval intersects the SIGNED residual interval.
+
+    PRIMARY (the gate): the continuum-limit residual of the level-invariant
+    ladder of the same spiral (``invariant``; read by
+    ``load_invariant_ladder`` from ``validation/fdfd/invariant_ladder.json``
+    when ``None``): ``residual.limit_rel_range`` x ``referee.total``,
+    -4.558 % to -2.477 % of 333.055 pH = [-15.181, -8.249] pH, and, reported
+    beside it, ``residual.after_corrections_rel_range`` x ``referee.total``
+    = [-15.474, -8.441] pH.
+
+    SECONDARY (superseded, reported, never gated): the original remainder.
+    D2's residual after both of its measured corrections
+    (``gates.V1.corrections.both`` = ``gates.V1c.with_post_short`` of
+    ``spiral_convergence.json``, quoted, never remeasured here) is -7.682 %
+    to -5.065 % of the 333.055 pH referee, [-25.586, -16.869] pH; D2b's
+    per-unit-length ratio at 3-4 cells across W (0.9746-0.9808, quoted)
+    puts the strip's discretisation deficit at [-8.460, -6.395] pH (1.9 to
+    2.5 % of L); the interval difference, [-19.191, -8.409] pH, was the
+    remainder. At a continuum limit that deficit is gone, and the invariant
+    ladder showed D2's plateau to be mainly an unrefined vertical grid, so
+    the construction no longer applies."""
     n = int(corners["n_corners"])
+    inv = load_invariant_ladder() if invariant is None else invariant
     lo_rel, hi_rel = min(SPIRAL_BOTH_REL), max(SPIRAL_BOTH_REL)
-    deficit = [abs(hi_rel) * SPIRAL_REFEREE, abs(lo_rel) * SPIRAL_REFEREE]   # low, high (H)
-    pul = [(1.0 - max(BAR_PUL_RATIO_3CELLS)) * SPIRAL_REFEREE,
-           (1.0 - min(BAR_PUL_RATIO_3CELLS)) * SPIRAL_REFEREE]
-    remainder = [deficit[0] - pul[1], deficit[1] - pul[0]]
+    residual_d2 = [lo_rel * SPIRAL_REFEREE, hi_rel * SPIRAL_REFEREE]      # FDFD - referee (H)
+    pul = [(min(BAR_PUL_RATIO_3CELLS) - 1.0) * SPIRAL_REFEREE,
+           (max(BAR_PUL_RATIO_3CELLS) - 1.0) * SPIRAL_REFEREE]            # FDFD - exact (H)
+    remainder = [residual_d2[0] - pul[1], residual_d2[1] - pul[0]]         # interval difference
+    targets = {"vs_continuum_limit": inv["continuum_limit_range"],
+               "vs_continuum_limit_after_corrections": inv["after_corrections_range"],
+               "vs_old_remainder": remainder}
     out: dict[str, Any] = {
+        "sign_convention": "FDFD - referee (H) throughout: a negative range is the FDFD LOW. "
+                           "The corner term is n_corners x the per-corner discrepancy "
+                           "[excess]_FDFD - [excess]_referee, +- n_corners x its "
+                           "uncertainty; K5 passes only if that signed interval intersects "
+                           "the signed continuum-limit residual (primary)",
         "n_corners": n,
         "corner_count_accounting": corners["accounting"],
         "spiral_referee_deembedded": SPIRAL_REFEREE,
-        "spiral_both_corrections_rel": list(SPIRAL_BOTH_REL),
-        "spiral_deficit_range": deficit,
-        "bar_per_unit_length_ratio_3cells": list(BAR_PUL_RATIO_3CELLS),
-        "bar_explained_range": pul,
-        "remainder_range": remainder,
-        "remainder_width": remainder[1] - remainder[0],
+        "primary": inv,
+        "secondary_old_remainder": {
+            "what": "SUPERSEDED, reported, never gated: D2's residual after both of its "
+                    "corrections minus D2b's per-unit-length discretisation deficit at 3-4 "
+                    "cells across W. At a continuum limit that deficit is gone, and the "
+                    "invariant ladder showed D2's plateau to be mainly an unrefined "
+                    "vertical grid, so this construction no longer applies",
+            "spiral_both_corrections_rel": list(SPIRAL_BOTH_REL),
+            "spiral_residual_range": residual_d2,
+            "bar_per_unit_length_ratio_3cells": list(BAR_PUL_RATIO_3CELLS),
+            "bar_explained_range": pul,
+            "remainder_range": remainder,
+            "remainder_width": remainder[1] - remainder[0],
+        },
     }
-    for label, row in (("finest_admitted", excess.get("finest_admitted")),
-                       ("finest_raw_pad4", None)):
-        if label == "finest_raw_pad4":
-            rows = [r for r in excess["levels"].values()]
+    for label in ("finest_admitted", "finest_raw_pad4"):
+        if label == "finest_admitted":
+            row = excess.get("finest_admitted")
+            if not row:
+                continue
+            d, u, div = row["discrepancy"], row["uncertainty"], row["div"]
+        else:
+            rows = list(excess["levels"].values())
             if not rows:
                 continue
             fin = max(rows, key=lambda r: r["div"])
             d, u, div = fin["discrepancy_pad4"], 0.0, fin["div"]
-        elif row:
-            d, u, div = row["discrepancy"], row["uncertainty"], row["div"]
-        else:
-            continue
-        total = n * d
-        unc = n * u
-        # K5's criterion: does [total - unc, total + unc] intersect the
-        # remainder range? Reported beside the far stronger statement that the
-        # CENTRAL VALUE lands inside it, and beside the width of the overlap,
-        # so a pass that rests entirely on a large uncertainty is visible.
-        lo_i, hi_i = max(total - unc, remainder[0]), min(total + unc, remainder[1])
-        overlap = bool(hi_i >= lo_i)
-        out[label] = {
+        total, unc = n * d, n * u
+        blk: dict[str, Any] = {
             "div": div, "cells_across_width": div,
             "per_corner_discrepancy": d, "per_corner_uncertainty": u,
             "per_corner_uncertainty_dominated": bool(u > abs(d)),
             "corners_total": total, "corners_total_uncertainty": unc,
-            "corners_total_over_remainder": [total / remainder[1], total / remainder[0]],
-            "explains_remainder_within_uncertainty": overlap,
-            "explains_remainder_central_value": bool(remainder[0] <= total <= remainder[1]),
-            "overlap_range": [lo_i, hi_i] if overlap else None,
-            "overlap_width_over_remainder_width": (
-                (hi_i - lo_i) / (remainder[1] - remainder[0]) if overlap else 0.0),
+            "corners_interval": [total - unc, total + unc],
             "fraction_of_spiral_referee": total / SPIRAL_REFEREE,
         }
+        for key, target in targets.items():
+            blk[key] = _versus(total, unc, target)
+        out[label] = blk
     fa = out.get("finest_admitted")
-    out["passed"] = bool(fa is not None and fa["explains_remainder_within_uncertainty"])
+    out["passed"] = bool(fa is not None and fa["vs_continuum_limit"]["intersects"])
+    if fa is None:
+        out["statement"] = "no level has a three-point wall ladder on both legs"
+        return out
+    pk = 1e12
+
+    def rng(v: Sequence[float]) -> str:
+        return f"[{v[0] * pk:+.3f}, {v[1] * pk:+.3f}] pH"
+
+    def verdict(c: dict[str, Any]) -> str:
+        if c["intersects"]:
+            return f"the corner interval reaches it (overlap {rng(c['overlap_range'])})"
+        return f"the corner interval misses it by {c['miss'] * pk:.3f} pH"
+
+    p = fa["vs_continuum_limit"]
+    a = fa["vs_continuum_limit_after_corrections"]
+    o = fa["vs_old_remainder"]
+    d, u = fa["per_corner_discrepancy"], fa["per_corner_uncertainty"]
+    if not out["passed"]:
+        tail = "K5 FAILS: the corners cannot account for the spiral's residual"
+        if not p["central_value_same_sign"]:
+            tail += ("; their central value has the opposite sign (a positive corner term "
+                     "raises the FDFD spiral and shrinks its deficit)")
+    elif p["central_value_inside"]:
+        tail = "K5 passes: the corners account for it"
+    else:
+        tail = "K5 passes, but only through the uncertainty"
     out["statement"] = (
-        "{n} right-angle corners x ({d:+.4f} +- {u:.4f}) pH per corner = "
-        "{t:+.3f} +- {tu:.3f} pH, at {c:g} cells across W, against a remainder of "
-        "[{r0:.2f}, {r1:.2f}] pH: {verdict}".format(
-            n=n, d=(fa or {}).get("per_corner_discrepancy", float("nan")) * 1e12,
-            u=(fa or {}).get("per_corner_uncertainty", float("nan")) * 1e12,
-            t=(fa or {}).get("corners_total", float("nan")) * 1e12,
-            tu=(fa or {}).get("corners_total_uncertainty", float("nan")) * 1e12,
-            c=(fa or {}).get("cells_across_width", float("nan")),
-            r0=remainder[0] * 1e12, r1=remainder[1] * 1e12,
-            verdict=(
-                "the interval reaches it, so K5 passes, but only through the "
-                "uncertainty -- the central value is {f0:.1%}-{f1:.1%} of the "
-                "remainder".format(f0=fa["corners_total_over_remainder"][0],
-                                   f1=fa["corners_total_over_remainder"][1])
-                if out["passed"] and not fa["explains_remainder_central_value"]
-                else "the corners account for it" if out["passed"]
-                else "the corners CANNOT account for it") if fa else "")
-        if fa is not None else "no level has a three-point wall ladder on both legs")
+        f"FDFD - referee throughout. {n} right-angle corners x "
+        f"({d * pk:+.4f} +- {u * pk:.4f}) pH per corner at {fa['cells_across_width']:g} "
+        f"cells across W = {fa['corners_total'] * pk:+.3f} +- "
+        f"{fa['corners_total_uncertainty'] * pk:.3f} pH = {rng(fa['corners_interval'])}. "
+        f"PRIMARY, the spiral's continuum-limit residual ({inv['source']}: "
+        f"{inv['keys']['continuum_limit_rel_range']} x {inv['keys']['referee']}) = "
+        f"{rng(p['target_range'])}: {verdict(p)}. Reported: {rng(a['target_range'])} after "
+        f"that study's measured corrections ({inv['keys']['after_corrections_rel_range']}): "
+        f"{verdict(a)}; SECONDARY (superseded), D2's residual minus D2b's per-unit-length "
+        f"deficit = {rng(o['target_range'])}: {verdict(o)}. {tail}")
     return out
 
 
@@ -1074,19 +1240,35 @@ def evaluate_gates(study: dict[str, Any]) -> dict[str, Any]:
                    "div": gr["div"], "n_unknowns": gr["n_unknowns"],
                    "worst": worst, "tolerance": 1e-4, "passed": bool(worst <= 1e-4)}
 
-    # --- K3: the sign of the corner excess agrees at every level -----------
-    signs = {}
+    # --- K3: the sign of the corner excess agrees at every ADMITTED level ---
+    def sign_row(f_: float, r: dict[str, Any], basis: str) -> dict[str, Any]:
+        return {"excess_fdfd": f_, "excess_referee": r["excess_referee"], "basis": basis,
+                "sign_fdfd": int(np.sign(f_)), "sign_referee": int(np.sign(r["excess_referee"])),
+                "agrees": bool(np.sign(f_) == np.sign(r["excess_referee"])),
+                "ratio": f_ / r["excess_referee"]}
+
+    # the gate: the admitted levels, the same set K4 and K5 use
+    signs = {f"W/{r['div']:g}": sign_row(r["excess_fdfd"], r, "wall-corrected, three-point "
+                                         "ladders on both legs") for r in adm}
+    # reported, never gated: a level without a three-point ladder on both legs
+    excluded = {}
     for r in rows:
-        f_ = r.get("excess_fdfd", r.get("excess_fdfd_two_point_EXCLUDED", r["excess_fdfd_pad4"]))
-        signs[f"W/{r['div']:g}"] = {
-            "excess_fdfd": f_, "excess_referee": r["excess_referee"],
-            "sign_fdfd": int(np.sign(f_)), "sign_referee": int(np.sign(r["excess_referee"])),
-            "agrees": bool(np.sign(f_) == np.sign(r["excess_referee"])),
-            "ratio": f_ / r["excess_referee"]}
+        if r.get("admitted"):
+            continue
+        if "excess_fdfd_two_point_EXCLUDED" in r:
+            f_, basis = r["excess_fdfd_two_point_EXCLUDED"], "two-point wall ladder (EXCLUDED)"
+        else:
+            f_, basis = (r["excess_fdfd_pad4"],
+                         "raw pad_cells = 4: at least one leg has no wall ladder (EXCLUDED)")
+        excluded[f"W/{r['div']:g}"] = sign_row(f_, r, basis)
     g["K3"] = {"what": "at equal total centreline length a bend has LESS mutual coupling "
                        "between its halves than a straight bar, so the excess must be "
-                       "NEGATIVE in both tools, at every level",
+                       "NEGATIVE in both tools at every ADMITTED level (the set K4 and K5 "
+                       "use); a level without a three-point ladder on both legs is reported "
+                       "under excluded_informational and never gated",
+               "admitted_levels": list(signs),
                "per_level": signs,
+               "excluded_informational": excluded,
                "passed": bool(signs) and all(v["agrees"] for v in signs.values())}
 
     # --- K4: the per-corner discrepancy decreases with refinement ----------
@@ -1106,9 +1288,14 @@ def evaluate_gates(study: dict[str, Any]) -> dict[str, Any]:
 
     # --- K5: the attribution ------------------------------------------------
     att = study["attribution"]
-    g["K5"] = {k: att[k] for k in ("n_corners", "corner_count_accounting",
-                                   "spiral_deficit_range", "bar_explained_range",
-                                   "remainder_range", "statement", "passed")}
+    g["K5"] = {"what": "the SIGNED corner interval, n_corners x (per-corner discrepancy +- "
+                       "its uncertainty), FDFD - referee, must intersect the SIGNED "
+                       "continuum-limit residual of the invariant ladder (primary); the same "
+                       "limit after its corrections and the superseded D2-minus-D2b "
+                       "remainder are reported beside it",
+               **{k: att[k] for k in ("sign_convention", "n_corners", "corner_count_accounting",
+                                      "primary", "secondary_old_remainder", "statement",
+                                      "passed")}}
     if "finest_admitted" in att:
         g["K5"]["finest_admitted"] = att["finest_admitted"]
     if "finest_raw_pad4" in att:
@@ -1203,23 +1390,26 @@ def figure(study: dict[str, Any], path: pathlib.Path) -> None:
     ax3.legend(fontsize=6)
     ax3.grid(alpha=0.3)
 
-    # (d) the attribution
+    # (d) the attribution, in ONE sign convention: FDFD - referee
     att = study["attribution"]
-    r0, r1 = (v * 1e12 for v in att["remainder_range"])
-    d0, d1 = (v * 1e12 for v in att["spiral_deficit_range"])
-    b0, b1 = (v * 1e12 for v in att["bar_explained_range"])
-    ax4.barh(0, d1 - d0, left=d0, height=0.5, color="#888888",
-             label=f"D2 residual after both corrections ({d0:.1f}-{d1:.1f} pH)")
-    ax4.barh(1, b1 - b0, left=b0, height=0.5, color="#2ca02c",
-             label=f"D2b per-unit-length at 3 cells/W ({b0:.1f}-{b1:.1f} pH)")
-    ax4.barh(2, r1 - r0, left=r0, height=0.5, color="#ff7f0e",
-             label=f"remainder ({r0:.1f}-{r1:.1f} pH)")
+    targets = ((att["primary"]["continuum_limit_range"], "#555555",
+                "invariant ladder, continuum limit (PRIMARY)"),
+               (att["primary"]["after_corrections_range"], "#aaaaaa",
+                "invariant ladder, after its corrections"),
+               (att["secondary_old_remainder"]["remainder_range"], "#ff7f0e",
+                "D2 minus D2b per-unit-length (superseded)"))
+    for y, (span, c, name) in enumerate(targets):
+        a0, a1 = span[0] * 1e12, span[1] * 1e12
+        ax4.barh(y, a1 - a0, left=a0, height=0.5, color=c,
+                 label=f"{name}: [{a0:.2f}, {a1:.2f}] pH")
     fa = att.get("finest_admitted")
     if fa:
         t, u = fa["corners_total"] * 1e12, fa["corners_total_uncertainty"] * 1e12
         ax4.errorbar([t], [3], xerr=[[u], [u]], fmt="D", color=C_D, capsize=4, markersize=8,
                      label=f"{att['n_corners']} corners x this study "
-                           f"({t:+.2f} +- {u:.2f} pH, {fa['cells_across_width']:g} cells/W)")
+                           f"({t:+.2f} +- {u:.2f} pH, {fa['cells_across_width']:g} cells/W): "
+                           f"misses the primary by "
+                           f"{fa['vs_continuum_limit']['miss'] * 1e12:.2f} pH")
     fr = att.get("finest_raw_pad4")
     if fr:
         ax4.plot([fr["corners_total"] * 1e12], [4], "x", color=C_D, markersize=10,
@@ -1227,12 +1417,15 @@ def figure(study: dict[str, Any], path: pathlib.Path) -> None:
                  label=f"{att['n_corners']} corners x pad-4 at "
                        f"{fr['cells_across_width']:g} cells/W (EXCLUDED)")
     ax4.axvline(0.0, color="k", linewidth=1)
+    ax4.use_sticky_edges = False              # keep a margin left of the widest bar
+    ax4.autoscale_view()
     ax4.set_yticks([0, 1, 2, 3, 4])
-    ax4.set_yticklabels(["D2 residual", "D2b per-unit-length", "remainder",
+    ax4.set_yticklabels(["residual (limit)", "residual (corrected)", "old remainder",
                          "corners (admitted)", "corners (pad-4, excluded)"], fontsize=7)
     ax4.set_ylim(-0.7, 7.2)
-    ax4.set_xlabel("inductance [pH]")
-    ax4.set_title("(d) K5: attribution of the D2 spiral's residual\n"
+    ax4.set_xlabel("FDFD - referee [pH]  (negative: the FDFD is LOW)")
+    ax4.set_title(f"(d) K5 {'passes' if att['passed'] else 'FAILS'}: "
+                  "the corners against the spiral's residual\n"
                   f"(referee {SPIRAL_REFEREE * 1e12:.1f} pH, "
                   f"{att['n_corners']} right-angle corners)")
     ax4.legend(fontsize=6, loc="upper left")
@@ -1258,7 +1451,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--no-gradient", action="store_true")
     ap.add_argument("--fresh", action="store_true",
                     help="ignore the JSON on disk instead of reusing its measured points")
+    ap.add_argument("--from-json", action="store_true",
+                    help="REASSEMBLE only: reuse every measured point, recorded skip and the "
+                         "gradient from the JSON on disk and re-derive everything else; "
+                         "builds and solves nothing, and stops if a requested point is "
+                         "neither measured nor a recorded skip")
+    ap.add_argument("--no-figure", action="store_true", help="do not write the PNG")
     args = ap.parse_args(argv)
+    if args.from_json and (args.fresh or not JSON_PATH.exists()):
+        ap.error(f"--from-json needs {JSON_PATH.name} on disk and excludes --fresh")
 
     import jax
     jax.config.update("jax_enable_x64", True)
@@ -1280,13 +1481,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                       "t_m2": T_M2, "t_ox_high": T_OX_HIGH, "t_air": T_AIR},
         },
         "spiral_reference": {
-            "note": "QUOTED from validation/fdfd/spiral_convergence.json (D2) and "
-                    "straight_bar_convergence.json (D2b) for the attribution; NOT "
-                    "measured here. The corner COUNT is measured here, from "
-                    "gds.rect_spiral's own centreline.",
+            "note": "D2 (validation/fdfd/spiral_convergence.json) and D2b "
+                    "(straight_bar_convergence.json) numbers are QUOTED for K5's "
+                    "secondary, superseded comparison; the invariant ladder's residual is "
+                    "READ from validation/fdfd/invariant_ladder.json at run time for K5's "
+                    "primary one (attribution.primary). None of them is measured here. "
+                    "The corner COUNT is measured here, from gds.rect_spiral's own "
+                    "centreline.",
             "referee_deembedded": SPIRAL_REFEREE,
             "both_corrections_rel": list(SPIRAL_BOTH_REL),
             "bar_per_unit_length_ratio_3cells": list(BAR_PUL_RATIO_3CELLS),
+            "invariant_ladder_json": "validation/fdfd/invariant_ladder.json",
+            "invariant_ladder_keys": dict(INVARIANT_LADDER_KEYS),
         },
         "levels": {k: dict(previous.get("levels", {}).get(k, {})) for k in KINDS},
         "skipped": dict(previous.get("skipped", {})),
@@ -1308,8 +1514,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     dump()
 
     # --- the solves ---------------------------------------------------------
-    print("FDFD points (volumetric uniform-current metal, graded wall padding):", flush=True)
-    for div in args.levels:
+    if args.from_json:
+        missing = [f"{kind}_W{div:g}_pad{pad}" for div in args.levels for kind in args.kinds
+                   for pad in args.pads
+                   if f"{pad}" not in study["levels"].get(kind, {}).get(f"{div:g}", {})
+                   and f"{kind}_W{div:g}_pad{pad}" not in study["skipped"]]
+        if missing:
+            raise SystemExit(f"--from-json: neither measured nor a recorded skip: {missing}")
+        print("FDFD points: every requested point is in the JSON or a recorded skip "
+              "(--from-json: nothing built, nothing solved)", flush=True)
+    else:
+        print("FDFD points (volumetric uniform-current metal, graded wall padding):",
+              flush=True)
+    for div in ([] if args.from_json else args.levels):
         dk = f"{div:g}"
         for kind in args.kinds:
             study["levels"].setdefault(kind, {}).setdefault(dk, {})
@@ -1359,7 +1576,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     dump()
 
     # --- the gradient -------------------------------------------------------
-    if not args.no_gradient:
+    if not (args.no_gradient or args.from_json):
         print("gradient check K2 (bend, W/1):", flush=True)
         if "gradient" in previous and not args.fresh:
             study["gradient"] = previous["gradient"]
@@ -1379,8 +1596,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     study["seconds_measuring"] = solve_s + grad_s
     study["gates"] = evaluate_gates(study)
     dump()
-    figure(study, PNG_PATH)
-    print(f"\nwrote {JSON_PATH} and {PNG_PATH} ({study['seconds'] / 60:.1f} min)", flush=True)
+    if not args.no_figure:
+        figure(study, PNG_PATH)
+    print(f"\nwrote {JSON_PATH}" + ("" if args.no_figure else f" and {PNG_PATH}") +
+          f" ({study['seconds']:.1f} s)", flush=True)
     for name, gate in study["gates"].items():
         print(f"  {name}: passed={gate.get('passed')}", flush=True)
     return 0

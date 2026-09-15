@@ -931,6 +931,42 @@ that block held the coarsest declared cell, a smaller minimum cell (dt):
   1.0063e-2 vs 1.0141e-2). Bands narrower than 2 cells and in-plane grading
   remain unwitnessed.
 
+### Added — `rfx.fdfd` on the GPU: cuDSS backend, a level-invariant spiral fixture, and a paper-scale design
+
+- **`sparse_solve(..., backend="cudss")`** — NVIDIA cuDSS through
+  nvmath-python behind the same `custom_linear_solve` AD wrapper, LU cache and
+  factor thread. cuDSS has no transposed solve, so the adjoint refactors Aᵀ
+  (use `factor_cache_size(1)`). At N = 108,898 a three-fixture value-and-grad
+  takes 6.9 s against 432.9 s with host SuperLU; AD through cuDSS matches FD4
+  to 1e-7. VESSL lanes in `validation/vessl/` (working-tree tarball imported
+  into the job; artifacts harvested from the lab NFS).
+- **`rfx.fdfd.spiral` level-invariant fixture** (additive options; defaults
+  unchanged): walls, lid, the short standard's post and the port gap at fixed
+  physical coordinates, and nested joint x/y/z refinement. The earlier ladder
+  refined a fixture that changed with the level (walls grown from the last
+  cell, a post sized in cells, a frozen vertical grid) and plateaued at −9.5 %;
+  the frozen vertical grid was the largest part (+2.8 % at W/2).
+- **`validation/fdfd/invariant_ladder`** — the spiral's de-embedded L converges
+  monotonically (1–4 cells across W, N up to 1.1 M, observed order 1.63) to
+  317.9–324.8 pH, −4.6..−2.5 % from the independent referee: inside 5 %, not
+  3 %. The residual is not explained by any measured model difference (0.7 %
+  together); the next level needs a 92 GB factor.
+- **`validation/fdfd/rfic_design`** — a 3-turn square spiral with the paper's
+  (r_out, W, S) on an SG13G2-like stack, 2.45 GHz, Leontovich copper and lossy
+  silicon, 4 cells across W (N = 772,892): L-BFGS-B on `jax.value_and_grad`
+  through cuDSS reaches L = 4.000 nH (+0.001 %) in 22 evaluations with Q 23.9,
+  where a 27-point sweep puts two points in the 1 % band (best Q 23.2). The
+  design holds on the model it was designed on; one level finer moves L by
+  +1.7 %, and the Leontovich sheet is outside its validity (δ/t 0.61), so Q is
+  optimistic.
+- **`validation/fdfd/corner_convergence`** — an L-bend against a straight bar
+  of the same length on the same fixture: the FDFD reproduces the referee's
+  corner excess to 1.7 % at 2 cells across W, and with one sign convention
+  (FDFD − referee) the spiral's 8 corners contribute −7.2..+9.3 pH, which
+  misses the ladder's continuum-limit residual (−15.2..−8.2 pH) by 1.1 pH:
+  corners do not explain it. An earlier version passed this gate through a
+  sign error.
+
 ### Added — `rfx.fdfd.spiral`: differentiable rectangular spiral inductor, validated against an independent referee
 
 - **`rfx.fdfd.spiral`** — `SpiralSpec` / `build_spiral` / `solve_spiral`: the

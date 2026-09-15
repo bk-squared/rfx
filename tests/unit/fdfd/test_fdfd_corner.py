@@ -14,7 +14,8 @@ needs no solver at all (the hook's geometry, the short standard's cell
 ranges, the referee, the corner convention, the corner count). The finer
 levels, the wall ladders and the attribution are in the study's JSON; T8
 gates that JSON against the fresh W/1 solves so the recorded numbers cannot
-drift silently.
+drift silently, and T9 / T10 re-derive gates K3 and K5 from it with the
+study's own code.
 
 Every number below was measured in this session; the wall clock was shared
 with another solver job, so the timings are upper bounds.
@@ -72,8 +73,8 @@ T8  the study's JSON exists, is self-consistent, and its conclusion holds:
        4/6/8 ladder on BOTH legs and are admitted; W/3 carries [0, 2]
        because three of its six grids are above ``N_MAX = 110000``
        (bend pad 6 at 141440 and pad 8 at 182784, bar pad 8 at 129684, all
-       recorded in ``study["skipped"]``), and its numbers appear only under
-       the explicit ``*_two_point_EXCLUDED`` keys.
+       recorded in ``study["skipped"]``); with no ladder at all on its bend
+       leg it has no wall-corrected number, only its raw pad-4 ones.
     *  the wall bias depends on the SHAPE: +0.794 % (bend) against
        +1.475 % (bar) at W/1 and +1.763 % against +3.702 % at W/2, which is
        why the raw pad-4 discrepancy moves the WRONG way with refinement
@@ -86,21 +87,36 @@ T8  the study's JSON exists, is self-consistent, and its conclusion holds:
        ``gds.rect_spiral``'s centreline (7 joints between the 8 sides, 1
        where the last side meets the inner extension, 0 for the collinear
        lead and 0 for the underpass via).
-    *  the attribution (K5): 8 x (+0.1313 +- 1.0251) pH = +1.051 +- 8.201
-       pH against a remainder of 8.409-19.191 pH. The gate's criterion
-       (the interval reaches the remainder) is met, but ONLY through the
-       uncertainty: the central value is 5.47-12.49 % of the remainder, the
-       overlap is 7.81 % of its width and the per-corner uncertainty is
-       7.8 x the per-corner discrepancy. Both facts are asserted, so a
-       later reading of "K5 passed" cannot be mistaken for "the corners
-       explain it".
+    *  the attribution (K5) FAILS, in ONE sign convention, FDFD minus
+       referee: 8 x (+0.1313 +- 1.0251) pH = [-7.1506, +9.2517] pH misses
+       the invariant ladder's continuum-limit residual [-15.1813, -8.2489]
+       pH (``invariant_ladder.json``, the primary comparison) by 1.0983 pH,
+       the same limit after its corrections, [-15.4739, -8.4415] pH, by
+       1.2908 pH, and the superseded D2-minus-D2b remainder
+       [-19.1913, -8.4094] pH by 1.2588 pH; the corner term's central
+       value, +1.0505 pH, has the opposite sign to all three.
+T9  gate K3 is evaluated on the ADMITTED levels only -- W/1 and W/2,
+    -7.2611 and -7.6533 pH against the referee's -7.7934 and -7.7846 pH,
+    the set K4 and K5 use. W/3's raw pad-4 excess (-4.5607 pH against
+    -7.7826 pH, ratio 0.5860) is reported under ``excluded_informational``
+    and never gated. Re-evaluated from the JSON with the study's own
+    ``evaluate_gates``: the recorded gate is reproduced exactly, a W/3 of
+    the wrong sign leaves K3 passing and an admitted level of the wrong
+    sign fails it. No solver.
+T10 gate K5 re-derived from the recorded excess and corner count with the
+    study's own ``attribution``, which reads ``invariant_ladder.json``
+    itself, reproduces the recorded block exactly; its primary residual is
+    that JSON's ``residual.limit_rel_range`` x ``referee.total`` (-4.5582 %
+    to -2.4767 % of 333.055 pH), and an invariant ladder whose referee is
+    not D2's is refused. No solver.
 
 x64 is scoped per test through ``tests._x64_compat.enable_x64`` (never
 flipped at module level); the static models and the coarse solves are cached
-for the module. Measured runtime of this file: 75 s.
+for the module. Measured runtime of this file: 69 s.
 """
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import pathlib
@@ -120,6 +136,7 @@ pytest.importorskip("shapely")
 REPO = pathlib.Path(__file__).resolve().parents[3]
 STUDY_PATH = REPO / "validation" / "fdfd" / "corner_convergence.py"
 JSON_PATH = REPO / "validation" / "fdfd" / "corner_convergence.json"
+INVARIANT_PATH = REPO / "validation" / "fdfd" / "invariant_ladder.json"
 
 COARSE = 1.0              # base_dx = W: bend N = 22044, bar N = 17344
 L_CHEAP = 40e-6           # the cheap bend used for the live AD check (N = 11520)
@@ -473,10 +490,10 @@ def test_study_json_holds_the_conclusion():
     assert g["K2"]["fd_step_rel"] == 0.01
     assert g["K2"]["n_unknowns"] == 22044
 
-    # --- K3: sign agreement at every level, and the ratios -----------------
-    assert g["K3"]["passed"]
+    # --- K3: sign agreement on the ADMITTED levels, and the ratios ---------
+    assert g["K3"]["passed"] is True
     per = g["K3"]["per_level"]
-    assert set(per) == {"W/1", "W/2", "W/3"}
+    assert set(per) == {"W/1", "W/2"}, set(per)               # W/3 is not gated (T9)
     for v in per.values():
         assert v["sign_fdfd"] == -1 and v["sign_referee"] == -1, v
     assert abs(per["W/1"]["ratio"] - 0.9317) <= 1e-3, per["W/1"]["ratio"]
@@ -516,30 +533,59 @@ def test_study_json_holds_the_conclusion():
     assert cc["n_strip_segments"] == 10, cc                    # lead + 8 sides + extension
     assert cc["underpass_transition"]["right_angles"] == 0
 
-    # --- K5: the attribution, and its marginality --------------------------
+    # --- K5: the attribution FAILS, FDFD - referee throughout --------------
     att = d["attribution"]
     assert att["n_corners"] == 8
+    assert att["sign_convention"].startswith("FDFD - referee"), att["sign_convention"]
+    assert g["K5"]["passed"] is False and att["passed"] is False
+    assert "K5 FAILS" in g["K5"]["statement"], g["K5"]["statement"]
     fa = att["finest_admitted"]
     assert fa["cells_across_width"] == 2.0
-    assert abs(fa["corners_total"] - 1.0505e-12) <= 5e-16, fa
-    assert abs(fa["corners_total_uncertainty"] - 8.2012e-12) <= 5e-16, fa
-    rem = att["remainder_range"]
-    assert abs(rem[0] - 8.4094e-12) <= 5e-16 and abs(rem[1] - 19.1913e-12) <= 5e-16, rem
-    assert abs(att["spiral_deficit_range"][0] - 16.869e-12) <= 1e-15
-    assert abs(att["spiral_deficit_range"][1] - 25.586e-12) <= 1e-15
-    assert abs(att["bar_explained_range"][0] - 6.3947e-12) <= 5e-16
-    assert abs(att["bar_explained_range"][1] - 8.4596e-12) <= 5e-16
-    # the gate's own criterion is met ...
-    assert g["K5"]["passed"] is True
-    assert fa["explains_remainder_within_uncertainty"] is True
-    # ... and these two assertions are why that must not be read as
-    # "the corners explain the remainder"
-    assert fa["explains_remainder_central_value"] is False
+    assert abs(fa["per_corner_discrepancy"] - 0.1313e-12) <= 1e-16, fa     # POSITIVE
+    assert abs(fa["per_corner_uncertainty"] - 1.0251e-12) <= 1e-16, fa
     assert fa["per_corner_uncertainty_dominated"] is True
-    assert abs(fa["corners_total_over_remainder"][0] - 0.0547) <= 1e-3
-    assert abs(fa["corners_total_over_remainder"][1] - 0.1249) <= 1e-3
-    assert abs(fa["overlap_width_over_remainder_width"] - 0.0781) <= 1e-3
-    assert "finest_raw_pad4_EXCLUDED" in g["K5"]
+    assert abs(fa["corners_total"] - 1.0505e-12) <= 1e-16, fa
+    assert abs(fa["corners_total_uncertainty"] - 8.2012e-12) <= 1e-16, fa
+    lo, hi = fa["corners_interval"]
+    assert abs(lo + 7.1506e-12) <= 1e-16 and abs(hi - 9.2517e-12) <= 1e-16, (lo, hi)
+    # the three residuals (all NEGATIVE: the FDFD spiral is low) and the misses
+    for key, t_lo, t_hi, miss in (
+            ("vs_continuum_limit", -15.1813, -8.2489, 1.0983),                  # primary
+            ("vs_continuum_limit_after_corrections", -15.4739, -8.4415, 1.2908),
+            ("vs_old_remainder", -19.1913, -8.4094, 1.2588)):                   # superseded
+        c = fa[key]
+        assert abs(c["target_range"][0] - t_lo * 1e-12) <= 1e-16, (key, c)
+        assert abs(c["target_range"][1] - t_hi * 1e-12) <= 1e-16, (key, c)
+        assert c["intersects"] is False and c["overlap_range"] is None, (key, c)
+        assert abs(c["miss"] - miss * 1e-12) <= 1e-16, (key, c)
+        # the miss is the corner interval's LOWER end above the residual's UPPER end
+        assert c["miss"] == lo - c["target_range"][1], (key, c)
+        assert c["central_value_inside"] is False, (key, c)
+        assert c["central_value_same_sign"] is False, (key, c)          # the sign error
+    assert fa["vs_continuum_limit"]["target_range"] == att["primary"]["continuum_limit_range"]
+    assert (fa["vs_continuum_limit_after_corrections"]["target_range"]
+            == att["primary"]["after_corrections_range"])
+    # the primary comes from the invariant ladder, keys stated
+    pr = att["primary"]
+    assert pr["source"] == "validation/fdfd/invariant_ladder.json", pr["source"]
+    assert pr["keys"] == {"referee": "referee.total",
+                          "continuum_limit_rel_range": "residual.limit_rel_range",
+                          "after_corrections_rel_range":
+                              "residual.after_corrections_rel_range"}, pr["keys"]
+    assert pr["referee"] == att["spiral_referee_deembedded"] == 3.3305510896906523e-10
+    # the superseded construction, signed: D2's residual minus D2b's deficit
+    old = att["secondary_old_remainder"]
+    assert abs(old["spiral_residual_range"][0] + 25.5859e-12) <= 1e-16, old
+    assert abs(old["spiral_residual_range"][1] + 16.8690e-12) <= 1e-16, old
+    assert abs(old["bar_explained_range"][0] + 8.4596e-12) <= 1e-16, old
+    assert abs(old["bar_explained_range"][1] + 6.3947e-12) <= 1e-16, old
+    assert old["remainder_range"] == fa["vs_old_remainder"]["target_range"]
+    # the excluded raw pad-4 W/3 value is further still, and of the same wrong sign
+    raw5 = g["K5"]["finest_raw_pad4_EXCLUDED"]
+    assert raw5["cells_across_width"] == 3.0
+    assert abs(raw5["corners_total"] - 25.7751e-12) <= 1e-16, raw5
+    assert raw5["vs_continuum_limit"]["intersects"] is False
+    assert abs(raw5["vs_continuum_limit"]["miss"] - 34.0240e-12) <= 1e-16, raw5
 
     # --- K_area and the bridge-convention insensitivity --------------------
     assert g["K_area"]["passed"]
@@ -554,3 +600,87 @@ def test_study_json_holds_the_conclusion():
         assert row["referee"]["bend"]["L_strip"] > row["L_referee"]["bend"]
         assert row["referee"]["bar"]["L_strip"] > row["L_referee"]["bar"]
     assert abs(d["seconds_measuring"] / 60.0 - 34.34) <= 0.05, d["seconds_measuring"]
+
+
+def test_gate_k3_is_evaluated_on_the_admitted_levels_only():
+    """T9. K3 gates the sign of the corner excess on the ADMITTED levels
+    only -- W/1 and W/2, the set K4 and K5 use -- on their wall-corrected
+    values, and reports W/3 (no three-point ladder; its raw pad-4 value) as
+    excluded information. The recorded gate is re-evaluated from the JSON
+    with the study's own ``evaluate_gates``, and two sign flips show the
+    restriction is in the code: a W/3 of the wrong sign leaves K3 passing,
+    an admitted level of the wrong sign fails it. No solver."""
+    st, d = _study(), _json()
+    k3 = d["gates"]["K3"]
+    assert k3["admitted_levels"] == ["W/1", "W/2"], k3["admitted_levels"]
+    assert k3["admitted_levels"] == d["gates"]["K1"]["admitted_levels"]
+    assert k3["admitted_levels"] == d["excess"]["admitted_levels"]
+    assert [r["div"] for r in d["gates"]["K4"]["admitted"]] == [1.0, 2.0]
+    assert d["attribution"]["finest_admitted"]["div"] == 2.0
+    per = k3["per_level"]
+    assert list(per) == ["W/1", "W/2"], list(per)
+    for key, dk, f_, r_ in (("W/1", "1", -7.2611, -7.7934), ("W/2", "2", -7.6533, -7.7846)):
+        v = per[key]
+        assert v["excess_fdfd"] == d["excess"]["levels"][dk]["excess_fdfd"]   # wall-corrected
+        assert abs(v["excess_fdfd"] - f_ * 1e-12) <= 1e-16, v
+        assert abs(v["excess_referee"] - r_ * 1e-12) <= 1e-16, v
+        assert v["sign_fdfd"] == -1 and v["sign_referee"] == -1 and v["agrees"] is True, v
+    assert k3["passed"] is True
+
+    ex = k3["excluded_informational"]
+    assert list(ex) == ["W/3"], list(ex)
+    w3 = ex["W/3"]
+    assert w3["excess_fdfd"] == d["excess"]["levels"]["3"]["excess_fdfd_pad4"]
+    assert abs(w3["excess_fdfd"] + 4.5607e-12) <= 1e-16, w3
+    assert abs(w3["excess_referee"] + 7.7826e-12) <= 1e-16, w3
+    assert abs(w3["ratio"] - 0.5860) <= 1e-4, w3
+    assert w3["sign_fdfd"] == -1 and w3["agrees"] is True, w3
+
+    # the recorded gate is what the code gives on the recorded study ...
+    assert st.evaluate_gates(d)["K3"] == k3
+    # ... a W/3 of the WRONG sign does not move the gate ...
+    flip3 = copy.deepcopy(d)
+    flip3["excess"]["levels"]["3"]["excess_fdfd_pad4"] *= -1.0
+    g3 = st.evaluate_gates(flip3)["K3"]
+    assert g3["passed"] is True, g3
+    assert g3["excluded_informational"]["W/3"]["agrees"] is False, g3
+    assert abs(g3["excluded_informational"]["W/3"]["excess_fdfd"] - 4.5607e-12) <= 1e-16
+    # ... and an admitted level of the wrong sign fails it
+    flip2 = copy.deepcopy(d)
+    flip2["excess"]["levels"]["2"]["excess_fdfd"] *= -1.0
+    g2 = st.evaluate_gates(flip2)["K3"]
+    assert g2["passed"] is False, g2
+    assert g2["per_level"]["W/2"]["agrees"] is False, g2
+
+
+def test_gate_k5_rederives_from_the_json_and_the_invariant_ladder(tmp_path):
+    """T10. The study's own ``attribution``, re-run on the recorded excess
+    and corner count, reads ``invariant_ladder.json`` itself and reproduces
+    the recorded block and gate K5 exactly. Its primary residual is that
+    JSON's ``residual.limit_rel_range`` x ``referee.total``, and an
+    invariant ladder whose referee is not D2's is refused. No solver."""
+    st, d = _study(), _json()
+    il = json.loads(INVARIANT_PATH.read_text())
+    att = json.loads(json.dumps(st.attribution(d["excess"], d["corner_count"])))
+    assert att == d["attribution"]
+    assert json.loads(json.dumps(st.evaluate_gates(d)["K5"])) == d["gates"]["K5"]
+
+    ref = il["referee"]["total"]
+    assert ref == st.SPIRAL_REFEREE == 3.3305510896906523e-10
+    pr = att["primary"]
+    assert pr["continuum_limit_rel_range"] == il["residual"]["limit_rel_range"]
+    assert pr["after_corrections_rel_range"] == il["residual"]["after_corrections_rel_range"]
+    assert pr["continuum_limit_range"] == [v * ref for v in il["residual"]["limit_rel_range"]]
+    assert abs(pr["continuum_limit_rel_range"][0] + 0.045582) <= 1e-6, pr
+    assert abs(pr["continuum_limit_rel_range"][1] + 0.024767) <= 1e-6, pr
+    assert abs(pr["after_corrections_rel_range"][0] + 0.046461) <= 1e-6, pr
+    assert abs(pr["after_corrections_rel_range"][1] + 0.025346) <= 1e-6, pr
+    # the invariant ladder's own P3 gate carries the same range
+    assert pr["continuum_limit_rel_range"] == il["gates"]["P3"]["rel_range"]
+
+    bad = copy.deepcopy(il)
+    bad["referee"]["total"] = 1.01 * ref
+    path = tmp_path / "invariant_ladder.json"
+    path.write_text(json.dumps(bad))
+    with pytest.raises(ValueError):
+        st.load_invariant_ladder(path)
