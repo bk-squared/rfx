@@ -15,6 +15,7 @@ Usage:
     python scripts/check_api_reference.py --write    # regenerate inventory
     python scripts/check_api_reference.py --html-dir docs/api
         # additionally assert the rendered HTML contains the required symbols
+        # AND an anchor for every public Simulation method (issue #1019)
 
 Exit codes: 0 ok, 1 drift/gate failure.
 """
@@ -36,6 +37,16 @@ INVENTORY_PATH = REPO_ROOT / "docs/guides/api_symbol_inventory.json"
 REQUIRED_SIMULATION_METHODS = ("add_msl_port", "forward", "compute_waveguide_s_matrix")
 REQUIRED_FORWARD_PARAMS = ("distributed", "port_s11_freqs")
 REQUIRED_HTML_SYMBOLS = ("add_msl_port", "port_s11_freqs", "distributed")
+
+# Issue #1019: the rendered reference silently dropped every method Simulation
+# inherits from its private mixins (_SparamMixin, _ExecuteMixin,
+# _PreflightMixin, _CompileMixin, _ArtifactsMixin) -- compute_*, run, forward,
+# preflight. The old gate only checked those names against the LIVE object
+# (where they exist) plus a three-symbol substring scan of the HTML, so the
+# reference shipped without the execution / S-matrix surface for as long as the
+# mixin split existed. Anchors are now checked one-for-one against the live
+# public method list, so the reference can never silently lose a method again.
+SIMULATION_ANCHOR = 'id="Simulation.{name}"'
 
 
 def _params(obj) -> list[str] | None:
@@ -100,7 +111,7 @@ def check_required_gates(inv: dict) -> list[str]:
     return errors
 
 
-def check_html(html_dir: Path) -> list[str]:
+def check_html(html_dir: Path, inv: dict) -> list[str]:
     errors = []
     if not html_dir.is_dir():
         return [f"html dir not found: {html_dir}"]
@@ -112,6 +123,21 @@ def check_html(html_dir: Path) -> list[str]:
     for sym in REQUIRED_HTML_SYMBOLS:
         if sym not in blob:
             errors.append(f"rendered reference is missing required symbol: {sym}")
+
+    # Every public Simulation method must have a rendered anchor, not just be
+    # present on the live object (issue #1019).
+    methods = sorted(inv["simulation_methods"])
+    missing = [
+        m for m in methods if SIMULATION_ANCHOR.format(name=m) not in blob
+    ]
+    if missing:
+        errors.append(
+            f"rendered Simulation page is missing an anchor for "
+            f"{len(missing)}/{len(methods)} public method(s): "
+            + ", ".join(missing)
+            + " — pdoc dropped them (members Simulation inherits from the "
+            "private mixins are not rendered)."
+        )
     return errors
 
 
@@ -154,7 +180,7 @@ def main() -> int:
             )
 
     if args.html_dir is not None:
-        errors.extend(check_html(args.html_dir))
+        errors.extend(check_html(args.html_dir, live))
 
     if errors:
         print("\n".join(f"FAIL: {e}" for e in errors))
