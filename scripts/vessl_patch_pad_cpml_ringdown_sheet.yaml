@@ -1,0 +1,108 @@
+name: rfx-patch-pad-cpml-ringdown-sheet
+description: "Issue #801, H4, pre-declared in Addendum D of scripts/diagnostics/_artifacts/patch_pad_cpml_ringdown/PREDECLARATION.md: with the pre-#931 board restored on today's main, does the +10h / 2n-cell arm grow again? The two earlier jobs showed the arm settles on main (VESSL 369367261204) and settles at every lateral pad from +6h to +16h (369367261205), and that pre-#1047 is bit-identical to main -- but also that main's realized cavity is 787.00 um over 4 cells where fa3a99bd's was 983.75 um over 5, because #931 made the one-cell PEC ground a filled slab instead of a sheet. This job declares the ground and patch as zero-thickness Boxes (SHEETs, what the preflight now advises), which was verified without solving to reproduce the recorded raster field for field including sum(d/eps) to twelve digits, and re-runs the ladder. MEASUREMENT ONLY. gpu-rtx4090; arms were 0.34-0.73 min of solve in the earlier jobs."
+tags: [rfx, issue-801, cpml, ring-down, patch, measurement, sheet-board]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: "Agg"
+  JAX_ENABLE_X64: "0"
+  RFX_DRIVER_BRANCH: "diag/801-patch-ringdown-padding"
+  RFX_DRIVER_SHA: "FILL_AFTER_PUSH"
+  RFX_TREE_MAIN: "fc7f7202567e2cf78a65ab90a709e4ff45b185f1"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #801 H4: the pre-#931 board restored on main ==="
+  date
+  if [ "$RFX_DRIVER_SHA" = "FILL_AFTER_PUSH" ]; then
+    echo "FATAL: RFX_DRIVER_SHA still holds the FILL_AFTER_PUSH placeholder"
+    exit 3
+  fi
+  echo "driver commit: $RFX_DRIVER_SHA"
+  echo "tree main: $RFX_TREE_MAIN"
+
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  git config --global --add safe.directory '*' || true
+
+  fetch_sha() {
+    git init -q "$1"
+    cd "$1"
+    git fetch -q --depth 1 https://github.com/bk-squared/rfx.git "$2"
+    git checkout -q FETCH_HEAD
+    got=$(git rev-parse HEAD)
+    if [ "$got" != "$2" ]; then
+      echo "FATAL: $1 is at $got, wanted $2"
+      exit 3
+    fi
+    echo "fetched $2 into $1"
+    cd /
+  }
+  rm -rf /tmp/rfx-801s-driver /tmp/rfx-801s-main
+  fetch_sha /tmp/rfx-801s-driver "$RFX_DRIVER_SHA"
+  fetch_sha /tmp/rfx-801s-main "$RFX_TREE_MAIN"
+
+  DRVDIR=/tmp/rfx-801s-driver/scripts/diagnostics
+  test -f "$DRVDIR/patch_pad_cpml_ringdown.py" || { echo "FATAL: driver missing"; exit 3; }
+  test -f "$DRVDIR/patch_pad_cpml_ringdown_summary.py" || { echo "FATAL: summary missing"; exit 3; }
+  test -f "$DRVDIR/_artifacts/patch_pad_cpml_ringdown/PREDECLARATION.md" || { echo "FATAL: pre-declaration missing"; exit 3; }
+  cp "$DRVDIR/patch_pad_cpml_ringdown.py" /tmp/rfx-801s-main/scripts/diagnostics/
+
+  echo "=== runtime deps ==="
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  python -c "import jax; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| devices', jax.devices(), '| x64', jax.config.x64_enabled)"
+
+  SHORT=$(echo "$RFX_DRIVER_SHA" | cut -c1-8)
+  OUT="/root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-sheet-$(date -u +%Y%m%dT%H%M%SZ)-$SHORT"
+  mkdir -p "$OUT"
+  echo "artifacts: $OUT"
+  echo "$RFX_DRIVER_SHA" > "$OUT/driver_commit.txt"
+  echo "$RFX_TREE_MAIN" > "$OUT/tree_main_commit.txt"
+  cp "$DRVDIR/_artifacts/patch_pad_cpml_ringdown/PREDECLARATION.md" "$OUT/"
+
+  # tag:n:pad:cpml
+  ARMS="sheet_n4_pad6_cpml8:4:6:8
+  sheet_n4_pad8_cpml8:4:8:8
+  sheet_n4_pad10_cpml8:4:10:8
+  sheet_n4_pad12_cpml8:4:12:8
+  sheet_n4_pad10_cpml16:4:10:16
+  sheet_n4_pad10_cpml32:4:10:32
+  sheet_n3_pad10_cpml6:3:10:6"
+
+  cd /tmp/rfx-801s-main
+  PYTHONPATH=/tmp/rfx-801s-main
+  export PYTHONPATH
+  fails=0
+  for A in $ARMS; do
+    TAG=$(echo "$A" | cut -d: -f1)
+    N=$(echo "$A" | cut -d: -f2)
+    PAD=$(echo "$A" | cut -d: -f3)
+    CPML=$(echo "$A" | cut -d: -f4)
+    echo "===== arm $TAG (n $N, pad ${PAD}h, cpml $CPML, sheet board) ====="
+    date
+    { timeout 7200 python -u scripts/diagnostics/patch_pad_cpml_ringdown.py \
+        --n "$N" --pad "$PAD" --periods 150 --cpml "$CPML" --sheet-conductors \
+        --tag "$TAG" --out-dir "$OUT" \
+        --rfx-tree-sha "$RFX_TREE_MAIN" --expect-rfx-root /tmp/rfx-801s-main 2>&1
+      echo "$?" > "$OUT/$TAG.rc"
+    } | tee "$OUT/$TAG.log"
+    rc=$(cat "$OUT/$TAG.rc")
+    echo "arm $TAG rc=$rc"
+    if [ "$rc" -ne 0 ]; then fails=$((fails + 1)); fi
+  done
+
+  echo "===== per-arm numbers (quoted from the JSONs; no verdict here) ====="
+  cd /tmp/rfx-801s-driver
+  python -u scripts/diagnostics/patch_pad_cpml_ringdown_summary.py \
+    --dir "$OUT" --json-out "$OUT/summary.json" | tee "$OUT/summary.txt"
+
+  ls -la "$OUT"
+  echo "artifacts persisted (mounted, survives teardown): $OUT"
+  echo "patch_pad_cpml_sheet_failed_arms=$fails"
+  [ "$fails" -eq 0 ]

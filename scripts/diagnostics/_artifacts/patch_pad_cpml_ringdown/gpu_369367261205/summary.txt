@@ -1,0 +1,21 @@
+arm                      cpml subpx             grid  steps  settle dB settled   growth    NaN@  wall s
+-------------------------------------------------------------------------------------------------------
+pad10_cpml8                 8 False   [250, 189, 81]  26659     -43.37    True    0.471    None      26
+pad12_cpml8                 8 False   [265, 206, 81]  26659     -43.42    True    0.468    None      34
+pad14_cpml16               16 False   [297, 238, 97]  26659     -46.00    True    0.455    None      58
+pad14_cpml8                 8 False   [281, 222, 81]  26659     -43.37    True    0.486    None      39
+pad16_cpml16               16 False   [313, 253, 97]  26659     -44.97    True    0.500    None      64
+pad16_cpml8                 8 False   [297, 237, 81]  26659     -42.95    True    0.471    None      44
+pad6_cpml8                  8 False   [217, 157, 81]  26659     -45.26    True    0.469    None      20
+pad8_cpml8                  8 False   [233, 174, 81]  26659     -44.22    True    0.470    None      25
+
+pad10_cpml8              rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=232.00000000000003 domy/dx=172.0
+pad12_cpml8              rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=248.0 domy/dx=188.00000000000003
+pad14_cpml16             rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=264.0 domy/dx=204.00000000000003
+pad14_cpml8              rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=264.0 domy/dx=204.00000000000003
+pad16_cpml16             rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=280.0 domy/dx=220.0
+pad16_cpml8              rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=280.0 domy/dx=220.0
+pad6_cpml8               rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=200.0 domy/dx=140.0
+pad8_cpml8               rfx tree fc7f7202567e head fc7f7202567e dirty=True jax 0.4.33.dev20241023+e3c6d6430 gpu x64=False domx/dx=216.0 domy/dx=156.00000000000003
+
+summary written: /root/workspace/claude-workspace/rfx/runs/patch-pad-cpml-ladder-20260915T132022Z-9afdc1ef/summary.json

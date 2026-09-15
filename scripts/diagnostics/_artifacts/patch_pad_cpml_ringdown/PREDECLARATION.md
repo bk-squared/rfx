@@ -192,3 +192,61 @@ a probe-position artefact; a single positive probe is not the signature).
 Falsifier for the ladder itself: `+6h` and `+8h` at 8 layers settled on the old board
 (-51.39 / -50.09 dB) and must settle here too; an arm that grew where the old board was
 comfortably stable would say the ladder is measuring the board change, not the absorber.
+
+---
+
+## Addendum D — H4, pre-declared after the ladder reported and before the reconstruction ran
+
+The Addendum C ladder (VESSL 369367261205) read, on main's board, `cpml_layers = 2n = 8`:
++6h -45.26, +8h -44.22, +10h -43.37, +12h -43.42, +14h -43.37, +16h -42.95 dB; its 16-layer
+controls +14h -46.00 and +16h -44.97 dB. **Every arm settled**, so H3's residual
+`max(-42.95 + 40, 0) = 0` and the growth is **NOT REPRODUCIBLE ON MAIN'S BOARD** anywhere in
++6h..+16h. The ladder's own falsifier held: +6h and +8h, comfortably stable on the old board,
+are comfortably stable here.
+
+That closes H3 and leaves exactly one question worth asking: the growth stopped because the
+board changed, so **is the mechanism still live in today's solver, or was it something the
+pre-#931 board alone could do?** An issue cannot be dispositioned without that.
+
+**H4: with the pre-#931 board restored on today's main, the +10h / 2n-cell arm grows again.**
+
+The board is restored the way the preflight itself now advises -- declare the ground and the
+patch as zero-thickness Boxes (SHEETs, one node plane each with the normal E edge live) rather
+than as one-cell volumes, which #931 realizes as filled slabs with walls on both faces.
+
+**Reconstruction falsifier — ALREADY RUN, PASSED.** The restored board must reproduce the
+recorded fa3a99bd raster field for field, not merely resemble it. Measured (`--dry`, no solve):
+
+| field | fa3a99bd recorded | main + `--sheet-conductors` |
+|---|---|---|
+| walls | 3934.99992787838 um | 3935.0 um |
+| | 4918.749909847975 um | 4918.75 um |
+| cavity | 983.749981969595 um, 5 cells | 983.7500000000002 um, 5 cells |
+| sum d/eps | 291.050286003532 um | 291.050286003532 um |
+| k_gnd / k_patch | 28 / 33 | 28 / 33 |
+| patch raster | 44 x 52 cells | 44 x 52 cells |
+
+Equal on every field, and `sum(d/eps)` to all twelve printed digits. (`n_pec_sheets = 2`,
+`has_cell_mask = False` -- the conductor is read from tangential E edges, #931 §1.3.)
+
+**Arms:** n = 4, `--sheet-conductors`, 150 periods, at +6h / +8h / +10h / +12h with
+`cpml_layers = 2n = 8`; +10h again at 16 and at 32 layers; and n = 3 +10h at `2n = 6`, the arm
+that grew hardest of all (+1.27e-3/step).
+
+**Gate, committed before the run.** Growth is present on an arm iff worst-probe
+`settling_db > -40 dB` AND the last-30 % log rate is positive on all four probes.
+
+* **H4 CONFIRMED** iff at least one 8-layer (or the 6-layer n = 3) arm shows growth while its
+  16-layer sibling does not. Residual `r = max(-40 - max settling_db over the thin arms, 0)`;
+  0 = confirmed.
+* **H4 REFUTED** iff every thin-absorber arm settles. Residual
+  `r = max(worst thin-arm settling_db + 40, 0)`; 0 = all settled.
+
+**Stronger reading available, and declared now so it is not claimed after the fact:** if
+`sheet_pad10_cpml8` reproduces the issue's recorded 0.00 dB with a positive rate near
++4.39e-4/step on all four probes, then the mechanism is live on today's solver and #931 merely
+moved this fixture off it. If instead it settles while the reconstruction matched the raster
+field for field, then something between fa3a99bd and main other than #931 and other than
+#1047/#1057 is responsible, and the next step is a bisect, not another mechanism hypothesis.
+
+This is attempt 1 on H4. Attempts on H1, H2 and H3 are closed above.

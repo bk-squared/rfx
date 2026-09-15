@@ -56,16 +56,24 @@ def balanis(L, W, h, er):
 
 # --- VERBATIM from refute_nulltf_ladder.py (build) ------------------------------------
 def build(n, shift_x=0.0, shift_y=0.0, pad_h=0, swap=False, cpml=None,
-          gnd_cell="dielectric", pad_z_h=0, patch_plane="top", shrink_domain_ulp=0):
+          gnd_cell="dielectric", pad_z_h=0, patch_plane="top", shrink_domain_ulp=0,
+          sheet_conductors=False):
     """One arm's Simulation.  See the source harness's docstring for the registration,
     ground-cell and cavity reasoning; this copy changes nothing.
 
-    ``shrink_domain_ulp`` is the ONLY addition to the geometry, and it is a knob for a
-    falsifier, off by default: it nudges the declared lateral domain lengths down by that
-    many ULPs.  ``(38 + 2*pad)*h`` can carry a one-ULP excess over an exact multiple of
-    ``dx``, which makes rfx allocate one more cell than any declared Box fills; the extra
-    node is vacuum and ``extend_cpml_pad_materials`` then replicates IT through that
-    face's absorber.  See ``_artifacts/patch_pad_cpml_ringdown/pad_facet_rounding.py``.
+    Two knobs are added, both OFF by default, so the default call is the rig unchanged.
+    Each exists for one pre-declared falsifier:
+
+    ``shrink_domain_ulp`` nudges the declared lateral domain lengths down by that many
+    ULPs.  ``(38 + 2*pad)*h`` can carry a one-ULP excess over an exact multiple of ``dx``,
+    which makes rfx allocate one more cell than any declared Box fills; the extra node is
+    vacuum and ``extend_cpml_pad_materials`` then replicates IT through that face's
+    absorber.  See ``_artifacts/patch_pad_cpml_ringdown/pad_facet_rounding.py``.
+
+    ``sheet_conductors`` declares the ground and the patch as zero-thickness Boxes instead
+    of one-cell volumes, which reconstructs the board this issue's numbers were taken on
+    (see the comment at the declaration).  Whether it succeeded is decided by the raster,
+    not by the flag: the caller compares the realized wall planes against the recorded ones.
     """
     from rfx import Box, Simulation
     from rfx.sources import GaussianPulse
@@ -97,10 +105,24 @@ def build(n, shift_x=0.0, shift_y=0.0, pad_h=0, swap=False, cpml=None,
                      cpml_layers=cpml, boundary="cpml")
     sim.add_material("ro4003c", eps_r=EPS_R, sigma=0.0)
     o = P(sx, sy)                     # same footprint as the committed fixture: [0, dom)
-    sim.add(Box((o[0], o[1], z_gnd), (dom[0] + o[0], dom[1] + o[1], z_sub_lo)), material="pec")
+    if sheet_conductors:
+        # BOARD RECONSTRUCTION, off by default.  Both PEC Boxes are one cell thick, and
+        # #931's lattice-ownership contract realizes such a Box as a filled slab with
+        # walls on BOTH faces.  Before #931 the same declaration realized as a SHEET --
+        # one node plane with its normal E edge live -- which is the board this issue's
+        # numbers were taken on.  Declaring them zero-thickness is what the preflight
+        # itself now advises ("declare a SHEET: a zero-thickness Box via add()"), and it
+        # puts the cavity back at 5 cells.  The raster assert below is the falsifier: the
+        # reconstruction must reproduce the recorded walls, not merely resemble them.
+        sim.add(Box((o[0], o[1], z_gnd), (dom[0] + o[0], dom[1] + o[1], z_gnd)), material="pec")
+    else:
+        sim.add(Box((o[0], o[1], z_gnd), (dom[0] + o[0], dom[1] + o[1], z_sub_lo)), material="pec")
     sim.add(Box((o[0], o[1], z_diel_lo), (dom[0] + o[0], dom[1] + o[1], z_sub_hi)), material="ro4003c")
     a, b = P(x0, y0), P(x0 + L, y0 + W)
-    sim.add(Box((a[0], a[1], z_sub_hi), (b[0], b[1], z_tr_hi)), material="pec")
+    if sheet_conductors:
+        sim.add(Box((a[0], a[1], z_sub_hi), (b[0], b[1], z_sub_hi)), material="pec")
+    else:
+        sim.add(Box((a[0], a[1], z_sub_hi), (b[0], b[1], z_tr_hi)), material="pec")
     s = P(x0 + 0.31 * L, y0 + W / 2 - 0.27 * W)
     zm = 0.5 * (z_gnd + z_sub_hi) if patch_plane == "inner" else 0.5 * (z_sub_lo + z_sub_hi)
     sim.add_source(position=(s[0], s[1], zm),
@@ -115,6 +137,7 @@ def build(n, shift_x=0.0, shift_y=0.0, pad_h=0, swap=False, cpml=None,
     geom = dict(n=n, dx=dx, cpml_layers=cpml, shift_x=shift_x, shift_y=shift_y,
                 nudge_cells=-0.1, gnd_cell=gnd_cell, pad_z_h=pad_z_h, patch_plane=patch_plane,
                 shrink_domain_ulp=int(shrink_domain_ulp),
+                sheet_conductors=bool(sheet_conductors),
                 domx_over_dx=domx / dx, domy_over_dx=domy / dx,
                 pad_h=pad_h, swap=swap, L=L, W=W, h=H, domain=(dom[0], dom[1], domz),
                 z_gnd=z_gnd, z_sub_lo=z_sub_lo, z_sub_hi=z_sub_hi, z_diel_lo=z_diel_lo,
@@ -138,8 +161,20 @@ def raster(sim, geom):
         _edge_api = "tangential_edge_masks (pre-#931)"
     from rfx.geometry.rasterize_grid import coords_from_uniform_grid
     grid = sim._build_grid()
-    cond = np.asarray(sim.conductor_mask(grid), dtype=bool)
-    eps = np.asarray(sim._assemble_materials(grid)[0].eps_r, dtype=float)
+    # #931 §1.3: a zero-thickness PEC Box is a SHEET, owns no cell, and is NOT in
+    # pec_mask; _assemble_materials refuses to hand back materials for such a model
+    # unless the caller passes collectors, precisely so a reader cannot mistake a
+    # sheet-carrying board for a conductor-free one.  Collect them and realize the
+    # conductor from the edge masks, which is where a sheet actually lives.
+    pec_sheets, pec_wires = [], []
+    eps = np.asarray(sim._assemble_materials(
+        grid, pec_sheets=pec_sheets, pec_wires=pec_wires)[0].eps_r, dtype=float)
+    cell_mask = np.asarray(sim.conductor_mask(grid), dtype=bool) if not pec_sheets else None
+    mex, mey, mez = _edge_masks(cell_mask, sheets=pec_sheets, wires=pec_wires,
+                                periodic=(False, False, False))
+    mex, mey = np.asarray(mex), np.asarray(mey)
+    # "conductor here" for REPORTING: a cell for a volume, a tangential edge for a sheet.
+    cond = cell_mask if cell_mask is not None else (mex | mey)
     c = coords_from_uniform_grid(grid)
     z = np.asarray(c.z, dtype=float)
     dx = geom["dx"]
@@ -150,8 +185,7 @@ def raster(sim, geom):
     ks = np.flatnonzero(cond[ic, jc, :])
     k_patch = int(ks.max()); k_gnd = int(ks.min())
     ii = np.flatnonzero(cond[:, jc, k_patch]); jj = np.flatnonzero(cond[ic, :, k_patch])
-    mex, mey, _ = _edge_masks(cond, periodic=(False, False, False))
-    walls = np.flatnonzero(np.asarray(mex)[ic, jc, :] | np.asarray(mey)[ic, jc, :])
+    walls = np.flatnonzero(mex[ic, jc, :] | mey[ic, jc, :])
     lo = walls[walls <= k_gnd + 1].max(); hi = walls[walls >= k_patch - 1].min()
     out = dict(k_patch=k_patch, k_gnd=k_gnd, i_lo=int(ii.min()), i_hi=int(ii.max()),
                j_lo=int(jj.min()), j_hi=int(jj.max()),
@@ -181,6 +215,12 @@ def raster(sim, geom):
         z_column_in_xlo_pad=[float(v) for v in eps[1, jc, :]],
         conductor_xlo_row=[bool(v) for v in cond[:ncp + 2, jc, k_gnd]],
         conductor_xhi_row=[bool(v) for v in cond[-(ncp + 2):, jc, k_gnd]],
+    )
+    out["pec_realization"] = dict(
+        n_pec_sheets=len(pec_sheets), n_pec_wires=len(pec_wires),
+        has_cell_mask=cell_mask is not None,
+        conductor_read_as=("primal cells (PEC volumes)" if cell_mask is not None
+                           else "tangential E edges (PEC sheets, #931 1.3)"),
     )
     return out
 
@@ -296,6 +336,9 @@ def main():
     p.add_argument("--gnd-cell", default="dielectric", choices=("dielectric", "vacuum"))
     p.add_argument("--pad-z", type=int, default=0)
     p.add_argument("--patch-plane", default="top", choices=("top", "inner"))
+    p.add_argument("--sheet-conductors", action="store_true",
+                   help="declare the ground and patch as zero-thickness Boxes (SHEETs) "
+                        "instead of one-cell volumes; reconstructs the pre-#931 board")
     p.add_argument("--shrink-domain-ulp", type=int, default=0,
                    help="nudge the declared lateral domain lengths down by N ULPs "
                         "(falsifier for the one-extra-cell vacuum pad facet); 0 = the rig")
@@ -321,10 +364,12 @@ def main():
           f"jax {prov['jax']}", flush=True)
 
     sim, geom = build(a.n, a.shift_x, a.shift_y, a.pad, a.swap_xy, a.cpml, a.gnd_cell,
-                      a.pad_z, a.patch_plane, a.shrink_domain_ulp)
+                      a.pad_z, a.patch_plane, a.shrink_domain_ulp,
+                      a.sheet_conductors)
     ras = raster(sim, geom)
     rec = dict(tag=a.tag, provenance=prov, n=a.n, dx_um=geom["dx"] * 1e6, periods=a.periods,
                pad_h=a.pad, cpml_layers=geom["cpml_layers"], subpixel_smoothing=bool(a.subpixel),
+               sheet_conductors=bool(a.sheet_conductors),
                L_mm=geom["L"] * 1e3, W_mm=geom["W"] * 1e3,
                raster=ras, geom={k: v for k, v in geom.items() if k != "quad"},
                status="built")
