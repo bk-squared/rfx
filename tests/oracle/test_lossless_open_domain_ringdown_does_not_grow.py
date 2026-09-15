@@ -17,20 +17,38 @@ thin absorber grew.  Neither alone does.  Nothing pinned any of it; the growth s
 effect of a contract change made for other reasons.  This is that pin.
 
 WHY THE FULL RECORD, AND WHY THE GPU LANE.  The unstable mode is seeded at round-off, so it
-only becomes visible once it overtakes the decaying physical field.  With the measured rates
-(-1.9e-4 per step decaying, +4.4e-4 per step growing) a seed at ~1e-7 of the peak needs
-ln(1e7) / 6.3e-4 ~ 2.6e4 steps to cross over -- which is the whole 150-period record, and is why
-the observed turn-up sits near 17000 steps.  A "reduced record" cannot work for a source-driven
-seed, and this was measured rather than assumed: at 40 periods BOTH rules still decay
-(n = 3: 0.942 shipped against 0.986 mutated; n = 4 on CPU is ~15 min for even that).  The full
-arm is 26 s on rtx4090 and ~55 min on this CPU pod, so the gate lives on the GPU lane.
+only becomes visible once it has overtaken the decaying physical field.  How long that takes was
+MEASURED on this arm rather than estimated -- truncating the same record and scoring it with
+this file's own metrics:
+
+    periods   steps    shipped    mutated     gate fires on the mutated arm?
+       40      7109    -11.32     -14.69      no -- and the UNSTABLE arm scores BETTER
+      100     17773    -29.04     -28.22      no
+      120     21327    -34.87     -18.40      no (rate +2.66e-5, under the bar)
+      150     26659    -43.37       0.00      YES
+
+150 periods is therefore the FLOOR, not a margin: at 120 the mutated arm misses both halves of
+the gate, and at 40 it looks HEALTHIER than the shipped one.  A shortened record does not make
+this test cheaper, it makes it wrong.  (An analytic crossover estimate is deliberately not
+quoted here: the growth and decay rates come from different estimators unless both are taken at
+this file's own blocking, and mixing them gives a step count that disagrees with the table
+above.)
+
+The full arm is 26 s on rtx4090 against ~53 min on a CPU pod, so the gate lives on the GPU lane.
 
 TWO-SIDED, because a one-sided reflection bar has already pinned a diverging run in this repo:
 the assertion is ``settling_db <= -40`` AND a negative fitted decay rate on every probe.  The
 rate is fitted log-linearly on BLOCK MAXIMA -- the series oscillates at ~f0, so ``env[::k]``
-aliases and can render a growing envelope flat -- and over the last half, which makes it immune
-to the TM010/TM001 beat that reads as an "upturn" of ~2.7 on a perfectly healthy run (measured,
-and the reason a bare no-upturn check is not used).
+aliases and can render a growing envelope flat -- over the last half of the record.
+
+A FITTED RATE RATHER THAN A MIN-TO-END RATIO, and the reason is blocking, so the blocking is
+quoted with it.  That ratio on the shipped (healthy) arm depends entirely on how coarsely the
+envelope is blocked: 1.00 at 20 blocks, 1.00 at 40 (this file's ``n_blocks``), 1.36 at 80, 2.28
+at 160, 9.94 at 400.  At this file's own setting a bare no-upturn check would in fact
+discriminate -- 1.00 healthy against 41 mutated -- so it is not chosen because it fails here.
+It is not chosen because its verdict moves with a parameter that has nothing to do with the
+physics, and a finer blocking turns the TM010/TM001 beat into an "upturn" on a perfectly healthy
+run.  A least-squares slope over many blocks does not have that sensitivity.
 
 THE FALSIFIER IS IN THIS FILE.  ``test_the_gate_is_red_under_the_pre_931_edge_rule`` runs the
 same arm with one mutation -- ``rfx.boundaries.pec._volume_edge_masks`` replaced by the
@@ -39,8 +57,21 @@ never been observed is not known to measure anything (this repo has been bitten 
 see the "a physics gate can bind an artifact" lesson).  Keep the two together: if the mutation
 test stops being red, this gate has stopped discriminating and the green one means nothing.
 
-Related: #801 (the growth record), #931 (the contract change that ended it), #1070 (a separate
-absorber-pad defect found on the same fixture).
+PRECISION.  The seed argument above is a float32 round-off argument, and the lane that produced
+this gate's red/green evidence pins ``JAX_ENABLE_X64=0``.  The production GPU lanes do not pin
+it, so an x64 session would change the seed amplitude and could move the step at which the
+mutated arm turns up.  That is covered rather than assumed: ``conftest.py``'s ``_no_x64_leak``
+(#646) fails a session that has flipped x64 globally, and an x64 run would make the FALSIFIER
+fail loudly -- which is the right failure, because it says the red state was not reproduced.
+
+WHAT THIS GATE DOES NOT COVER.  It pins ONE point: ``n = 4`` (dx = h/4) with
+``cpml_layers = 8``, the arm #931 fixed.  It is not a statement about other resolutions or other
+absorber depths, and it should not be read as one -- thinner absorbers on this same fixture are
+a live, separately tracked question (#801).
+
+Related: #801 (the growth record and the live thin-absorber class), #931 (the contract change
+that ended the n = 4 / 8-layer growth), #1070 (a separate absorber-pad defect found on the same
+fixture).
 """
 from __future__ import annotations
 
@@ -60,8 +91,8 @@ PAD_H = 10                    # lateral padding each side, in h -- the growing a
 N_CELLS_PER_H = 4             # dx = h / N_CELLS_PER_H; the resolution the record was taken at
 F0, BW = 8.5e9, 1.6
 
-# The record the growth was measured on: 150 periods = 26659 steps.  Not reducible -- see the
-# module docstring's crossover arithmetic.
+# The record the growth was measured on: 150 periods = 26659 steps.  This is a FLOOR, not a
+# margin: at 120 periods the mutated arm misses both halves of the gate.  See the docstring.
 NUM_PERIODS = 150.0
 
 # Gate, two-sided.
