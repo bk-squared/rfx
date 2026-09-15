@@ -481,9 +481,11 @@ One case per site of the three in 8.1, or a parametrisation over them.
   to smooth the already-extended array) rather than to write a second copy of
   the replication logic. #627 exists because that logic was hand-duplicated
   once before.
-- **cv03** — `|B/A|` moves 0.53 -> ~0.03 and band-mean `T` moves 0.9657 ->
-  ~0.99. G2's gate (`T in [0.95, 1.05]`) still passes; its *value* moves and
-  the case's committed record must be re-measured, not edited. G1 and the
+- **cv03** — `|B/A|` moves 0.53 -> ~0.03. Band-mean `T` is **not** expected to
+  follow: arm B1 moved it only 0.9657 -> 0.9682 and it still degraded with
+  depth, and only B2 (which also turns subpixel smoothing off) reached 0.994.
+  See 8.4. G2's gate (`T in [0.95, 1.05]`) still passes; the case's committed
+  record must be re-measured, not edited. G1 and the
   two-wave residual should improve; the two-wave estimator itself was adopted
   BECAUSE `|B/A| ~ 0.53` falsified the single-mode fit (section 7 of the #812
   note), so whether it stays the right estimator is a live question once the
@@ -716,3 +718,136 @@ the instrumented `Simulation` subclass, which attaches a point probe and a DFT
 plane probe before delegating, **did not perturb the rig**.
 
 No other gate in 9.2 moves, and the `|B/A|` bars are untouched.
+
+---
+
+## 10. APPEND (2026-09-15 KST) — the divergence IS classified; section 8.5 is superseded
+
+Append-only. Sections 0-9 are left as written; **section 8.5 is superseded by
+this section**, which replaces its "the lane did not isolate which of the three
+differences carries it" with a measurement.
+
+Four arms on cv01 Run 1 (20 layers, 25000 steps, x64 set before import),
+contributed by the independent verification of `dccee459`:
+
+| arm | result |
+|---|---|
+| CPML + widened `Box`, **+2a flush** (0 partial cells) | diverges at **step 402**, 24,598 non-finite |
+| CPML + widened `Box`, **+4a overshoot** (0 partial cells) | diverges at step 402, identical envelope |
+| **UPML** + widened `Box` | **stable**, `mean_self` = 0.9912 |
+| CPML + committed `Box`, **subpixel OFF** (eps 12 in the pad via `extend_cpml_pad_materials`) | **stable**, `mean_self` = 0.9887 |
+
+What that excludes, one candidate per row:
+
+- **not the Kottke half-cell.** Flush and overshoot both give 0 partial cells at
+  the seam and both diverge at the same step with the same envelope.
+- **not the record length.** Divergence is at step 402 of 25000, not late.
+- **not x64.** Set before import in all four.
+- **not "a dielectric in a CPML pad" per se.** The subpixel-OFF row puts
+  `eps_r = 12` in the CPML pad through `extend_cpml_pad_materials` and is
+  stable at 0.9887.
+- **not the absorber family alone.** UPML with the same widened `Box` is
+  stable at 0.9912.
+
+**What is left is the combination**: the smoothed / anisotropic array carrying
+the dielectric into a **CPML** pad — `update_e_aniso` (or the aniso path
+generally) together with CPML. The suspect coefficient site is that the CPML
+psi correction and the Yee half of the update disagree about epsilon:
+`rfx/simulation.py:1464-1466` passes `materials=materials` into
+`apply_cpml_e`, and `rfx/boundaries/cpml.py:621-632` builds
+`_ce_full = dt / (materials.eps_r * EPS_0)` from it, while the Yee update is
+using `aniso_eps`. Wherever those two arrays differ, the two halves of one
+timestep are integrating different permittivities.
+
+**One caveat on the widened-`Box` emulation**, which is why section 11 exists:
+widening the `Box` past the domain edge also trips the #61 geometry-in-absorber
+preflight check. A real pad-replication fix does not — it changes no declared
+geometry. So the widened `Box` is a *proxy* for the fix, not the fix, and the
+proxy diverging does not by itself establish that the fix does.
+
+### 10.1 Side finding for #813, recorded here because this lane measured it
+
+Removing the facet moves cv01's `mean_self` **0.9741 -> 0.9912** under UPML
+(single variable: only the `Box` changes) and **0.9195 -> 0.9887** under CPML
+(confounded: the subpixel-OFF row changes two things). The committed
+CPML-vs-UPML gap that #813's layer sweep is built around therefore looks
+**facet-dominated** rather than absorber-dominated. Not a verdict on #813 —
+that lane owns its own re-measurement — but it is the reason a fix cannot be
+landed there without re-running the sweep.
+
+### 10.2 A number corrected in section 8.3
+
+Section 8.3's cv03 bullet said band-mean `T` "moves 0.9657 -> ~0.99", which
+contradicts 8.4 and the B1 measurement in the results note. It is corrected in
+place rather than left standing with a marker, because a wrong number in a
+durable document is the failure class #814 and #829 exist to stop. The
+corrected text says what B1 measured: `T` moves to 0.9682 and keeps degrading
+with depth; only the subpixel-OFF route reaches 0.994.
+
+---
+
+## 11. APPEND (2026-09-15 KST) — Arm F: is the assembly fix alone landable?
+
+Written before the probe runs. Sections 0-10 stand.
+
+Section 10 leaves one question open that decides how #1043 is written: the
+widened `Box` is a *proxy* for the fix (it also trips the #61
+geometry-in-absorber check, which a real fix does not), so its divergence does
+not by itself establish that the fix diverges. This arm runs the fix itself.
+
+### 11.1 What runs
+
+The pad replication applied to `aniso_eps`, at the site section 8.1 names
+(`rfx/runners/uniform.py:266-273`), reusing `extend_cpml_pad_materials`
+(`rfx/geometry/rasterize_grid.py:877`) rather than writing a second copy of the
+replication logic — the shape a real fix would take, per #627.
+
+**It is applied as a monkeypatch in the probe driver. No file under `rfx/` is
+modified or committed on this branch.** The patch wraps
+`rfx.geometry.smoothing.compute_smoothed_eps`, which
+`rfx/runners/uniform.py:267` imports at call time, and extends each of the
+three returned components into every pad face from the grid's own
+`pad_*_lo/hi`.
+
+Rig: **cv01 Run 1, CPML, 20 layers, 25000 steps, `subpixel_smoothing=True`,
+the COMMITTED `Box`** — no geometry change, so the #61 preflight warning must
+NOT appear. `JAX_ENABLE_X64` set before any import that pulls JAX in.
+
+Recorded: first non-finite step if any, the per-decile amplitude envelope, the
+preflight banner verbatim, `settling_db` and its witness, `mean_self`, and the
+solved centre-row permittivity with and without the patch (so the patch's
+effect is shown, not assumed).
+
+### 11.2 Gate, frozen before the run
+
+Reference: the subpixel-OFF CPML row from section 10, `mean_self = 0.9887` —
+the same rig with `eps_r = 12` in the pad by the interior route.
+
+- **ASSEMBLY FIX ALONE IS LANDABLE**: the run is finite through all 25000 steps
+  **AND** `settling_db <= -40 dB` **AND** `|mean_self - 0.9887| <= 0.01`.
+  residual `r_F = (0 if finite else 1) + max(0, settling_db - (-40))
+  + max(0, |mean_self - 0.9887| - 0.01)`; gate `r_F = 0`.
+- **BLOCKED**: the run goes non-finite. Then the landing needs a CPML+subpixel
+  coefficient fix FIRST — start at `rfx/simulation.py:1464-1466` and
+  `rfx/boundaries/cpml.py:621-632`, where the psi correction takes epsilon from
+  `materials.eps_r` while the Yee half uses `aniso_eps` — and **#1043 must say
+  the assembly fix is blocked on it**.
+- finite but missing one of the other two legs: **INCONCLUSIVE**, declared now,
+  and reported as such.
+
+### 11.3 Declared expectation, written down before the run
+
+**I expect it to diverge.** Section 10's flush-vs-overshoot pair leaves almost
+nothing between the widened `Box` and this patch in terms of what the two
+arrays hold: both put `eps_r = 12` in the pad of the smoothed array under CPML.
+The differences are the seam half-cell (6.5 against a sharp step) and the #61
+preflight trip, and section 10 already excluded the half-cell. If it diverges,
+the useful content is the confirmation that the fix and its proxy behave the
+same, which is what licenses writing "blocked" into #1043. If it does NOT
+diverge, then something in the proxy other than the array is doing the damage
+and section 10's conclusion needs re-opening — which is exactly why this is
+worth one run.
+
+### 11.4 R2
+
+One attempt, one new question. No re-run without another append.
