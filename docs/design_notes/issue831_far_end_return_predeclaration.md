@@ -395,3 +395,86 @@ Attempts on H1 (the pad-material hypothesis): 1 void (instrument defect,
 identified and named above) + 1 licensed replacement = **1 counting attempt**.
 Attempts on every other hypothesis: 1 each. No further arm runs in this lane
 without another append.
+
+---
+
+## 8. Landing pre-declaration — for the PI, not executed in this lane
+
+Written 2026-09-15 (KST) after the arms closed. Results:
+`docs/design_notes/issue831_far_end_return_results.md`. **Nothing below is
+implemented here.** The lane stops at the diagnosis because the fix is
+solver-side and moves physics for existing committed numbers.
+
+### 8.1 The defect, stated in one sentence
+
+`run(subpixel_smoothing=True)` rebuilds the update's permittivity from
+`sim._geometry` with `background_eps = 1.0`
+(`rfx/runners/uniform.py:266-271`) and so discards the CPML pad material
+extension, leaving every geometry that touches the domain boundary terminated
+by a vacuum facet at the interior/pad seam — whatever
+`include_cpml_pad_extension` says. The extension exists, in its own words, "so
+that guided modes in dielectric waveguides see an impedance-matched absorber"
+(`rfx/api/_compile.py:310-313`). This is the right-guard-MIS-GATED shape the
+2026-07-08 footgun audit named.
+
+### 8.2 Why the gates did not catch it
+
+`tests/unit/boundaries/test_cpml_pad_material_extension.py` has 11 tests. Nine
+assert on the array `_assemble_materials` returns; the two that run the solver
+(`:406`, `:563`) both pass `subpixel_smoothing=False`. **No test exercises the
+feature on the path every crossval with a dielectric actually uses.** Any fix
+should close that first, because a fix landed against the same gates would be
+unfalsifiable by them.
+
+### 8.3 What a fix would move, and what has to be re-measured
+
+- `rfx/runners/uniform.py` — `compute_smoothed_eps` would need the pad
+  extension applied to its output (or the smoothing to run on the extended
+  array). The NU mirror shares the extension through
+  `extend_cpml_pad_materials`; check whether `rfx/runners/nonuniform.py` has
+  the same gap before choosing where the fix lives.
+- **cv03** — `|B/A|` moves 0.53 -> ~0.03 and band-mean `T` moves 0.9657 ->
+  ~0.99. G2's gate (`T in [0.95, 1.05]`) still passes; its *value* moves and
+  the case's committed record must be re-measured, not edited. G1 and the
+  two-wave residual should improve; the two-wave estimator itself was adopted
+  BECAUSE `|B/A| ~ 0.53` falsified the single-mode fit (section 7 of the #812
+  note), so whether it stays the right estimator is a live question once the
+  standing wave is gone. Do not re-open G1's 2.0 % threshold.
+- **cv01 / #813** — `validation/crossval/01_waveguide_bend.py:382` builds the
+  same boundary-touching `Box` under `subpixel_smoothing=True`, so its straight
+  guide carries the same facet. Its committed numbers
+  (`SWEEP_BASELINE_CPML_FULL_MEAN_SELF = 0.7488520140093946`,
+  `COMMITTED_UPML_MEAN_SELF = 0.9891610388008335`,
+  `SWEEP_GATE_MEAN_SELF_AT_40 = 0.90906` in
+  `scripts/diagnostics/cv01_cpml_flux_selfcheck.py`) and the artifacts under
+  `scripts/diagnostics/_artifacts/cv01_cpml_813/` are all measured on the
+  facet-terminated rig and would move. #1027's monotone `mean_self` trend is
+  NOT explained by this lane — cv01's observable is blind to the reflection —
+  so that trend has to be re-measured after a fix, not reasoned about.
+- **cv02** also runs `subpixel_smoothing=True`; whether its ring touches the
+  boundary was not checked here.
+- `tests/contracts/test_evidence_numeric_provenance.py` and
+  `tests/fixtures/waveguide_chain_battery/fixture.json` reference the cv01
+  numbers above and would need the same re-measurement pass.
+
+### 8.4 The cheap falsifier for any fix
+
+Re-run this lane's `guidecont` arm against the fixed tree with the **committed**
+cv03 geometry. The fix is right when the unmodified case reaches `|B/A| <= 0.03`
+at 20 layers, the depth trend points down (60 layers below 20), and
+`settling_db` clears -100 dB — the three numbers arm B1 already produced by
+widening the `Box` by hand.
+
+### 8.5 Also for the PI, separately: two preflight gaps this exposed
+
+Neither is filed as an issue here; both are decisions, not findings.
+
+1. **Nothing warns that a dielectric ends at the absorber seam.** The preflight
+   has a geometry-in-absorber check; the failure mode here is geometry
+   ABSENT from the absorber under a flag that claims to put it there, and it is
+   silent. The PI's stated order after v1.8 puts preflight work behind the mesh
+   rasterization viz; this belongs in that slot.
+2. **The committed cv03 has no point probe, so `settling_db` is `None`** and
+   its own ring-down witness cannot fire. With one added, every committed arm
+   reports the witness FAILING at -37 to -30 dB. A crossval whose DFT-derived
+   headline has no settling witness is judging an unsettled record.

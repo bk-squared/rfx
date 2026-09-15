@@ -46,10 +46,18 @@ STAGES
   ``noext``    Arm B: upml x {20, 40, 60} with
                ``include_cpml_pad_extension=False``.
 
-Run (2-D, CPU, minutes per arm -- no VESSL):
+ARTIFACTS.  ``scripts/diagnostics/_artifacts/cv03_far_end_return_831/<stage>.json``,
+the layout ``scripts/diagnostics/_artifacts/cv01_cpml_813/`` established.
+``plot_far_end_return.py`` beside this file renders them into
+``far_end_return.png`` in the same artifact directory.
 
-    PYTHONPATH=<repo> python3 scripts/diagnostics/cv03_far_end_return/far_end_return.py \
-        --stage all --output scripts/diagnostics/cv03_far_end_return/far_end_return.json
+Run (2-D, CPU, ~20 s per arm -- no VESSL):
+
+    for s in profile tof sweep noext bprime; do
+      PYTHONPATH=<repo> python3 scripts/diagnostics/cv03_far_end_return/far_end_return.py \
+        --stage $s \
+        --output scripts/diagnostics/_artifacts/cv03_far_end_return_831/$s.json
+    done
 """
 from __future__ import annotations
 
