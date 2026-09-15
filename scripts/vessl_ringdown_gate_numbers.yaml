@@ -1,0 +1,71 @@
+name: rfx-ringdown-gate-numbers
+description: "Printed per-probe numbers for BOTH sides of the lossless open-domain ring-down gate (branch gate/lossless-open-domain-ringdown, PR against main; related #801 #931 #1070). Runs tests/oracle/test_lossless_open_domain_ringdown_does_not_grow.py on gpu-rtx4090 with -m gpu: the gate must PASS on main's shipped PEC edge rule, and its companion falsifier must PASS by observing that the same arm GROWS under one mutation (rfx.boundaries.pec._volume_edge_masks replaced by the a3e4dba4^ body). Then it re-runs the gate with the mutation forced on through a conftest injection, which must FAIL -- that is the red state, and a gate whose red has never been observed is not known to measure anything. Arm: n4 isolated patch, +10h lateral pad, cpml 2n = 8, 150 periods = 26659 steps; 26 s per arm on this card against ~55 min on a CPU pod."
+tags: [rfx, issue-801, ringdown, gate, gpu, numbers]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: "Agg"
+  JAX_ENABLE_X64: "0"
+  RFX_GATE_BRANCH: "gate/lossless-open-domain-ringdown"
+  RFX_GATE_SHA: "b08d4d1e0b93fe2dbd5335e7c247aba24219d835"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx ring-down gate: red/green on the GPU lane ==="
+  date
+  if [ "$RFX_GATE_SHA" = "FILL_AFTER_PUSH" ]; then
+    echo "FATAL: RFX_GATE_SHA still holds the FILL_AFTER_PUSH placeholder"
+    exit 3
+  fi
+  echo "gate branch (informational): $RFX_GATE_BRANCH"
+  echo "gate commit: $RFX_GATE_SHA"
+
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  git config --global --add safe.directory '*' || true
+
+  ROOT=/tmp/rfx-gate
+  rm -rf "$ROOT"
+  git init -q "$ROOT"
+  cd "$ROOT"
+  git fetch -q --depth 1 https://github.com/bk-squared/rfx.git "$RFX_GATE_SHA"
+  git checkout -q FETCH_HEAD
+  got=$(git rev-parse HEAD)
+  if [ "$got" != "$RFX_GATE_SHA" ]; then
+    echo "FATAL: tree is at $got, wanted $RFX_GATE_SHA"
+    exit 3
+  fi
+  T=tests/oracle/test_lossless_open_domain_ringdown_does_not_grow.py
+  test -f "$T" || { echo "FATAL: gate test missing in the fetched tree"; exit 3; }
+
+  echo "=== runtime deps ==="
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest pytest-timeout
+  python -c "import jax; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| devices', jax.devices(), '| x64', jax.config.x64_enabled)"
+
+  SHORT=$(echo "$RFX_GATE_SHA" | cut -c1-8)
+  OUT="/root/workspace/claude-workspace/rfx/runs/ringdown-gate-numbers-$(date -u +%Y%m%dT%H%M%SZ)-$SHORT"
+  mkdir -p "$OUT"
+  echo "artifacts: $OUT"
+  echo "$RFX_GATE_SHA" > "$OUT/gate_commit.txt"
+  cp "$T" "$OUT/"
+
+  export PYTHONPATH="$ROOT"
+
+  # The module's own measurement helper prints BOTH arms (shipped rule and the a3e4dba4^
+  # mutation) with per-probe rates and settling, which a passing pytest does not show.
+  echo "===== measured numbers, both sides ====="
+  set +e
+  timeout 3600 python -u "$T" > "$OUT/numbers.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/numbers.rc"
+  grep -E "^n=" "$OUT/numbers.log" || tail -n 30 "$OUT/numbers.log"
+  ls -la "$OUT"
+  echo "artifacts persisted (mounted, survives teardown): $OUT"
+  [ "$rc" -eq 0 ]
