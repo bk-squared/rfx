@@ -56,10 +56,16 @@ _GL2_EXPECTED = {
 
 # #1015 / standard section 13: GL1's validity domain on R, as MEASURED --
 # (bins in the domain, breaches inside it, breaches outside it).  A record of the
-# outcome, not a claim that the domain closes GL1: te_30's R domain is the whole
-# band, so all 18 of its R breaches lie INSIDE it, which is why the domain is
-# stated as a necessary condition and GL1 stayed ungated here.  Of this case's
-# 1291 R+T breaches, 1156 (89.5 %) fall outside the domain and 135 inside.
+# outcome, not a claim that the domain closes GL1.
+#
+# REWRITTEN BY SECTION 14.  The previous text here read that te_30 has 18 in-domain
+# R breaches and that 1156 of this case's 1291 R+T breaches fall outside the domain.
+# Both were true of the pre-section-14 reference and are false now: te_30 is one of
+# the five arrival-safe entries, it is judged against the absorber-free lattice, and
+# its R breaches are 0.  The in-domain total is 73, not 135.  The domain is still
+# stated as a NECESSARY condition and GL1 is still ungated on this case -- that part
+# did not change, and the 73 that remain are all on the four amplitude-capped arms
+# with no mechanism proposed for them.
 _DOMAIN_EXPECTED = {
     "te_00": (290, 0, 0), "te_30": (441, 0, 0), "te_45": (341, 16, 59),
     "te_60": (214, 8, 90), "tm_00": (290, 0, 0), "tm_45": (211, 13, 177),
@@ -505,3 +511,72 @@ def test_every_meep_leg_vouched_for_its_own_output(arm):
     assert geo["src_x"] >= -geo["sx"] / 2 + geo["dpml"], arm
     # and the stop condition could not fire before first arrival
     assert doc["run"]["t_min_after_sources"] >= abs(geo["trans_x"] - geo["src_x"]), arm
+
+
+# --------------------------------------------------------------------------
+# section 14: the reference is chosen by GEOMETRY, and that has to be checkable
+# --------------------------------------------------------------------------
+
+
+def test_every_entry_s_reference_re_derives_from_its_own_recorded_geometry() -> None:
+    """The anti-gate-lock for section 14, and it is the point of the whole change.
+
+    §14's claim is that the witness reference is decided by ARRIVAL -- two numbers
+    that come out of the rig's layout and the record length -- and never by fitting
+    a residual. Nothing in the suite used to hold anyone to that: a review
+    substituted the call site with ``arrival_safe = mean|R_rfx - lat_ideal["R"]| <
+    threshold``, a pure residual fit, and all 20 tests stayed green. The decision
+    was recorded; the two inputs that produced it were not, so no reader and no test
+    could re-derive it.
+
+    Both inputs now travel with the decision on every entry that has a lattice, and
+    this test recomputes the decision from them through the same public predicate.
+    A residual-substituted call site disagrees with the arm's own geometry and reds
+    here.
+    """
+    replay = json.loads(
+        (_REPO / "validation/crossval/_26_oblique_results/lattice_witness_replay.json")
+        .read_text(encoding="utf-8")
+    )
+    arms = replay["arms"]
+    assert arms, "the replay carries no arms"
+
+    checked = 0
+    for name, entry in sorted(arms.items()):
+        recorded = entry.get("witness_reference_arrival_safe")
+        inputs = entry.get("witness_reference_inputs")
+        assert recorded is not None and inputs is not None, (
+            f"{name} records no reference decision or no geometry for it. Both must "
+            "travel together or §14's rule is unfalsifiable from the artifact."
+        )
+        assert set(inputs) == {"n_steps", "t_safe_cpml_steps", "aux_echo_arrival_steps"}, (
+            f"{name}'s witness_reference_inputs changed shape: {sorted(inputs)}. The "
+            "predicate takes exactly the rig's layout and the record length; a new "
+            "key here is how a residual gets in."
+        )
+        derived = _LW.reference_is_absorber_free(
+            inputs["t_safe_cpml_steps"],
+            inputs["aux_echo_arrival_steps"],
+            inputs["n_steps"],
+        )
+        assert derived is recorded, (
+            f"{name}: the recorded reference decision is {recorded}, but its own "
+            f"recorded geometry gives {derived}. Either the call site is not using "
+            "the geometric predicate, or the inputs are not the ones it was given."
+        )
+        # And the decision must agree with the label, so neither can drift alone.
+        expected_label = "absorber_free_by_arrival" if recorded else "realized_absorbers"
+        assert entry["witness_reference"] == expected_label, (
+            f"{name}: decision {recorded} but label {entry['witness_reference']!r}"
+        )
+        checked += 1
+
+    assert checked == len(arms)
+    # The grazing boxes are False by the non-finite / non-positive arrival rule, not
+    # by omission -- assert that explicitly so a future emit that drops them from the
+    # artifact cannot pass this test by shrinking the set it iterates.
+    grazing = {k for k in arms if k.startswith("graze_")}
+    assert grazing, "the grazing boxes left the replay; they are the counter-examples"
+    for name in sorted(grazing):
+        assert arms[name]["witness_reference_arrival_safe"] is False
+        assert arms[name]["witness_reference_inputs"]["aux_echo_arrival_steps"] <= 0.0

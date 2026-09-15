@@ -6,8 +6,8 @@
  "standard": "docs/design_notes/20260903_lattice_witness_standard.md",
  "standard_section": "3 (the window), 4 (GL1 per bin, GL2 band mean)",
  "source_tau_note": "Each arm's budget uses THAT ARM's src_tau_s, not the slab family's TAU_SRC_S. cv26 drives a bandwidth per arm, so its tau is 2.0x to 135x the family constant, and LAMBDA = sqrt(pi) tau / dt divides every budget term.",
- "replay_commit": "7131639f8e8fff1dda7fe833bb8731baaa369b51",
- "date_utc": "2026-09-15T07:43:42+00:00",
+ "replay_commit": "8561fc21b2de61350fe0452bea9e1a6d8ffb53a4",
+ "date_utc": "2026-09-15T13:49:41+00:00",
  "arms": {
   "te_00": {
    "arm": "te_00",
@@ -24,6 +24,18 @@
     "tail_purity_inc_rel": 0.0005511401118892386,
     "rate_ring_1_s": 16467783920.440905
    },
+   "witness_reference": "absorber_free_by_arrival",
+   "witness_reference_arrival_safe": true,
+   "witness_reference_inputs": {
+    "n_steps": 1511,
+    "t_safe_cpml_steps": 3141,
+    "aux_echo_arrival_steps": 3197.1340869493006
+   },
+   "witness_reference_reason": "BOTH absorber echoes are outside this record by ARRIVAL (t_safe_cpml_steps >= n_steps and the #892 aux-echo arrival > n_steps), which is the standard's own section 3 (Z1) test, so the reference is the ABSORBER-FREE lattice -- the slab family's construction -- and the unmodelled term is zero BY ARRIVAL, not by amplitude. A record that cannot have measured an echo must not be judged against a reference that carries one.",
+   "mean_dR_lattice_gated": 0.0003319159776965877,
+   "mean_dT_lattice_gated": 0.000831872776090394,
+   "mean_dR_lattice_gated_alt": 0.00033357403811323815,
+   "mean_dT_lattice_gated_alt": 0.000839225848960138,
    "W_witness_defined": true,
    "tau_src_s_used": 1.2732395447351629e-10,
    "lambda_source": 96.64637320539049,
@@ -32,8 +44,6 @@
    "rate_incident_1_s": 47934616961.26561,
    "mean_W_witness_R_gated": 0.0053943445035992835,
    "mean_W_witness_T_gated": 0.012490433903042239,
-   "mean_dR_lattice_gated": 0.0003319159776965877,
-   "mean_dT_lattice_gated": 0.000831872776090394,
    "GL2_R": true,
    "GL2_T": true,
    "GL1_R_bins_beyond": 0,
@@ -44,16 +54,6 @@
    "absorber_term_T_gated_max": 0.001022703830707461,
    "aux_echo_term_R_gated_max": 6.469638155592872e-06,
    "absorber_term_over_window_R": 0.0689383689803393,
-   "witness_reference": "absorber_free_by_arrival",
-   "witness_reference_arrival_safe": true,
-   "witness_reference_inputs": {
-    "n_steps": 1511,
-    "t_safe_cpml_steps": 3141,
-    "aux_echo_arrival_steps": 3197.1340869493006
-   },
-   "witness_reference_reason": "BOTH absorber echoes are outside this record by ARRIVAL (t_safe_cpml_steps >= n_steps and the #892 aux-echo arrival > n_steps), which is the standard's own section 3 (Z1) test, so the reference is the ABSORBER-FREE lattice -- the slab family's construction -- and the unmodelled term is zero BY ARRIVAL, not by amplitude. A record that cannot have measured an echo must not be judged against a reference that carries one.",
-   "mean_dR_lattice_gated_alt": 0.00033357403811323815,
-   "mean_dT_lattice_gated_alt": 0.000839225848960138,
    "domain_R": {
     "n_bins_gated": 290,
     "n_bins_in_domain": 290,
@@ -93,6 +93,18 @@
     "tail_purity_inc_rel": 0.0009844488184024619,
     "rate_ring_1_s": 13770362241.79289
    },
+   "witness_reference": "absorber_free_by_arrival",
+   "witness_reference_arrival_safe": true,
+   "witness_reference_inputs": {
+    "n_steps": 6238,
+    "t_safe_cpml_steps": 6807,
+    "aux_echo_arrival_steps": 7187.013263612594
+   },
+   "witness_reference_reason": "BOTH absorber echoes are outside this record by ARRIVAL (t_safe_cpml_steps >= n_steps and the #892 aux-echo arrival > n_steps), which is the standard's own section 3 (Z1) test, so the reference is the ABSORBER-FREE lattice -- the slab family's construction -- and the unmodelled term is zero BY ARRIVAL, not by amplitude. A record that cannot have measured an echo must not be judged against a reference that carries one.",
+   "mean_dR_lattice_gated": 0.0001158790472659927,
+   "mean_dT_lattice_gated": 0.00024240217936882965,
+   "mean_dR_lattice_gated_alt": 0.00014128893898805538,
+   "mean_dT_lattice_gated_alt": 0.00033506172786980143,
    "W_witness_defined": true,
    "tau_src_s_used": 1.6735535551198248e-10,
    "lambda_source": 254.06512409408646,
@@ -101,8 +113,6 @@
    "rate_incident_1_s": 35245471466.15513,
    "mean_W_witness_R_gated": 0.0006480566599516905,
    "mean_W_witness_T_gated": 0.0009162669802807077,
-   "mean_dR_lattice_gated": 0.0001158790472659927,
-   "mean_dT_lattice_gated": 0.00024240217936882965,
    "GL2_R": true,
    "GL2_T": true,
    "GL1_R_bins_beyond": 0,
@@ -113,16 +123,6 @@
    "absorber_term_T_gated_max": 0.001715547761245828,
    "aux_echo_term_R_gated_max": 0.00022013943575541206,
    "absorber_term_over_window_R": 0.9473654219271389,
-   "witness_reference": "absorber_free_by_arrival",
-   "witness_reference_arrival_safe": true,
-   "witness_reference_inputs": {
-    "n_steps": 6238,
-    "t_safe_cpml_steps": 6807,
-    "aux_echo_arrival_steps": 7187.013263612594
-   },
-   "witness_reference_reason": "BOTH absorber echoes are outside this record by ARRIVAL (t_safe_cpml_steps >= n_steps and the #892 aux-echo arrival > n_steps), which is the standard's own section 3 (Z1) test, so the reference is the ABSORBER-FREE lattice -- the slab family's construction -- and the unmodelled term is zero BY ARRIVAL, not by amplitude. A record that cannot have measured an echo must not be judged against a reference that carries one.",
-   "mean_dR_lattice_gated_alt": 0.00014128893898805538,
-   "mean_dT_lattice_gated_alt": 0.00033506172786980143,
    "domain_R": {
     "n_bins_gated": 441,
     "n_bins_in_domain": 441,
@@ -162,6 +162,18 @@
     "tail_purity_inc_rel": 0.0007577822716752042,
     "rate_ring_1_s": 10670183196.576534
    },
+   "witness_reference": "realized_absorbers",
+   "witness_reference_arrival_safe": false,
+   "witness_reference_inputs": {
+    "n_steps": 11635,
+    "t_safe_cpml_steps": 7959,
+    "aux_echo_arrival_steps": 8591.133696948687
+   },
+   "witness_reference_reason": "an absorber echo is INSIDE this record (t_safe_cpml_steps < n_steps or the #892 aux-echo arrival <= n_steps, or no record was supplied), so the reference carries the realized absorbers and the case must supply U(f): 'domain_R' / 'domain_T' report where the section-3 window is a valid bound at all. This is cv26's amplitude-capped regime and nothing about it changed in #1015 section 14.",
+   "mean_dR_lattice_gated": 0.00016713066471896987,
+   "mean_dT_lattice_gated": 0.000259664813585027,
+   "mean_dR_lattice_gated_alt": 0.00019484384505543103,
+   "mean_dT_lattice_gated_alt": 0.0002818063742923839,
    "W_witness_defined": true,
    "tau_src_s_used": 2.8573598400699345e-10,
    "lambda_source": 433.7808492162948,
@@ -170,8 +182,6 @@
    "rate_incident_1_s": 20969818210.022625,
    "mean_W_witness_R_gated": 0.0005054017950771721,
    "mean_W_witness_T_gated": 0.0005900222645952826,
-   "mean_dR_lattice_gated": 0.00016713066471896987,
-   "mean_dT_lattice_gated": 0.000259664813585027,
    "GL2_R": true,
    "GL2_T": true,
    "GL1_R_bins_beyond": 75,
@@ -182,16 +192,6 @@
    "absorber_term_T_gated_max": 0.002886780491760055,
    "aux_echo_term_R_gated_max": 0.00017210043434090494,
    "absorber_term_over_window_R": 0.8302585340056304,
-   "witness_reference": "realized_absorbers",
-   "witness_reference_arrival_safe": false,
-   "witness_reference_inputs": {
-    "n_steps": 11635,
-    "t_safe_cpml_steps": 7959,
-    "aux_echo_arrival_steps": 8591.133696948687
-   },
-   "witness_reference_reason": "an absorber echo is INSIDE this record (t_safe_cpml_steps < n_steps or the #892 aux-echo arrival <= n_steps, or no record was supplied), so the reference carries the realized absorbers and the case must supply U(f): 'domain_R' / 'domain_T' report where the section-3 window is a valid bound at all. This is cv26's amplitude-capped regime and nothing about it changed in #1015 section 14.",
-   "mean_dR_lattice_gated_alt": 0.00019484384505543103,
-   "mean_dT_lattice_gated_alt": 0.0002818063742923839,
    "domain_R": {
     "n_bins_gated": 517,
     "n_bins_in_domain": 341,
@@ -229,6 +229,18 @@
     "tail_purity_inc_rel": 0.0009744573237559699,
     "rate_ring_1_s": 7115383720.694055
    },
+   "witness_reference": "realized_absorbers",
+   "witness_reference_arrival_safe": false,
+   "witness_reference_inputs": {
+    "n_steps": 18448,
+    "t_safe_cpml_steps": 10867,
+    "aux_echo_arrival_steps": 11571.970375145816
+   },
+   "witness_reference_reason": "an absorber echo is INSIDE this record (t_safe_cpml_steps < n_steps or the #892 aux-echo arrival <= n_steps, or no record was supplied), so the reference carries the realized absorbers and the case must supply U(f): 'domain_R' / 'domain_T' report where the section-3 window is a valid bound at all. This is cv26's amplitude-capped regime and nothing about it changed in #1015 section 14.",
+   "mean_dR_lattice_gated": 0.00040515052588245776,
+   "mean_dT_lattice_gated": 0.0004931389250852393,
+   "mean_dR_lattice_gated_alt": 0.0006984425224935652,
+   "mean_dT_lattice_gated_alt": 0.0006966314592345292,
    "W_witness_defined": true,
    "tau_src_s_used": 6.253632341528305e-10,
    "lambda_source": 949.374982371223,
@@ -237,8 +249,6 @@
    "rate_incident_1_s": 9438014035.287914,
    "mean_W_witness_R_gated": 0.0005672592143197346,
    "mean_W_witness_T_gated": 0.0006945823619051935,
-   "mean_dR_lattice_gated": 0.00040515052588245776,
-   "mean_dT_lattice_gated": 0.0004931389250852393,
    "GL2_R": true,
    "GL2_T": true,
    "GL1_R_bins_beyond": 98,
@@ -249,16 +259,6 @@
    "absorber_term_T_gated_max": 0.005691061437799738,
    "aux_echo_term_R_gated_max": 0.002475909073315019,
    "absorber_term_over_window_R": 7.1093595420029985,
-   "witness_reference": "realized_absorbers",
-   "witness_reference_arrival_safe": false,
-   "witness_reference_inputs": {
-    "n_steps": 18448,
-    "t_safe_cpml_steps": 10867,
-    "aux_echo_arrival_steps": 11571.970375145816
-   },
-   "witness_reference_reason": "an absorber echo is INSIDE this record (t_safe_cpml_steps < n_steps or the #892 aux-echo arrival <= n_steps, or no record was supplied), so the reference carries the realized absorbers and the case must supply U(f): 'domain_R' / 'domain_T' report where the section-3 window is a valid bound at all. This is cv26's amplitude-capped regime and nothing about it changed in #1015 section 14.",
-   "mean_dR_lattice_gated_alt": 0.0006984425224935652,
-   "mean_dT_lattice_gated_alt": 0.0006966314592345292,
    "domain_R": {
     "n_bins_gated": 473,
     "n_bins_in_domain": 214,
@@ -296,6 +296,18 @@
     "tail_purity_inc_rel": 0.0004996647097819521,
     "rate_ring_1_s": 16467783920.440905
    },
+   "witness_reference": "absorber_free_by_arrival",
+   "witness_reference_arrival_safe": true,
+   "witness_reference_inputs": {
+    "n_steps": 1512,
+    "t_safe_cpml_steps": 3141,
+    "aux_echo_arrival_steps": 3197.1340869493006
+   },
+   "witness_reference_reason": "BOTH absorber echoes are outside this record by ARRIVAL (t_safe_cpml_steps >= n_steps and the #892 aux-echo arrival > n_steps), which is the standard's own section 3 (Z1) test, so the reference is the ABSORBER-FREE lattice -- the slab family's construction -- and the unmodelled term is zero BY ARRIVAL, not by amplitude. A record that cannot have measured an echo must not be judged against a reference that carries one.",
+   "mean_dR_lattice_gated": 0.0003390762960358197,
+   "mean_dT_lattice_gated": 0.0008037727677656272,
+   "mean_dR_lattice_gated_alt": 0.0003409685028860495,
+   "mean_dT_lattice_gated_alt": 0.0008090844012478117,
    "W_witness_defined": true,
    "tau_src_s_used": 1.2732395447351629e-10,
    "lambda_source": 96.64637320539049,
@@ -304,8 +316,6 @@
    "rate_incident_1_s": 48200471958.442055,
    "mean_W_witness_R_gated": 0.005467163831254889,
    "mean_W_witness_T_gated": 0.011910490401050584,
-   "mean_dR_lattice_gated": 0.0003390762960358197,
-   "mean_dT_lattice_gated": 0.0008037727677656272,
    "GL2_R": true,
    "GL2_T": true,
    "GL1_R_bins_beyond": 0,
@@ -316,16 +326,6 @@
    "absorber_term_T_gated_max": 0.0006184995128993842,
    "aux_echo_term_R_gated_max": 4.112696643410185e-06,
    "absorber_term_over_window_R": 0.03803863348408429,
-   "witness_reference": "absorber_free_by_arrival",
-   "witness_reference_arrival_safe": true,
-   "witness_reference_inputs": {
-    "n_steps": 1512,
-    "t_safe_cpml_steps": 3141,
-    "aux_echo_arrival_steps": 3197.1340869493006
-   },
-   "witness_reference_reason": "BOTH absorber echoes are outside this record by ARRIVAL (t_safe_cpml_steps >= n_steps and the #892 aux-echo arrival > n_steps), which is the standard's own section 3 (Z1) test, so the reference is the ABSORBER-FREE lattice -- the slab family's construction -- and the unmodelled term is zero BY ARRIVAL, not by amplitude. A record that cannot have measured an echo must not be judged against a reference that carries one.",
-   "mean_dR_lattice_gated_alt": 0.0003409685028860495,
-   "mean_dT_lattice_gated_alt": 0.0008090844012478117,
    "domain_R": {
     "n_bins_gated": 290,
     "n_bins_in_domain": 290,
@@ -365,6 +365,18 @@
     "tail_purity_inc_rel": 0.0007577822716752042,
     "rate_ring_1_s": 21686113908.00513
    },
+   "witness_reference": "realized_absorbers",
+   "witness_reference_arrival_safe": false,
+   "witness_reference_inputs": {
+    "n_steps": 11635,
+    "t_safe_cpml_steps": 7959,
+    "aux_echo_arrival_steps": 8591.133696948687
+   },
+   "witness_reference_reason": "an absorber echo is INSIDE this record (t_safe_cpml_steps < n_steps or the #892 aux-echo arrival <= n_steps, or no record was supplied), so the reference carries the realized absorbers and the case must supply U(f): 'domain_R' / 'domain_T' report where the section-3 window is a valid bound at all. This is cv26's amplitude-capped regime and nothing about it changed in #1015 section 14.",
+   "mean_dR_lattice_gated": 4.3513227948864925e-05,
+   "mean_dT_lattice_gated": 0.000289426910549004,
+   "mean_dR_lattice_gated_alt": 6.220794936434074e-05,
+   "mean_dT_lattice_gated_alt": 0.00029880098802054575,
    "W_witness_defined": true,
    "tau_src_s_used": 2.8573598400699345e-10,
    "lambda_source": 433.7808492162948,
@@ -373,8 +385,6 @@
    "rate_incident_1_s": 20969818210.022625,
    "mean_W_witness_R_gated": 0.00010097285504002065,
    "mean_W_witness_T_gated": 0.0006874912566694532,
-   "mean_dR_lattice_gated": 4.3513227948864925e-05,
-   "mean_dT_lattice_gated": 0.000289426910549004,
    "GL2_R": true,
    "GL2_T": true,
    "GL1_R_bins_beyond": 190,
@@ -385,16 +395,6 @@
    "absorber_term_T_gated_max": 0.0028597646536584476,
    "aux_echo_term_R_gated_max": 7.006805172573433e-05,
    "absorber_term_over_window_R": 1.5151493192275118,
-   "witness_reference": "realized_absorbers",
-   "witness_reference_arrival_safe": false,
-   "witness_reference_inputs": {
-    "n_steps": 11635,
-    "t_safe_cpml_steps": 7959,
-    "aux_echo_arrival_steps": 8591.133696948687
-   },
-   "witness_reference_reason": "an absorber echo is INSIDE this record (t_safe_cpml_steps < n_steps or the #892 aux-echo arrival <= n_steps, or no record was supplied), so the reference carries the realized absorbers and the case must supply U(f): 'domain_R' / 'domain_T' report where the section-3 window is a valid bound at all. This is cv26's amplitude-capped regime and nothing about it changed in #1015 section 14.",
-   "mean_dR_lattice_gated_alt": 6.220794936434074e-05,
-   "mean_dT_lattice_gated_alt": 0.00029880098802054575,
    "domain_R": {
     "n_bins_gated": 517,
     "n_bins_in_domain": 211,
@@ -432,6 +432,18 @@
     "tail_purity_inc_rel": 0.0009744573237559699,
     "rate_ring_1_s": 33481832956.746357
    },
+   "witness_reference": "realized_absorbers",
+   "witness_reference_arrival_safe": false,
+   "witness_reference_inputs": {
+    "n_steps": 18448,
+    "t_safe_cpml_steps": 10867,
+    "aux_echo_arrival_steps": 11571.970375145816
+   },
+   "witness_reference_reason": "an absorber echo is INSIDE this record (t_safe_cpml_steps < n_steps or the #892 aux-echo arrival <= n_steps, or no record was supplied), so the reference carries the realized absorbers and the case must supply U(f): 'domain_R' / 'domain_T' report where the section-3 window is a valid bound at all. This is cv26's amplitude-capped regime and nothing about it changed in #1015 section 14.",
+   "mean_dR_lattice_gated": 5.059719193703988e-05,
+   "mean_dT_lattice_gated": 0.0005185554823863078,
+   "mean_dR_lattice_gated_alt": 8.454799093397286e-05,
+   "mean_dT_lattice_gated_alt": 0.001068135362755882,
    "W_witness_defined": true,
    "tau_src_s_used": 6.253632341528305e-10,
    "lambda_source": 949.374982371223,
@@ -440,8 +452,6 @@
    "rate_incident_1_s": 9438014035.287914,
    "mean_W_witness_R_gated": 2.0704669866024585e-05,
    "mean_W_witness_T_gated": 0.000638415478808907,
-   "mean_dR_lattice_gated": 5.059719193703988e-05,
-   "mean_dT_lattice_gated": 0.0005185554823863078,
    "GL2_R": false,
    "GL2_T": true,
    "GL1_R_bins_beyond": 357,
@@ -452,16 +462,6 @@
    "absorber_term_T_gated_max": 0.005878295286425028,
    "aux_echo_term_R_gated_max": 0.00026388924758785886,
    "absorber_term_over_window_R": 24.379895240735404,
-   "witness_reference": "realized_absorbers",
-   "witness_reference_arrival_safe": false,
-   "witness_reference_inputs": {
-    "n_steps": 18448,
-    "t_safe_cpml_steps": 10867,
-    "aux_echo_arrival_steps": 11571.970375145816
-   },
-   "witness_reference_reason": "an absorber echo is INSIDE this record (t_safe_cpml_steps < n_steps or the #892 aux-echo arrival <= n_steps, or no record was supplied), so the reference carries the realized absorbers and the case must supply U(f): 'domain_R' / 'domain_T' report where the section-3 window is a valid bound at all. This is cv26's amplitude-capped regime and nothing about it changed in #1015 section 14.",
-   "mean_dR_lattice_gated_alt": 8.454799093397286e-05,
-   "mean_dT_lattice_gated_alt": 0.001068135362755882,
    "domain_R": {
     "n_bins_gated": 473,
     "n_bins_in_domain": 42,
@@ -499,6 +499,18 @@
     "tail_purity_inc_rel": 0.0009123354795751863,
     "rate_ring_1_s": null
    },
+   "witness_reference": "realized_absorbers",
+   "witness_reference_arrival_safe": false,
+   "witness_reference_inputs": {
+    "n_steps": 21835,
+    "t_safe_cpml_steps": 4776,
+    "aux_echo_arrival_steps": -8641.446453273402
+   },
+   "witness_reference_reason": "an absorber echo is INSIDE this record (t_safe_cpml_steps < n_steps or the #892 aux-echo arrival <= n_steps, or no record was supplied), so the reference carries the realized absorbers and the case must supply U(f): 'domain_R' / 'domain_T' report where the section-3 window is a valid bound at all. This is cv26's amplitude-capped regime and nothing about it changed in #1015 section 14.",
+   "mean_dR_lattice_gated": 7.3877562665888e-12,
+   "mean_dT_lattice_gated": 2.635026491062591e-07,
+   "mean_dR_lattice_gated_alt": 7.387756266588804e-12,
+   "mean_dT_lattice_gated_alt": 2.6350264566939474e-07,
    "W_witness_defined": false,
    "W_witness_undefined_reason": "no slab etalon on this arm, so record['rate_ring_1_s'] is None and the truncation sum of the lattice-witness standard section 3 has no decay rate to bound it. The arm is judged on its own G6 / G7 witness.",
    "source_record": "validation/crossval/_26_oblique_results/rfx.json"
@@ -518,6 +530,18 @@
     "tail_purity_inc_rel": 0.0009123354795751863,
     "rate_ring_1_s": null
    },
+   "witness_reference": "realized_absorbers",
+   "witness_reference_arrival_safe": false,
+   "witness_reference_inputs": {
+    "n_steps": 21835,
+    "t_safe_cpml_steps": 4776,
+    "aux_echo_arrival_steps": -8641.446453273402
+   },
+   "witness_reference_reason": "an absorber echo is INSIDE this record (t_safe_cpml_steps < n_steps or the #892 aux-echo arrival <= n_steps, or no record was supplied), so the reference carries the realized absorbers and the case must supply U(f): 'domain_R' / 'domain_T' report where the section-3 window is a valid bound at all. This is cv26's amplitude-capped regime and nothing about it changed in #1015 section 14.",
+   "mean_dR_lattice_gated": 0.00025248309728531486,
+   "mean_dT_lattice_gated": 4.400500450594955e-06,
+   "mean_dR_lattice_gated_alt": 0.08115785683149689,
+   "mean_dT_lattice_gated_alt": 0.0047214206693472725,
    "W_witness_defined": false,
    "W_witness_undefined_reason": "no slab etalon on this arm, so record['rate_ring_1_s'] is None and the truncation sum of the lattice-witness standard section 3 has no decay rate to bound it. The arm is judged on its own G6 / G7 witness.",
    "source_record": "validation/crossval/_26_oblique_results/rfx.json"
@@ -537,6 +561,18 @@
     "tail_purity_inc_rel": 0.0009123354795751863,
     "rate_ring_1_s": 1845847619.1487682
    },
+   "witness_reference": "realized_absorbers",
+   "witness_reference_arrival_safe": false,
+   "witness_reference_inputs": {
+    "n_steps": 21835,
+    "t_safe_cpml_steps": 4776,
+    "aux_echo_arrival_steps": -8641.446453273402
+   },
+   "witness_reference_reason": "an absorber echo is INSIDE this record (t_safe_cpml_steps < n_steps or the #892 aux-echo arrival <= n_steps, or no record was supplied), so the reference carries the realized absorbers and the case must supply U(f): 'domain_R' / 'domain_T' report where the section-3 window is a valid bound at all. This is cv26's amplitude-capped regime and nothing about it changed in #1015 section 14.",
+   "mean_dR_lattice_gated": 0.00020347282260726494,
+   "mean_dT_lattice_gated": 2.57140244894731e-05,
+   "mean_dR_lattice_gated_alt": 0.0959404626765277,
+   "mean_dT_lattice_gated_alt": 0.029467391053476788,
    "W_witness_defined": true,
    "tau_src_s_used": 8.602969896859208e-09,
    "lambda_source": 6530.160351715574,
@@ -545,8 +581,6 @@
    "rate_incident_1_s": 688810390.9434798,
    "mean_W_witness_R_gated": 0.0006348161649384131,
    "mean_W_witness_T_gated": 3.744867716658905e-05,
-   "mean_dR_lattice_gated": 0.00020347282260726494,
-   "mean_dT_lattice_gated": 2.57140244894731e-05,
    "GL2_R": true,
    "GL2_T": true,
    "GL1_R_bins_beyond": 0,
@@ -557,16 +591,6 @@
    "absorber_term_T_gated_max": 0.036175069482303826,
    "aux_echo_term_R_gated_max": 0.002248866811097372,
    "absorber_term_over_window_R": 172.53881597878413,
-   "witness_reference": "realized_absorbers",
-   "witness_reference_arrival_safe": false,
-   "witness_reference_inputs": {
-    "n_steps": 21835,
-    "t_safe_cpml_steps": 4776,
-    "aux_echo_arrival_steps": -8641.446453273402
-   },
-   "witness_reference_reason": "an absorber echo is INSIDE this record (t_safe_cpml_steps < n_steps or the #892 aux-echo arrival <= n_steps, or no record was supplied), so the reference carries the realized absorbers and the case must supply U(f): 'domain_R' / 'domain_T' report where the section-3 window is a valid bound at all. This is cv26's amplitude-capped regime and nothing about it changed in #1015 section 14.",
-   "mean_dR_lattice_gated_alt": 0.0959404626765277,
-   "mean_dT_lattice_gated_alt": 0.029467391053476788,
    "domain_R": {
     "n_bins_gated": 69,
     "n_bins_in_domain": 0,
@@ -604,6 +628,18 @@
     "tail_purity_inc_rel": 3.687884541798403e-06,
     "rate_ring_1_s": 16467783920.440905
    },
+   "witness_reference": "absorber_free_by_arrival",
+   "witness_reference_arrival_safe": true,
+   "witness_reference_inputs": {
+    "n_steps": 1611,
+    "t_safe_cpml_steps": 3141,
+    "aux_echo_arrival_steps": 3197.1340869493006
+   },
+   "witness_reference_reason": "BOTH absorber echoes are outside this record by ARRIVAL (t_safe_cpml_steps >= n_steps and the #892 aux-echo arrival > n_steps), which is the standard's own section 3 (Z1) test, so the reference is the ABSORBER-FREE lattice -- the slab family's construction -- and the unmodelled term is zero BY ARRIVAL, not by amplitude. A record that cannot have measured an echo must not be judged against a reference that carries one.",
+   "mean_dR_lattice_gated": 8.79128556969219e-06,
+   "mean_dT_lattice_gated": 2.234048021999787e-05,
+   "mean_dR_lattice_gated_alt": 4.546961230213078e-05,
+   "mean_dT_lattice_gated_alt": 0.0001675210762534051,
    "W_witness_defined": true,
    "tau_src_s_used": 1.2732395447351629e-10,
    "lambda_source": 96.64637320539049,
@@ -612,8 +648,6 @@
    "rate_incident_1_s": 59900973980.683945,
    "mean_W_witness_R_gated": 0.00010490624952546427,
    "mean_W_witness_T_gated": 0.0003404514654246545,
-   "mean_dR_lattice_gated": 8.79128556969219e-06,
-   "mean_dT_lattice_gated": 2.234048021999787e-05,
    "GL2_R": true,
    "GL2_T": true,
    "GL1_R_bins_beyond": 0,
@@ -624,16 +658,6 @@
    "absorber_term_T_gated_max": 0.001022703830707461,
    "aux_echo_term_R_gated_max": 6.469638155592872e-06,
    "absorber_term_over_window_R": 3.5448537477829243,
-   "witness_reference": "absorber_free_by_arrival",
-   "witness_reference_arrival_safe": true,
-   "witness_reference_inputs": {
-    "n_steps": 1611,
-    "t_safe_cpml_steps": 3141,
-    "aux_echo_arrival_steps": 3197.1340869493006
-   },
-   "witness_reference_reason": "BOTH absorber echoes are outside this record by ARRIVAL (t_safe_cpml_steps >= n_steps and the #892 aux-echo arrival > n_steps), which is the standard's own section 3 (Z1) test, so the reference is the ABSORBER-FREE lattice -- the slab family's construction -- and the unmodelled term is zero BY ARRIVAL, not by amplitude. A record that cannot have measured an echo must not be judged against a reference that carries one.",
-   "mean_dR_lattice_gated_alt": 4.546961230213078e-05,
-   "mean_dT_lattice_gated_alt": 0.0001675210762534051,
    "domain_R": {
     "n_bins_gated": 290,
     "n_bins_in_domain": 290,
@@ -673,6 +697,18 @@
     "tail_purity_inc_rel": 3.6157623150771926e-06,
     "rate_ring_1_s": 16467783920.440905
    },
+   "witness_reference": "absorber_free_by_arrival",
+   "witness_reference_arrival_safe": true,
+   "witness_reference_inputs": {
+    "n_steps": 1612,
+    "t_safe_cpml_steps": 3141,
+    "aux_echo_arrival_steps": 3197.1340869493006
+   },
+   "witness_reference_reason": "BOTH absorber echoes are outside this record by ARRIVAL (t_safe_cpml_steps >= n_steps and the #892 aux-echo arrival > n_steps), which is the standard's own section 3 (Z1) test, so the reference is the ABSORBER-FREE lattice -- the slab family's construction -- and the unmodelled term is zero BY ARRIVAL, not by amplitude. A record that cannot have measured an echo must not be judged against a reference that carries one.",
+   "mean_dR_lattice_gated": 8.263946696704358e-06,
+   "mean_dT_lattice_gated": 2.1175973344570175e-05,
+   "mean_dR_lattice_gated_alt": 4.1684918270946514e-05,
+   "mean_dT_lattice_gated_alt": 0.00014245606211687716,
    "W_witness_defined": true,
    "tau_src_s_used": 1.2732395447351629e-10,
    "lambda_source": 96.64637320539049,
@@ -681,8 +717,6 @@
    "rate_incident_1_s": 59943083558.95913,
    "mean_W_witness_R_gated": 0.00010603908828062846,
    "mean_W_witness_T_gated": 0.00032616359310388065,
-   "mean_dR_lattice_gated": 8.263946696704358e-06,
-   "mean_dT_lattice_gated": 2.1175973344570175e-05,
    "GL2_R": true,
    "GL2_T": true,
    "GL1_R_bins_beyond": 0,
@@ -693,16 +727,6 @@
    "absorber_term_T_gated_max": 0.0006184995128993842,
    "aux_echo_term_R_gated_max": 4.112696643410185e-06,
    "absorber_term_over_window_R": 1.9611960508768178,
-   "witness_reference": "absorber_free_by_arrival",
-   "witness_reference_arrival_safe": true,
-   "witness_reference_inputs": {
-    "n_steps": 1612,
-    "t_safe_cpml_steps": 3141,
-    "aux_echo_arrival_steps": 3197.1340869493006
-   },
-   "witness_reference_reason": "BOTH absorber echoes are outside this record by ARRIVAL (t_safe_cpml_steps >= n_steps and the #892 aux-echo arrival > n_steps), which is the standard's own section 3 (Z1) test, so the reference is the ABSORBER-FREE lattice -- the slab family's construction -- and the unmodelled term is zero BY ARRIVAL, not by amplitude. A record that cannot have measured an echo must not be judged against a reference that carries one.",
-   "mean_dR_lattice_gated_alt": 4.1684918270946514e-05,
-   "mean_dT_lattice_gated_alt": 0.00014245606211687716,
    "domain_R": {
     "n_bins_gated": 290,
     "n_bins_in_domain": 290,
@@ -728,7 +752,7 @@
    "source_record": "validation/crossval/_26_oblique_results/rfx__tm_00_settle60.json"
   }
  },
- "gl1_reference_note": "#1015 section 14. WHICH lattice each entry's witness is judged against is decided by ARRIVAL, the same test standard section 3 (Z1) uses: an entry whose 3-D CPML round trip and whose #892 auxiliary-echo arrival are BOTH outside its record cannot have measured either echo, so it is judged against the ABSORBER-FREE lattice -- the slab family's own construction -- and its unmodelled term is zero BY ARRIVAL. cv26 was judging all ten entries against the lattice WITH the realized absorbers; on the five arrival-safe entries (te_00, tm_00, te_30, te_00__settle60, tm_00__settle60) that manufactured 302 all-bin and 62 in-domain GL1 breaches against content the record cannot contain, and correcting it takes them to zero with no window moved by more than 0.008 %. The five amplitude-capped entries are UNCHANGED: the same swap makes each of them markedly worse (mean|dR| 1.09x to 1.72x, and 321x / 472x on the compact grazing boxes), which is the evidence that this is a reference defect and not a looser reference. 'witness_reference' per entry, with both residuals beside it.",
+ "gl1_reference_note": "#1015 section 14. WHICH lattice each entry's witness is judged against is decided by ARRIVAL, the same test standard section 3 (Z1) uses: an entry whose 3-D CPML round trip and whose #892 auxiliary-echo arrival are BOTH outside its record cannot have measured either echo, so it is judged against the ABSORBER-FREE lattice -- the slab family's own construction -- and its unmodelled term is zero BY ARRIVAL. cv26 was judging all ten entries against the lattice WITH the realized absorbers; on the five arrival-safe entries (te_00, tm_00, te_30, te_00__settle60, tm_00__settle60) that manufactured 302 all-bin and 62 in-domain GL1 breaches against content the record cannot contain, and correcting it takes them to zero with no window moved by more than 0.008 %. The amplitude-capped entries are UNCHANGED: the same swap makes each of them worse, and every ratio below is alt/chosen computed from THIS FILE's own mean_d{R,T}_lattice_gated{,_alt}. On the four amplitude-capped oblique arms the R-only range is 1.166x (te_45) to 1.724x (te_60); counting T as well the range over both observables is 1.032x (tm_45 on T -- the NARROWEST margin anywhere in the amplitude-capped set, 3.2 %) to 2.060x (tm_60 on T). On the three compact grazing boxes it is 471.5x (graze_te, R) and 321.4x (graze_pec, R), and graze_vac is a 1.000x tie because it has no scatterer. That the swap is worse on every amplitude-capped entry is the evidence that this is a reference defect and not a looser reference -- but 1.032x is a 3.2 % margin, not a comfortable one, and standard section 14.2's caveat says so. 'witness_reference' per entry, with both residuals and both geometric inputs beside it.",
  "gl1_domain_note": "#1015. GL1's validity domain (standard section 13) is the bins where the term the section-3 budget does not model -- the reference's own dependence on the absorbers this rig carries INSIDE its record -- sits inside the window that omits it. The slab family declares that term zero by ARRIVAL and is unaffected; cv26 admits its echo by AMPLITUDE and so must report coverage. The predicate is necessary, not sufficient: it says where the bound is invalid, not that GL1 holds where it is valid. GL1 stays REPORTED and not gated here; GL2 is the gate. No window was widened for #1015.",
  "verdict": {
   "n_arms_with_defined_window": 10,

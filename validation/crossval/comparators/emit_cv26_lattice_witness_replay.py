@@ -88,6 +88,22 @@ def replay_one(doc: dict, arm: str) -> dict:
             "rate_ring_1_s": run["record"]["rate_ring_1_s"],
         },
     }
+    # #1015 section 14: the reference decision and THE TWO GEOMETRIC INPUTS THAT
+    # PRODUCED IT travel together, on every entry that has a lattice block --
+    # including the two whose W_witness is undefined and which return early below.
+    # Recording the decision without its inputs would leave a reader (and a test)
+    # unable to re-derive it, which is the whole point of choosing by geometry.
+    ref_block = {
+        "witness_reference": lat["witness_reference"],
+        "witness_reference_arrival_safe": lat["witness_reference_arrival_safe"],
+        "witness_reference_inputs": lat["witness_reference_inputs"],
+        "witness_reference_reason": lat["witness_reference_reason"],
+        "mean_dR_lattice_gated": lat["mean_dR_lattice_gated"],
+        "mean_dT_lattice_gated": lat["mean_dT_lattice_gated"],
+        "mean_dR_lattice_gated_alt": lat["mean_dR_lattice_gated_alt"],
+        "mean_dT_lattice_gated_alt": lat["mean_dT_lattice_gated_alt"],
+    }
+    out.update(ref_block)
     if not lat.get("W_witness_defined", False):
         out.update({"W_witness_defined": False,
                     "W_witness_undefined_reason": lat.get("W_witness_undefined_reason")})
@@ -99,8 +115,6 @@ def replay_one(doc: dict, arm: str) -> dict:
         "rate_incident_1_s": lat["rate_incident_1_s"],
         "mean_W_witness_R_gated": lat["mean_W_witness_R_gated"],
         "mean_W_witness_T_gated": lat["mean_W_witness_T_gated"],
-        "mean_dR_lattice_gated": lat["mean_dR_lattice_gated"],
-        "mean_dT_lattice_gated": lat["mean_dT_lattice_gated"],
         "GL2_R": lat["GL2_R"], "GL2_T": lat["GL2_T"],
         "GL1_R_bins_beyond": lat["GL1_R_bins_beyond"], "GL1_T_bins_beyond": lat["GL1_T_bins_beyond"],
         "GL1_gated": lat["GL1_gated"], "GL1_not_gated_reason": lat["GL1_not_gated_reason"],
@@ -110,15 +124,10 @@ def replay_one(doc: dict, arm: str) -> dict:
         "aux_echo_term_R_gated_max": lat["aux_echo_term_R_gated_max"],
         "absorber_term_over_window_R": (lat["absorber_term_R_gated_max"]
                                         / lat["mean_W_witness_R_gated"]),
-        # #1015 section 14: WHICH lattice this entry's witness is judged against,
-        # the geometry that chose it, and what the other reference would have
-        # given. Carried so a reader can check the choice instead of trusting it.
-        "witness_reference": lat["witness_reference"],
-        "witness_reference_arrival_safe": lat["witness_reference_arrival_safe"],
-        "witness_reference_inputs": lat["witness_reference_inputs"],
-        "witness_reference_reason": lat["witness_reference_reason"],
-        "mean_dR_lattice_gated_alt": lat["mean_dR_lattice_gated_alt"],
-        "mean_dT_lattice_gated_alt": lat["mean_dT_lattice_gated_alt"],
+        # #1015 section 14's reference block (which lattice, the geometry that
+        # chose it, and what the other reference would have given) is written
+        # ABOVE, before the undefined-window early return, so every entry with a
+        # lattice carries it.
         # #1015: where the window is a valid bound at all, and how the breaches
         # split across that line. Per bin, from the standard's own primitive.
         "domain_R": lat["domain_R"], "domain_T": lat["domain_T"],
@@ -138,8 +147,20 @@ def build() -> dict:
         e["source_record"] = f"validation/crossval/{O.RESULTS_DIRNAME}/{fname}"
         entries[key] = e
     judged = {k: v for k, v in entries.items() if v.get("W_witness_defined")}
-    ref_free = sorted(k for k, v in entries.items() if v.get("witness_reference_arrival_safe"))
-    ref_real = sorted(k for k in entries if k not in ref_free)
+    # Classify by the RECORDED boolean, never by a falsy default. Before #1015
+    # section 14's fix the two undefined-window entries returned early without a
+    # `witness_reference_arrival_safe` key at all, and `.get(...)` sorted them into
+    # "realized" by absence rather than by the predicate -- the exact silent-default
+    # hazard standard section 13.6 names. A missing or non-bool key is now an error.
+    def _arrival_safe(key: str) -> bool:
+        v = entries[key]["witness_reference_arrival_safe"]
+        if not isinstance(v, bool):
+            raise TypeError(f"{key}: witness_reference_arrival_safe is {v!r}, not a bool")
+        return v
+
+    ref_free = sorted(k for k in entries if _arrival_safe(k))
+    ref_real = sorted(k for k in entries if not _arrival_safe(k))
+    assert len(ref_free) + len(ref_real) == len(entries)
     gl2_fail = sorted(k for k, v in judged.items() if not (v["GL2_R"] and v["GL2_T"]))
     brch_in = sum(v[k]["n_bins_beyond_in_domain"] for v in judged.values()
                   for k in ("domain_R", "domain_T"))
@@ -176,10 +197,18 @@ def build() -> dict:
             "arrival-safe entries (te_00, tm_00, te_30, te_00__settle60, tm_00__settle60) that "
             "manufactured 302 all-bin and 62 in-domain GL1 breaches against content the record "
             "cannot contain, and correcting it takes them to zero with no window moved by more "
-            "than 0.008 %. The five amplitude-capped entries are UNCHANGED: the same swap makes "
-            "each of them markedly worse (mean|dR| 1.09x to 1.72x, and 321x / 472x on the compact "
-            "grazing boxes), which is the evidence that this is a reference defect and not a "
-            "looser reference. 'witness_reference' per entry, with both residuals beside it."),
+            "than 0.008 %. The amplitude-capped entries are UNCHANGED: the same swap makes each "
+            "of them worse, and every ratio below is alt/chosen computed from THIS FILE's own "
+            "mean_d{R,T}_lattice_gated{,_alt}. On the four amplitude-capped oblique arms the "
+            "R-only range is 1.166x (te_45) to 1.724x (te_60); counting T as well the range over "
+            "both observables is 1.032x (tm_45 on T -- the NARROWEST margin anywhere in the "
+            "amplitude-capped set, 3.2 %) to 2.060x (tm_60 on T). On the three compact grazing "
+            "boxes it is 471.5x (graze_te, R) and 321.4x (graze_pec, R), and graze_vac is a "
+            "1.000x tie because it has no scatterer. That the swap is worse on every "
+            "amplitude-capped entry is the evidence that this is a reference defect and not a "
+            "looser reference -- but 1.032x is a 3.2 % margin, not a comfortable one, and "
+            "standard section 14.2's caveat says so. 'witness_reference' per entry, with both "
+            "residuals and both geometric inputs beside it."),
         "gl1_domain_note": (
             "#1015. GL1's validity domain (standard section 13) is the bins where the term the "
             "section-3 budget does not model -- the reference's own dependence on the absorbers "
