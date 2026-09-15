@@ -50,6 +50,7 @@ from rfx.runners._distributed_common import (
     cpml_coeff_h_vacuum,
     gather_array_x,
     split_array_x,
+    split_poles_x,
     zeros_psi_stacked,
 )
 
@@ -153,10 +154,8 @@ def _split_debye_state(state: DebyeState, n_devices, ghost=1):
     n_poles = state.px.shape[0]
 
     def _split_poles(arr):
-        return jnp.stack([
-            split_array_x(arr[p], n_devices, ghost, pad_value=0.0)
-            for p in range(n_poles)
-        ], axis=1)  # (n_devices, n_poles, nx_local, ny, nz)
+        # (n_devices, n_poles, nx_local, ny, nz)
+        return split_poles_x(arr, n_poles, n_devices, ghost)
 
     return DebyeState(
         px=_split_poles(state.px),
@@ -184,10 +183,7 @@ def _split_lorentz_coeffs(coeffs: LorentzCoeffs, n_devices, ghost=1):
     n_poles = coeffs.a.shape[0]
 
     def _split_poles(arr):
-        return jnp.stack([
-            split_array_x(arr[p], n_devices, ghost, pad_value=0.0)
-            for p in range(n_poles)
-        ], axis=1)
+        return split_poles_x(arr, n_poles, n_devices, ghost)
 
     return LorentzCoeffs(
         ca=ca, cb=cb,
@@ -203,10 +199,7 @@ def _split_lorentz_state(state: LorentzState, n_devices, ghost=1):
     n_poles = state.px.shape[0]
 
     def _split_poles(arr):
-        return jnp.stack([
-            split_array_x(arr[p], n_devices, ghost, pad_value=0.0)
-            for p in range(n_poles)
-        ], axis=1)
+        return split_poles_x(arr, n_poles, n_devices, ghost)
 
     return LorentzState(
         px=_split_poles(state.px),

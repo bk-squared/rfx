@@ -36,6 +36,7 @@ __all__ = [
     "cpml_coeff_h_vacuum",
     "split_array_x",
     "gather_array_x",
+    "split_poles_x",
     "unstack_and_gather",
     "zeros_psi_stacked",
     "exchange_component_shmap",
@@ -134,6 +135,26 @@ def gather_array_x(slabs, ghost=1):
     ny = inner.shape[2]
     nz = inner.shape[3]
     return inner.reshape(n_devices * nx_per, ny, nz)
+
+
+def split_poles_x(arr, n_poles, n_devices, ghost):
+    """Split a per-pole array ``(n_poles, nx, ny, nz)`` into x-slabs.
+
+    Applies :func:`split_array_x` to each pole and stacks the results on
+    axis 1, giving ``(n_devices, n_poles, nx_local, ny, nz)``. Ghost cells
+    at the physical x boundaries are padded with ``0.0``, which is the
+    correct fill for every array this is used on: the polarization state
+    fields of Debye/Lorentz, and Lorentz's ``a``/``b``/``c`` coefficients.
+
+    NOT for a coefficient whose ghost fill must be non-zero --
+    ``_split_lorentz_coeffs`` splits ``cc`` with ``pad_value=1/EPS_0``
+    through :func:`split_array_x` directly, and its comment records the
+    NaN-in-backward reason. That call is deliberately not routed here.
+    """
+    return jnp.stack([
+        split_array_x(arr[p], n_devices, ghost, pad_value=0.0)
+        for p in range(n_poles)
+    ], axis=1)
 
 
 def unstack_and_gather(sharded_arr, n_devices, nx_local, ghost, pad_x, nx):

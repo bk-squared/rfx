@@ -847,6 +847,11 @@ _SHARED_HELPER_BINDINGS = (
     # caller supplies, so neither call site's expression moved.
     ("unstack_and_gather", "rfx.runners.distributed_nu", "unstack_and_gather"),
     ("unstack_and_gather", "rfx.runners.distributed_v2", "unstack_and_gather"),
+    # #1038 leg 2 (c) -- the per-pole x-splitter. Three nested copies, all in
+    # distributed.py, which leg 1 had to leave behind because their body calls
+    # split_array_x and that name was then defined BELOW distributed.py's
+    # import of this module. One importer only, so one row.
+    ("split_poles_x", "rfx.runners.distributed", "split_poles_x"),
 )
 
 
