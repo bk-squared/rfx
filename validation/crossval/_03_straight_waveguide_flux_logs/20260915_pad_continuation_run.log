@@ -1,0 +1,98 @@
+
+A module that was compiled using NumPy 1.x cannot be run in
+NumPy 2.2.6 as it may crash. To support both 1.x and 2.x
+versions of NumPy, modules must be compiled with NumPy 2.0.
+Some module may need to rebuild instead e.g. with 'pybind11>=2.12'.
+
+If you are a user of the module, the easiest solution will be to
+downgrade to 'numpy<2' or try to upgrade the affected module.
+We expect that some modules will need time to support NumPy 2.
+
+Traceback (most recent call last):  File "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a125c1f0daf970e55/validation/crossval/03_straight_waveguide_flux.py", line 185, in <module>
+    import meep as mp
+  File "/usr/lib/python3/dist-packages/meep/__init__.py", line 13, in <module>
+    from . import _meep
+AttributeError: _ARRAY_API not found
+/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a125c1f0daf970e55/validation/crossval/03_straight_waveguide_flux.py:273: DeprecationWarning: add_source(..., amplitude_kind=None): on this simulation the waveform amplitude is a Cb-normalized field add (E += Cb*w; NOT one of the two named kinds — to keep today's numbers, multiply your waveform amplitude by the cell volume dV and pass amplitude_kind='current'). This per-path default is deprecated (issue #571): pass amplitude_kind='current' (amperes, resolution-independent power — the future default) or amplitude_kind='field' (raw E increment). amplitude_kind becomes required in 1.9 (and 'current' the default in 2.0).
+  sim_rfx.add_source(position=(src_x_rfx, y, 0), component="ez",
+/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a125c1f0daf970e55/validation/crossval/03_straight_waveguide_flux.py:329: UserWarning: [run] preflight found 7 advisory issue(s) - pass skip_preflight=True to suppress:
+  - Flux monitor 'flux_in', x plane requested 3e-06 m, realized 3e-06 m: y: requested [3.5e-06, 5.5e-06] m, realized [3.5e-06, 5.5e-06] m; z: requested [-4.5e-07, 5.5e-07] m, realized [0, 1e-07] m CLAMPED to interior cells; CPML cells are excluded.
+  - Flux monitor 'flux_out', x plane requested 1.3e-05 m, realized 1.3e-05 m: y: requested [3.5e-06, 5.5e-06] m, realized [3.5e-06, 5.5e-06] m; z: requested [-4.5e-07, 5.5e-07] m, realized [0, 1e-07] m CLAMPED to interior cells; CPML cells are excluded.
+  - dielectric 'wg' on x: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+  - dielectric 'wg' on y: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+  - dielectric 'wg' on z: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+  - this simulation requests field-DFT plane probe(s) but registers no point probe. run() and forward() score their ring-down settling witness from the recorded probe time series, so the result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live and retain its time series. Inspect forward's diagnostic on the concrete result after JIT/AD evaluation.
+  - all dielectric(s) ['wg'] are perfectly lossless in an open (UPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  res_rfx = sim_rfx.run(n_steps=n_steps, subpixel_smoothing=True)
+/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a125c1f0daf970e55/rfx/runners/uniform.py:101: UserWarning: Flux monitor 'flux_in', x plane requested 3e-06 m, realized 3e-06 m: y: requested [3.5e-06, 5.5e-06] m, realized [3.5e-06, 5.5e-06] m; z: requested [-4.5e-07, 5.5e-07] m, realized [0, 1e-07] m CLAMPED to interior cells; CPML cells are excluded.
+  region = resolve_flux_region(grid, pe, sim._domain)
+/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a125c1f0daf970e55/rfx/runners/uniform.py:101: UserWarning: Flux monitor 'flux_out', x plane requested 1.3e-05 m, realized 1.3e-05 m: y: requested [3.5e-06, 5.5e-06] m, realized [3.5e-06, 5.5e-06] m; z: requested [-4.5e-07, 5.5e-07] m, realized [0, 1e-07] m CLAMPED to interior cells; CPML cells are excluded.
+  region = resolve_flux_region(grid, pe, sim._domain)
+/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a125c1f0daf970e55/validation/crossval/03_straight_waveguide_flux.py:329: UserWarning: no ring-down settling witness on this run: this result recorded no probe time series: add a point probe (sim.add_probe(position, component)) and retain its time series, or use run(until_decay=...) to bound the ring-down through its stop criterion. This run requests NTFF and/or field-DFT output, so its truncation is unguarded (#885); settling_db is None, which is not a pass.
+  res_rfx = sim_rfx.run(n_steps=n_steps, subpixel_smoothing=True)
+======================================================================
+Crossval 03: Straight Waveguide Transmission — rfx vs Meep
+======================================================================
+eps=12.0, width=1.0a, cell=16.0x13.0
+fcen=0.15, df=0.1, resolution=10
+src @ x=-7.0, flux_in @ x=-5.0, flux_out @ x=5.0
+
+======================================================================
+PART 1: Meep — two flux monitors, T = flux_out / flux_in
+======================================================================
+[SKIP] external reference unavailable (Meep: ImportError: numpy.core.multiarray failed to import) — exit 2
+       rfx self-transmission self-check still runs; NOT a crossval PASS.
+
+======================================================================
+PART 2: rfx — two flux monitors (canonical add_flux_monitor)
+======================================================================
+  [PREFLIGHT] Flux monitor 'flux_in', x plane requested 3e-06 m, realized 3e-06 m: y: requested [3.5e-06, 5.5e-06] m, realized [3.5e-06, 5.5e-06] m; z: requested [-4.5e-07, 5.5e-07] m, realized [0, 1e-07] m CLAMPED to interior cells; CPML cells are excluded.
+  [PREFLIGHT] Flux monitor 'flux_out', x plane requested 1.3e-05 m, realized 1.3e-05 m: y: requested [3.5e-06, 5.5e-06] m, realized [3.5e-06, 5.5e-06] m; z: requested [-4.5e-07, 5.5e-07] m, realized [0, 1e-07] m CLAMPED to interior cells; CPML cells are excluded.
+  [PREFLIGHT] dielectric 'wg' on x: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+  [PREFLIGHT] dielectric 'wg' on y: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+  [PREFLIGHT] dielectric 'wg' on z: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+  [PREFLIGHT] this simulation requests field-DFT plane probe(s) but registers no point probe. run() and forward() score their ring-down settling witness from the recorded probe time series, so the result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live and retain its time series. Inspect forward's diagnostic on the concrete result after JIT/AD evaluation.
+  [PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (UPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  [FLUX REGION] Flux monitor 'flux_in', x plane requested 3e-06 m, realized 3e-06 m: y: requested [3.5e-06, 5.5e-06] m, realized [3.5e-06, 5.5e-06] m; z: requested [-4.5e-07, 5.5e-07] m, realized [0, 1e-07] m CLAMPED to interior cells; CPML cells are excluded.
+  [FLUX REGION] Flux monitor 'flux_out', x plane requested 1.3e-05 m, realized 1.3e-05 m: y: requested [3.5e-06, 5.5e-06] m, realized [3.5e-06, 5.5e-06] m; z: requested [-4.5e-07, 5.5e-07] m, realized [0, 1e-07] m CLAMPED to interior cells; CPML cells are excluded.
+  Running rfx: 5913 steps (fixed 400 a/c0 units)...
+  [PREFLIGHT] Flux monitor 'flux_in', x plane requested 3e-06 m, realized 3e-06 m: y: requested [3.5e-06, 5.5e-06] m, realized [3.5e-06, 5.5e-06] m; z: requested [-4.5e-07, 5.5e-07] m, realized [0, 1e-07] m CLAMPED to interior cells; CPML cells are excluded.
+  [PREFLIGHT] Flux monitor 'flux_out', x plane requested 1.3e-05 m, realized 1.3e-05 m: y: requested [3.5e-06, 5.5e-06] m, realized [3.5e-06, 5.5e-06] m; z: requested [-4.5e-07, 5.5e-07] m, realized [0, 1e-07] m CLAMPED to interior cells; CPML cells are excluded.
+  [PREFLIGHT] dielectric 'wg' on x: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+  [PREFLIGHT] dielectric 'wg' on y: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+  [PREFLIGHT] dielectric 'wg' on z: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+  [PREFLIGHT] this simulation requests field-DFT plane probe(s) but registers no point probe. run() and forward() score their ring-down settling witness from the recorded probe time series, so the result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live and retain its time series. Inspect forward's diagnostic on the concrete result after JIT/AD evaluation.
+  [PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (UPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  [FLUX REGION] Flux monitor 'flux_in', x plane requested 3e-06 m, realized 3e-06 m: y: requested [3.5e-06, 5.5e-06] m, realized [3.5e-06, 5.5e-06] m; z: requested [-4.5e-07, 5.5e-07] m, realized [0, 1e-07] m CLAMPED to interior cells; CPML cells are excluded.
+  [FLUX REGION] Flux monitor 'flux_out', x plane requested 1.3e-05 m, realized 1.3e-05 m: y: requested [3.5e-06, 5.5e-06] m, realized [3.5e-06, 5.5e-06] m; z: requested [-4.5e-07, 5.5e-07] m, realized [0, 1e-07] m CLAMPED to interior cells; CPML cells are excluded.
+  Done in 11.6s
+  T_rfx(f_peak) = 0.9643
+
+======================================================================
+PART 2b: rfx — n_eff(f) vs the analytic slab TE0 mode
+======================================================================
+  fit window: Meep x in [-4.0, +4.0] = 81 samples over 8a
+  analytic slab TE0 (eps=12, d=1a) at fcen: n_eff = 2.84411
+  standing-wave ratio |B/A| over the band: 0.017 .. 0.048   [REPORTED, not gated -- see design note section 8]
+
+======================================================================
+PART 3: Flux and transmission plots
+======================================================================
+  Saved: /root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a125c1f0daf970e55/validation/crossval/03_flux_comparison.png
+
+======================================================================
+VERDICT
+======================================================================
+  --- G1  E2 analytic oracle: guided-mode dispersion ---
+  two-wave fit residual, max over band: 0.0049   PASS (gate <= 0.05) [estimator premise]
+  n_eff band mean: rfx 2.84680  analytic 2.84203  [info only]
+  max |n_eff_rfx/n_eff_analytic - 1| over band: 0.226%  at f=0.1633 (rfx 2.91331 vs analytic 2.90673)   PASS (gate <= 2.0%)
+  --- G2  E1 self-check: flux identity (guide-independent by construction) ---
+  rfx T(f_peak) = 0.9643  [info only]
+  rfx band-mean T [0.135,0.165]: 0.9682   PASS (gate 1.0 ± 0.05)
+  meep band-mean T: SKIP  (Meep reference unavailable)
+  |band-mean T_rfx − T_meep|: SKIP  (Meep reference unavailable)
+
+rfx SELF-CHECK PASSED (G1 analytic dispersion + G2 flux identity)
+[SKIP] Meep reference unavailable — crossval inconclusive (exit 2)
+EXIT=2

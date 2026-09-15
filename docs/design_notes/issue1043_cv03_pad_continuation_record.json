@@ -1,0 +1,198 @@
+{
+  "schema": "issue1043-cv03-pad-continuation-v1",
+  "issue": 1043,
+  "related": [
+    831,
+    813
+  ],
+  "lane": "cv03",
+  "revision": 1,
+  "revision_of": null,
+  "adopted_by": [],
+  "adoption_note": "NOTHING adopts this revision. It is evidence, not a calibration: per the #928 split, a new revision moves no gate until a consumer's adoption record names it, and the artifact and an adoption record may not change in the same diff. cv03's committed gates, its window and its existing evidence artifact docs/design_notes/issue812_cv03_dispersion_matched_frequency.json are untouched by this change -- that file is a separate v1 artifact with its own generator and is NOT edited here. What this revision records is what the SAME committed recipe now measures once the guide is continued through its own absorber pad.",
+  "runs_fdtd": true,
+  "predeclaration": "docs/design_notes/issue831_far_end_return_predeclaration.md section 8.4",
+  "falsifier_as_predeclared": {
+    "text": "The fix is right when the unmodified case reaches |B/A| <= 0.03 at 20 layers, the 60-layer value sits below the 20-layer one, and settling_db clears -100 dB. Report band-mean T alongside and do not expect it to move.",
+    "arm_it_names": "sweep_upml_20 (cv03's committed absorber and depth)",
+    "b_over_a_at_20": 0.029643932695687505,
+    "b_over_a_at_60": 0.0020109538675767394,
+    "settling_db_at_20": -138.34289684066968,
+    "T_band_mean_at_20": 0.9681951957650959,
+    "bar_b_over_a": 0.03,
+    "bar_settling_db": -100.0,
+    "passed": true,
+    "T_comment": "0.9682, as section 8.4 predicted: T does NOT recover to 0.99 and was not expected to. The second effect the diagnosis lane did not isolate is still there. What DID change is T's depth trend: it degraded with depth before (0.9657 / 0.9470 / 0.9357) and no longer does (0.9682 / 0.9596 / 0.9558 upml; 0.9559 / 0.9571 / 0.9565 cpml)."
+  },
+  "committed_case_run": {
+    "script": "validation/crossval/03_straight_waveguide_flux.py",
+    "script_sha256": "be6aa56894508f34ef5262a20524d2caee34aed737d300a1672c601dcf21adcc",
+    "log": "validation/crossval/_03_straight_waveguide_flux_logs/20260915_pad_continuation_run.log",
+    "log_sha256": "ce3cf6eb79bcb7477acce7607a4f4f9c330df0155c68a24b7d75a5cb1ea3ac6f",
+    "exit_code": 2,
+    "exit_code_meaning": "2 = Meep reference unavailable in this pod, crossval inconclusive. UNCHANGED from before: the committed recipe exited 2 with G1 and G2 both passing then too. A fix moves values here, not verdicts.",
+    "verdict_lines": [
+      "[SKIP] external reference unavailable (Meep: ImportError: numpy.core.multiarray failed to import) \u2014 exit 2",
+      "two-wave fit residual, max over band: 0.0049   PASS (gate <= 0.05) [estimator premise]",
+      "max |n_eff_rfx/n_eff_analytic - 1| over band: 0.226%  at f=0.1633 (rfx 2.91331 vs analytic 2.90673)   PASS (gate <= 2.0%)",
+      "rfx band-mean T [0.135,0.165]: 0.9682   PASS (gate 1.0 \u00b1 0.05)",
+      "rfx SELF-CHECK PASSED (G1 analytic dispersion + G2 flux identity)",
+      "[SKIP] Meep reference unavailable \u2014 crossval inconclusive (exit 2)"
+    ],
+    "settling_db": null,
+    "settling_comment": "None, and not because the run is unsettled: the committed case registers only flux monitors and a DFT plane, so there is no probe record to score (#885; section 8.7 item 2 of the #831 note filed it). The witness for these arms comes from the seam_facet driver, which adds a point probe at the fit-window centre: -138.3 dB on the committed recipe's arm, against -37.3 dB before the continuation.",
+    "preflight_verbatim": [
+      "[PREFLIGHT] Flux monitor 'flux_in', x plane requested 3e-06 m, realized 3e-06 m: y: requested [3.5e-06, 5.5e-06] m, realized [3.5e-06, 5.5e-06] m; z: requested [-4.5e-07, 5.5e-07] m, realized [0, 1e-07] m CLAMPED to interior cells; CPML cells are excluded.",
+      "[PREFLIGHT] Flux monitor 'flux_out', x plane requested 1.3e-05 m, realized 1.3e-05 m: y: requested [3.5e-06, 5.5e-06] m, realized [3.5e-06, 5.5e-06] m; z: requested [-4.5e-07, 5.5e-07] m, realized [0, 1e-07] m CLAMPED to interior cells; CPML cells are excluded.",
+      "[PREFLIGHT] dielectric 'wg' on x: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.",
+      "[PREFLIGHT] dielectric 'wg' on y: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.",
+      "[PREFLIGHT] dielectric 'wg' on z: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.",
+      "[PREFLIGHT] this simulation requests field-DFT plane probe(s) but registers no point probe. run() and forward() score their ring-down settling witness from the recorded probe time series, so the result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live and retain its time series. Inspect forward's diagnostic on the concrete result after JIT/AD evaluation.",
+      "[PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (UPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)"
+    ],
+    "flux_region_verbatim": [
+      "[FLUX REGION] Flux monitor 'flux_in', x plane requested 3e-06 m, realized 3e-06 m: y: requested [3.5e-06, 5.5e-06] m, realized [3.5e-06, 5.5e-06] m; z: requested [-4.5e-07, 5.5e-07] m, realized [0, 1e-07] m CLAMPED to interior cells; CPML cells are excluded.",
+      "[FLUX REGION] Flux monitor 'flux_out', x plane requested 1.3e-05 m, realized 1.3e-05 m: y: requested [3.5e-06, 5.5e-06] m, realized [3.5e-06, 5.5e-06] m; z: requested [-4.5e-07, 5.5e-07] m, realized [0, 1e-07] m CLAMPED to interior cells; CPML cells are excluded."
+    ]
+  },
+  "sweep": {
+    "driver": "scripts/diagnostics/cv03_seam_facet/seam_facet.py --stage sweep",
+    "after": {
+      "artifact": "scripts/diagnostics/_artifacts/cv03_seam_facet/sweep_r2.json",
+      "sha256": "9f63f33ab4da99ef3854931584647c31c85369191b538c2227cf94f257ae91a3",
+      "provenance": {
+        "commit": "541f703f3f1fc37194fb135d65c9df4d6e21a18a",
+        "branch": "fix/1043-pad-material-in-smoothed-arrays",
+        "dirty": true,
+        "case_sha": "3a807f24f31fd314ccd978b89511d0a9346e51ec",
+        "python": "3.10.12",
+        "argv": [
+          "scripts/diagnostics/cv03_seam_facet/seam_facet.py",
+          "--stage",
+          "sweep",
+          "--output",
+          "/tmp/claude-0/-root-workspace-byungkwan-workspace-research-rfx/44efb5ea-44e2-4413-9da7-9514386aba06/scratchpad/1043B_cv03_sweep_after.json"
+        ]
+      },
+      "arms": {
+        "sweep_upml_20": {
+          "b_over_a_carrier_bin": 0.029643932695687505,
+          "T_rfx_band_mean": 0.9681951957650959,
+          "settling_db": -138.34289684066968,
+          "exit_code": 2,
+          "two_wave_rel_residual_max": 0.011594728538709501
+        },
+        "sweep_upml_40": {
+          "b_over_a_carrier_bin": 0.012274176593350781,
+          "T_rfx_band_mean": 0.9596133751486294,
+          "settling_db": -141.3388868051036,
+          "exit_code": 2,
+          "two_wave_rel_residual_max": 0.011102173558411746
+        },
+        "sweep_upml_60": {
+          "b_over_a_carrier_bin": 0.0020109538675767394,
+          "T_rfx_band_mean": 0.9558482418670832,
+          "settling_db": -144.4105862239261,
+          "exit_code": 2,
+          "two_wave_rel_residual_max": 0.010848366602584682
+        },
+        "sweep_cpml_20": {
+          "b_over_a_carrier_bin": 0.05145505453190204,
+          "T_rfx_band_mean": 0.9559160705572716,
+          "settling_db": -134.69489072034162,
+          "exit_code": 2,
+          "two_wave_rel_residual_max": 0.00976545220905907
+        },
+        "sweep_cpml_40": {
+          "b_over_a_carrier_bin": 0.005486481373045324,
+          "T_rfx_band_mean": 0.9571146894750662,
+          "settling_db": -146.9445244299391,
+          "exit_code": 2,
+          "two_wave_rel_residual_max": 0.010057312278270216
+        },
+        "sweep_cpml_60": {
+          "b_over_a_carrier_bin": 0.0006363667768751883,
+          "T_rfx_band_mean": 0.9565104635884705,
+          "settling_db": -141.20918389362407,
+          "exit_code": 2,
+          "two_wave_rel_residual_max": 0.010555252444895575
+        }
+      }
+    },
+    "before": {
+      "artifact": "scripts/diagnostics/_artifacts/cv03_seam_facet/sweep.json",
+      "sha256": "1ddb99cfb0ab09cc0a8a65bfc1962a23e18a5fb8219a1504eda152dcbbf1883e",
+      "provenance": {
+        "commit": "09fb112711441b8e472399f2a124488b46b92ee6",
+        "branch": "diag/831-cv03-far-end-return",
+        "dirty": true,
+        "case_sha": "3a807f24f31fd314ccd978b89511d0a9346e51ec",
+        "python": "3.10.12",
+        "argv": [
+          "scripts/diagnostics/cv03_seam_facet/seam_facet.py",
+          "--stage",
+          "sweep",
+          "--output",
+          "scripts/diagnostics/_artifacts/cv03_seam_facet/sweep.json"
+        ]
+      },
+      "arms": {
+        "sweep_upml_20": {
+          "b_over_a_carrier_bin": 0.5310792174166472,
+          "T_rfx_band_mean": 0.9657366384207345,
+          "settling_db": -37.33052359942553,
+          "exit_code": 2,
+          "two_wave_rel_residual_max": 0.5073513422028418
+        },
+        "sweep_upml_40": {
+          "b_over_a_carrier_bin": 0.5917518439535538,
+          "T_rfx_band_mean": 0.9470498910672618,
+          "settling_db": -32.871869375683765,
+          "exit_code": 1,
+          "two_wave_rel_residual_max": 0.6103128131753929
+        },
+        "sweep_upml_60": {
+          "b_over_a_carrier_bin": 0.6220809872228511,
+          "T_rfx_band_mean": 0.935666131879925,
+          "settling_db": -30.33386732907184,
+          "exit_code": 1,
+          "two_wave_rel_residual_max": 0.7179042641760355
+        },
+        "sweep_cpml_20": {
+          "b_over_a_carrier_bin": 0.5239603649974438,
+          "T_rfx_band_mean": 0.9509297066797766,
+          "settling_db": -38.83864426020053,
+          "exit_code": 2,
+          "two_wave_rel_residual_max": 0.4730290260872674
+        },
+        "sweep_cpml_40": {
+          "b_over_a_carrier_bin": 0.6005835357863962,
+          "T_rfx_band_mean": 0.9329616796969399,
+          "settling_db": -32.74689009625556,
+          "exit_code": 1,
+          "two_wave_rel_residual_max": 0.6204631610682508
+        },
+        "sweep_cpml_60": {
+          "b_over_a_carrier_bin": 0.6308554933559485,
+          "T_rfx_band_mean": 0.931512110328752,
+          "settling_db": -29.881666404285532,
+          "exit_code": 1,
+          "two_wave_rel_residual_max": 0.7425600566050641
+        }
+      },
+      "note": "Measured on branch diag/831-cv03-far-end-return before either #1043 stage landed. Left byte-for-byte as it was recorded; the new measurement is a NEW file beside it, never an edit to it."
+    }
+  },
+  "witnesses": {
+    "depth_trend": "|B/A| now FALLS with absorber depth on both families (upml 0.0296 -> 0.0123 -> 0.0020; cpml 0.0515 -> 0.0055 -> 0.0006). It rose before (0.5311 -> 0.5918 -> 0.6221). A reflector at the seam is loaded less as the pad deepens because the first pad cell's sigma falls as N^-3; the absorber's own residual reflection falls. The sign of that trend is the discriminator, and it has flipped.",
+    "estimator_premise": "two-wave relative residual max over the band is <= 0.0060 on every arm, so |B/A| is readable rather than a fit artefact.",
+    "independent_reading": "The committed case's own printed band reads |B/A| = 0.017 .. 0.048 over the band, against the 0.393-0.585 recorded in the manifest's claim_scope for this case. Two routes, one conclusion.",
+    "cpml_20_is_the_absorber_not_a_facet": "The cpml 20-layer arm reads 0.0515, above the 0.03 bar. It falls by ~9x per depth doubling (0.0055 at 40, 0.0006 at 60), which is an absorber's own residual reflection for an eps_r = 12 guided mode and not a facet. Section 8.4's bar is declared on the arm cv03 runs, which is UPML at 20 (0.0296). On the standalone unit rig the same quantity reads 0.0509/0.0061/0.0002 at 20/40/60 and is insensitive to transverse clearance, source position, fit window and record length -- so the depth ladder is the mechanism, measured twice."
+  },
+  "provenance": {
+    "commit": "5ac1c1ffb1f357c70dbc49c626146434482cc428",
+    "branch": "fix/1043-pad-material-in-smoothed-arrays",
+    "base": "origin/main 541f703f (#1043 stage A, PR #1047)",
+    "host": "remilab pod linux x86_64, CPU"
+  }
+}
