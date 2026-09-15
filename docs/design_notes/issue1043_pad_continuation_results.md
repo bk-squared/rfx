@@ -258,21 +258,26 @@ Stage-1 branch under a comment saying "Mirrors rfx/runners/uniform.py". Same
 defect class, and after this change it is the one place that mirror no longer
 holds.
 
-**Nothing in the tree reaches it**, counted rather than assumed (round-1
-review; the first draft of this section said "unmeasured", which was true when
-written and is no longer):
+**Nothing in the tree solves through it**, counted by an AST scan of the call
+sites rather than by grep — a line-oriented grep misses the multi-line calls,
+and did: the first version of this section said "exactly one" and there are
+**four**. All four, classified:
 
-* the parameter defaults to `False` (`waveguide.py:76`), so a caller opts in;
-* exactly **one** in-tree caller passes a truthy value —
-  `tests/unit/sparams/test_waveguide_nu_sparam.py:396` — and it is a **fence**:
-  `pytest.raises(NotImplementedError, match="subpixel_smoothing")` on the NU
-  dispatch. It stops before any solve;
-* every other caller of `compute_waveguide_s_matrix` takes the default,
-  including the v1.8 chain-closure battery and this issue's own F1 PEC-short
-  gate driver (`scripts/diagnostics/cpml_subpixel_stability/f1_pec_short_gate.py:143`,
-  which passes no `subpixel_smoothing` and declares only PEC);
-* and PEC volumes are continued by neither lane, so a PEC-only fixture could
-  not move even if it did enter.
+| caller | what it does |
+|---|---|
+| `tests/unit/materials/test_sheet_impedance.py:1075` | asserts the f0-sheet fence **raises** ("on the waveguide S-matrix lane") |
+| `tests/unit/sparams/test_waveguide_nu_sparam.py:396` | `pytest.raises(NotImplementedError)` on the NU dispatch |
+| `tests/unit/sparams/test_waveguide_port_reference_sims.py:250` | monkeypatches `extract_waveguide_s_matrix_flux` to raise and asserts it — **stops before the solve** by construction |
+| `tests/unit/geometry/test_stage2_dual_path.py:306` | the one **real solve**, `subpixel_smoothing="kottke_pec"` |
+
+Three fences and one real solve. The real one cannot move: its only interior
+geometry is a PEC box at x = [84, 87] mm in a 120 mm domain, PEC is continued by
+**neither** lane, and its y/z walls are PEC so the only pads are on x — which
+that box does not reach. Every other caller of `compute_waveguide_s_matrix`
+takes the `False` default, including the v1.8 chain-closure battery and this
+issue's own F1 PEC-short gate driver
+(`scripts/diagnostics/cpml_subpixel_stability/f1_pec_short_gate.py:143`, which
+passes no `subpixel_smoothing` and declares only PEC).
 
 So it is a **latent gap, not a live wrong number**. Left alone because the lane
 is v1.8 chain-closed — 185 verdicts replay against a frozen artifact, and

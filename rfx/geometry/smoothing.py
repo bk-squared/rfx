@@ -285,6 +285,16 @@ class UnextendableShape(NamedTuple):
     shape's declared ``eps_r`` so a caller can say what the pad will hold
     instead of what was drawn, without re-resolving the material.
 
+    ``entry_index`` and ``material_name`` identify the geometry entry, and
+    they are FIELDS rather than something a caller recovers by identity.
+    Round-1 verification found why: ``extend_shapes_into_cpml_pad`` rewrites
+    the shape as it continues each axis, so a shape continued on x and
+    unextendable on y reports the CONTINUED object, and an ``id()`` lookup
+    against ``sim._geometry`` misses it -- the advisory printed
+    ``Material '?' (geometry entry #-1, Cylinder)``. ``smoothed_shape_pairs``
+    fills both in from the per-entry loop, where the answer is not in doubt,
+    and restores ``shape`` to the DECLARED object.
+
     Two callers surface these, and they are the SAME list from the SAME
     predicate, not two rules that happen to agree today (the #627
     duplication class): :func:`warn_unextendable_shapes` at run time, and
@@ -298,6 +308,8 @@ class UnextendableShape(NamedTuple):
     side: str
     reason: str
     eps_r: float = 1.0
+    entry_index: int = -1
+    material_name: str = "?"
 
 
 def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
@@ -532,7 +544,7 @@ def smoothed_shape_pairs(sim, grid):
     # PEC material as a dielectric and continue metal into the pad,
     # which is the one thing both lanes agree never to do.
     pec_sigma = float(getattr(sim, "_PEC_SIGMA_THRESHOLD", 1e6))
-    for entry, (shape, eps_r) in zip(sim._geometry, pairs):
+    for idx, (entry, (shape, eps_r)) in enumerate(zip(sim._geometry, pairs)):
         mat = sim._resolve_material(entry.material_name)
         # PEC volumes are not continued on EITHER lane: ``pec_mask`` is not in
         # ``extend_cpml_pad_materials``' signature, so the staircase lane ends
@@ -548,7 +560,15 @@ def smoothed_shape_pairs(sim, grid):
         one, unext = extend_shapes_into_cpml_pad(
             [(shape, eps_r)], node_coords, pads)
         out.extend(one)
-        unextendable.extend(unext)
+        # Stamp the entry's identity HERE, in the loop that knows it, and put
+        # the DECLARED shape back. The builder reports whatever object it held
+        # when the face was reached, which is already a continued copy once a
+        # lower axis was rewritten -- so a caller matching on identity misses
+        # exactly the multi-face cases it most needs to name.
+        unextendable.extend(
+            u._replace(shape=shape, entry_index=idx,
+                       material_name=entry.material_name)
+            for u in unext)
     return out, unextendable
 
 

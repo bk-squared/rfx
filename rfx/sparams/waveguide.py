@@ -646,18 +646,27 @@ def compute_waveguide_s_matrix(
     # re-measurement, not a ride on the runner fix ("refactoring and
     # measurement changes do not travel together", #928).
     #
-    # NOTHING IN THE TREE REACHES IT TODAY, counted rather than assumed
-    # (round-1 review of the stage-B PR):
-    #   * the parameter defaults to False (:76), so a caller has to opt in;
-    #   * exactly ONE in-tree caller passes a truthy value --
-    #     tests/unit/sparams/test_waveguide_nu_sparam.py:396 -- and it is a
-    #     FENCE: pytest.raises(NotImplementedError, match="subpixel_smoothing")
-    #     on the NU dispatch, which stops before any solve;
-    #   * every other caller takes the default, including the v1.8
-    #     chain-closure battery and the #1043 F1 PEC-short gate driver, so the
-    #     blocks below are never entered by them;
-    #   * and PEC volumes are not continued on either lane anyway, so a
-    #     PEC-only fixture could not move even if it did enter.
+    # NOTHING IN THE TREE SOLVES THROUGH IT TODAY, counted by an AST scan of
+    # the call sites rather than by grep (a line-oriented grep misses the
+    # multi-line calls, and did: round-1 said "exactly one", and there are
+    # FOUR). All four, classified:
+    #   1. tests/unit/materials/test_sheet_impedance.py:1075 -- asserts the
+    #      f0-sheet fence raises ("on the waveguide S-matrix lane").
+    #   2. tests/unit/sparams/test_waveguide_nu_sparam.py:396 --
+    #      pytest.raises(NotImplementedError) on the NU dispatch.
+    #   3. tests/unit/sparams/test_waveguide_port_reference_sims.py:250 --
+    #      monkeypatches extract_waveguide_s_matrix_flux to raise, and asserts
+    #      it: stops before the solve by construction.
+    #   4. tests/unit/geometry/test_stage2_dual_path.py:306 -- the one REAL
+    #      solve, subpixel_smoothing="kottke_pec". Its only interior geometry
+    #      is a PEC box at x=[84,87] mm in a 120 mm domain, and PEC is
+    #      continued by NEITHER lane; y/z are pec walls so the only pads are
+    #      on x, which that box does not reach.
+    # Three fences and one PEC-only solve. So the gap is latent: no committed
+    # number moves if it is closed, and none is wrong while it is open. Every
+    # other caller takes the default, including the v1.8 chain-closure battery
+    # and the #1043 F1 PEC-short gate driver.
+    #
     # A latent gap, then, not a live wrong number. Anyone closing it: the
     # reference run passes dielectric_shapes=[] and cannot carry a facet, so
     # only the device run can. Tracked as #1066; section 8a of

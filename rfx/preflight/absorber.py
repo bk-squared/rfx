@@ -981,10 +981,14 @@ def _validate_cfg_dielectric_at_absorber_seam(self, _w) -> None:
     if not unextendable:
         return
 
-    by_id = {id(entry.shape): (idx, entry.material_name)
-             for idx, entry in enumerate(self._geometry)}
+    # The entry index and material name ride ON the finding. They used to be
+    # recovered here by ``id(u.shape)`` against ``self._geometry``, which
+    # misses exactly the cases worth naming: the continuation rewrites the
+    # shape as it walks the axes, so a cylinder continued along x and
+    # unextendable on y reports the CONTINUED object and the lookup fell
+    # through to ``Material '?' (geometry entry #-1, ...)``.
     for u in unextendable:
-        idx, mat_name = by_id.get(id(u.shape), (-1, "?"))
+        idx, mat_name = u.entry_index, u.material_name
         axis_name = "xyz"[u.axis]
         _w.warn(
             PreflightWarning(

@@ -1036,3 +1036,32 @@ def test_the_advisory_and_the_continuation_cannot_disagree():
     u = unextendable[0]
     assert "xyz"[u.axis] + "-" + u.side in str(found[0])
     assert f"{u.eps_r:g}" in str(found[0])
+
+
+def test_a_shape_continued_on_one_axis_is_still_NAMED_on_another():
+    """Round-1 verification found this one, and it is a reporting bug.
+
+    ``extend_shapes_into_cpml_pad`` rewrites the shape as it walks the axes.
+    An axis-x cylinder spanning the full x extent IS continued along x (its
+    own axis), so by the time its radius is found reaching y-lo and z-lo the
+    finding carries the CONTINUED object, not the declared one. The advisory
+    recovered the entry by ``id()`` against ``sim._geometry`` and missed,
+    printing ``Material '?' (geometry entry #-1, Cylinder)`` -- the advisory
+    naming nothing, on exactly the multi-face case worth naming.
+
+    The entry index and material name are fields on the finding now, stamped
+    in the loop that knows them, so identity is never the question.
+    """
+    sim = _dp_sim()
+    sim.add_material("rod", eps_r=4.0)
+    span = NA * DP_DX
+    sim.add(Cylinder((span / 2, NB * DP_DX / 2, NZ * DP_DX / 2),
+                     NB * DP_DX / 2, span, axis="x"), material="rod")
+    found = _seam_findings(sim)
+    assert found, "the cylinder's transverse faces were not reported at all"
+    for f in found:
+        msg = str(f)
+        assert "'rod'" in msg, f"material name lost: {msg}"
+        assert "#-1" not in msg and "'?'" not in msg, (
+            f"the entry was recovered by identity and missed: {msg}")
+        assert "entry #0" in msg, msg

@@ -59,19 +59,19 @@
     "driver": "scripts/diagnostics/cv03_seam_facet/seam_facet.py --stage sweep",
     "after": {
       "artifact": "scripts/diagnostics/_artifacts/cv03_seam_facet/sweep_r2.json",
-      "sha256": "9f63f33ab4da99ef3854931584647c31c85369191b538c2227cf94f257ae91a3",
+      "sha256": "ee6f128b22f872a8e134cd523312c275477c81248649e756013f6b5a12441157",
       "provenance": {
-        "commit": "541f703f3f1fc37194fb135d65c9df4d6e21a18a",
+        "commit": "55deac07c50400fbef901be17edb5c242e172b04",
         "branch": "fix/1043-pad-material-in-smoothed-arrays",
-        "dirty": true,
+        "dirty": false,
         "case_sha": "3a807f24f31fd314ccd978b89511d0a9346e51ec",
         "python": "3.10.12",
         "argv": [
-          "scripts/diagnostics/cv03_seam_facet/seam_facet.py",
+          "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a125c1f0daf970e55/scripts/diagnostics/cv03_seam_facet/seam_facet.py",
           "--stage",
           "sweep",
           "--output",
-          "/tmp/claude-0/-root-workspace-byungkwan-workspace-research-rfx/44efb5ea-44e2-4413-9da7-9514386aba06/scratchpad/1043B_cv03_sweep_after.json"
+          "/tmp/claude-0/-root-workspace-byungkwan-workspace-research-rfx/44efb5ea-44e2-4413-9da7-9514386aba06/scratchpad/fin_cv03_sweep.json"
         ]
       },
       "arms": {
@@ -190,7 +190,7 @@
     "cpml_20_is_the_absorber_not_a_facet": "The cpml 20-layer arm reads 0.0515, above the 0.03 bar. It falls by ~9x per depth doubling (0.0055 at 40, 0.0006 at 60), which is an absorber's own residual reflection for an eps_r = 12 guided mode and not a facet. Section 8.4's bar is declared on the arm cv03 runs, which is UPML at 20 (0.0296). On the standalone unit rig the same quantity reads 0.0509/0.0061/0.0002 at 20/40/60 and is insensitive to transverse clearance, source position, fit window and record length -- so the depth ladder is the mechanism, measured twice."
   },
   "provenance": {
-    "commit": "5ac1c1ffb1f357c70dbc49c626146434482cc428",
+    "commit": "e73840f3d4d73186942f65483026e8bd4b8dcca3",
     "branch": "fix/1043-pad-material-in-smoothed-arrays",
     "base": "origin/main 541f703f (#1043 stage A, PR #1047)",
     "host": "remilab pod linux x86_64, CPU"
