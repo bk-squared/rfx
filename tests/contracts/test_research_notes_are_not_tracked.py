@@ -5,7 +5,8 @@ the repo's own operating standard says so in prose: agent-memory is "NOT
 version-controlled here", research_notes is "Local only -- gitignored in this
 public repo". Neither statement is self-enforcing. ``git add -f`` overrides a
 gitignore without warning, and between 2026-09-08 and 2026-09-14 fifteen
-commits force-added 1060 files (373.6 MB, 344.8 MB of it .npz/.npy arrays)
+commits force-added 1060 files (356.3 MiB, of which 344.8 MiB is 209 .npz/.npy
+arrays)
 under ``docs/research_notes/`` -- publishing internal chronology, and naming
 1060 public paths after private issue numbers, without anyone deciding to.
 
@@ -151,7 +152,13 @@ def test_the_gate_fires_on_a_repository_that_does_track_them(tmp_path: Path) -> 
 # appear in committed Python without a reviewer having written down why.
 # ---------------------------------------------------------------------------
 
-SWEEP_ROOTS = ("tests/", "validation/", "scripts/", "examples/", "rfx/")
+# Every tracked .py, with no root filter. An earlier revision listed roots
+# (tests/, validation/, scripts/, examples/, rfx/) and thereby missed the two
+# files that sit outside them: the repo-root conftest.py, whose breakage would
+# red every fresh clone, and docs/design_notes/931_migration/t3_remeasure.py.
+# Both are clean today. A root list has to be extended every time someone adds a
+# top-level directory, and nothing makes that failure visible -- so there is no
+# root list.
 SEGMENTS = ("research_notes", "agent-memory", "agent_memory")
 
 # path -> (how many segment literals it may contain, why each is not a read of a
@@ -242,7 +249,7 @@ SELF = "tests/contracts/" + Path(__file__).name
 
 
 def _swept_files(repo: Path) -> list[str]:
-    """Tracked Python under the swept roots, minus this file.
+    """Every tracked Python file, minus this one.
 
     This file is excluded because it is the rule, not a subject of it: it names
     both directories a dozen times in its own messages and mutants, and pinning
@@ -252,8 +259,7 @@ def _swept_files(repo: Path) -> list[str]:
     result = subprocess.run(["git", "ls-files", "--", "*.py"],
                             cwd=repo, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
-    return [p for p in result.stdout.split()
-            if p.startswith(SWEEP_ROOTS) and p != SELF]
+    return [p for p in result.stdout.split() if p != SELF]
 
 
 @pytest.mark.skipif(
