@@ -6,6 +6,21 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased — 2.0.0]
 
+### Fixed — the waveguide reference-plane device-overlap advisory could never fire (#1024)
+
+- `_validate_cfg_waveguide_reference_plane`'s third emission site read `g.bounds` off
+  the `_GeometryEntry` wrapper, which has no such attribute, under a bare
+  `except Exception: continue`; the `waveguide_reference_plane` advisory therefore never
+  emitted. It now reads `g.shape.bounding_box()` like every other geometry walk and
+  catches only the shape API's own `(NotImplementedError, TypeError)`.
+- **Who is affected**: a model whose geometry crosses a waveguide port's reference plane
+  now gets a WARNING-severity advisory (`run()`/`forward()` print it through the preflight
+  banner, and `sim.preflight(strict=True)` raises where it previously passed). The other two
+  emission sites of that check are documented as shadowed / unreachable, not deleted; the
+  frozen emission-site totals are unchanged (113 / 74). A new snapshot-lock fixture
+  witnesses the code; the 65 existing snapshots are byte-identical. cv11 (weekly
+  crossval-external lane) stays silent in all three configurations.
+
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
