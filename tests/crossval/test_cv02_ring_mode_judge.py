@@ -904,12 +904,15 @@ _MECHANISM_SENTENCES = {
     # the ingredient strings are persisted into every future crossval.json,
     # so the mechanism may not enter them at all.
     "persisted gate ingredients": (),
+    # The second entry here belonged to
+    # ``test_verdict_lane_q_gate_is_run_length_contingent``, deleted 2026-09-15
+    # when #907 declared the envelope (see the comment block above that test's
+    # replacement). The retraction it carried is unchanged and still stated on
+    # ring_mode_judge.py and 02_ring_resonator.py; only its copy here is gone.
     "this test file": (
         "#907 (2026-09-10) retracted the attribution of the rfx-vs-Meep Q gap"
         " to the ring s staircased curved boundary and its subpixel"
         " treatment, as an overclaim:",
-        "(Why it does not is UNRESOLVED -- #907 retracted the discretization"
-        " offset attribution this docstring used to state;",
     ),
 }
 
@@ -1669,64 +1672,177 @@ def test_format_record_plan_prints_every_mode_and_its_verdict() -> None:
     assert "resolvable-tau bound" in text
 
 
-# --- cv02 review2 F2: the verdict lane's Q gate is run-length contingent -----
+# --- #907 (2026-09-15): the q gate is a DECLARED consistency envelope -------
+#
+# What used to live here: ``test_verdict_lane_q_gate_is_run_length_contingent``
+# (#896 review2 F2), a CHARACTERIZATION test whose own docstring said "the
+# assertion ``longer.gates['q'] is False`` is the bug, not the requirement"
+# and "when the contingency is fixed this test must be INVERTED ... or deleted
+# along with it".
+#
+# #907 closed neither way, and that is why it is gone rather than flipped.
+# INVERTING it means asserting that a longer, better-settled record keeps the
+# PASS, which only a floor in the judge produces -- and the disposition #907
+# actually took refuses the floor (see ``Q_GATE_INGREDIENTS[2]``: the exact
+# finite-record Cramer-Rao bound is ~15x below the gap a floor would have to
+# license, the frequency-transport route is short at every mode, and a floor
+# large enough would have to be read off the gap). So the behaviour it pinned
+# is unchanged; what changed is its STATUS. A characterization test is a
+# promissory note against a future repair, and there is no repair pending any
+# more. Leaving it under that name would tell the next reader a fix is coming
+# when the repo has declared it is not.
+#
+# Every assertion it made that is still true moved into
+# ``test_the_q_gate_is_the_only_gate_that_moves_with_record_length`` below,
+# widened from two record lengths on one board to five on both.
 
 
-def test_verdict_lane_q_gate_is_run_length_contingent() -> None:
-    """Why the Meep (verdict) lane keeps its calibrated record instead of the
-    tau-scaled one -- executable, so the qualification cannot rot.
+def test_the_q_gate_is_declared_a_permanent_consistency_envelope() -> None:
+    """#907's remaining half, landed as option (b) of the issue's own two.
 
-    The judge's Q window ``tau_ref/T`` shrinks as 1/T. The rfx-vs-Meep Q gap
-    does not. (Why it does not is UNRESOLVED -- #907 retracted the
-    "discretization offset" attribution this docstring used to state; the
-    T-independence is what is measured, the mechanism is not.) So on the very
-    same (frozen) mode pair the q gate passes at the
-    committed record and fails at a longer, better-settled one, with the
-    frequency gates and the |ln Q| values unchanged. That is a comparator
-    defect tracked as issue #907 -- the tau_ref/T window shrinks with T faster
-    than the physics does, so a longer record fails a stable Q -- NOT a licence
-    to lengthen this lane's record, and NOT something this witness change
-    fixed.
-
-    CHARACTERIZATION TEST. It pins the CURRENT, DEFECTIVE behaviour: the
-    assertion ``longer.gates["q"] is False`` is the bug, not the requirement.
-    When the contingency is fixed this test must be INVERTED (a longer,
-    better-settled record has to keep the PASS) or deleted along with it -- do
-    not "repair" the judge to keep this assertion green.
-
-    **#907 being CLOSED is not that fix.** It was closed on 2026-09-13 as a
-    design item: its separable mathematical defect went to #945, and the three
-    ingredients that would let a floor be derived -- the rfx estimator's real
-    SNR / model-order uncertainty, a source-free Meep reference record, and a
-    discretization budget against the exact annulus -- were deferred to a
-    pre-declared campaign rather than settled by choosing a number. Setting the
-    floor from the observed gap was refused, because it would make the gate
-    certify the agreement it exists to test. So this test stays as written
-    until that campaign lands."""
-    committed = _judge(RFX_TODAY)                      # T = RECORD_T = 291
-    longer = rmj.judge(MEEP_REFERENCE, RFX_TODAY, 3385.0,
-                       f_min=0.1, f_max=0.2)           # 1 e-fold of tau_slow
-
-    assert committed.gates["q"] is True
-    assert longer.gates["q"] is False
-    # nothing about the physics moved: same modes, same errors, same |ln Q|
-    for gate in ("unmatched", "count", "mean_err", "max_err"):
-        assert committed.gates[gate] is longer.gates[gate] is True
-    assert longer.mean_err_pct == pytest.approx(committed.mean_err_pct)
-    ln_committed = {round(r.ref_freq, 6): r.q_log_ratio
-                    for r in committed.rows if r.q_log_ratio is not None}
-    ln_longer = {round(r.ref_freq, 6): r.q_log_ratio
-                 for r in longer.rows if r.q_log_ratio is not None}
-    for freq, value in ln_committed.items():
-        assert ln_longer[freq] == pytest.approx(value)
-    # the flip is the window alone, and it is the FASTEST mode that flips
-    fast_c = [r for r in committed.rows if r.ref_freq < 0.12][0]
-    fast_l = [r for r in longer.rows if r.ref_freq < 0.12][0]
-    assert fast_l.q_window < fast_c.q_window
-    assert fast_l.q_log_ratio > fast_l.q_window >= 0.0
-    assert fast_c.q_log_ratio < fast_c.q_window
-    # and the limitation is written where the window is derived
+    The issue asked for either a derived ingredient 1 plus a declared
+    ingredient 3, or "a permanent statement that the cv02 Q gate is a
+    two-solver consistency envelope". This pins the second, on every surface
+    a reader arrives from, and pins that it was NOT done by quietly turning
+    ingredient 3 into a number.
+    """
+    budget = [i for i in rmj.Q_GATE_INGREDIENTS
+              if i.name == "discretization_budget"][0]
+    # the hole is still a hole -- no floor was back-filled
+    assert budget.kind == "absent"
+    assert "none declared" in budget.quantity
+    assert "DECLARED PERMANENT" in budget.basis
+    # ... and the standard for ever filling it is still written down, in full
+    for required in ("SNR / model-order uncertainty",
+                     "source-free Meep reference record",
+                     "CONVERGED"):
+        assert required in budget.basis, required
+    # the character says permanent, and still says what it is not
+    assert "PERMANENT" in rmj.Q_GATE_CHARACTER
+    assert "consistency envelope" in rmj.Q_GATE_CHARACTER
+    assert "consistency heuristic" in rmj.Q_GATE_CHARACTER
+    assert "NOT a Q-accuracy guarantee" in rmj.Q_GATE_CHARACTER
+    # the module docstring carries the derivation, not just the verdict
+    module_doc = rmj.__doc__
+    assert "PERMANENT DECLARATION" in module_doc
+    assert "Cramer-Rao" in module_doc
+    # and the case says it where a reader of the script meets it. Flattened,
+    # because the declaration is a wrapped comment block and a line break must
+    # not be able to hide it.
+    script = _flatten_prose(SCRIPT_PATH.read_text(encoding="utf-8"),
+                            python_source=True)
+    assert "DECLARED PERMANENT" in script
+    assert "consistency envelope" in script
+    # the known limitation stays where the number is produced
     assert "Known limitation" in rmj.q_window.__doc__
+    assert "not being repaired" in rmj.q_window.__doc__
+
+
+#: The ``q`` gate's verdict at five record lengths on both boards, measured
+#: through the unmodified judge on 2026-09-15. FIVE of the ten cells are
+#: False. This table is the declared envelope's behaviour, not a defect
+#: awaiting repair (#907); a change to it is a change to a claims-bearing
+#: gate and must be argued, not absorbed.
+Q_GATE_BY_RECORD_LENGTH = {
+    ("tutorial", 260.9798793571893): True,
+    ("tutorial", 291.0): True,
+    ("tutorial", 3385.0): False,
+    ("tutorial", 15600.0): False,
+    ("tutorial", 1e6): False,
+    ("live937", 260.9798793571893): True,
+    ("live937", 291.0): True,
+    ("live937", 3385.0): True,
+    ("live937", 15600.0): False,
+    ("live937", 1e6): False,
+}
+
+
+def _live_board():
+    """The committed #937 board, read from the retained record."""
+    doc = json.loads(CV02_RECORD.read_text(encoding="utf-8"))
+    ref = [rmj.ReferenceMode(m["freq_c_over_a"], m["Q"])
+           for m in doc["measured"]["meep_modes"]]
+    rfx = [rmj.SolverMode(m["freq_c_over_a"], m["Q"], m["amplitude"])
+           for m in doc["measured"]["rfx_modes"]]
+    return ref, rfx
+
+
+def test_the_q_gate_is_the_only_gate_that_moves_with_record_length() -> None:
+    """The declared envelope, executable — and the successor to the deleted
+    characterization test (see the comment block above).
+
+    Two things at once, and the second is the reason the first is tolerable:
+
+    * the ``q`` gate IS run-length contingent, in exactly the five of ten
+      cells pinned in :data:`Q_GATE_BY_RECORD_LENGTH`. The gate's scale is
+      ``s = tau_ref/T``; shrinking it with ``T`` is the declared policy
+      (ingredient 1), not an accident;
+    * NOTHING else moves. ``unmatched``, ``count``, ``mean_err``,
+      ``max_err``, every row's ``|ln Q|`` and every row's frequency error are
+      bit-identical across a 3800x range in ``T`` on both boards. The
+      physics the case measures does not depend on the record length; only
+      the tolerance does.
+
+    That pairing is the whole content of "consistency envelope": the ``q``
+    verdict is a statement about the window, and the window is declared.
+    """
+    boards = {"tutorial": (list(MEEP_REFERENCE), list(RFX_TODAY)),
+              "live937": _live_board()}
+    seen, gated = {}, {}
+    for name, (ref, rfx) in boards.items():
+        baseline = None
+        for (board, record_T) in Q_GATE_BY_RECORD_LENGTH:
+            if board != name:
+                continue
+            verdict = rmj.judge(list(ref), list(rfx), record_T,
+                                f_min=F_MIN, f_max=F_MAX)
+            seen[(name, record_T)] = verdict.gates["q"]
+            frozen = {
+                "gates": {g: verdict.gates[g] for g in
+                          ("unmatched", "count", "mean_err", "max_err")},
+                "mean_err_pct": round(verdict.mean_err_pct, 12),
+                # |ln Q| is a property of the two mode lists, so it is
+                # reported for EVERY row regardless of whether that row was
+                # gated -- computed here from the pair, not read from the
+                # verdict, precisely so the growing gated set below cannot
+                # hide a change in it.
+                "lnQ": {round(r.ref_freq, 9): round(
+                    abs(math.log(r.rfx_Q / r.ref_Q)), 12)
+                    for r in verdict.rows},
+                "freq_err": {round(r.ref_freq, 9): round(r.freq_err_pct, 12)
+                             for r in verdict.rows},
+            }
+            gated[(name, record_T)] = tuple(
+                round(r.ref_freq, 6) for r in verdict.rows if r.q_gated)
+            for row in verdict.rows:
+                if row.q_log_ratio is not None:
+                    assert row.q_log_ratio == pytest.approx(
+                        frozen["lnQ"][round(row.ref_freq, 9)])
+            if baseline is None:
+                baseline = frozen
+            assert frozen == baseline, (name, record_T)
+        assert all(baseline["gates"].values())
+    assert seen == Q_GATE_BY_RECORD_LENGTH
+    assert sum(1 for v in seen.values() if v is False) == 5
+    # The one other thing T moves, and it moves the RIGHT way: the admission
+    # cut Q_RECORD_MIN_EFOLDS lets MORE modes be judged as the record grows,
+    # never fewer. So a longer record reds the gate while judging strictly
+    # more of the physics -- which is what makes the contingency awkward and
+    # is exactly why it is declared rather than hidden.
+    for name in boards:
+        lengths = sorted(T for (b, T) in gated if b == name)
+        for shorter, longer in zip(lengths, lengths[1:]):
+            assert set(gated[(name, shorter)]) <= set(gated[(name, longer)])
+        assert len(gated[(name, lengths[0])]) < len(gated[(name, lengths[-1])])
+    # the flip is the window alone, and it is the FASTEST mode that flips
+    ref, rfx = boards["tutorial"]
+    short = rmj.judge(list(ref), list(rfx), 291.0, f_min=F_MIN, f_max=F_MAX)
+    long_ = rmj.judge(list(ref), list(rfx), 3385.0, f_min=F_MIN, f_max=F_MAX)
+    fast_s = [r for r in short.rows if r.ref_freq < 0.12][0]
+    fast_l = [r for r in long_.rows if r.ref_freq < 0.12][0]
+    assert fast_l.q_window < fast_s.q_window
+    assert fast_s.q_pass is True and fast_l.q_pass is False
+    assert fast_l.q_log_ratio == pytest.approx(fast_s.q_log_ratio)
 
 
 def test_cv02_persists_and_exits_through_one_decision_value() -> None:
@@ -1798,3 +1914,269 @@ def test_cv02_persists_and_exits_through_one_decision_value() -> None:
     assert all(len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
                for node in writes)
     assert {node.targets[0].id for node in writes} == {"_rc", "rc"}
+
+
+# --- #907: the exact annulus, and why neither ingredient closes -------------
+
+ANNULUS_SCRIPT = REPO_ROOT / "scripts/diagnostics/cv02_exact_annulus_qnm.py"
+ANNULUS_JSON = REPO_ROOT / "tests/fixtures/cv02_ring_judge/exact_annulus_qnm.json"
+annulus = _load("cv02_exact_annulus_qnm", ANNULUS_SCRIPT)
+
+#: The continuum anchor for cv02's geometry, to the digits two fully
+#: independent 4x4 Bessel/Hankel matching implementations agree on. Committed
+#: so the numbers survive the script, and so a reader can check the leverage
+#: argument without running anything.
+EXACT_ANNULUS = {
+    3: (0.11819169, 77.2554),
+    4: (0.14743103, 343.9165),
+    5: (0.17577937, 1634.2056),
+}
+
+
+# Convergence witnesses, not reproducible values: at a converged root these sit a
+# few ulp above zero, so their last bits are a property of the machine and not of
+# the physics. Compared against their bound, never against each other.
+_RESIDUAL_FIELDS = ("normalized_residual",)
+
+
+def test_the_exact_annulus_oracle_reproduces_its_frozen_fixture() -> None:
+    """The oracle is a diagnostic, so its output has to be checkable without
+    it: the committed fixture is the artifact, the script is how it was made.
+
+    Also pins the published digits directly, because those are what the #907
+    argument is quoted from and what an independent implementation can be
+    checked against.
+    """
+    frozen = json.loads(ANNULUS_JSON.read_text(encoding="utf-8"))
+    fresh = annulus.build()
+    assert fresh["schema"] == frozen["schema"]
+    assert fresh["geometry"] == frozen["geometry"]
+    for key, was in frozen["modes"].items():
+        now = fresh["modes"][key]
+        assert set(now) == set(was)
+        for field, value in was.items():
+            if field in _RESIDUAL_FIELDS:
+                # Deliberately NOT compared by value. The equilibrated residual
+                # at a converged root is a few times machine epsilon, so what it
+                # reports is "the solve converged", not a number the code
+                # promises to reproduce: the last bits depend on the BLAS, the
+                # accumulation order and the arrival path to the root, and they
+                # move by tens of percent between two runs that agree on every
+                # physical digit. An earlier revision of this test compared it
+                # like any other float and the `abs=1e-14` below swallowed a
+                # 33-52 % relative disagreement on exactly these three entries,
+                # which is how a fixture that does not re-derive from its own
+                # script passed a reproduction gate. It is checked against its
+                # bound instead, immediately below.
+                continue
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                # `abs` is gone with the residuals: every field still compared
+                # here is a physical quantity of order 0.1 to 1e3, so `rel`
+                # governs and no absolute floor can mask a disagreement.
+                assert now[field] == pytest.approx(value, rel=1e-6)
+            else:
+                assert now[field] == value
+        f_pub, q_pub = EXACT_ANNULUS[int(key)]
+        assert now["f_exact"] == pytest.approx(f_pub, abs=5e-9)
+        assert now["Q_exact"] == pytest.approx(q_pub, abs=5e-5)
+        for field in _RESIDUAL_FIELDS:
+            assert now[field] < annulus.RESIDUAL_MAX
+            assert was[field] < annulus.RESIDUAL_MAX
+
+
+def test_the_annulus_residual_is_invariant_under_row_and_column_rescaling(
+) -> None:
+    """Why the convergence criterion is NOT ``|det| < 1e-8``.
+
+    Writing a matching equation in different units rescales a ROW; writing a
+    basis function with a different constant rescales a COLUMN. Neither moves
+    a root or changes any physics, and both multiply the determinant. So a
+    bare determinant threshold is not decidable across implementations --
+    three correct implementations of this same 4x4 report ``|det|`` at the
+    same roots seven orders of magnitude apart.
+
+    The row/column-equilibrated smallest singular value is invariant under
+    exactly that class of rescalings, which is what makes it quotable. This
+    test measures both: the residual must not move, and the determinant must.
+    """
+    def residual_of(mat):
+        mat = mat.copy()
+        for _ in range(annulus.EQUILIBRATION_SWEEPS):
+            mat = mat / np.linalg.norm(mat, axis=1)[:, None]
+            mat = mat / np.linalg.norm(mat, axis=0)[None, :]
+        return float(np.linalg.svd(mat, compute_uv=False)[-1])
+
+    rng = np.random.default_rng(907)
+    for m in EXACT_ANNULUS:
+        root = annulus.find_mode(m)
+        # The invariance is measured OFF the root, where the residual is
+        # O(0.03) and not floating-point noise; at the root every quantity
+        # here is at machine epsilon and agreement there proves nothing.
+        off = root * 1.01
+        matrix = annulus.matching_matrix(off, m)
+        rows = np.exp(rng.normal(0.0, 6.0, 4))
+        cols = np.exp(rng.normal(0.0, 6.0, 4))
+        scaled = (rows[:, None] * matrix) * cols[None, :]
+
+        # the module's own criterion IS the equilibrated smallest singular
+        # value -- swapping in a bare determinant reds this line
+        assert annulus.normalized_residual(off, m) == pytest.approx(
+            residual_of(matrix), rel=1e-12)
+        assert residual_of(matrix) > 1e-3
+        # ... and it does not move when the same physics is written with
+        # different equation and basis constants
+        assert residual_of(scaled) == pytest.approx(residual_of(matrix),
+                                                    rel=1e-9)
+        # ... while the determinant moves by orders of magnitude on exactly
+        # that rewrite, which is why a |det| threshold is not decidable
+        ratio = abs(np.linalg.det(scaled)) / abs(np.linalg.det(matrix))
+        assert ratio > 1e3 or ratio < 1e-3
+        # at the root, both forms are singular to machine precision
+        assert annulus.normalized_residual(root, m) < annulus.RESIDUAL_MAX
+        assert residual_of(annulus.matching_matrix(root, m)) < \
+            annulus.RESIDUAL_MAX
+
+
+def test_the_annulus_leverage_is_a_choice_not_an_analytic_property() -> None:
+    """``|dlnQ/dlnf|`` for this annulus is not a number; it is an interval.
+
+    Two error channels, measured on the exact solution:
+
+    * index: ``dlnf/dlnn`` ~ -0.95, ``dlnQ/dlnn`` = +4.65/+6.59/+8.57, so
+      ``|dlnQ/dlnf|`` = 4.97 / 6.91 / 8.85;
+    * uniform radius: ``dlnf/dlnR = -1`` EXACTLY and ``dlnQ/dlnR = 0``
+      EXACTLY -- Maxwell is scale invariant, so scaling the whole annulus
+      moves every frequency and no Q at all. Leverage 0.
+
+    A discretization budget of the form "a permitted frequency error,
+    transported into Q" therefore has to DECLARE which channel a solver's
+    geometry error lives in. That is an assumption about the solver, not a
+    property of the annulus, and it is one reason #907's ingredient 3 stays
+    absent.
+    """
+    frozen = json.loads(ANNULUS_JSON.read_text(encoding="utf-8"))["modes"]
+    expected_index = {3: 4.9744, 4: 6.9058, 5: 8.8544}
+    for key, mode in frozen.items():
+        assert mode["dlnf_dlnR"] == pytest.approx(-1.0, abs=1e-6)
+        assert mode["dlnQ_dlnR"] == pytest.approx(0.0, abs=1e-6)
+        assert mode["leverage_radius_channel"] == pytest.approx(0.0, abs=1e-6)
+        assert mode["leverage_index_channel"] == pytest.approx(
+            expected_index[int(key)], abs=1e-3)
+        assert mode["dlnQ_dlnn"] > 0.0 and mode["dlnf_dlnn"] < 0.0
+
+
+def test_no_exact_annulus_frequency_budget_covers_the_observed_q_gap() -> None:
+    """The measured half of #907's disposition, branch 2.
+
+    Transport the frequency disagreement that is actually there through the
+    LARGEST of the two leverage channels, two ways, and neither reaches the
+    Q gap it would have to license:
+
+    * the rfx-vs-Meep frequency DIFFERENCE -> 0.0026 / 0.0021 / 0.0032,
+      against observed |lnQ| 0.058 / 0.048 / 0.076: short by ~23x;
+    * both solvers' FULL error against the continuum, added (the most
+      generous reading available) -> 0.013 / 0.023 / 0.051: still short at
+      every mode, though only by 1.5x at m = 5.
+
+    Reported as a negative result, not rounded up: the second branch gets
+    within a factor 1.5 of the slowest mode's gap, so "frequency error at
+    maximum leverage" is not absurd -- it is unproven, and proving it needs
+    the converged ladder that does not exist.
+    """
+    frozen = json.loads(ANNULUS_JSON.read_text(encoding="utf-8"))["modes"]
+    tight, generous = [], []
+    for key in sorted(frozen, key=int):
+        mode = frozen[key]
+        gap = abs(mode["rfx_minus_meep_dlnQ"])
+        assert mode["transported_rfx_minus_meep"] < gap
+        assert mode["transported_each_solver_vs_exact"] < gap
+        tight.append(gap / mode["transported_rfx_minus_meep"])
+        generous.append(gap / mode["transported_each_solver_vs_exact"])
+    assert min(tight) > 20.0
+    assert min(generous) > 1.4
+    # and the observed gaps themselves are the committed record's, unchanged
+    assert [round(abs(frozen[k]["rfx_minus_meep_dlnQ"]), 4)
+            for k in sorted(frozen, key=int)] == [0.0582, 0.0479, 0.0761]
+
+
+def _sigma_ln_q_crb(alpha: float, record_T: float, n_samples: int,
+                    rho: float) -> float:
+    """Exact finite-record Cramer-Rao sigma on ``ln Q`` for a damped
+    exponential, amplitude treated as an unknown nuisance.
+
+    ``e_n = sum_k t_k**n exp(-2 alpha t_k)``;
+    ``var(alpha) = (1 / 2 rho) * e0 / (e0 e2 - e1**2)``;
+    ``sigma_lnQ = sqrt(var(alpha)) / alpha`` because ``Q = pi f / alpha``.
+    """
+    t = np.arange(n_samples) * (record_T / n_samples)
+    w = np.exp(-2.0 * alpha * t)
+    e0, e1, e2 = w.sum(), (t * w).sum(), (t * t * w).sum()
+    return float(math.sqrt((1.0 / (2.0 * rho)) * e0 / (e0 * e2 - e1 * e1))
+                 / alpha)
+
+
+def test_the_finite_record_cramer_rao_bound_does_not_license_the_q_gap(
+) -> None:
+    """The measured half of #907's disposition, branch 1 -- and a guard
+    against the mistake that made an earlier draft of it wrong.
+
+    The long-record limit of this bound is ``2 sqrt(dt / (rho tau))``, which
+    is ``T``-independent. Evaluating THAT at cv02's record is wrong by up to
+    54x, because cv02's slowest mode runs at ``T/tau = 0.082`` -- nowhere
+    near the limit. The exact finite-``T`` Fisher information is what this
+    test uses, and it establishes three things:
+
+    1. the exact bound is 1.7x / 7.0x / 54x LARGER than the saturated form
+       at cv02's own record, so the saturated form must not be quoted here;
+    2. it is nonetheless ~15x SMALLER than the slowest mode's observed
+       ``|lnQ| = 0.076`` at a per-sample SNR of 1e4, so estimator noise does
+       not license the gap. (``rho`` on the real multi-mode record is
+       UNMEASURED; 1e4 is an assumption, stated, and the required ``rho``
+       for the bound to reach the gap is only 1.1 / 8.0 / 44.7 -- ordinary
+       SNRs, which is exactly why this cannot be settled without measuring
+       it. That measurement is the first of ingredient 3's three missing
+       artifacts.);
+    3. in cv02's regime it scales as ``T**-1.5``, FASTER than the gate's
+       ``tau/T``. A derived ingredient 1 would tighten this gate with record
+       length, not widen it -- the sharper form of what #907 opened on.
+    """
+    record = json.loads(CV02_RECORD.read_text(encoding="utf-8"))
+    record_T = record["rig"]["record_length_meep_units"]
+    n_samples = record["rig"]["harminv_span_samples"]
+    dt = record_T / n_samples
+    assert (record_T, n_samples) == (260.9798793571893, 3728)
+
+    ratios, gaps = [], []
+    for row in record["measured"]["assignment"]:
+        tau = row["ref_Q"] / (math.pi * row["ref_freq"])
+        alpha = 1.0 / tau
+        exact = _sigma_ln_q_crb(alpha, record_T, n_samples, rho=1e6)
+        saturated = 2.0 * math.sqrt(dt / (1e6 * tau))
+        ratios.append(exact / saturated)
+        gaps.append(abs(math.log(row["rfx_Q"] / row["ref_Q"])))
+    # (1) the saturated form understates the bound, badly, at this record
+    assert [round(r, 1) for r in ratios] == [1.7, 7.0, 54.2]
+
+    # (2) the slowest mode, at a stated rho, is still far under its own gap
+    slow = record["measured"]["assignment"][-1]
+    alpha_slow = math.pi * slow["ref_freq"] / slow["ref_Q"]
+    sigma = _sigma_ln_q_crb(alpha_slow, record_T, n_samples, rho=1e4)
+    assert sigma == pytest.approx(0.00509, abs=5e-5)
+    assert gaps[-1] / sigma > 14.0
+    # the rho that WOULD reach each gap is ordinary, not absurd -- say so
+    required = [1e6 * (_sigma_ln_q_crb(
+        math.pi * r["ref_freq"] / r["ref_Q"], record_T, n_samples, 1e6) / g)**2
+        for r, g in zip(record["measured"]["assignment"], gaps)]
+    assert [round(x, 1) for x in required] == [1.1, 8.0, 44.7]
+
+    # (3) T**-1.5 in this regime, and it does saturate eventually -- which is
+    #     why the asymptotic form is right somewhere and wrong here
+    short = _sigma_ln_q_crb(alpha_slow, record_T, n_samples, rho=1e4)
+    longer = _sigma_ln_q_crb(alpha_slow, 2.0 * record_T, 2 * n_samples,
+                             rho=1e4)
+    exponent = math.log(short / longer) / math.log(2.0)
+    assert 1.35 < exponent < 1.55
+    very_long = _sigma_ln_q_crb(alpha_slow, 200.0 * record_T,
+                                200 * n_samples, rho=1e4)
+    assert very_long == pytest.approx(
+        2.0 * math.sqrt(dt / (1e4 / alpha_slow)), rel=0.02)

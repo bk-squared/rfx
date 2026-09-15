@@ -229,6 +229,51 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   `sys.exit` path in the ring-resonator crossval to use the same `_rc` value,
   preventing a later exit branch from contradicting retained evidence.
 
+### Changed — cv02's Q gate is declared a permanent consistency envelope (#907)
+
+- **No behaviour change. No gate value, admission cut, bound or verdict moved.**
+  #907's remaining half offered two dispositions: derive the estimator's real
+  uncertainty law and declare a discretization budget, or state permanently
+  that the cv02 `q` gate is a two-solver consistency envelope. The second is
+  taken. `Q_GATE_INGREDIENTS[2].kind` stays `absent`, and the declaration —
+  with the standard that would have to be met before it could change — is
+  written into the comparator's docstring, its ingredient table,
+  `Q_GATE_CHARACTER`, and the case's own record-length comment.
+- Why not the first disposition, measured rather than asserted. (a) The exact
+  finite-record Cramér–Rao bound on `ln Q` at cv02's own record is ~5e-3 for
+  the slowest mode at per-sample SNR 1e4 — ~15× below that mode's observed
+  `|lnQ| = 0.076` — so estimator noise does not license the gap. In this regime
+  it scales as `T^-1.5`, i.e. *faster* than the gate's `tau/T`, so a derived
+  ingredient 1 would tighten this gate with record length rather than widen it.
+  (The long-record form `2 sqrt(dt/(rho tau))` understates the bound by up to
+  54× here and must not be quoted at cv02's record.) (b) The exact annulus
+  transports the measured frequency disagreement into at most 0.013/0.023/0.051
+  of `|lnQ|` against observed 0.058/0.048/0.076 — short at every mode, by 1.5×
+  to 23× depending on which error the budget is built from. Neither candidate
+  explains the gap, so any floor wide enough to cover it would have to be read
+  off the gap.
+- Add `scripts/diagnostics/cv02_exact_annulus_qnm.py` and its frozen fixture
+  `tests/fixtures/cv02_ring_judge/exact_annulus_qnm.json`: the exact 2-D TM
+  quasi-normal modes of cv02's annulus from a 4×4 Bessel/Hankel matching
+  determinant (m = 3/4/5 → `f` 0.11819169 / 0.14743103 / 0.17577937, `Q`
+  77.2554 / 343.9165 / 1634.2056), with both leverage channels. Its convergence
+  criterion is the row/column-equilibrated smallest singular value, **not** a
+  bare `|det|` threshold: rescaling an equation or a basis function moves the
+  determinant by orders of magnitude without moving a root, and three correct
+  implementations of the same 4×4 disagree on `|det|` by seven orders.
+- Record that `|dlnQ/dlnf|` for this annulus is an interval, not a number:
+  4.97/6.91/8.85 for an index error and exactly 0 for a uniform radius error
+  (`dlnf/dlnR = -1`, `dlnQ/dlnR = 0`). Any budget transported through it is
+  declaring an error channel, not deriving one.
+- Delete `test_verdict_lane_q_gate_is_run_length_contingent`. Inverting it was
+  unavailable — inversion asserts a PASS at long records that only a floor
+  produces — and after the declaration it is a promissory note against a repair
+  that is not coming. Replaced by
+  `test_the_q_gate_is_the_only_gate_that_moves_with_record_length`, which keeps
+  every invariance assertion, widens the sweep from two record lengths on one
+  board to five on both, pins the measured 10-cell table (5 of 10 `q` False,
+  not 4), and adds that the Q-gated row set grows with `T` and never shrinks.
+
 ### Changed — cv02 Q gate states which of its inputs are derived (#907)
 
 - Split the ring-resonator Q gate into three named ingredients with an explicit
