@@ -91,3 +91,28 @@ and is committed.
 ## Results
 
 (appended per arm)
+
+### Arm y — E6 rotated onto the y axis (run once on c2025d34, 68 s; `e7_y.json`)
+
+Self-test passed; induced directions constant on the 20-cell tied set.
+(`git_dirty: true` in the provenance is the instrument's own untracked
+output and `.started` sentinel under `validation/` — the same class Lane 1
+recorded; no tracked file differed.)
+
+| loss | control | R0 | R1 | pts | order | FD | narrowest 3B/\|g\| | floor |
+|---|---|---|---|---|---|---|---|---|
+| L1 (600 steps) | **w** | 1.038 | **1.943** | 5 | **HELD** | **HELD** | 4.4e-3 | 2.9 ulp |
+| L1 | y_c | — | — | 1 | INCONCLUSIVE | HELD | 1.6e-2 | 2.1 ulp |
+| L2s (Hann + comb) | **w** | 0.950 | **1.962** | 6 | **HELD** | **HELD** | 7.0e-4 | 14.0 ulp |
+| L2s | y_c | — | — | 3 | INCONCLUSIVE | HELD | 3.4e-4 | 1.9 ulp |
+
+Revert-proof (`stop_gradient(dt)`, forward bit-identical): `w` FIRES on both
+losses — L1 R1 1.023, L2s R1 0.979, FD FIRED; dt share 0.588 (L1) / 0.767
+(L2s). Coverage: L1 0.802 (verified 0.802), L2s 0.680 (verified 0.671).
+
+Reading: the y axis reproduces E6's x results to the third digit
+(x: R1 1.945 / 1.962, dt share 0.588 / 0.767, coverage 0.802 / 0.680) —
+the in-plane width gradient is now verified on both in-plane axes, dt path
+included. `y_c` is INCONCLUSIVE on order for the same reason as E6's `x_c`
+(source and probe on opposite sides of the strip; the fixture, not the
+gradient) — which is exactly what the `pos` arm is for.
