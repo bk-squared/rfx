@@ -1,10 +1,12 @@
 # Results — what carries the empty-guide transmission tilt on `normalize=False`
 
 Verdict: **branch (iii) of the pre-declaration, DOES NOT CLOSE.** None of the candidates
-reproduces the measured curve, and the pre-declared falsifier run refutes the one
-candidate that survived to it. Per the rule fixed before any number was computed, this
-stops here: no third attempt, no further correction, no gate, tolerance or golden moved,
-and `rfx/` carries no diff.
+reproduces the measured curve, and a post-hoc candidate reached for afterwards was
+refuted by its own run (section 4). Branch (iii) owed no falsifier and none was run — the
+pre-declaration authorises one only on branch (i), and section 6 records that deviation
+along with one other. Per the rule fixed before any number was computed, this stops here:
+no third attempt, no further correction, no gate, tolerance or golden moved, and `rfx/`
+carries no diff.
 
 What the run does deliver, and what attempt 1 did not, is the **location** of the defect,
 measured rather than argued, plus a bound that retires a whole family of candidates at
@@ -364,7 +366,7 @@ would otherwise be the obvious suspect, and because this is a different mechanis
 
 **Branch (iii): DOES NOT CLOSE.** Candidates A, C and D are excluded by derivation and
 code reading; B and E by the section-2 bound; G by reciprocity; F by the record-length run;
-and the section-5 falsifier refutes the profile-pairing candidate. No candidate reproduces
+and the post-hoc §4 run refutes the profile-pairing candidate. No candidate reproduces
 the per-bin curve, so the decision rule's tolerances (factor 1.25 at the worst bin, sign
 crossing within ±2 bins, rung ratios within ±25 %) were never reached — nothing got close
 enough for them to bind.
@@ -438,7 +440,11 @@ moves without the note moving reds this gate.
 `tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.coarse.planes.drive_ref.distance_from_driven_source_m = 0.00762000`,
 `tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.coarse.planes.recv_ref.x_m = 0.101600`.
 
-**The profile mismatch and the falsifier (section 4).**
+**The profile mismatch and the post-hoc run against it (section 4).** (The artifact's
+stage is keyed `falsifier.*` because it was written under that name before the review
+established the run is post-hoc. The key is left alone: renaming it would mean re-running
+the FDTD stages, which nothing here justifies. The prose, not the key, is what claims a
+discipline.)
 
 `tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::profiles.coarse.predicted_edge_excess_half_f0 = 8.05694`,
 `tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::profiles.coarse.measured_edge_excess = 8.13987`,
