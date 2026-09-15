@@ -108,7 +108,7 @@ tests skip cleanly — which is what the two openEMS entries did here.
 
 ## 2. What the manifest's `cpu-runner` tier claims, and who executes it
 
-- 17 of 21 cases carry `cpu-runner` in `execution_tiers`
+- 17 of 22 cases carry `cpu-runner` in `execution_tiers`
   (`python -c "import json; m=json.load(open('validation/crossval/manifest.json')); print(sum('cpu-runner' in c['execution_tiers'] for c in m['cases']))"`).
   #717 says 16/21; the manifest has moved since (cv05 retired 2026-09-10, issues #959/#965).
 - `scripts/run_crossval_cpu.py:106-112` builds `CPU_SUBSET` from each case's
@@ -279,6 +279,145 @@ external solvers inside pytest — is already covered outside pytest by two lane
   the existing `_retired_by_931_fixture_repair` key corrects other claims in the same `_note`
   the same way, and rewriting archived prose in place would break the T7 note's quotation of
   it.
+
+---
+
+## 7. PI decision, 2026-09-15 — option (b), and what was built for it
+
+**The recommendation in Sec. 4 was not taken.** The PI chose **option (b)**: build the
+solver-carrying lane so the four files' external legs run for real. The Sec. 4 `$IGN`
+deletion is explicitly not part of it — that trick gives the 5 rfx-only gates a weekly
+home while leaving the 13 external legs reporting as skips, and the 13 are what the PI
+asked for. `$IGN` therefore stays in `scripts/vessl_validation_lane_a6000.yaml`.
+
+### What measurement changed about Sec. 3(b)
+
+Sec. 3(b) called (b) the expensive option and blamed a dependency conflict. The
+conflict is real and permanent; the cost estimate was not.
+
+- **The numpy split is structural.** Every conda-forge `pymeep` build through 1.34.0
+  declares `numpy >=1.11.3,<2.0a0` — every python version, both MPI variants. There is
+  no numpy-2 pymeep to wait for.
+- **But rfx does not need numpy 2.** The `crossval-external` job already runs
+  conda-forge pymeep and `pip install -e ".[dev]"` in one conda env every week, and
+  `scripts/vessl_crossval_external.yaml`, `vessl_fast_lane_pytest.yaml`,
+  `vessl_slow_lane_pytest.yaml` and `vessl_highmem_lane_pytest.yaml` all run
+  `jax[cpu]==0.6.2` with `numpy<2` on this cluster. Sec. 3(b)'s "rfx/JAX want numpy ≥ 2"
+  is a property of the image the a6000 lane happens to use, not of rfx. Pinning jax is
+  enough, and this repo has been doing it for a month.
+- **So (b) is one image layer, not a third solver build.** `FROM` the existing
+  `ghcr.io/bk-squared/rfx-openems` image, add conda-forge pymeep, rebuild the two
+  binding packages against the post-solve interpreter.
+- **One interpreter is required, not convenient.** `test_crossval_comprehensive.py`'s
+  `TestPECCavity` holds `test_rfx_vs_meep` (`:163`) and `test_rfx_vs_openems` (`:171`)
+  in the same class. Two conda prefixes cannot run that file.
+- **Sec. 1's 459 s is a loaded-pod number and 31 s is a laptop number; neither is the
+  lane's.** Re-measured 2026-09-15 at `541f703f` on an 18-core Apple Silicon host: the
+  four files run `5 passed, 13 skipped in 31.12 s`, with
+  `TestPECCavity::test_rfx_vs_analytical` at 25.33 s of it. Sec. 1's 459 s was that same
+  test under contention on a 32-vCPU pod at load average 5.7. **This is a cross-machine
+  comparison and does not transfer to the lane's pod** — it bounds the rfx-only cost as
+  tens of seconds rather than minutes on an unloaded box, and says nothing about the 13
+  external legs, which have never run anywhere. The lane's real cost is unmeasured until
+  the manual submit.
+
+### The lane is CPU -- asked, and answered
+
+The PI wrote "solver-carrying **GPU** lane". This lane asks for `cpu: 32, memory: 64Gi`
+instead, and the reason is the measurement above plus a standing rule:
+
+- Meep and openEMS are CPU-only solvers and dominate the wall time.
+- rfx's own five tests here take 31 s on CPU. The `gpu` marker on these files means
+  "too slow on CPU or GPU-specific"; at 31 s neither applies to the five that run today.
+- `_configs/.claude/rules/vessl-jobs.md`: *"Ask for CPU and memory explicitly when the
+  work is CPU-only. Taking a GPU preset to get RAM wastes a card that other work is
+  queued for."*
+- The lab has exactly two GPU nodes (`remilab-l05`, `remilab-l09`, from
+  `vessl cluster list-nodes remilab-c0`) and `weekly-a6000-lane` already holds one every
+  Monday. A GPU preset here takes the second, so the lab has zero free GPU for the
+  weekly window.
+
+This was put to the PI rather than assumed, and **the PI chose CPU on 2026-09-16**.
+The lane holds no GPU seat.
+
+### Why a count-based gate would not close this issue
+
+The closing condition is "one green scheduled run that **collects** the four files",
+and collection alone is satisfied by 18 skips. Measured at `541f703f` with no solver
+present: all 13 external legs `importorskip` in **0.99 s total** and pytest exits 0.
+Every lane that has ever collected these files produced exactly that, and calling it
+coverage is what #717 is about.
+
+So the gate is `scripts/ops/assert_crossval_solver_lane.py` over the run's junit:
+
+1. the collected node-id set equals the frozen 18 in
+   `scripts/ops/crossval_solver_lane_nodes.json`, byte for byte;
+2. `failures == 0` and `errors == 0`;
+3. **`skipped == 0`** — any skip, for any reason;
+4. every one of the 13 external legs above a 1.0 s duration floor, which is what turns
+   "collected" into "executed".
+
+The pytest exit code is explicitly **not** the gate. `scripts/ops/summarize_junit.py`
+is the parsing idiom this copies, but it tolerates skips and has no frozen list.
+
+### Pieces
+
+| file | what |
+|---|---|
+| `docker/crossval-solvers-lane/Dockerfile` | `FROM ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8` + conda-forge `pymeep=1.34.0` pinned to the parent's own python and `numpy<2`, then the CSXCAD/openEMS bindings rebuilt against the post-solve interpreter. Asserts at **build** time that both import in one interpreter. |
+| `.github/workflows/build-crossval-solvers-image.yml` | builds and publishes `ghcr.io/bk-squared/rfx-crossval-solvers`, pull-back-by-digest verify included. Separate from `build-openems-image.yml` so a pymeep bump does not re-run the 30–60 min openEMS build. |
+| `scripts/vessl_crossval_solvers_lane.yaml` | the lane: `git archive` export of `origin/main` (the `c0435798` mechanism), `commit.txt` provenance that fails loudly, solver probe, `-m gpu` over the four files with `--timeout --timeout-method=thread`, tee'd logs, then the gate. **No heredocs** — VESSL re-indents the block and a heredoc terminator leaving column 0 kills the job at parse time. |
+| `scripts/ops/probe_crossval_solvers.py` | pre-pytest probe. Makes a missing solver red, and catches Sec. 1's other mode: under pytest 9 `importorskip` does not absorb a *broken* import, so a wrong-numpy meep would have read as a cross-solver physics failure. |
+| `scripts/ops/assert_crossval_solver_lane.py` + `crossval_solver_lane_nodes.json` | the closing gate above, plus the machine-readable summary the vessl-jobs rule requires. |
+| `tests/contracts/test_crossval_solver_lane_contract.py` | pins the frozen list against live collection, the absence of heredocs, `-m gpu`, the probe and gate calls, and — with planted junit — that the asserter rejects a skip, a suspiciously fast external pass, and a red. |
+
+### Sequencing, and why the cron wiring IS in this change
+
+An earlier draft split the lane from its `validation.yml` job, on the reasoning that `notify`
+opens or comments the single tracking issue on any non-success scheduled run, so a
+never-executed lane on the Monday cron would auto-file a red every week.
+
+**That is not how this repo has done it, and the house pattern is better.** `#939`
+(`60d88c34`) introduced `weekly-a6000-lane`: it added `scripts/vessl_validation_lane_a6000.yaml`
+**and** the `validation.yml` job in one change, and it carried the proof in its own commit
+message — *"baseline 369367259075: highmem 8 passed, gpu 171 passed"*. The lane and its cron
+entry are one reviewable unit; what keeps a broken lane off the schedule is not a second PR, it
+is the requirement that the baseline run already exists and is quoted.
+
+So this change ships both, and inherits that requirement:
+
+1. merge nothing yet. Let `build-crossval-solvers-image.yml` publish the image;
+2. flip the ghcr package private → public once by hand (`GITHUB_TOKEN` cannot);
+3. `scripts/vessl_crossval_solvers_pull_smoke.yaml` — a two-minute cluster-side check that the
+   visibility flip happened and both solvers import;
+4. **one manual submit** via `scripts/vessl_submit.sh`. This is where the 13 never-executed
+   physics gates run for the first time;
+5. **quote that run id and its per-node verdict in this PR's commit message**, the way `#939`
+   quoted 369367259075, and only then merge;
+6. the first green **scheduled** run closes #717.
+
+**A red physics gate at step 4 is a third outcome**, distinct from a working lane and a broken
+one: it means the lane works and a comparison nobody has ever run disagrees. It does not close
+#717, it does not authorize a second lane attempt under R2, and it opens its own issue against
+that gate. These legs assert `delta < 0.005` (rfx-vs-Meep) and `< 0.01` (rfx-vs-openEMS) at
+coarse settings, and a first-run disagreement is a live possibility rather than a surprise.
+
+**Two cluster executions, not one.** The closing condition names a `schedule`-triggered run, and
+the step-4 submit is not one. Under R2 those are not two attempts at one mechanism: step 4 is the
+attempt, and step 6 is the pre-declared gate being read on the lane step 4 already proved. A
+step-4 failure needing a second submit to fix plumbing DOES consume the attempt, which is why the
+collection rehearsal, the solver probe and `sh -n` all run before pytest does.
+
+### What is still unowned after this
+
+Sec. 4 step 2 — measure `scripts/run_crossval_cpu.py` once by `workflow_dispatch` before
+it goes near the cron — is orthogonal to (b) and nothing here does it. The `cpu-runner`
+tier still has no executor; that is #741's residue and it outlives this decision.
+
+Also unaddressed, and worth a reader's attention: the two lumped-port tests this lane
+now runs weekly pass while preflight says their port is not the port they meant
+(Sec. 1's verbatim advisory, issue #71). Adopting them into a recurring lane adopts that
+caveat with them.
 
 ## Evidence
 
