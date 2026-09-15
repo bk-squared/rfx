@@ -164,3 +164,66 @@ y and pos (their `x0` and names have the same length — recorded ladders
 unaffected). No loss value of the zsmooth fixture was produced, so this is
 not a measurement attempt; the `.started` sentinel was reset and the arm
 relaunched once.
+
+### Arm zsmooth — smooth spectral loss on the AD-Q z stack (run once on 47e98366, 213 s; `e7_zsmooth.json`)
+
+Fixture: f_nom 10.5617 GHz, comb ±2.5 GHz at 0.25 GHz (21 lines), Hann
+window T_w 6.10 ns (0.8 × 8000 dt), 8000 steps — the AD-Q L2 fixture with
+the resonant DFT-power observable replaced by the Hann + comb power. Self-test
+passed; induced directions constant on the tied set. Measured noise floors
+3.6–6.4 ulp (AD-Q's resonant observable measured 14–44 ulp on the same
+stack).
+
+| control | R0 | R1 | pts | window h | order (lane rule) | FD | narrowest 3B/\|g\| | floor |
+|---|---|---|---|---|---|---|---|---|
+| h_core_left | 0.937 | **2.188** | 7 | 9.8e-4..6.3e-2 | **HELD** | **HELD** | 6.3e-4 | 4.1 ulp |
+| **h_thin** | 1.028 | **1.981** | 6 | 3.9e-3..1.25e-1 | **HELD** | **HELD** | 7.8e-4 | 3.6 ulp |
+| h_core_right | 0.994 | 1.721 | 7 | 9.8e-4..6.3e-2 | FIRED | HELD | 2.2e-4 | 4.1 ulp |
+| h_air | 0.927 | **2.122** | 7 | 9.8e-4..6.3e-2 | **HELD** | **HELD** | 2.4e-4 | 6.4 ulp |
+
+Revert-proof (`h_thin`, `stop_gradient(dt)`, forward bit-identical): FIRED
+on order (R0 1.010, R1 0.990) and on FD; dt share −1.045 (with the dt path
+cut the gradient is 2.04 × the true one — the dt path and the geometry path
+have opposite signs on this spectral observable; the judges have power
+against it). Coverage 0.849 (verified 0.849: `h_core_right`'s direction is
+`h_core_left`'s negated, so dropping it does not shrink the verified span).
+
+**AD-Q's "L2 thickness NOT verified" is closed** on this observable: the
+thin-layer thickness gradient of an 8000-step spectral loss is order-verified
+(R1 1.981, 6 points) with FD inside its bar (7.8e-4 relative), dt path
+included. What made the difference is the observable, not the judge: AD-Q's
+resonant DFT power was rippled at ~1 % in thickness (floor 44 ulp, FD firing
+at h 3.1e-2); the Hann-windowed comb integrates that ripple out (floor
+3.6 ulp).
+
+**h_core_right FIRED — recorded per the frozen rule.** Diagnosis from the
+stored ladders (post hoc; nothing in the rule changes here):
+
+- The map has `A[:,2] = −A[:,0]` exactly, so `h_core_right` is the same line
+  in cell space as `h_core_left`, walked the other way (`g·v` = ±1.0570e-20).
+  The two ladders agree point by point to ≤ 16 ulp (`R+` vs `L−`, `R−` vs
+  `L+`) and their central differences to six digits.
+- The order statistic R1 is the ONE-SIDED plus-side remainder
+  `|L(x+hv) − L0 − h g·v|` (`fit_order`). Its h³ term enters with opposite
+  signs on the two sides of a line. Fitted on the same 7-point window, the
+  plus side of this line gives 2.188 (as `h_core_left`) and the minus side
+  1.711 (as `h_core_left`'s minus ladder) / 1.721 (as `h_core_right`), mean
+  1.95; the even remainder `|½(L(x+hv)+L(x−hv)) − L0|`, which cancels the
+  cubic term, gives 1.989 / 1.998 — and 2.010 / 1.999 for `h_thin` / `h_air`
+  (whose one-sided pairs are 1.981 / 2.037 and 2.122 / 1.759).
+- The central remainder `|L(x+hv) − L(x−hv) − 2h g·v|` — the quantity a
+  gradient error would put a linear floor under — falls as h³ on both
+  directions (doubling ratios 8.14, 7.98, 7.90, 7.58 from h 3.9e-3; fitted
+  slope 2.938 over 6 points) down to 554 ulp, which bounds any gradient
+  error along this line at `|δ|/|g·v| < 6.8e-4` (h_thin: h³ over its
+  3 eligible points, < 7.3e-4; h_air: < 8.0e-4).
+
+So the FIRE is the cubic-term asymmetry of a one-sided statistic along a
+line whose gradient is confirmed three ways (mirror direction HELD at 2.188,
+FD at 2.2e-4, central remainder cubic). It is the lower-side twin of the
+upper-side excursions already on record (AD-Q `h_air` R1 > 2.2; arm pos L1
+`x_c` 2.233): the one-sided R1 wanders to BOTH sides of 2 by the same
+mechanism, so "R1 < 2 means a wrong gradient" is not a safe reading either
+— the central remainder's order is. That is a judge finding, to be
+pre-declared as its own change (even/central remainder as the order
+statistic) rather than applied here.
