@@ -9,6 +9,31 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
+### BREAKING — `rfx.runners.run_distributed` is no longer exported (#1038)
+
+- The `rfx.runners` package no longer re-exports `run_distributed`, and the
+  name is gone from its `__all__`. The module it came from,
+  `rfx.runners.distributed`, is **unchanged and still supported**; only the
+  package-level shortcut is retired.
+- Why: two modules define `run_distributed`, and the package exported the wrong
+  one. `Simulation.run(devices=[...])` dispatches to
+  `rfx.runners.distributed_v2.run_distributed` (the `shard_map` runner) for
+  uniform and non-uniform grids alike, and reaches the v1 `jax.pmap` runner
+  only as v2's `n_devices == 1` fast path. So the public name resolved to a
+  runner the public API does not use. The two are not interchangeable: they are
+  not bit-identical (max |Δ| 2.794e-09 on a 9.4145e-03 peak) and they disagree
+  on odd `nx` — v1 refuses it, v2 pads. Exporting neither was chosen over
+  quietly repointing the name at v2, which would have changed numbers under
+  existing callers without a diff to read.
+- Migration, in order of preference: use `Simulation.run(devices=[...])`, which
+  gets you the production runner; or, if you specifically want the legacy pmap
+  runner, import it by full path —
+  `from rfx.runners.distributed import run_distributed`.
+- Side effect worth knowing about if you inspect import state: `import
+  rfx.runners` no longer loads `rfx.runners.distributed`, nor
+  `rfx.runners._distributed_common` (which only `distributed.py` imported
+  eagerly). Both still import on demand by full path.
+
 ### BREAKING — `PreflightReport` refuses boolean evaluation (#980)
 
 - `bool(report)` now raises `TypeError`. `PreflightReport` is a `list` of
