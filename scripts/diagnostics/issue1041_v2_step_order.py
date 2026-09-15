@@ -122,6 +122,35 @@ def _repo_root() -> Path:
     return Path(out.strip())
 
 
+# Import THIS checkout's rfx, not the editable install's.
+#
+# Running a script by path puts the SCRIPT's directory on sys.path[0], not the
+# cwd, so ``import rfx`` in a git worktree of an editable install silently
+# resolves to the install's source tree instead. That is not academic: the
+# first run of this script measured the primary checkout on every arm and
+# reported the two orderings as bit-identical, because the file the "working
+# tree" arm imported was never the edited one. The checkout that owns this
+# script goes on the front of sys.path, and _assert_rfx_is_this_checkout()
+# below refuses to run if that did not take.
+_REPO = _repo_root()
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
+
+
+def _assert_rfx_is_this_checkout():
+    import rfx
+    import rfx.runners.distributed_v2 as v2
+    for mod in (rfx, v2):
+        got = Path(mod.__file__).resolve()
+        if not str(got).startswith(str(_REPO) + os.sep):
+            raise SystemExit(
+                f"{mod.__name__} imported from {got}, which is OUTSIDE this "
+                f"checkout ({_REPO}). The measurement would be run against "
+                "another tree. Run from the checkout root, or set "
+                f"PYTHONPATH={_REPO}.")
+    return Path(v2.__file__).resolve()
+
+
 # ---------------------------------------------------------------------------
 # Loading distributed_v2 from a git revision, as its own module
 # ---------------------------------------------------------------------------
@@ -298,7 +327,8 @@ def main():
             "need >=2 JAX devices; run with "
             "XLA_FLAGS=--xla_force_host_platform_device_count=2")
     devices = jax.devices()[:2]
-    repo = _repo_root()
+    repo = _REPO
+    v2_path = _assert_rfx_is_this_checkout()
     tmp = Path(tempfile.mkdtemp(prefix="issue1041_"))
     n_steps = args.n_steps
 
@@ -306,6 +336,7 @@ def main():
     print(f"# devices={devices}  n_steps={n_steps}  jax={jax.__version__}")
     print(f"# legacy rev = {args.legacy_rev}   nu ordering = "
           f"{args.nu_rev or 'working tree'}")
+    print(f"# working-tree distributed_v2 = {v2_path}")
     print(f"# float32 noise threshold for 'first divergent step' = {F32_NOISE:g}")
 
     # ---- preflight, quoted verbatim (repo rule) ----

@@ -1100,7 +1100,22 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # ------------------------------------------------------------------
 
     def step_fn_cpml(carry, xs):
-        """Single FDTD step (CPML path) operating on sharded arrays."""
+        """Single FDTD step (CPML path) operating on sharded arrays.
+
+        Stage order (#1041)::
+
+            H -> CPML-H -> exch H -> PMC face -> E -> CPML-E
+              -> sources -> exch E -> probes
+
+        The E ghost exchange is the LAST stage of the E half-step, so a
+        ghost row is always a copy of the owner's FINISHED real row. This
+        is ``distributed_nu.py``'s order since ``ac782d4f`` (#931 T3) and
+        the mirror of the H half, which applies the PMC face before the H
+        exchange "so the zero propagates via the exchange". Until #1041
+        this body exchanged BEFORE injecting, which lagged a seam-cell
+        source by one step in the neighbour's copy -- see the comment on
+        stage 7 for the measurement that moved it.
+        """
         _step_idx, src_vals = xs
         st = carry["fdtd"]
         cpml_st = carry["cpml"]
@@ -1143,16 +1158,28 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             mesh, n_devices, ghost=ghost, eps_r=sharded_materials.eps_r,
             pad_x=pad_x)
 
-        # 6. Exchange E ghost cells
+        # 6. Source injection
+        st = _inject_sources_shmap(st, src_vals)
+
+        # 7. Exchange E ghost cells -- LAST stage of the E half-step, so a
+        #    ghost row is a copy of the owner's FINISHED real row (#1041,
+        #    the ordering distributed_nu.py took in ac782d4f / #931 T3).
+        #    Exchanging before injection left a source at rank d's first
+        #    real cell out of rank d-1's right ghost for one step, and
+        #    rank d-1's next H update read the pre-injection plane.
+        #    Measured by scripts/diagnostics/issue1041_v2_step_order.py on a
+        #    seam-cell ez source, 2 ranks, 300 steps, boundary="cpml",
+        #    against the SAME model on one device: the probe 4 cells into
+        #    the neighbouring rank went from 1.653e-01 relative (first
+        #    divergent step 4, the causal arrival) to 1.894e-06 (step 50),
+        #    which is the interior-source control's own lane-difference
+        #    floor of 1.629e-06 on this geometry.
         st = lax.cond(
             do_exchange,
             lambda s: _exchange_e_ghosts_shmap(s, mesh, n_devices),
             lambda s: s,
             st,
         )
-
-        # 7. Source injection
-        st = _inject_sources_shmap(st, src_vals)
 
         # 8. Probe sampling
         probe_out = _sample_probes_shmap(st)
@@ -1161,7 +1188,20 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 "debye": db_st, "lorentz": lr_st}, probe_out
 
     def step_fn_pec(carry, xs):
-        """Single FDTD step (PEC path) operating on sharded arrays."""
+        """Single FDTD step (PEC path) operating on sharded arrays.
+
+        Stage order (#1041)::
+
+            H -> exch H -> PMC face -> E -> sources -> PEC face
+              -> exch E -> probes
+
+        Same invariant as ``step_fn_cpml``: the E ghost exchange is last,
+        so a ghost row is a copy of the owner's finished real row. The
+        PEC face moved with it for lane parity with ``distributed_nu``;
+        on THIS lane that half of the move is provably and measurably
+        inert (stage 6 comment), because the only PEC here is the domain
+        face.
+        """
         _step_idx, src_vals = xs
         st = carry["fdtd"]
         db_st = carry["debye"]
@@ -1190,19 +1230,38 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             debye_coeffs_sharded, db_st,
             lorentz_coeffs_sharded, lr_st)
 
-        # 4. Exchange E ghost cells
+        # 4. Source injection
+        st = _inject_sources_shmap(st, src_vals)
+
+        # 5. PEC boundaries (domain faces only -- this lane refuses declared
+        #    PEC geometry, see the NotImplementedError in run_distributed).
+        #    Injection runs BEFORE the face, matching distributed_nu stage 7.
+        #    The two lanes therefore both differ from the single-device lane,
+        #    which applies the faces before its soft-source loop; the
+        #    difference is observable only for a source placed ON a domain
+        #    PEC face, where the tangential E is zeroed in the same step it
+        #    is injected. #1041 measured no such fixture and did not change
+        #    it -- a source on a PEC face is its own question.
+        st = _apply_pec_shmap(st, mesh, n_devices, nx_local, pad_x=pad_x)
+
+        # 6. Exchange E ghost cells -- LAST stage of the E half-step, so a
+        #    ghost row is a copy of the owner's FINISHED real row (#1041,
+        #    the ordering distributed_nu.py took in ac782d4f / #931 T3).
+        #    Same measurement as step_fn_cpml above, boundary="pec": the
+        #    probe 4 cells into the neighbouring rank went from 1.859e-01
+        #    relative (first divergent step 4) to 4.858e-06 (step 43),
+        #    against an interior-source floor of 5.100e-06.
+        #    The PEC half of the move is inert on THIS lane and was measured
+        #    to be so (#1041 fixture P, bit-identical): apply_pec_face_shmap
+        #    zeroes the y/z faces on every x row INCLUDING the ghosts, and
+        #    its x_lo / x_hi faces act on rank 0's first and rank N-1's last
+        #    real cell, whose exchanged copies the receiving rank discards.
         st = lax.cond(
             do_exchange,
             lambda s: _exchange_e_ghosts_shmap(s, mesh, n_devices),
             lambda s: s,
             st,
         )
-
-        # 5. PEC boundaries
-        st = _apply_pec_shmap(st, mesh, n_devices, nx_local, pad_x=pad_x)
-
-        # 6. Source injection
-        st = _inject_sources_shmap(st, src_vals)
 
         # 7. Probe sampling
         probe_out = _sample_probes_shmap(st)
