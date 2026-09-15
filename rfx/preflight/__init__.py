@@ -111,7 +111,7 @@ Modules:
   shared values ``_validate_simulation_config`` computes once per
   ``preflight()``; :class:`~rfx.preflight._registry.ConfigCheck` is one entry
   (method name, adapter, family); and
-  :data:`~rfx.preflight._registry.CORE_CONFIG_CHECKS` holds the 37 of them in
+  :data:`~rfx.preflight._registry.CORE_CONFIG_CHECKS` holds the 36 of them in
   the exact order the hub used to call them, transcribed by an AST walk of
   that body rather than by hand.
   :func:`~rfx.preflight._registry.register_config_check` appends to

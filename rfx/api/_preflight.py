@@ -1301,7 +1301,7 @@ class _PreflightMixin:
         # --- checks in original order ---------------------------------
         # The order lives in CORE_CONFIG_CHECKS now. It is still the
         # observable the committed snapshots pin, and the registry's own lock
-        # pins the 37 names against the sequence this body used to spell out.
+        # pins the 36 names against the sequence this body used to spell out.
         run_config_checks(self, ConfigCheckContext(
             warn=_w,
             dx=dx,

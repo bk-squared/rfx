@@ -35,7 +35,7 @@ What is here
 
 Why the order is a contract and not a detail
 --------------------------------------------
-The 37 calls INTERLEAVE families -- execution, absorber, mesh, sources, ports,
+The 36 calls INTERLEAVE families -- execution, absorber, mesh, sources, ports,
 ntff, pec_geometry, waveguide, msl, coax -- and that interleaving is not
 accidental tidiness anyone is free to undo: ``PreflightReport`` is a ``list``
 subclass, so it preserves emission order, and the snapshot lock renders it.
@@ -47,7 +47,7 @@ leg 8, 36 after #1030's deletion).
 
 Why the adapters are lambdas rather than a uniform signature
 -----------------------------------------------------------
-The 37 calls take heterogeneous argument lists -- ``()``, ``(_w)``, ``(dx)``,
+The 36 calls take heterogeneous argument lists -- ``()``, ``(_w)``, ``(dx)``,
 ``(_w, dx)``, ``(_w, cpml_thickness)``, ``(dx, cpml_thick_lo, cpml_thick_hi)``
 and four five- or six-argument forms. Normalising them to one signature would
 mean editing 37 moved bodies, which is precisely the verbatim-motion rule legs
@@ -114,7 +114,7 @@ class ConfigCheckContext(NamedTuple):
 
     ``_PreflightMixin._validate_simulation_config`` builds exactly these seven
     values at the top of its body and then passes subsets of them positionally
-    to the 37 checks. They are gathered here so the adapters in
+    to the 36 checks. They are gathered here so the adapters in
     :data:`CORE_CONFIG_CHECKS` can reproduce those calls without the hub
     having to keep a hand-written call list.
 
@@ -124,7 +124,7 @@ class ConfigCheckContext(NamedTuple):
         The ``warnings`` MODULE, bound as ``_w`` by the hub's
         ``import warnings as _w``. It is not a callable -- the checks call
         ``_w.warn(PreflightWarning(...))`` on it. The field keeps the short
-        name the 37 signatures use.
+        name the 36 signatures use.
     dx:
         ``self._dx or C0 / self._freq_max / 20.0`` -- the declared cell size,
         or the twenty-cells-per-wavelength fallback when none was declared.
