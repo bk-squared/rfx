@@ -1,0 +1,69 @@
+{
+  "provenance": {
+    "rfx_file": "/tmp/claude-0/-root-workspace-byungkwan-workspace-research-rfx/44efb5ea-44e2-4413-9da7-9514386aba06/scratchpad/1043A_ref/rfx/__init__.py",
+    "commit": "499c8e1ea89e0c855d7b0b28ccbbd653672897ad",
+    "branch": "fix/1043-cpml-subpixel-coefficients"
+  },
+  "n_steps": 400,
+  "expect_change": [
+    "cpml_touching_lossy_sub",
+    "cpml_touching_sub"
+  ],
+  "hashes": {
+    "cpml_vacuum_nosub": {
+      "sha256": "cdd3c7e90977fd509ecaeadf169676f46805c127051cdb8af647af777cf0f244",
+      "finite": true,
+      "max_abs_ez": 2.850581459767909e-08
+    },
+    "cpml_vacuum_sub": {
+      "sha256": "cdd3c7e90977fd509ecaeadf169676f46805c127051cdb8af647af777cf0f244",
+      "finite": true,
+      "max_abs_ez": 2.850581459767909e-08
+    },
+    "cpml_interior_nosub": {
+      "sha256": "3ae56285d12758f0d57c67dda4285580514707b093dc727674e45d788f490fe9",
+      "finite": true,
+      "max_abs_ez": 2.009382882306454e-07
+    },
+    "cpml_interior_sub": {
+      "sha256": "2566a92fff4f8b19beafdd84f847f79013eb4e108da92876d8ebc25c8e9a547a",
+      "finite": true,
+      "max_abs_ez": 1.9664663852836384e-07
+    },
+    "cpml_touching_nosub": {
+      "sha256": "41a0dce2a5feb598e0c4552ae4ff0357d92178cbbf517ea0af616306396c5cac",
+      "finite": true,
+      "max_abs_ez": 4.49450482165048e-07
+    },
+    "cpml_touching_lossy_nosub": {
+      "sha256": "a73f5e10545f6c88d0aa8db719f9378278bb95da88ec76340c7c0b31e4c21d74",
+      "finite": true,
+      "max_abs_ez": 4.49443746219913e-07
+    },
+    "cpml_touching_sub": {
+      "sha256": "3a73c84a0b56311700df01f2c2548983dee8312809bfcdf47c5af987cefb9a1a",
+      "finite": true,
+      "max_abs_ez": 4.533790445293562e-07
+    },
+    "cpml_touching_lossy_sub": {
+      "sha256": "65c7130aebf9f0f5eb49145988df5bc3d548cee0e41d2191402f97ba4307715a",
+      "finite": true,
+      "max_abs_ez": 4.533728201749909e-07
+    },
+    "upml_touching_sub": {
+      "sha256": "fa796f8dafe59e9d2f3d0cd6fe92ddf24eada2b43be21f6f9fbd11ce493bae3f",
+      "finite": true,
+      "max_abs_ez": 4.4828536260865803e-07
+    },
+    "upml_touching_nosub": {
+      "sha256": "cc7c8c5137eee292ab5f34d7220cb248f181c36267928c7925f0b33847d38c52",
+      "finite": true,
+      "max_abs_ez": 4.2746032136165013e-07
+    },
+    "pec_touching_sub": {
+      "sha256": "0bd9ed9c352c6b04e7b92d095e0c4f1ec09396a487dfc4d523a1c7ac8961ceae",
+      "finite": true,
+      "max_abs_ez": 3.599370964040699e-14
+    }
+  }
+}

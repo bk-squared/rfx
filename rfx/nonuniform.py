@@ -2054,6 +2054,18 @@ def _build_nu_scan(
             )
         carry_init["tfsf"] = tfsf_state
 
+    # #1043: ``apply_cpml_e``'s psi coefficient must take its permittivity from
+    # the array the E half-step uses, or the two halves of one timestep
+    # integrate different media and the combined update can amplify (see
+    # ``rfx/boundaries/cpml.py``'s ``inv_eps_r_update`` docstring). The guard
+    # is the same condition that selects ``update_e_nu_aniso`` below, so a
+    # dispersive run — which ignores ``aniso_eps`` — keeps ``materials.eps_r``
+    # and stays byte-identical, as does every run with no anisotropic array.
+    if not (use_debye or use_lorentz) and aniso_eps is not None:
+        _cpml_inv_eps_r = tuple(1.0 / e for e in aniso_eps)
+    else:
+        _cpml_inv_eps_r = None
+
     def step_fn(carry, xs):
         step_idx, src_vals = xs
         st = carry["fdtd"]
@@ -2114,7 +2126,8 @@ def _build_nu_scan(
         if use_cpml:
             st, cpml_new = apply_cpml_e(st, cpml_params, cpml_new,
                                          cpml_grid, cpml_axes_eff,
-                                         materials=materials)
+                                         materials=materials,
+                                         inv_eps_r_update=_cpml_inv_eps_r)
 
         # PEC
         st = apply_pec(st)

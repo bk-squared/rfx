@@ -1,0 +1,211 @@
+# #1043 Stage A — results
+
+Run against the gates frozen in
+`issue1043_cpml_subpixel_coefficient_predeclaration.md`. Artifacts under
+`scripts/diagnostics/_artifacts/cpml_subpixel_stability/`; drivers under
+`scripts/diagnostics/cpml_subpixel_stability/`.
+
+Every "main" row was produced against a `git archive` of `origin/main`
+(499c8e1e) unpacked to a scratch directory, not against a checkout — a builder
+editing the same worktree moves the review target silently.
+
+## 1. The mechanism, in three sentences
+
+`apply_cpml_e` built its psi coefficient from `materials.eps_r` while the Yee
+half of the same timestep used the subpixel-smoothed `aniso_eps`, so in every
+cell where those two arrays disagree the one E update integrated two different
+permittivities. With `kappa_max` at its default 1.0 the whole CPML-E correction
+is `ce * psi`, and since `psi = b*psi_prev + c*curl` with `c` in `(-1, 0]`, the
+instantaneous curl coefficient of such a cell is proportional to
+`1/eps_a + c/eps_b` — non-negative for every `c` when the two agree, negative
+once the Yee half sees the HIGHER permittivity. A subpixel-smoothed interface
+cell inside a CPML pad is exactly that case: the smoothed array carries the
+Kottke interface value while the staircase `materials.eps_r` at the same cell
+reads whichever side the sample point fell on.
+
+## 2. Hypothesis table
+
+| | hypothesis | verdict | evidence |
+|---|---|---|---|
+| **H1** | epsilon disagreement between the Yee half and the psi half, unstable when `eps_a > eps_b` | **SUPPORTED** | G-A `r_A = 0`, G-C `r_C = 0`, G-D `r_D = 0` |
+| **H2** | CPML profile derived for vacuum + a high-eps cell in the graded region violates a local CFL bound only on the anisotropic path | **FALSIFIED** | G-C consistent-eps scan: `rho = 1.000000` at eps = 1, 2, 4, 6.5, 12, 30, 80 — an absolute permittivity in the graded region is exactly marginal at every value. The eigenvalue moves only when `eps_b` (which is not a property of the medium the wave travels in) is dropped below `eps_a`. |
+| **H3** | `1/kappa` applied on the wrong side of the tensor | **FALSIFIED BY INSPECTION, no run spent** | `kappa_max` defaults to 1.0 (`cpml.py:106`, `init_cpml:451-452`), so `_kappa_correction` returns exactly 0 in every arm of #1043's table. Cannot be the mechanism for a divergence that occurs at `kappa = 1`. |
+| **H4** | the `update_e_aniso` + CPML + boundary-touching-dielectric path was never exercised by a test | **CONFIRMED (coverage, not mechanism)** | `tests/unit/boundaries/test_cpml_pad_material_extension.py`'s two solver-running tests (`:406`, `:563`) both pass `subpixel_smoothing=False`, and both fixtures carry Lorentz poles, which `simulation.py:415` routes away from the anisotropic branch anyway. No test in the tree combined the three. |
+
+## 3. G-A — the coefficient map (no FDTD)
+
+`K_eff_norm = 1/eps_a + c/eps_b` over every cell `apply_cpml_e` writes, on the
+small 2-D rig (`cpml_subpixel_coefficients.py`, 101x101x1, 10 CPML layers,
+a full-span eps 12 guide, cv01 Run 1's topology at quarter size).
+
+| arm | `K_eff_norm` min | negative cells | FDTD on main |
+|---|---:|---:|---|
+| `cpml_baseline` (today, no pad replication) | **+0.007941** | 0 | finite |
+| `cpml_padrep` (Stage-B replication on `aniso_eps`) | **−0.838213** | 21 | **848 non-finite, first probe index 352** |
+| `cpml_subpixel_off` | **+0.000662** | 0 | finite |
+| `upml_padrep` | (not defined — `apply_cpml_e` never runs) | — | finite |
+
+`r_A = 0`. The UPML arm is excluded rather than scored: `apply_upml_e` builds
+its own coefficients from `aniso_eps` (`upml.py:213-217`) and has no second
+permittivity to disagree with, which is why it was stable all along.
+
+## 4. G-B — where it breaks first
+
+Bisected to the first step at which any field cell is non-finite: **step 328**,
+five components across **three cell positions**, all at `j = 55` — the guide's
+transverse interface row — inside the x-hi pad.
+
+| component | cell | `eps_a` (update) | `eps_b` (psi) | `c` | `K_eff_norm` | if consistent |
+|---|---|---:|---:|---:|---:|---:|
+| ez | 95, 55, 0 | 6.500 | 1.000 | −0.3459 | **−0.1921** | +0.1006 |
+| ez | 96, 55, 0 | 6.500 | 1.000 | −0.5636 | **−0.4097** | +0.0671 |
+| ez | 97, 55, 0 | 6.500 | 1.000 | −0.7614 | **−0.6075** | +0.0367 |
+| ex | 95, 55, 0 | 1.000 | 1.000 | −0.3459 | +0.6541 | +0.6541 |
+| ex | 96, 55, 0 | 1.000 | 1.000 | −0.5636 | +0.4364 | +0.4364 |
+
+**Position-resolved `r_B = 0.0`** — all three positions are in the
+`K_eff_norm < 0` set. **Component-resolved `r_B = 0.4`, which MISSES its
+pre-declared gate of `<= 0`**: the two `ex` rows are the same Yee cells being
+dragged along (one cell, shared `Hy`/`Hz`), so the component-resolved measure
+undercounts by construction. Both figures are in the artifact; the
+pre-declared one is recorded as not met rather than replaced.
+
+## 5. G-C — the amplification factor
+
+1-D leapfrog + psi over 24 cells (10 CPML layers), `amplification.py`.
+Comparator checked first: a lossless vacuum slice gives `rho = 1.000000000`
+with and without the absorber. (An earlier version of this matrix took rfx's
+`hy -= (dt/mu)*curl_y` literally instead of resolving
+`curl_y = dEx/dz - dEz/dx` in the 1-D slice, reported `rho = 1.3 … 2.6` for
+every case including vacuum, and was caught by exactly this check.)
+
+| case | `rho` | |
+|---|---:|---|
+| `eps_a = 6.5`, `eps_b = 1.0` (the measured failing cell) | **2.208604** | unstable |
+| `eps_a = eps_b = 6.5` (the fix) | **1.000000** | marginal |
+| `eps_a = 1`, `eps_b = 12` (today's cv01 pad) | 1.000000 | marginal — wrong but not amplifying |
+| `eps_a = eps_b` at 1, 2, 4, 6.5, 12, 30, 80 | 1.000000 | H2 falsified |
+
+`r_C = 0`. Sweeping `eps_b` at `eps_a = 6.5`: `rho` = 2.2086 (1.0), 1.6762
+(2.0), 1.3131 (4.0), 1.0989 (6.0), 1.0580 (6.294), 1.0249 (6.45), 1.0091
+(6.49), **1.000000 (6.5 = `eps_a`)**, and 1.000000 at 8, 12, 20. The
+instantaneous sign flip (`K_eff_norm = 0` at `eps_b = 6.294`) is the leading
+indicator; the eigenvalue crosses 1 only at `eps_b = eps_a` exactly, so the
+condition is `eps_b >= eps_a` and consistency is the one choice that is both
+correct and marginal.
+
+Courant sweep at the failing cell: defect `rho` = 1.354 / 1.727 / 2.209 / 3.035
+at Courant 0.2 / 0.35 / 0.5 / 0.7; the fixed path is `1.000000` at all four.
+
+## 6. The fix
+
+`apply_cpml_e` takes an optional `inv_eps_r_update` — the per-component
+INVERSE relative permittivity the E half-step actually used — and builds its
+psi coefficient from it. `None` keeps `materials.eps_r` and every byte with it.
+
+Threaded at the two call sites that have such an array:
+
+| site | what it passes |
+|---|---|
+| `rfx/simulation.py` (uniform scan) | `aniso_inv_eps` as-is on the Stage-2 `kottke_pec` path (`inv = 0` at a frozen PEC cell then correctly receives no psi correction), `1/aniso_eps` on Stage 1, `None` when a dispersion model is active (the E update ignores the anisotropic arrays there, so this must too) |
+| `rfx/nonuniform.py` (NU scan) | the same, guarded by the same condition that selects `update_e_nu_aniso` |
+
+Every other `apply_cpml_e` caller (`vmap_sweep`, `subgridding`, `probes`,
+`runners/distributed*`) runs `update_e`/`update_e_nu` with `materials.eps_r`
+and has no anisotropic array at all — nothing to thread, nothing changes.
+
+One implementation detail is load-bearing and was measured, not reasoned about:
+`compute_smoothed_eps` returns **float64** under `JAX_ENABLE_X64` while
+`materials.eps_r` stays float32. The first version of the fix let that through,
+which promoted the psi-scatter precision and moved the field bytes of
+`cpml_interior_sub` — a run whose pads hold nothing but vacuum. The coefficient
+is now cast to the material dtype, which is the policy the function already
+documented at its `dt` handling (#646, promote-never-pin: follow the ambient
+material dtype).
+
+Recorded and NOT fixed: `update_e_aniso` divides its curl coefficient by
+`(1 + sigma*dt/(2*eps))` and the psi coefficient does not. Same family, but it
+is identically zero wherever the absorber pad is lossless (every configuration
+measured for #1043) and no witness for it exists.
+
+## 7. Bit identity
+
+SHA-256 over the raw final field bytes of all six components, 400 steps,
+`bit_identity.py`, main-archive vs this branch.
+
+| case | identical | |
+|---|---|---|
+| `cpml_vacuum_nosub` | yes | |
+| `cpml_vacuum_sub` | yes | |
+| `cpml_interior_nosub` | yes | |
+| `cpml_interior_sub` | yes | subpixel + CPML, dielectric clear of every pad |
+| `cpml_touching_nosub` | yes | |
+| `cpml_touching_lossy_nosub` | yes | |
+| `upml_touching_sub` | yes | |
+| `upml_touching_nosub` | yes | |
+| `pec_touching_sub` | yes | |
+| `cpml_touching_sub` | **NO** | declared before the run |
+| `cpml_touching_lossy_sub` | **NO** | declared before the run |
+
+The two that move are the only ones with a subpixel-smoothed interface cell
+inside a CPML pad. Declared in `expect_change` before either tree ran, and the
+measured change set matches it exactly.
+
+### cv01 Run 1
+
+The committed `mean_self = 0.9195301017439319` (20 layers, 25000 steps,
+`subpixel_smoothing=True`, the committed `Box`) **moves**, as declared in §4 of
+the pre-declaration. Measured on the same rig, both trees, in
+`cv01_control.py`:
+
+| tree | `mean_self` (20 layers) | delta vs committed |
+|---|---:|---:|
+| `origin/main` (499c8e1e) | 0.9195301017439319 | — |
+| this branch | 0.9166511849380675 | **−0.0028789168058643844** (−0.31 %) |
+
+Why, shown rather than argued (dumped from the committed build): in the x pads
+the guide's centre row reads `materials.eps_r = 12` (the pad extension put it
+there) while `aniso_eps` reads `1` (the declared `Box` stops at the interior
+edge and nothing replicates into the rebuilt array — that gap IS #1043's
+headline defect). The psi coefficient was therefore twelve times too small in
+exactly the cells meant to absorb the guided mode. The fix makes the absorber
+match the medium the solver is actually stepping, which is a change of
+substance, not of rounding.
+
+## 8. New tests
+
+`tests/unit/boundaries/test_cpml_subpixel_coefficient_consistency.py`.
+
+| test | on `origin/main` | on this branch |
+|---|---|---|
+| `test_boundary_touching_dielectric_in_pad_stays_finite[cpml]` (slow, 5000 steps) | **RED** — 4662 non-finite probe samples | green |
+| `test_boundary_touching_dielectric_in_pad_stays_finite[upml]` (slow) | green | green |
+| `test_amplification_is_bounded_only_when_the_two_epsilons_agree` | green (pure analysis, tree-independent) | green |
+| `test_threading_an_equal_permittivity_is_bit_identical` | RED (`TypeError`, the parameter does not exist) | green |
+| `test_threading_a_different_permittivity_changes_the_coefficient` | RED (`TypeError`) | green |
+
+The `[cpml]`/`[upml]` pair is the discriminator: the same pad replication under
+the other absorber family must keep passing, or the test is measuring "a
+dielectric in a pad is unstable" rather than "these two coefficients disagree".
+
+The pad replication in that test is a **test-local helper**, not a production
+call: Stage B is what puts it under `rfx/`. When it lands, replace the helper
+with the production path — do not delete the test with it.
+
+**Mutation check.** A third tree carrying ONLY the `rfx/boundaries/cpml.py`
+half of the fix — the new parameter exists and behaves, the callers still do
+not pass it — runs the three unit tests **green** and
+`test_boundary_touching_dielectric_in_pad_stays_finite[cpml]` **red**. So the
+physics test is not measuring the API surface, and the `simulation.py` /
+`nonuniform.py` threading is load-bearing rather than decorative.
+
+## 9. R2 ledger
+
+One attempt, covering G-A + G-B + G-C + G-D together as pre-declared. H1 closed
+on it. H2 was discriminated inside G-C and falsified; H3 was falsified by
+inspection with no run spent; H4 is a coverage finding and is now closed by the
+new test file. No second attempt was needed and none was taken.
+
+The one pre-declared gate NOT met is the component-resolved leg of G-B
+(`r_B = 0.4` against `<= 0`), recorded in §4 with the reason and the
+position-resolved figure alongside.
