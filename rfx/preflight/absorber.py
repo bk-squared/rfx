@@ -1112,6 +1112,24 @@ def _realized_clearance_cells(distance: float, dx: float) -> int:
     it onto node 2 and the arm SETTLES. Scoring the declared float would fire on
     the one geometry measured to be stable, which is the failure mode an
     advisory can least afford.
+
+    **Where "rasterizes" is exact, and where it is an upper bound.** The
+    nearest-node reading is the realization rule for a BOX-LIKE shape on a
+    UNIFORM mesh, which is what the caller feeds it (the graded lane returns
+    early). For a curved shape the caller passes the analytic
+    ``bounding_box()``, which is not where the surface rasterizes: a Cylinder or
+    Sphere whose bbox merely TOUCHES a face reports 0 cells and fires, though the
+    realized conductor reaches that face at one point at most. So on curved
+    geometry this over-warns by up to one cell. Left that way deliberately --
+    over-warning is the safe direction for an advisory, and the alternative is
+    rasterizing the shape here, which is a second copy of the rasterizer's own
+    rule and the defect #627 is named for.
+
+    ``np.rint`` breaks ties to EVEN, not away from zero: a face at exactly
+    ``1.5 * dx`` reads 2 cells and is silent, while ``0.5 * dx`` reads 0 and
+    fires. Nothing measured sits on a half-cell, so no arm turns on this; it is
+    written down because a reader checking a borderline number against
+    ``round()`` would get a different answer for 0.5 and 2.5.
     """
     return int(np.rint(distance / dx))
 

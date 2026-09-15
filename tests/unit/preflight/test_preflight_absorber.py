@@ -1390,7 +1390,7 @@ def test_a_non_absorbing_face_falls_out_without_a_rule():
     assert all("x-" not in f.loc for f in found), [f.loc for f in found]
 
 
-def test_the_conjunction_is_load_bearing():
+def test_the_conjunction_is_load_bearing(monkeypatch):
     """Drop either conjunct and the measured-stable cases start firing.
 
     This is the mutation that says the check measures the conjunction rather
@@ -1407,29 +1407,25 @@ def test_the_conjunction_is_load_bearing():
                                                      inset_cells=2)) == []
 
     # Drop the LAYER conjunct (raise the floor past the default): the 8-layer
-    # case, measured stable, starts firing.
-    original_floor = _abs._THIN_ABSORBER_LAYER_FLOOR
-    try:
-        _abs._THIN_ABSORBER_LAYER_FLOOR = 99
+    # case, measured stable, starts firing. monkeypatch rather than a
+    # hand-rolled try/finally so the restore survives an assert firing here.
+    with monkeypatch.context() as m:
+        m.setattr(_abs, "_THIN_ABSORBER_LAYER_FLOOR", 99)
         assert _thin_abs_findings(_conductor_at_face_sim(layers=8)), (
             "raising the layer floor did not change the verdict, so the layer "
             "count is not actually part of the predicate")
-    finally:
-        _abs._THIN_ABSORBER_LAYER_FLOOR = original_floor
 
     # Drop the CLEARANCE conjunct (widen it): the 2-cell inset, measured
     # stable, starts firing.
-    original_clearance = _abs._THIN_ABSORBER_CLEARANCE_CELLS
-    try:
-        _abs._THIN_ABSORBER_CLEARANCE_CELLS = 99
+    with monkeypatch.context() as m:
+        m.setattr(_abs, "_THIN_ABSORBER_CLEARANCE_CELLS", 99)
         assert _thin_abs_findings(_conductor_at_face_sim(layers=6,
                                                          inset_cells=2)), (
             "widening the clearance did not change the verdict, so the "
             "distance to the face is not actually part of the predicate")
-    finally:
-        _abs._THIN_ABSORBER_CLEARANCE_CELLS = original_clearance
 
-    # And restored.
+    # And restored -- the point of asserting this is that the two blocks above
+    # restore by construction, not by a finally the next editor could drop.
     assert _thin_abs_findings(_conductor_at_face_sim(layers=8)) == []
     assert _thin_abs_findings(_conductor_at_face_sim(layers=6,
                                                      inset_cells=2)) == []
