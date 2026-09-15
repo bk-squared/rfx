@@ -118,65 +118,33 @@ _OFF_LATTICE_EDGE_TOL = 5e-3
 _CAMPAIGN_MAX_OFFENDERS = 5
 
 
-def _validate_cfg_conformal_fine_dx(self, dx: float) -> None:
-    """Flag the KNOWN conformal-PEC fine-mesh NaN before it wastes a run.
+# ---------------------------------------------------------------------------
+# ``_validate_cfg_conformal_fine_dx`` (the ``conformal_nan`` advisory) was
+# DELETED 2026-09-15 by #1043 / PR #1047. It was a self-detecting stale check
+# by its own design: its comment named
+# ``tests/unit/geometry/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec``
+# (xfail strict=True) as the tripwire that would XPASS when the NaN was fixed
+# and said that XPASS is the signal to delete the guard. It XPASSed.
+#
+# The conformal-PEC fine-dx NaN was the #1043 CPML coefficient defect:
+# ``conformal_eps_correction`` sets ``aniso_eps`` to ``eps_eff = eps/w`` at
+# wall cells (``rfx/runners/uniform.py:279-303``), so the Yee half saw a
+# HIGHER permittivity than ``apply_cpml_e``'s psi coefficient, which read the
+# staircase ``materials.eps_r`` -- the amplifying direction. The wall cells run
+# through the x CPML pads, which span every y and z.
+#
+# Measured on the tripwire's own three rungs, |S21| at dx 3 / 2 / 1.5 mm:
+#   origin/main                          0.7564 / 0.6974 / nan   (xfail)
+#   this parameter present but unthreaded 0.7564 / 0.6974 / nan   (xfail)
+#   psi coefficient threaded             0.7796 / 0.6974 / 0.7274 (passes)
+#
+# The 2026-06 diagnosis -- "the E-update-only eps_eff makes the operator
+# non-SPSD (discrete-adjointness break), dt cannot cure it" -- was a
+# misdiagnosis of this symptom. Whether the conformal METHOD is ACCURATE is a
+# separate, still-open question: the 2026-06-08 accuracy verdicts on the four
+# conformal methods were all taken with this defect present.
+# ---------------------------------------------------------------------------
 
-    ``Boundary(conformal=True)`` / conformal faces at a min cell size
-    <= ~2 mm drives the field to NaN. Root cause is a discrete-adjointness
-    break (the E-update-only ``eps_eff=eps/w`` makes the update operator
-    non-SPSD), NOT a CFL issue — reducing dt does not cure it, and four fix
-    methods are falsified. ``normalize=False`` is NOT a safe workaround.
-    Surfacing this at preflight converts a silent-NaN GPU run into an
-    instant redirect. Emitted as a WARNING-severity ``PreflightWarning``
-    (code ``conformal_nan``), NOT error — conformal is actively-worked and
-    convergence/development tests must still RUN this config, so it must not
-    hard-fail; agents gate on the code, not a hard-stop.
-    """
-    spec = getattr(self, "_boundary_spec", None)
-    if spec is None or not hasattr(spec, "conformal_faces"):
-        return
-    try:
-        cf = spec.conformal_faces()
-    except Exception:
-        return
-    if not cf:
-        return
-    cells = [
-        c for c in (
-            self._dx,
-            getattr(self, "_dy", None),
-            getattr(self, "_dz", None),
-        )
-        if c
-    ]
-    min_cell = min(cells) if cells else dx
-    if min_cell <= 2.0e-3:
-        import warnings as _w
-        # WARNING severity (NOT error/forbid): the conformal-fine-dx NaN is
-        # a KNOWN, actively-worked bug, and convergence/development tests
-        # must still be able to RUN this config — a hard-fail would block
-        # the very work fixing it. Agents gate on the code (conformal_nan),
-        # not on a hard-stop.
-        # MAINTENANCE: delete this guard when the BCK/USC contour-FIT
-        # redesign lands. The strict-xfail tracker
-        # tests/unit/geometry/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec
-        # will hard-fail (XPASS) to force this removal (conformal-PEC
-        # known issue).
-        _w.warn(
-            PreflightWarning(
-                f"conformal PEC is enabled on faces {sorted(cf)} with a min "
-                f"cell size {min_cell * 1e3:.3f} mm <= 2 mm — this is a KNOWN "
-                f"NaN (discrete-adjointness break, not CFL; 4 fix methods "
-                f"falsified — tracked at https://github.com/bk-squared/rfx/issues). "
-                f"normalize=False is NOT a safe workaround at fine dx. Use "
-                f"conformal=False (staircase PEC) or a coarser mesh "
-                f"(dx > 2 mm) until the contour-FIT redesign lands.",
-                code="conformal_nan",
-                severity="warning",
-                source="_validate_cfg_conformal_fine_dx",
-            ),
-            stacklevel=2,
-        )
 
 def _validate_cfg_thin_conductor_surface_impedance(self, _w) -> None:
     """Advisories for Leontovich (surface_impedance_f0) sheets (#669).
@@ -1257,9 +1225,6 @@ def _validate_cfg_off_lattice_design_edges(self, _w, ctx) -> None:
 # ``staticmethod(...)``, so the loop keeps skipping it and the pre-move string
 # survives. Measured both ways before and after the move.
 # ---------------------------------------------------------------------------
-_validate_cfg_conformal_fine_dx.__qualname__ = (
-    "_PreflightMixin._validate_cfg_conformal_fine_dx"
-)
 _validate_cfg_thin_conductor_surface_impedance.__qualname__ = (
     "_PreflightMixin._validate_cfg_thin_conductor_surface_impedance"
 )

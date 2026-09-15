@@ -181,10 +181,23 @@ Why, shown rather than argued (dumped from the committed build): in the x pads
 the guide's centre row reads `materials.eps_r = 12` (the pad extension put it
 there) while `aniso_eps` reads `1` (the declared `Box` stops at the interior
 edge and nothing replicates into the rebuilt array — that gap IS #1043's
-headline defect). The psi coefficient was therefore twelve times too small in
-exactly the cells meant to absorb the guided mode. The fix makes the absorber
-match the medium the solver is actually stepping, which is a change of
-substance, not of rounding.
+headline defect), so the two halves of one timestep were integrating different
+media there. **An inconsistent coefficient was removed; the number is still
+facet-dominated.**
+
+**R5 trace, because a band mean is not a result.** The smoothed per-bin
+`T_self_smooth` over cv01's own `above` mask, 88 bins, measured on both trees:
+
+| tree | band min | band max |
+|---|---:|---:|
+| `origin/main` | 0.8850 | 0.9289 |
+| this branch | **0.8725** | 0.9280 |
+
+The band max barely moves (−0.0009) while the min drops (−0.0125). That is
+**more ripple — an interference change across the band, not a uniform offset**,
+which is what a changed absorber reflection does to a standing wave. Both
+numbers stay facet-dominated until Stage B lands, so neither is a performance
+claim.
 
 **Preflight is part of the result.** Both arms carry the same banner, verbatim
 and identical between the two trees (full text in the artifacts'
@@ -285,7 +298,7 @@ env, and the repo's own note says xdist loadfile workers accumulate XLA state).
 | run | result |
 |---|---|
 | the three directories, 8 shards, full pass | **3175 passed, 8 skipped, 17 xfailed, 1 failed** |
-| the one failure: `test_evidence_numeric_provenance.py::test_every_enumerated_document_is_classified` — that contract enumerates every `docs/design_notes/*.md` and refuses an unclassified one, and it caught both new notes | fixed by classifying both as `NO_ARTIFACT_REFERENCE` (neither carries a `path.json::key` span); **its shard re-run 606 passed / 0 failed**, and the whole contract file re-run **1422 passed** |
+| the one failure: `test_evidence_numeric_provenance.py::test_every_enumerated_document_is_classified` — that contract enumerates every `docs/design_notes/*.md` and refuses an unclassified one, and it caught both new notes | fixed by classifying both as `NO_ARTIFACT_REFERENCE` (neither cites an artifact key: no backtick span of the artifact-path-then-double-colon-then-key form the parser resolves); **its shard re-run 606 passed / 0 failed**, and the whole contract file re-run **1422 passed** |
 | the new test file re-run in full after its last edit | **6 passed** (fast) + **2 passed** (slow) |
 | `tests/unit/boundaries/ -m slow` | **7 passed, 211 deselected** — the three `test_cpml_reflectivity_regression` cases, `test_pole_extension_divergence_repro_636` (the #636 pole-pad divergence lock on the neighbouring mechanism), `test_clamped_per_face_absorber_actually_absorbs`, and both new `..._stays_finite` cases |
 | `tests/unit/nonuniform/` — the other edited path | **399 passed, 11 deselected, 1 xfailed** |

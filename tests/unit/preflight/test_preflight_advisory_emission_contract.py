@@ -349,8 +349,20 @@ def _enumerate_emission_sites():
 # -- which is how a surface stops being pinned where the code actually is.
 # Measured before and after the widening on the pre-move tree: 113 / 74 /
 # {preflight: 2, preflight_sparameters: 2, finding: 1} either way.
-_FROZEN_TOTAL_SITES = 113
-_FROZEN_LITERAL_CODE_COUNT = 74
+# 113 -> 112, 2026-09-15 (#1043 / PR #1047). One site left, deliberately:
+# ``_validate_cfg_conformal_fine_dx``'s ``conformal_nan`` warning was
+# DELETED with the check. Its own comment named
+# ``test_mesh_convergence_s21_with_conformal_pec`` (xfail strict=True) as
+# the tripwire that would say the advisory had gone stale, and that test
+# XPASSed once the CPML psi coefficient read the permittivity the E update
+# uses. A SHRINKING surface is the direction this pin is least worried
+# about, but it is re-frozen here rather than left to drift, because the
+# point of the number is that every move is a conscious edit.
+_FROZEN_TOTAL_SITES = 112
+# 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
+# site emitting that code, and the check was deleted when its own tripwire
+# XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
+_FROZEN_LITERAL_CODE_COUNT = 73
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

@@ -295,9 +295,19 @@ CORE_CONFIG_CHECKS: tuple[ConfigCheck, ...] = (
     ConfigCheck("_validate_cfg_subgrid_limitations",
                 lambda sim, c: sim._validate_cfg_subgrid_limitations(c.warn),
                 "mesh"),
-    ConfigCheck("_validate_cfg_conformal_fine_dx",
-                lambda sim, c: sim._validate_cfg_conformal_fine_dx(c.dx),
-                "pec_geometry"),
+    # 2026-09-15 (#1043 / PR #1047): ``_validate_cfg_conformal_fine_dx``
+    # ("pec_geometry", adapter ``(dx,)``) stood HERE and was DELETED. It is the
+    # first removal from this sequence, so the append-only rule above gets its
+    # counterpart in writing: a removal is allowed only when the check has
+    # become a FALSE POSITIVE, and only with the tripwire that says so cited.
+    # Here the check carried its own: its comment named
+    # ``test_mesh_convergence_s21_with_conformal_pec`` (xfail strict=True) as
+    # the signal, and that test XPASSed once #1043's CPML psi coefficient read
+    # the permittivity the E update used. Removing SHORTENS the sequence and
+    # reorders nothing, so every surviving advisory keeps its position and only
+    # this one leaves the 65 committed snapshots; the sequence lock and the
+    # ``conformal_fine_dx`` snapshot are updated in the same change, which is
+    # the review a red lock is supposed to force.
     ConfigCheck("_validate_cfg_adi_3d_accuracy",
                 lambda sim, c: sim._validate_cfg_adi_3d_accuracy(c.warn),
                 "execution"),

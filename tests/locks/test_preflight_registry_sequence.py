@@ -131,7 +131,18 @@ _CALL_SEQUENCE_AT_LEG7_TIP = (
     ("_validate_cfg_multiband_grading", ("warn",)),
     ("_validate_cfg_graded_box_rasterization", ("warn",)),
     ("_validate_cfg_subgrid_limitations", ("warn",)),
-    ("_validate_cfg_conformal_fine_dx", ("dx",)),
+    # 2026-09-15 (#1043 / PR #1047): ``_validate_cfg_conformal_fine_dx``
+    # ("dx",) stood HERE and was DELETED -- the first removal from this
+    # sequence since it was locked. The check was a self-detecting stale
+    # check whose own comment named ``test_mesh_convergence_s21_with_
+    # conformal_pec`` (xfail strict=True) as the signal to delete it, and
+    # that test XPASSed once the CPML psi coefficient read the
+    # permittivity the E update uses. A removal SHORTENS the sequence and
+    # reorders nothing, so every surviving check keeps its index relative
+    # to its neighbours and only the deleted one leaves the snapshots.
+    # The line stays here, commented, rather than being erased: this tuple
+    # is a transcript of the pre-registry hub, and a transcript with a
+    # silent hole in it cannot be checked against the hub again.
     ("_validate_cfg_adi_3d_accuracy", ("warn",)),
     ("_validate_cfg_adi_interior_pec", ("warn",)),
     ("_validate_cfg_lossless_resonator_in_absorber", ("warn",)),

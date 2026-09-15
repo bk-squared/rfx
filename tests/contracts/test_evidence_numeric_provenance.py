@@ -715,6 +715,18 @@ CLASSIFICATION: dict[str, str] = {
         NO_ARTIFACT_REFERENCE,
     "docs/design_notes/issue1043_cpml_subpixel_coefficient_results.md":
         NO_ARTIFACT_REFERENCE,
+    # 2026-09-15 (#1043 review round 1, F1): the pre-declaration's only `::`
+    # span is a pytest node id
+    # (`test_subpixel_pec.py::test_pec_short_s11_with_conformal_face_pec`), so
+    # it lands in `others` and never in `parses`; the results note carries no
+    # `::` span at all. Every number in both is replayed by
+    # scripts/diagnostics/cpml_subpixel_stability/f1_pec_short_gate.py and the
+    # load-bearing ones are pinned by the two gates in
+    # tests/unit/geometry/test_subpixel_pec.py.
+    "docs/design_notes/issue1043_f1_pec_short_gate_predeclaration.md":
+        NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue1043_f1_pec_short_gate_results.md":
+        NO_ARTIFACT_REFERENCE,
     "docs/design_notes/mixed_refplane_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/portgrid_m0m1_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/portgrid_m0m1_results.md": NO_ARTIFACT_REFERENCE,

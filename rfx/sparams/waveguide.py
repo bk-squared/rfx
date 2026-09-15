@@ -914,34 +914,20 @@ def compute_waveguide_s_matrix(
         ref_shifts.append(desired_ref - planes["reference"])
 
     _pec_axes = "".join(axis for axis in "xyz" if axis not in grid.cpml_axes)
-    # G-WI5 guardrail (mechanism corrected 2026-05-29): conformal=True
-    # produces NaN S-params at fine mesh (min cell <= ~2 mm for WR-90).
-    # The original 2026-05-24 diagnosis ("the two-run reference pass omits
-    # conformal_weights") was FALSIFIED by two witnesses: threading
-    # conformal_weights symmetrically into the reference run still NaNs,
-    # and normalize=False (single-run, no reference) ALSO NaNs at dx=2 mm.
-    # The real mechanism is the Dey-Mittra conformal-PEC run itself — the
-    # E-update-only eps_eff=eps/w makes the update operator non-SPSD
-    # (discrete-adjointness break), intrinsically unstable at fine dx and
-    # independent of the normalisation mode.  Safe paths: conformal=False
-    # (staircase PEC, the supported floor) or a coarser mesh.  The
-    # ``conformal_nan`` preflight warning carries the same guidance;
-    # the strict-xfail tracker is
-    # tests/unit/geometry/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec.
-    if conformal_weights is not None and normalize:
-        import warnings as _w
-        _w.warn(
-            "compute_waveguide_s_matrix with conformal=True is KNOWN to "
-            "produce NaN S-parameters at fine mesh spacings (min cell "
-            "<= ~2 mm for WR-90): the Dey-Mittra conformal-PEC update is "
-            "intrinsically unstable at fine dx (discrete-adjointness "
-            "break) — this is independent of the normalisation mode, so "
-            "normalize=False is NOT a safe workaround at fine dx.  Use "
-            "conformal=False (staircase PEC) or a coarser mesh.  "
-            "Tracked at https://github.com/bk-squared/rfx/issues.",
-            UserWarning,
-            stacklevel=3,
-        )
+    # The G-WI5 runtime guardrail that stood here -- "conformal=True is
+    # KNOWN to produce NaN S-parameters at fine mesh" -- was DELETED
+    # 2026-09-15 (#1043 / PR #1047). The NaN was the CPML psi coefficient
+    # reading a different permittivity than the Yee half of the same
+    # timestep: conformal_eps_correction sets aniso_eps to eps_eff = eps/w
+    # at wall cells, which is HIGHER than materials.eps_r, and those cells
+    # run through the x CPML pads. Measured on the tripwire's own rungs,
+    # |S21| at dx 3 / 2 / 1.5 mm: 0.7564 / 0.6974 / nan before, and
+    # 0.7796 / 0.6974 / 0.7274 after. Warning about a NaN that no longer
+    # happens would send users to staircase for no reason.
+    #
+    # NOT claimed by this removal: that conformal PEC is ACCURATE. The
+    # 2026-06-08 accuracy verdicts on the four conformal methods were taken
+    # with the defect present and are still to be re-measured.
 
     if normalize == "flux":
         from rfx.core.yee import init_materials as _init_vacuum_materials

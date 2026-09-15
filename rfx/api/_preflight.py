@@ -1413,14 +1413,14 @@ class _PreflightMixin:
     from rfx.preflight.ports import _validate_cfg_refplane_placement
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 2: the conformal-fine-dx guard moved VERBATIM to
-    # ``rfx/preflight/pec_geometry.py`` and is bound back here, AT THE
-    # POSITION it held in this class body. Position is not cosmetic --
-    # ``_validate_simulation_config`` calls these checks in a fixed
-    # sequence and the resulting advisory ORDER is the observable
-    # ``tests/locks/test_preflight_split_snapshot.py`` renders.
+    # The conformal-fine-dx guard that #980 leg 2 bound here was DELETED
+    # 2026-09-15 (#1043 / PR #1047): its own tripwire XPASSed, which its
+    # comment named as the signal to remove it. See the note at the top of
+    # ``rfx/preflight/pec_geometry.py``'s check section for the measurement.
+    # Nothing takes its position -- removing a core check SHORTENS the
+    # sequence rather than reordering it, so every surviving advisory keeps
+    # its relative order and only the deleted one leaves the snapshots.
     # ------------------------------------------------------------------
-    from rfx.preflight.pec_geometry import _validate_cfg_conformal_fine_dx
 
 
     def _validate_adi_interior_pec(self, pec_edge_masks) -> None:

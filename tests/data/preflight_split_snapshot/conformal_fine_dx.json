@@ -2,13 +2,6 @@
   "preflight": {
     "issues": [
       {
-        "code": "conformal_nan",
-        "loc": null,
-        "message": "conformal PEC is enabled on faces ['y_hi', 'y_lo', 'z_hi', 'z_lo'] with a min cell size 1.000 mm <= 2 mm \u2014 this is a KNOWN NaN (discrete-adjointness break, not CFL; 4 fix methods falsified \u2014 tracked at https://github.com/bk-squared/rfx/issues). normalize=False is NOT a safe workaround at fine dx. Use conformal=False (staircase PEC) or a coarser mesh (dx > 2 mm) until the contour-FIT redesign lands.",
-        "severity": "warning",
-        "source": "_validate_cfg_conformal_fine_dx"
-      },
-      {
         "code": "port_aperture_snap",
         "loc": null,
         "message": "Waveguide port 'left': declared y-width 22.8600 mm is not what this grid rasterizes (dx=1.0000 mm): the port's slice covers 23.0000 mm, and the solve builds its mode template and cutoff from 23.0000 mm. Cutoffs, |S| references, and any analytic comparison computed from 22.8600 mm describe a structure this run does not solve. Choose dx so it divides the declared width, or declare the width the grid can represent.",
@@ -24,7 +17,7 @@
       }
     ],
     "n_errors": 0,
-    "n_issues": 3,
+    "n_issues": 2,
     "ok": true
   }
 }

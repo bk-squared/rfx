@@ -672,8 +672,14 @@ _REBOUND_ON_MIXIN = {
         "_msl_realized_substrate",
     ),
     "rfx.preflight.pec_geometry": (
+        # ``_validate_cfg_conformal_fine_dx`` stood here and was DELETED
+        # 2026-09-15 (#1043 / PR #1047) -- its own tripwire
+        # (test_mesh_convergence_s21_with_conformal_pec, xfail strict=True)
+        # XPASSed, which its comment named as the signal to remove it. The
+        # NaN it warned about was the CPML psi coefficient reading a
+        # different permittivity than the E update; it no longer happens,
+        # so the advisory became a false positive.
         "_congruence_origin_shift", "_validate_cfg_campaign_statics",
-        "_validate_cfg_conformal_fine_dx",
         "_validate_cfg_congruent_rasterization_parity",
         "_validate_cfg_off_lattice_design_edges",
         "_validate_cfg_pec_face_short_of_domain_wall",
@@ -1143,12 +1149,11 @@ def _conformal_fine_dx_sim():
     """WR-90 with conformal PEC on the y/z faces at dx = 1 mm.
 
     ``tests/unit/geometry/test_subpixel_pec.py:108`` ``_wr90_sim``, at
-    ``conformal=True``. The only witness in this corpus for ``conformal_nan``,
-    which ``_validate_cfg_conformal_fine_dx`` emits, and the only one reached
-    through a real ``Simulation``: that check's three behavioural tests
-    (``test_preflight_guards.py:758-778``) call the UNBOUND method on a
-    ``SimpleNamespace``, so none of them renders a report. It also happens to
-    be the corpus's first witness for ``port_aperture_snap``.
+    ``conformal=True``. It was added as this corpus's only witness for
+    ``conformal_nan``; that check was deleted 2026-09-15 (#1043 / PR #1047)
+    when its own tripwire XPASSed, so the advisory is gone from this
+    fixture's snapshot. The fixture is KEPT because it is also the corpus's
+    only witness for ``port_aperture_snap``, which it still emits twice.
     """
     from tests.unit.geometry.test_subpixel_pec import _wr90_sim
 
@@ -1862,6 +1867,11 @@ _FIXTURES = (
     # gated rather than merely counted. Added BEFORE the move, on the tree
     # where the bodies still sit in the facade, which is what makes them a
     # pre-move baseline instead of a post-hoc blessing.
+    # 2026-09-15 (#1043 / PR #1047): KEPT. The check it was added for
+    # (``_validate_cfg_conformal_fine_dx`` / ``conformal_nan``) was
+    # deleted, but this fixture is also the corpus's only witness for
+    # ``port_aperture_snap``, so it stays and its snapshot loses one
+    # advisory of three rather than the whole file.
     ("conformal_fine_dx", _conformal_fine_dx_sim, {}, None),      # leg 2
     ("leontovich_thin_film_offband",                              # leg 2
      _leontovich_thin_film_offband_sim, {}, None),

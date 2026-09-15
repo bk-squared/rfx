@@ -58,6 +58,22 @@ def _cv01_module(root: pathlib.Path):
     return mod
 
 
+
+def _band_trace(arm: dict) -> dict:
+    """min/max/first/last of ``T_self_smooth`` over cv01's own band mask."""
+    ts = np.asarray(arm.get("T_self_smooth", []), dtype=float)
+    mask = np.asarray(arm.get("above_mask", []), dtype=bool)
+    if ts.size == 0 or mask.size != ts.size or not mask.any():
+        return {"band_trace": None}
+    band = ts[mask]
+    return {"band_trace": {
+        "n_bins": int(band.size),
+        "min": float(band.min()), "max": float(band.max()),
+        "first": float(band[0]), "last": float(band[-1]),
+        "values": [float(v) for v in band],
+    }}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--output", required=True)
@@ -90,6 +106,10 @@ def main() -> None:
                        "branch": _git("rev-parse", "--abbrev-ref", "HEAD")},
         "cpml_layers": args.layers,
         "mean_self": arm["mean_self"],
+        # R5: a band mean is not a result. The smoothed per-bin trace
+        # over cv01's own `above` mask says whether the change is a
+        # uniform offset or an interference change.
+        **_band_trace(arm),
         "settling_db": arm.get("settling_db"),
         "committed_reference": COMMITTED_CPML_MEAN_SELF_20,
         "delta_vs_committed": (None if arm["mean_self"] is None
@@ -101,8 +121,12 @@ def main() -> None:
     out = pathlib.Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(rec, indent=2, default=str))
+    bt = rec.get("band_trace")
     print(f"[{args.label}] layers={args.layers} mean_self={rec['mean_self']!r} "
           f"delta={rec['delta_vs_committed']!r} settling_db={rec['settling_db']!r}")
+    if bt:
+        print(f"[{args.label}] band T_self_smooth n={bt['n_bins']} "
+              f"min={bt['min']:.4f} max={bt['max']:.4f}")
     print(f"wrote {out}")
 
 

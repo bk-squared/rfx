@@ -750,32 +750,44 @@ def test_error_severity_mapping_end_to_end():
 
 
 # --------------------------------------------------------- (b) conformal guard
-def _fake_conformal(dx, dy=None, dz=None, faces=("z_lo", "z_hi")):
-    spec = SimpleNamespace(conformal_faces=lambda: set(faces))
-    return SimpleNamespace(_boundary_spec=spec, _dx=dx, _dy=dy, _dz=dz)
+# The three behavioural tests for ``_validate_cfg_conformal_fine_dx`` stood
+# here and were DELETED 2026-09-15 (#1043 / PR #1047) with the check itself.
+# The check warned that conformal PEC at dx <= 2 mm is "a KNOWN NaN"; the NaN
+# was the CPML psi coefficient reading a different permittivity than the Yee
+# half of the same timestep, and it no longer happens, so the advisory had
+# become a false positive. Its own comment named
+# ``tests/unit/geometry/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec``
+# (xfail strict=True) as the tripwire that would say so, and that test now
+# passes as a real convergence gate on the same three rungs.
+#
+# The replacement coverage is NOT another guard test: it is that convergence
+# gate plus
+# ``test_pec_short_conformal_stays_bounded_over_a_long_record``, which
+# measures the thing the guard was warning about instead of asserting the
+# warning's text.
 
 
-def test_conformal_fine_dx_warns():
-    # WARNING severity (not error/forbid): conformal-fine-dx is a known,
-    # development-coupled bug; convergence tests must still RUN it, so it must
-    # not hard-fail. Agents gate on the code, not a hard-stop.
-    fake = _fake_conformal(1e-3)
-    with pytest.warns(UserWarning, match="KNOWN"):
-        _PreflightMixin._validate_cfg_conformal_fine_dx(fake, 1e-3)
+def test_conformal_fine_dx_guard_is_gone():
+    """The deleted guard must stay deleted, and say why if it comes back.
 
-
-def test_conformal_coarse_dx_silent():
-    fake = _fake_conformal(3e-3)
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        _PreflightMixin._validate_cfg_conformal_fine_dx(fake, 3e-3)
-
-
-def test_no_conformal_silent():
-    fake = _fake_conformal(1e-3, faces=())
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        _PreflightMixin._validate_cfg_conformal_fine_dx(fake, 1e-3)
+    A resurrected ``conformal_nan`` advisory would send users to staircase PEC
+    for a NaN that no longer happens. If this ever goes red, the question is
+    not "re-add the test" -- it is why the check came back, and whether the
+    conformal path regressed (in which case
+    ``test_mesh_convergence_s21_with_conformal_pec`` is red too and that is
+    the one to read first).
+    """
+    assert not hasattr(_PreflightMixin, "_validate_cfg_conformal_fine_dx"), (
+        "_validate_cfg_conformal_fine_dx is back on _PreflightMixin. It was "
+        "deleted by #1043 / PR #1047 because the fine-dx conformal NaN it "
+        "warned about was the CPML psi-coefficient defect and is fixed; see "
+        "the note at the top of rfx/preflight/pec_geometry.py's check section."
+    )
+    from rfx.preflight import _registry
+    names = [c.name for c in _registry.CORE_CONFIG_CHECKS]
+    assert "_validate_cfg_conformal_fine_dx" not in names, (
+        f"the deleted check is registered again in CORE_CONFIG_CHECKS: {names}"
+    )
 
 
 # --------------------------------------------------- (c) lossless-resonator
