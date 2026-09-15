@@ -306,7 +306,7 @@ def stage_falsifier() -> dict:
                         f"{variant}: h_offset patch did not take, saw {set(seen)}")
                 s = np.asarray(res.s_params)
                 col0 = np.abs(s[0, 0]) ** 2 + np.abs(s[1, 0]) ** 2
-                out[f"{variant}|{rung}"] = {
+                out[f"{variant}__{rung}"] = {
                     "h_offset": list(want),
                     "column_power_minus_1_col0": (col0 - 1.0).tolist(),
                     "worst_abs_column_power_excess": float(np.max(np.abs(col0 - 1.0))),
@@ -332,7 +332,7 @@ def stage_record() -> dict:
             res, texts = _sparams(sim, num_periods=num_periods, normalize=False)
             s = np.asarray(res.s_params)
             col0 = np.abs(s[0, 0]) ** 2 + np.abs(s[1, 0]) ** 2
-            out[f"{rung}|{num_periods:g}"] = {
+            out[f"{rung}__np{num_periods:g}"] = {
                 "num_periods": num_periods,
                 "column_power_minus_1_col0": (col0 - 1.0).tolist(),
                 "worst_abs_column_power_excess": float(np.max(np.abs(col0 - 1.0))),

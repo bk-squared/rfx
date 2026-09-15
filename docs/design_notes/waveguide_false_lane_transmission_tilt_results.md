@@ -34,6 +34,10 @@ made **within** one run rather than across the two, and the fine rung's absolute
 differences sit at the same 3e-6 level as the `flux` lane's own floor — a caveat that
 applies to the fine column of every table here.
 
+The CPU runs themselves are deterministic: regenerating the whole artifact a second time
+reproduced every FDTD stage value-identically, so the tables below carry no run-to-run
+scatter of their own.
+
 Preflight on all three cells is empty. The warnings, verbatim from the re-run and stored
 per cell in the artifact, are three: the documented `normalize=False` dispersion notice;
 the record-length advisory
@@ -124,8 +128,13 @@ four pre-declared candidates in one step, because each of them is only a recipe 
 **D (`a₁` nominal rather than measured)** was excluded before any arithmetic, by code
 reading: `extract_waveguide_s_matrix` (L2111) sets
 `a_drive = extract_waveguide_port_waves(final_cfgs[drive_idx])`, which decomposes
-`cfg.v_ref_t` / `cfg.i_ref_t` — port 1's own recorded modal V and I. `cfg.v_inc_t` and
-`cfg.src_amp` are recorded but never read on this lane.
+`cfg.v_ref_t` / `cfg.i_ref_t` — port 1's own recorded modal V and I. The pre-declaration
+said this would also be confirmed numerically; the exclusion turned out to be structural
+and a grep settles it more completely than a number would. `v_inc_t` is read in exactly
+four places in `rfx/` (`simulation.py:965`, `simulation.py:1762`,
+`nonuniform.py:2028`, `nonuniform.py:2199`), and all four are the scan carry packing the
+record — no S-parameter extractor consumes it. `cfg.src_amp` reaches the extractor lane
+only through `_reset_cfg`, which zeroes it on the undriven ports.
 
 **G (per-port gain asymmetry `g₂/g₁`)** is refuted by the data rather than by the code: a
 gain asymmetry is antisymmetric between `S21` and `S12`, so it would make one above 1 and
@@ -158,8 +167,9 @@ Two controls make this a statement about the **active source** and not about geo
 
 * **Absorber proximity is excluded.** The receiving port's reference plane sits at the
   mirror position of the driven one (7.62 mm from its own port plane, 20.32 mm from the
-  nearest domain face). It shows no offset: it agrees with the receiving probe plane, 46 mm
-  away, to 4e-5. A plane 7.62 mm from an INACTIVE port plane is clean; the same distance
+  nearest domain face). It shows no offset: it agrees with the receiving probe plane,
+  17.78 mm away, to 4e-5 — the same hop over which the driven port's pair disagrees by
+  5.9e-3. A plane 7.62 mm from an INACTIVE port plane is clean; the same distance
   from an ACTIVE one is off by 5e-3.
 * **The decay length is physical, the amplitude is numerical.** Over the first hop
   (7.62 → 25.40 mm) the offset falls by **6.15× / 6.25× / 6.30×** — the same factor at all
@@ -274,9 +284,9 @@ The envelope this leaves, for the PI:
   lane on the same fields reads 4.8e-5 / 3.7e-6 / 5.0e-6. The battery's 1.02 column-power
   gate is not at risk; the coarse rung sits at 1.0061.
 * The error is carried by the **incident wave measured at the driven port's own reference
-  plane**, 7.62 mm downstream of the active source on this fixture. It is not present at
-  any plane 25 mm or more from the active source, and not at the same distance from an
-  inactive port plane.
+  plane**, 7.62 mm downstream of the active source on this fixture. It is 6× smaller at
+  25.4 mm from the source, into the noise by 71 mm, and absent at the same 7.62 mm from an
+  INACTIVE port plane.
 * Moving BOTH measurement planes from 7.62 to 25.40 mm from their sources reduces the
   excess 4.0× / 4.8× / 5.9× and changes `|S11|` by under 5 %. That is a measured property
   of this fixture, **not a recommendation and not a fix**: `ref_offset` is a cell count, so
@@ -288,4 +298,76 @@ The envelope this leaves, for the PI:
   and project it onto the guide's higher discrete modes, rather than infer the mode from a
   decay-rate fit. That is a measurement this run did not make.
 
-No gate, tolerance or golden moved. `rfx/` carries no diff.
+No gate, tolerance or golden moved. `rfx/` carries no diff. The one test file this branch
+touches is `tests/contracts/test_evidence_numeric_provenance.py`, and only to register the
+two notes in its classification table — this note as `GATED` (its section 7 resolves) and
+the pre-declaration as `NO_ARTIFACT_REFERENCE` (it carries no citation, having been written
+before any number existed). No threshold in that file moves.
+
+## 7. Numeric provenance
+
+Every load-bearing number above, cited by key into the committed artifact and
+value-checked by `tests/contracts/test_evidence_numeric_provenance.py`. The
+citations are emitted from the artifact rather than retyped, so a number that
+moves without the note moving reds this gate.
+
+**The observable (section 1), max-positive excess and its ladder.**
+
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.max_positive_column_power_minus_1 = 0.00613509`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.mid.max_positive_column_power_minus_1 = 0.00116108`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.fine.max_positive_column_power_minus_1 = 0.000254614`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.rung_ratios_max_positive[0] = 5.28395`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.rung_ratios_max_positive[1] = 4.56015`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.worst_bin_s21_mag2_minus_1 = 0.00545432`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.worst_bin_s11_mag2 = 0.000680770`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.s12_mag2_minus_1[16] = 0.00445329`.
+
+**The bound (section 2).**
+
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.bound_2_mean_s11_mag2 = 0.00134742`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.mid.bound_2_mean_s11_mag2 = 0.000186878`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.fine.bound_2_mean_s11_mag2 = 0.0000340434`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.bound_violation_factor = 4.55321`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.mid.bound_violation_factor = 6.21305`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.fine.bound_violation_factor = 8.00199`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.candidate_A_gamma_tan2[0] = 0.00493967`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.candidate_A_gamma_tan2[16] = 0.0165851`.
+
+**Where the excess lives (section 3).**
+
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.coarse.planes.drive_ref.modal_power_over_recv_ref_minus_1[16] = -0.00507010`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.coarse.planes.drive_probe.modal_power_over_recv_ref_minus_1[16] = 0.000824528`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.coarse.planes.recv_probe.modal_power_over_recv_ref_minus_1[16] = -0.0000419546`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.mid.planes.drive_ref.modal_power_over_recv_ref_minus_1[16] = -0.00107283`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.fine.planes.drive_ref.modal_power_over_recv_ref_minus_1[16] = -0.000245309`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.coarse.planes.drive_ref.distance_from_driven_source_m = 0.00762000`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.coarse.planes.recv_ref.x_m = 0.101600`.
+
+**The profile mismatch and the falsifier (section 4).**
+
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::profiles.coarse.predicted_edge_excess_half_f0 = 8.05694`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::profiles.coarse.measured_edge_excess = 8.13987`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::profiles.coarse.residual_norm_over_h_norm = 0.0587725`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::profiles.mid.residual_norm_over_h_norm = 0.0206606`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::profiles.fine.residual_norm_over_h_norm = 0.00728202`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::falsifier.control__coarse.worst_abs_column_power_excess = 0.00613463`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::falsifier.h_offset_removed__coarse.worst_abs_column_power_excess = 0.00606132`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::falsifier.control__mid.worst_abs_column_power_excess = 0.00116134`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::falsifier.h_offset_removed__mid.worst_abs_column_power_excess = 0.00112343`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::falsifier.control__fine.worst_abs_column_power_excess = 0.000272334`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::falsifier.h_offset_removed__fine.worst_abs_column_power_excess = 0.000283897`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::falsifier.control__coarse.band_mean_s11_mag = 0.0243162`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::falsifier.h_offset_removed__coarse.band_mean_s11_mag = 0.0180169`.
+
+**The record length (section 5).**
+
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::record.coarse__np40.worst_abs_column_power_excess = 0.00613463`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::record.coarse__np80.worst_abs_column_power_excess = 0.00607264`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::record.coarse__np160.worst_abs_column_power_excess = 0.00609875`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::record.mid__np40.worst_abs_column_power_excess = 0.00116134`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::record.mid__np160.worst_abs_column_power_excess = 0.00114989`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::record.fine__np40.worst_abs_column_power_excess = 0.000272334`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::record.fine__np80.worst_abs_column_power_excess = 0.000250041`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::record.coarse__np40.settling_db[0] = -84.8904`,
+`tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::record.coarse__np160.settling_db[0] = -108.112`.
+

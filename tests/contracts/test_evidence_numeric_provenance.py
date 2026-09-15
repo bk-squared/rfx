@@ -356,6 +356,13 @@ ISSUE831_RESULTS = "docs/design_notes/issue831_far_end_return_results.md"
 # table of measured numbers read out of committed artifacts.
 ISSUE1043_PAD_CONTINUATION_NOTE = (
     "docs/design_notes/issue1043_pad_continuation_results.md")
+# 2026-09-16 (#873 attempt 2): the transmission-tilt results note, opted in for
+# the same reason as the two above -- its verdict is a table of measured numbers
+# read out of tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json,
+# and its section 7 emits those citations from the artifact rather than retyping
+# them, so a number that moves without the note moving reds here.
+TILT_RESULTS = (
+    "docs/design_notes/waveguide_false_lane_transmission_tilt_results.md")
 
 # Markdown documents, with the regex that cuts them into named sites.
 MARKDOWN_SITES: dict[str, str] = {
@@ -402,6 +409,7 @@ MARKDOWN_SITES: dict[str, str] = {
     ISSUE831_PREDECLARATION: r"^#+\s+(.*\S)\s*$",
     ISSUE831_RESULTS: r"^#+\s+(.*\S)\s*$",
     ISSUE1043_PAD_CONTINUATION_NOTE: r"^#+\s+(.*\S)\s*$",
+    TILT_RESULTS: r"^#+\s+(.*\S)\s*$",
 }
 
 DOCUMENTS = (MANIFEST, *MARKDOWN_SITES)
@@ -430,6 +438,14 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # citation about upstream's tutorial geometry with twelve that resolve the
     # bend arms' actual extents).
     (CV01_CPML_NOTE, "Numeric provenance, after #1057"): 40,
+    # 2026-09-16 (#873 attempt 2): the transmission-tilt note's verdict rests on
+    # five groups of measured numbers -- the observable and its ladder, the bound
+    # that retires four candidates, the four-plane measurement that locates the
+    # error, the profile mismatch and its falsifier, and the record-length run.
+    # The floor is the reproduced count (45), not a round number: a rewrite that
+    # drops citations would leave a DOES-NOT-CLOSE verdict with nothing behind it,
+    # and a negative result is exactly the kind whose numbers nobody re-derives.
+    (TILT_RESULTS, "7. Numeric provenance"): 45,
     (MANIFEST, "11_waveguide_port_wr90"): 4,
     (MANIFEST, "15_patch_antenna_rt5880"): 3,
     (MANIFEST, "17_dielectric_sphere_mie"): 2,
@@ -811,6 +827,15 @@ CLASSIFICATION: dict[str, str] = {
     "docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_false_lane_column_power_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_false_lane_column_power_results.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-16 (#873 attempt 2): the pre-declaration was written before any
+    # number existed and carries no `::` span at all. Its results note is the
+    # opposite case -- its verdict IS a table of measured numbers read out of
+    # transmission_tilt.json -- so GATED is the only class open to it, and its
+    # "7. Numeric provenance" section emits the citations FROM the artifact
+    # rather than retyping them.
+    "docs/design_notes/waveguide_false_lane_transmission_tilt_predeclaration.md":
+        NO_ARTIFACT_REFERENCE,
+    TILT_RESULTS: GATED,
     "docs/design_notes/waveguide_vi_envelope_sweep_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_results.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/wp4e_lumped_component_value_ad_spike.md": NO_ARTIFACT_REFERENCE,
