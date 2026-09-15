@@ -93,6 +93,7 @@ os.environ.setdefault("XLA_FLAGS", "--xla_force_host_platform_device_count=2")
 
 import argparse  # noqa: E402
 import importlib.util  # noqa: E402
+import json  # noqa: E402
 import subprocess  # noqa: E402
 import sys  # noqa: E402
 import tempfile  # noqa: E402
@@ -426,7 +427,21 @@ def main():
         outdir.mkdir(parents=True, exist_ok=True)
         npz = outdir / "issue1041_v2_step_order.npz"
         np.savez_compressed(npz, **store)
-        print(f"\n# arrays -> {npz}")
+        # The .npz is ~9 MB of raw traces and is NOT committed; the summary
+        # below is, so the table can be diffed without re-running.
+        summary = outdir / "issue1041_v2_step_order.summary.json"
+        summary.write_text(json.dumps({
+            "generated": "scripts/diagnostics/issue1041_v2_step_order.py",
+            "legacy_rev": args.legacy_rev,
+            "nu_rev": args.nu_rev or "working tree",
+            "n_steps": n_steps,
+            "jax": jax.__version__,
+            "devices": [str(d) for d in devices],
+            "f32_noise_threshold": F32_NOISE,
+            "rows": results,
+        }, indent=2, sort_keys=True) + "\n")
+        print(f"\n# arrays  -> {npz}")
+        print(f"# summary -> {summary}")
 
     print("\n# columns: rel = max|arm - reference| / peak(|reference|); "
           "1stdiv = first step index where that ratio exceeds "

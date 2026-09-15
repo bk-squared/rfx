@@ -399,14 +399,19 @@ def apply_pec_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
     (``29aeb6858fb45082...``) and the NU copy's richer face comments are
     folded into this docstring.
 
-    **This function does not encode a hook point.** The two runners call
-    it at different places in their step bodies: ``distributed_v2`` after
-    the E ghost exchange and BEFORE source injection
-    (``step_fn_pec`` step 5), ``distributed_nu`` AFTER source injection
-    (step 7). That ordering divergence is inventory §3.2 / leg 5
-    territory -- a physics question with its own gate, deliberately left
-    untouched here. Callers own their ordering; this function only
-    applies the faces.
+    **This function does not encode a hook point.** Callers own their
+    ordering; this function only applies the faces. Both runners now call
+    it AFTER source injection and BEFORE the E ghost exchange
+    (``distributed_v2.step_fn_pec`` stage 5, ``distributed_nu`` stage 7).
+    They diverged until #1041: v2 called it after its exchange. The
+    measurement (``scripts/diagnostics/issue1041_v2_step_order.py``) found
+    the ``exchange``/``face`` half of that divergence INERT on v2 -- with
+    the source away from the seam the two orderings are bit-identical on
+    every probe sample and all six final field arrays -- because the y/z
+    faces above are written on every x row INCLUDING the ghosts, and the
+    x_lo / x_hi faces act on rank 0's first and rank N-1's last real cell,
+    whose exchanged copies the receiving rank discards. What was NOT inert
+    was the ``exchange``/``source`` half, and the exchange moved for that.
     """
 
     @partial(
