@@ -949,6 +949,15 @@ def _validate_cfg_dielectric_at_absorber_seam(
     ``_validate_cfg_dispersive_pole_at_absorber_face``'s subject, not this
     one's (pole masks are deliberately never continued -- #627b divergence,
     #808 promoted statics).
+
+    Known blind spot, inherited from ``_validate_cfg_geometry_in_cpml`` rather
+    than invented here: the faces are read off ``self._domain``, and a
+    profile-defined axis carries ``0.0`` there (``dz_profile`` sets the extent,
+    not the declared tuple). So on such an axis the HI face is not checked --
+    an under-report, never a false positive, because the ``<= d`` half of the
+    window rejects everything. Fixing it means teaching the whole family to
+    resolve profile extents, which is a change to five checks and not to this
+    one.
     """
     if self._boundary not in ("cpml", "upml") or not self._geometry:
         return
